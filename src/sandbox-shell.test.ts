@@ -235,6 +235,18 @@ it('preserves backend identity when an explicit deadline stops a running command
 		{ kind: 'shell', dialect: 'bash', command: 'printf target', cwd: '/work' }
 	]);
 });
+
+it('rejects invalid command text before acquiring a backend', async () => {
+	const { shell, pi, context, invocation, client } = fixture();
+	await expect(
+		shell.execute(pi, context, { ...invocation, command: 'invalid\0command' })
+	).rejects.toMatchObject({
+		name: 'InvalidSandboxRequestError',
+		operation: 'exec'
+	});
+	expect(client.signals).toStrictEqual([]);
+});
+
 it.each([
 	{ kind: 'unconfirmed', source: 'deadline' },
 	{ kind: 'transport', source: 'deadline' },

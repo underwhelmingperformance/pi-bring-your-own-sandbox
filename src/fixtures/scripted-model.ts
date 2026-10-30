@@ -36,7 +36,7 @@ export class ScriptedModel {
 								'Pi requested more turns than the scripted model provides.'
 							);
 						}
-						const isFirst = this.requests.length === 1;
+						const isFirst = this.requests.length === 1 && calls.length > 0;
 						const message: AssistantMessage = {
 							role: 'assistant',
 							api: model.api,

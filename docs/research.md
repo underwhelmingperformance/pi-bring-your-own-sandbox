@@ -182,9 +182,20 @@ separate. The probes used temporary agent directories and no real credentials or
 external model calls. They verified Pi integration primitives, not a framework
 implementation, operating-system isolation or a remote provider.
 
-The shell probe explicitly dispatched `user_bash` and passed its operations to
-the SDK executor. It did not exercise the interactive `!` input parser. The
-implementation plan therefore includes CLI/RPC input and real-provider tests.
+The shell probe explicitly dispatches `user_bash` and passes its operations to
+the SDK executor. Automated tests also start the bundled CLI in offline RPC mode
+with an explicit TypeScript extension and temporary agent configuration. Tests
+cover normal and context-excluded commands, cold-start cancellation through
+`abort_bash`, and a later command after shared startup completes. Real Pi
+sessions with a scripted model separately verify exclusion from model input. The
+interactive `!` and `!!` input parser and real-provider execution need separate
+coverage.
+
+Pi 1.4.0's `executeBashWithOperations` suppresses operation errors when the user
+shell's abort signal is set and returns `cancelled: true`. A real-Pi test
+confirms that an unconfirmed provider stop still quarantines the broker and
+prevents later execution. The Pi user-shell result does not contain the SDK
+completion state.
 
 ## Related implementation
 

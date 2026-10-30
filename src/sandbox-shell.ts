@@ -2,6 +2,7 @@ import { getSandbox } from './client.js';
 import type {
 	ProcessOutput,
 	ProcessResult,
+	Sandbox,
 	SandboxClient,
 	SandboxContext,
 	SandboxHost,
@@ -14,10 +15,16 @@ import {
 	SandboxTimeoutError
 } from './errors.js';
 import { OperationScope } from './lifecycle.js';
-import { snapshotProcessRequest } from './process-input.js';
+import { isSafeText, snapshotProcessRequest } from './process-input.js';
+import { isShell } from './validation.js';
 
 export interface ShellInvocation {
-	readonly dialect: ShellDialect;
+	/**
+	A fixed language, or an adapter selector that uses already resolved
+	configuration and target metadata after acquisition.
+	*/
+	readonly dialect:
+		ShellDialect | ((sandbox: Sandbox) => Promise<ShellDialect>);
 	readonly command: string;
 	readonly timeoutSeconds?: number;
 	readonly signal?: AbortSignal;
@@ -36,11 +43,14 @@ export class SandboxShell {
 		context: SandboxContext,
 		invocation: ShellInvocation
 	): Promise<ProcessResult> {
-		const request = snapshotProcessRequest({
-			kind: 'shell',
-			dialect: invocation.dialect,
-			command: invocation.command
-		});
+		const command = invocation.command;
+		const dialect = invocation.dialect;
+		if (
+			!isSafeText(command) ||
+			(typeof dialect !== 'function' && !isShell(dialect))
+		) {
+			throw new InvalidSandboxRequestError({ operation: 'exec' });
+		}
 		const timeoutMs =
 			invocation.timeoutSeconds === undefined
 				? undefined
@@ -75,6 +85,13 @@ export class SandboxShell {
 				context,
 				signal === undefined ? {} : { signal }
 			);
+			const selected =
+				typeof dialect === 'function' ? await dialect(sandbox) : dialect;
+			const request = snapshotProcessRequest({
+				kind: 'shell',
+				dialect: selected,
+				command
+			});
 			const remaining =
 				expiresAt === undefined ? undefined : expiresAt - performance.now();
 			if (remaining !== undefined && remaining <= 0) {

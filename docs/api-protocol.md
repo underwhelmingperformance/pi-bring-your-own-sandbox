@@ -10,10 +10,13 @@ documents and declarations must change together.
 [protocol]: ../src/protocol.ts
 [spec]: specification.md
 
-The declarations currently compile, including two separate provider fixtures and
-a consumer fixture. The runtime SDK, structural validators and independent-copy
-protocol tests remain implementation work. This appendix does not establish that
-a running broker conforms to the contract.
+The declarations compile, including two separate provider fixtures and a
+consumer fixture. Structural errors, provider registration and synchronous
+discovery are implemented. Tests use independent protocol messages, Pi's event
+bus and loader, and physical SDK copies. Synchronous bootstrap is tested against
+independent service stubs. Backend validation and consumer execution remain
+implementation work. This appendix does not establish that a running broker
+conforms to the contract.
 
 ## Public API
 

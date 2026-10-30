@@ -1,4 +1,30 @@
 export type * from './contracts.js';
+export {
+	DuplicateBrokerError,
+	DuplicateProviderError,
+	IncompatibleSandboxProtocolError,
+	InvalidSandboxConfigError,
+	InvalidSandboxDeclarationError,
+	InvalidSandboxRequestError,
+	isSandboxError,
+	ProviderNotFoundError,
+	SandboxCancelledError,
+	SandboxCleanupError,
+	SandboxError,
+	SandboxInitialisationError,
+	SandboxOperationError,
+	SandboxOutputCallbackError,
+	SandboxPathNotFoundError,
+	SandboxPermissionDeniedError,
+	SandboxSessionClosingError,
+	SandboxStartupError,
+	SandboxTimeoutError,
+	SandboxTransportError,
+	StaleSandboxHandleError,
+	UnconfirmedSandboxTerminationError,
+	UnsupportedSandboxCapabilityError,
+	UnsupportedSandboxPolicyError
+} from './errors.js';
 export type {
 	BrokerServiceV1,
 	BrokerState,
@@ -14,3 +40,4 @@ export {
 	BROKER_DISCOVERY_CHANNEL,
 	PROVIDER_DISCOVERY_CHANNEL
 } from './protocol.js';
+export { registerSandboxProvider } from './provider-registration.js';

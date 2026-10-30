@@ -9,7 +9,9 @@ when present. A configured sandbox failure never switches to host execution.
 
 The scratch extension currently registers `/byos`, which reports that the
 framework is not implemented. It does not create a sandbox or replace Pi tools.
-The design documents describe the intended implementation:
+`/api` exports structural types, provider registration and structural errors.
+The consumer acquisition and execution APIs remain unimplemented. The design
+documents describe the intended implementation:
 
 - [Specification][spec]: scope, contracts, discovery, lifecycle, execution and
   integration through public Pi operation hooks.

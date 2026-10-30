@@ -15,9 +15,12 @@ consumer fixture. Structural errors, provider registration and synchronous
 discovery are implemented. Tests use independent protocol messages, Pi's event
 bus and loader, and physical SDK copies. Synchronous bootstrap is tested against
 independent service stubs. Backend metadata, capability groups and effective
-policy are validated. Consumer execution and cleanup integration remain
-implementation work. This appendix does not establish that a running broker
-conforms to the contract.
+policy are validated. Consumer facades, bounded execution, lazy broker startup
+and cleanup are implemented. A scripted model tests direct and nested calls
+through Pi approval hooks. The built-in host backend implements file operations
+and POSIX foreground execution. Public client wiring, host search and Windows
+process-tree handling remain implementation work. This appendix does not
+establish full conformance to the contract.
 
 ## Public API
 

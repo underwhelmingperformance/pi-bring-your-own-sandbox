@@ -3,7 +3,8 @@ import path from 'node:path';
 
 import type {
 	AgentSessionRuntime,
-	ExtensionAPI
+	ExtensionAPI,
+	InlineExtension
 } from '@earendil-works/pi-coding-agent';
 import { afterEach, expect, it, vi } from 'vitest';
 
@@ -17,6 +18,7 @@ import { discoverBroker } from './discovery.js';
 import sandboxExtension from './extension.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import sandboxTools from './pi-tools.js';
 import { isRecord } from './validation.js';
 
 afterEach(() => {
@@ -39,7 +41,8 @@ async function fixture(
 		| 'startup-failure'
 		| 'cleanup-failure'
 		| 'invalid-config',
-	execute: (fixture: Fixture) => Promise<void>
+	execute: (fixture: Fixture) => Promise<void>,
+	extensions: readonly InlineExtension[] = []
 ): Promise<void> {
 	const secret = 'PRIVATE_PROVIDER_TOKEN';
 	const backend = new MemoryBackend();
@@ -83,6 +86,7 @@ async function fixture(
 					});
 				}
 			},
+			...extensions,
 			{
 				name: 'observer',
 				factory(pi) {
@@ -171,7 +175,7 @@ it('reports default status in a headless Pi session without opening a backend or
 				{
 					display: true,
 					content:
-						'Provider: passthrough (default)\nState: idle\nGeneration: <generation>\nTarget: not opened\nRequested policy: workspace read-write; filesystem provider-default; network provider-default\nUser shell: provider default (not opened)\nHost execution without isolation.'
+						'Provider: passthrough (default)\nState: idle\nGeneration: <generation>\nTarget: not opened\nRequested policy: workspace read-write; filesystem provider-default; network provider-default\nUser shell: provider default (not opened)\nHost execution without isolation.\nPi shell integration: not requested; routing unverified.'
 				}
 			]
 		});
@@ -219,7 +223,7 @@ it('reports the target and effective policy after acquisition', async () => {
 					{
 						display: true,
 						content:
-							'Provider: fixture (personal)\nState: ready\nGeneration: <generation>\nBackend: memory\nTarget: /remote/project (remote)\nEffective policy: workspace read-write; filesystem provider-default; network provider-default\nOperations: exec, files.read, files.write, files.list\nShells: none\nUser shell: unavailable\nBoundary: In-memory test fixture; no OS isolation.'
+							'Provider: fixture (personal)\nState: ready\nGeneration: <generation>\nBackend: memory\nTarget: /remote/project (remote)\nEffective policy: workspace read-write; filesystem provider-default; network provider-default\nOperations: exec, files.read, files.write, files.list\nShells: none\nUser shell: unavailable\nBoundary: In-memory test fixture; no OS isolation.\nPi shell integration: not requested; routing unverified.'
 					}
 				]
 			});
@@ -310,4 +314,34 @@ it('prints command usage without starting a model turn', async () => {
 			]
 		});
 	});
+});
+
+it('reports requested shell integration without claiming verified interception', async () => {
+	await fixture(
+		'default',
+		async ({ runtime, errors, counts }) => {
+			const tools = runtime.session.getActiveToolNames();
+			await runtime.session.prompt('/byos status');
+			const lines = messages(runtime).flatMap((message) =>
+				typeof message.content === 'string'
+					? message.content
+							.split('\n')
+							.filter((line) => line.startsWith('Pi shell integration:'))
+					: []
+			);
+			expect({
+				errors,
+				...counts(),
+				tools: runtime.session.getActiveToolNames(),
+				lines
+			}).toStrictEqual({
+				errors: [],
+				opens: 0,
+				disposals: 0,
+				tools,
+				lines: ['Pi shell integration: requested; routing unverified.']
+			});
+		},
+		[{ name: 'shell-integration', factory: sandboxTools }]
+	);
 });

@@ -1,7 +1,4 @@
-import type {
-	BashOperations,
-	ExtensionAPI
-} from '@earendil-works/pi-coding-agent';
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 
 import type {
 	Sandbox,
@@ -11,7 +8,7 @@ import type {
 } from './contracts.js';
 import { ensureSandboxService } from './default-broker.js';
 import { UnsupportedSandboxCapabilityError } from './errors.js';
-import { SandboxShell } from './sandbox-shell.js';
+import { createShellOperations } from './pi-shell-operations.js';
 
 async function selectDialect(
 	pi: SandboxHost,
@@ -30,31 +27,6 @@ async function selectDialect(
 	return dialect;
 }
 
-function operations(pi: SandboxHost, context: SandboxContext): BashOperations {
-	const shell = new SandboxShell();
-	return {
-		async exec(command, _cwd, options) {
-			const result = await shell.execute(pi, context, {
-				command,
-				dialect: (sandbox) => selectDialect(pi, context, sandbox),
-				...(options.signal !== undefined && { signal: options.signal }),
-				...(options.timeout !== undefined && {
-					timeoutSeconds: options.timeout
-				}),
-				onOutput: ({ data }) => {
-					options.onData(Buffer.from(data));
-				}
-			});
-			return {
-				exitCode:
-					result.exit.kind === 'code'
-						? result.exit.code
-						: 128 + result.exit.signalNumber
-			};
-		}
-	};
-}
-
 /**
 Routes Pi user-shell commands through the selected sandbox. The event
 handler returns operations before acquisition so Pi can install the
@@ -62,6 +34,8 @@ per-command abort signal. Acquisition starts inside operations.exec.
 */
 export function registerUserShell(pi: ExtensionAPI): void {
 	pi.on('user_bash', (_event, context) => ({
-		operations: operations(pi, context)
+		operations: createShellOperations(pi, context, (sandbox) =>
+			selectDialect(pi, context, sandbox)
+		)
 	}));
 }

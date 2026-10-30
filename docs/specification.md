@@ -690,12 +690,14 @@ unconfirmed termination and cleanup failure.
 
 Provide `/byos status` and `/byos providers`. Status reports provider,
 generation, lifecycle state, target root, workspace relationship, effective
-policy, capabilities and whether Pi tool routing was requested and verified.
-Status identifies `passthrough` as host execution without isolation and states
-whether selection came from the implicit default or explicit configuration.
-Commands work in TUI and headless modes without requiring an interactive
-dialogue. A lightweight status indicator may summarise ready/failed state in the
-TUI.
+policy, capabilities and whether Pi tool routing was requested and verified. The
+optional shell factory advertises its loaded state for diagnostics. Pi 1.4.0
+cannot establish complete handler ownership through its public API, so routing
+must remain unverified even when the factory is loaded. Status identifies
+`passthrough` as host execution without isolation and states whether selection
+came from the implicit default or explicit configuration. Commands work in TUI
+and headless modes without requiring an interactive dialogue. A lightweight
+status indicator may summarise ready/failed state in the TUI.
 
 The framework does not write executable handles, credentials, raw provider
 configuration or backend clients into Pi session entries. Diagnostic output must

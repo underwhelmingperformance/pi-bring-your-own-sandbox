@@ -11,9 +11,10 @@ present. A configured sandbox failure never switches to host execution.
 and explicit session cleanup. Consumers use the SDK without loading the broker
 extension separately. The built-in host backend implements filesystem operations
 and POSIX foreground execution with process-group cancellation. Host search uses
-installed fd and ripgrep executables. Windows process-tree handling and the
-optional Pi integration remain implementation work. Integration must use public
-operation hooks; missing Pi extension points remain upstream work.
+installed fd and ripgrep executables. Windows process-tree handling remains
+implementation work. Optional `/pi-tools` integration connects shell-operation
+hooks while Pi keeps its tool algorithms and output handling. File/search
+routing needs upstream Pi extension points.
 
 The default extension provides `/byos status` and `/byos providers`. These
 commands inspect metadata without opening a backend or changing active tools.
@@ -34,6 +35,21 @@ The design documents specify the remaining implementation:
 [api]: docs/api-protocol.md
 [research]: docs/research.md
 [review]: docs/review.md
+
+## Optional Pi integration
+
+Load the shell integration explicitly from a project extension:
+
+```typescript
+export { default } from 'pi-bring-your-own-sandbox/pi-tools';
+```
+
+Bash, PowerShell and user shell commands use the selected provider. Pi file and
+search tools retain their own execution paths. See the [coverage
+table][coverage] for supported hooks, tests, host transcript storage and
+upstream gaps.
+
+[coverage]: docs/pi-integration.md
 
 ## Development
 

@@ -289,6 +289,17 @@ trusted project configuration. The user-shell dialect is explicit when
 configured. Status never allocates a backend. Provider enumeration validates
 configuration and declarations but does not provision.
 
+The optional diagnostic command queries loaded shell integration factories on
+`pi-byos:diagnostics:v1:shell-integration`. It emits the same `pi-byos.discover`
+request with `discoveryVersion: 1` and a synchronous reply callback. A loaded
+factory replies with
+`{ kind: 'pi-byos.shell-integration', discoveryVersion: 1 }`. Replies after
+collection closes are ignored. No replies means not requested; unrecognised
+replies make request status unavailable. This diagnostic query allocates no
+backend and does not change broker or provider discovery. Routing remains
+unverified because Pi does not expose competing user-shell handlers through its
+public API.
+
 Close is idempotent and returns the same completed report for its generation.
 `confirmed` is true only when all generation-owned work and allocation cleanup
 have been confirmed. Reports include non-secret recovery descriptors and typed

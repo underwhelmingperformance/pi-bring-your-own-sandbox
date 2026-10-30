@@ -27,6 +27,7 @@ interface RuntimeOptions {
 		agentDirectory: string
 	) => void | Promise<void>;
 	readonly includeBuiltins?: boolean;
+	readonly tools?: readonly string[];
 }
 
 export async function withPiRuntime(
@@ -82,6 +83,9 @@ export async function withPiRuntime(
 				services,
 				sessionManager: options.sessionManager,
 				...(fixtureOptions?.includeBuiltins !== true && { noTools: 'builtin' }),
+				...(fixtureOptions?.tools !== undefined && {
+					tools: [...fixtureOptions.tools]
+				}),
 				...(options.sessionStartEvent !== undefined && {
 					sessionStartEvent: options.sessionStartEvent
 				})

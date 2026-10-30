@@ -3,6 +3,7 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { ensureSandboxService } from './default-broker.js';
 import { formatProviders, formatStatus } from './diagnostics.js';
 import { isSandboxError, SandboxInitialisationError } from './errors.js';
+import { describeShellIntegration } from './pi-integration-status.js';
 
 /**
 Register optional sandbox diagnostics. Status and provider enumeration use
@@ -37,6 +38,9 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 					);
 				}
 				content = `${error.name}: ${error.message}`;
+			}
+			if (action !== 'providers') {
+				content += `\n${describeShellIntegration(pi.events)}`;
 			}
 			pi.sendMessage({ customType: 'byos', content, display: true });
 		}

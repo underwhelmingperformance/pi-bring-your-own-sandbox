@@ -17,9 +17,10 @@ bus and loader, and physical SDK copies. Synchronous bootstrap is tested against
 independent service stubs. Backend metadata, capability groups and effective
 policy are validated. Consumer facades, bounded execution, lazy broker startup
 and cleanup are implemented. A scripted model tests direct and nested calls
-through Pi approval hooks. The built-in host backend implements file operations
-and POSIX foreground execution. Host search implements `byos-search-v1` with
-installed fd and ripgrep executables. Windows process-tree handling remains
+through Pi approval hooks. The optional extension reports status and provider
+metadata in TUI and headless sessions without allocation. The built-in host
+backend implements file operations and POSIX foreground execution. Host search
+uses installed fd and ripgrep executables. Windows process-tree handling remains
 implementation work. This appendix does not establish full conformance to the
 contract.
 

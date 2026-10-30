@@ -15,8 +15,9 @@ installed fd and ripgrep executables. Windows process-tree handling and the
 optional Pi integration remain implementation work. Integration must use public
 operation hooks; missing Pi extension points remain upstream work.
 
-The default extension's `/byos` command remains a diagnostic placeholder. The
-design documents specify the remaining implementation:
+The default extension provides `/byos status` and `/byos providers`. These
+commands inspect metadata without opening a backend or changing active tools.
+The design documents specify the remaining implementation:
 
 - [Specification][spec]: scope, contracts, discovery, lifecycle, execution and
   integration through public Pi operation hooks.
@@ -55,9 +56,10 @@ Try the source extension without changing Pi settings:
 pi --no-extensions -e ./src/extension.ts
 ```
 
-Then run `/byos`. The package manifest loads `dist/extension.js` after a build.
-`pnpm test` checks both source and compiled loading with Pi's actual extension
-loader, without model credentials.
+Run `/byos status` or `/byos providers`. Both commands produce displayable Pi
+messages in TUI and headless sessions. The package manifest loads
+`dist/extension.js` after a build. `pnpm test` checks both source and compiled
+loading with Pi's actual extension loader, without model credentials.
 
 Tooling follows the sibling repositories: pnpm and typed ESLint with Unicorn and
 import sorting from Identify/Cupboard; Prettier, Markdownlint and EditorConfig

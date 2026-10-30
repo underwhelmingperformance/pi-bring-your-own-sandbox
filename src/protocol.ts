@@ -201,6 +201,12 @@ export interface SandboxStatus {
 	readonly capabilities?: SandboxCapabilities;
 
 	/**
+	Effective protections after backend validation. Before startup, only the
+	requested policy in `selection` is available.
+	*/
+	readonly policy?: SandboxPolicy;
+
+	/**
 	Provider explanation of the effective boundary.
 	*/
 	readonly policyDescription?: string;
@@ -276,7 +282,8 @@ export interface BrokerServiceV1 {
 
 	/**
 	Validate configuration and enumerate providers without provisioning
-	resources.
+	resources. Backend startup or operation failures do not prevent
+	enumeration of the validated declarations.
 	*/
 	readonly providers: (
 		context: SandboxContext

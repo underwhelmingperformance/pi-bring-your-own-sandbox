@@ -563,6 +563,7 @@ export class SandboxGeneration {
 				backendId: backend.id,
 				workspace: backend.workspace,
 				capabilities: backend.capabilities,
+				policy: backend.policy,
 				policyDescription: backend.policyDescription
 			}),
 			...(this.#failure !== undefined && { failure: this.#failure }),
@@ -571,7 +572,9 @@ export class SandboxGeneration {
 		});
 	}
 	async providers(): Promise<readonly ProviderInfo[]> {
-		this.#assertOpen('discover');
+		if (this.#state === 'closing' || this.#state === 'closed') {
+			throw new SandboxSessionClosingError({ operation: 'discover' });
+		}
 		await this.#prepare();
 		return this.#providerInfos;
 	}

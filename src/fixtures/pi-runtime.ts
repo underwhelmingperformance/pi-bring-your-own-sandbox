@@ -26,6 +26,7 @@ interface RuntimeOptions {
 		directory: string,
 		agentDirectory: string
 	) => void | Promise<void>;
+	readonly includeBuiltins?: boolean;
 }
 
 export async function withPiRuntime(
@@ -80,7 +81,7 @@ export async function withPiRuntime(
 			const result = await createAgentSessionFromServices({
 				services,
 				sessionManager: options.sessionManager,
-				noTools: 'builtin',
+				...(fixtureOptions?.includeBuiltins !== true && { noTools: 'builtin' }),
 				...(options.sessionStartEvent !== undefined && {
 					sessionStartEvent: options.sessionStartEvent
 				})

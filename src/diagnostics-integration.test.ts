@@ -1,0 +1,313 @@
+import { writeFile } from 'node:fs/promises';
+import path from 'node:path';
+
+import type {
+	AgentSessionRuntime,
+	ExtensionAPI
+} from '@earendil-works/pi-coding-agent';
+import { afterEach, expect, it, vi } from 'vitest';
+
+import type { SandboxContext } from './api.js';
+import {
+	closeSandboxSession,
+	getSandbox,
+	registerSandboxProvider
+} from './api.js';
+import { discoverBroker } from './discovery.js';
+import sandboxExtension from './extension.js';
+import { MemoryBackend } from './fixtures/memory-backend.js';
+import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { isRecord } from './validation.js';
+
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
+
+interface Fixture {
+	readonly pi: ExtensionAPI;
+	readonly context: SandboxContext;
+	readonly runtime: AgentSessionRuntime;
+	readonly errors: readonly unknown[];
+	readonly backend: MemoryBackend;
+	readonly counts: () => { opens: number; disposals: number };
+}
+
+async function fixture(
+	mode:
+		| 'default'
+		| 'configured'
+		| 'startup-failure'
+		| 'cleanup-failure'
+		| 'invalid-config',
+	execute: (fixture: Fixture) => Promise<void>
+): Promise<void> {
+	const secret = 'PRIVATE_PROVIDER_TOKEN';
+	const backend = new MemoryBackend();
+	let opens = 0;
+	let disposals = 0;
+	backend.dispose = () => {
+		disposals++;
+		return mode === 'cleanup-failure'
+			? Promise.reject(new Error(secret))
+			: Promise.resolve();
+	};
+	const current: { pi?: ExtensionAPI; context?: SandboxContext } = {};
+	await withPiRuntime(
+		[
+			{ name: 'framework', factory: sandboxExtension },
+			{
+				name: 'provider',
+				factory(pi) {
+					registerSandboxProvider(pi, {
+						id: 'fixture',
+						label: 'In-memory fixture; no OS isolation.',
+						protocolVersion: 1,
+						capabilities: backend.capabilities,
+						policies: {
+							workspaceAccess: ['read-write'],
+							filesystemScope: ['provider-default'],
+							networkAccess: ['provider-default']
+						},
+						validateConfig(input: unknown) {
+							if (!isRecord(input) || input.token !== secret) {
+								throw new Error(secret);
+							}
+							return { token: secret };
+						},
+						open() {
+							opens++;
+							return mode === 'startup-failure'
+								? Promise.reject(new Error(secret))
+								: Promise.resolve(backend);
+						}
+					});
+				}
+			},
+			{
+				name: 'observer',
+				factory(pi) {
+					current.pi = pi;
+					pi.on('session_start', (_event, context) => {
+						current.context = context;
+					});
+				}
+			}
+		],
+		async (runtime, errors) => {
+			const { pi, context } = current;
+			if (pi === undefined || context === undefined) {
+				throw new Error('Pi did not initialise the diagnostic fixture.');
+			}
+			await execute({
+				pi,
+				context,
+				runtime,
+				errors,
+				backend,
+				counts: () => ({ opens, disposals })
+			});
+		},
+		{
+			includeBuiltins: true,
+			async prepare(_directory, agentDirectory) {
+				vi.stubEnv('PI_CODING_AGENT_DIR', agentDirectory);
+				if (mode === 'default') {
+					return;
+				}
+				const config =
+					mode === 'invalid-config'
+						? `{"token":"${secret}",`
+						: JSON.stringify({
+								provider: 'fixture',
+								policy: backend.policy,
+								providerConfig: { token: secret }
+							});
+				await writeFile(path.join(agentDirectory, 'byos.json'), config);
+			}
+		}
+	);
+}
+
+function messages(runtime: AgentSessionRuntime) {
+	type DiagnosticMessage = Extract<
+		AgentSessionRuntime['session']['messages'][number],
+		{ role: 'custom' }
+	>;
+	return runtime.session.messages
+		.filter(
+			(message): message is DiagnosticMessage =>
+				message.role === 'custom' && message.customType === 'byos'
+		)
+		.map((message) => ({ content: message.content, display: message.display }));
+}
+
+it('reports default status in a headless Pi session without opening a backend or changing tools', async () => {
+	await fixture('default', async ({ pi, context, runtime, errors, counts }) => {
+		const tools = runtime.session.getActiveToolNames();
+		await runtime.session.prompt('/byos status');
+		const status = await discoverBroker(pi.events)?.status(context);
+		if (status === undefined) {
+			throw new Error('The framework did not publish a broker.');
+		}
+		expect({
+			errors,
+			tools,
+			afterTools: runtime.session.getActiveToolNames(),
+			responses: messages(runtime).map((message) => ({
+				...message,
+				content:
+					typeof message.content === 'string'
+						? message.content.replaceAll(status.generationId, '<generation>')
+						: message.content
+			})),
+			...counts()
+		}).toStrictEqual({
+			errors: [],
+			tools: ['read', 'bash', 'edit', 'write'],
+			afterTools: ['read', 'bash', 'edit', 'write'],
+			opens: 0,
+			disposals: 0,
+			responses: [
+				{
+					display: true,
+					content:
+						'Provider: passthrough (default)\nState: idle\nGeneration: <generation>\nTarget: not opened\nRequested policy: workspace read-write; filesystem provider-default; network provider-default\nUser shell: provider default (not opened)\nHost execution without isolation.'
+				}
+			]
+		});
+	});
+});
+
+it('enumerates providers without allocation and omits provider configuration', async () => {
+	await fixture('configured', async ({ runtime, errors, counts }) => {
+		await runtime.session.prompt('/byos providers');
+		expect({ errors, ...counts(), responses: messages(runtime) }).toStrictEqual(
+			{
+				errors: [],
+				opens: 0,
+				disposals: 0,
+				responses: [
+					{
+						display: true,
+						content:
+							'Available sandbox providers (declared capabilities):\npassthrough: Host execution without isolation\n  Operations: exec, files.read, files.write, files.list, search.find, search.grep\n  Shells: bash, sh, powershell\n  Policies: workspace read-write; filesystem provider-default; network provider-default\nfixture: In-memory fixture; no OS isolation.\n  Operations: exec, files.read, files.write, files.list\n  Shells: none\n  Policies: workspace read-write; filesystem provider-default; network provider-default'
+					}
+				]
+			}
+		);
+	});
+});
+
+it('reports the target and effective policy after acquisition', async () => {
+	await fixture(
+		'configured',
+		async ({ pi, context, runtime, errors, counts }) => {
+			const sandbox = await getSandbox(pi, context);
+			await runtime.session.prompt('/byos');
+			const output = messages(runtime).map((message) => ({
+				...message,
+				content:
+					typeof message.content === 'string'
+						? message.content.replaceAll(sandbox.generationId, '<generation>')
+						: message.content
+			}));
+			expect({ errors, ...counts(), output }).toStrictEqual({
+				errors: [],
+				opens: 1,
+				disposals: 0,
+				output: [
+					{
+						display: true,
+						content:
+							'Provider: fixture (personal)\nState: ready\nGeneration: <generation>\nBackend: memory\nTarget: /remote/project (remote)\nEffective policy: workspace read-write; filesystem provider-default; network provider-default\nOperations: exec, files.read, files.write, files.list\nShells: none\nUser shell: unavailable\nBoundary: In-memory test fixture; no OS isolation.'
+					}
+				]
+			});
+		}
+	);
+});
+
+it('keeps provider enumeration available after startup fails and excludes raw error causes', async () => {
+	await fixture(
+		'startup-failure',
+		async ({ pi, context, runtime, errors, counts }) => {
+			await expect(getSandbox(pi, context)).rejects.toMatchObject({
+				name: 'SandboxStartupError'
+			});
+			await runtime.session.prompt('/byos providers');
+			await runtime.session.prompt('/byos status');
+			const output = JSON.stringify(messages(runtime));
+			expect({
+				errors,
+				...counts(),
+				hasProviders: output.includes('Available sandbox providers'),
+				hasFailure: output.includes('SandboxStartupError'),
+				leaksSecret: output.includes('PRIVATE_PROVIDER_TOKEN')
+			}).toStrictEqual({
+				errors: [],
+				opens: 1,
+				disposals: 0,
+				hasProviders: true,
+				hasFailure: true,
+				leaksSecret: false
+			});
+		}
+	);
+});
+
+it('reports incomplete cleanup without exposing raw disposal errors', async () => {
+	await fixture('cleanup-failure', async ({ pi, context, runtime, counts }) => {
+		await getSandbox(pi, context);
+		await closeSandboxSession(pi, context);
+		await runtime.session.prompt('/byos status');
+		const output = JSON.stringify(messages(runtime));
+		expect({
+			...counts(),
+			hasClosedState: output.includes('State: closed'),
+			hasIncompleteCleanup: output.includes('Cleanup: incomplete'),
+			hasCleanupError: output.includes('SandboxCleanupError'),
+			leaksSecret: output.includes('PRIVATE_PROVIDER_TOKEN')
+		}).toStrictEqual({
+			opens: 1,
+			disposals: 1,
+			hasClosedState: true,
+			hasIncompleteCleanup: true,
+			hasCleanupError: true,
+			leaksSecret: false
+		});
+	});
+});
+
+it('remains usable after Pi records an initial configuration error', async () => {
+	await fixture('invalid-config', async ({ runtime, errors, counts }) => {
+		await runtime.session.prompt('/byos status');
+		const output = JSON.stringify(messages(runtime));
+		expect({
+			...counts(),
+			hasInitialError: errors.length > 0,
+			hasFailedState: output.includes('State: failed'),
+			hasConfigurationError: output.includes('InvalidSandboxConfigError'),
+			leaksSecret: output.includes('PRIVATE_PROVIDER_TOKEN')
+		}).toStrictEqual({
+			opens: 0,
+			disposals: 0,
+			hasInitialError: true,
+			hasFailedState: true,
+			hasConfigurationError: true,
+			leaksSecret: false
+		});
+	});
+});
+
+it('prints command usage without starting a model turn', async () => {
+	await fixture('default', async ({ runtime, counts }) => {
+		await runtime.session.prompt('/byos unknown');
+		expect({ ...counts(), output: messages(runtime) }).toStrictEqual({
+			opens: 0,
+			disposals: 0,
+			output: [
+				{ display: true, content: 'Usage: /byos status | /byos providers' }
+			]
+		});
+	});
+});

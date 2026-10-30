@@ -60,6 +60,15 @@ cleanup. The suite uses the provider project's Vitest installation. See the
 
 [testing]: docs/provider-testing.md
 
+## Docker reference provider
+
+An optional [Docker example][docker] implements argv and POSIX shell execution
+with a copied workspace volume, unprivileged target commands, denied network
+access and confirmed container removal. It uses the public provider API.
+`pnpm test:provider` runs its separate daemon-backed integration gate.
+
+[docker]: docs/docker-provider.md
+
 ## Development
 
 Use Node 24.22.2 and pnpm 12.15.0. Deno and pre-commit are also needed to run

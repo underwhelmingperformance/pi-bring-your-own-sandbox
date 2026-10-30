@@ -1,5 +1,11 @@
 {
 	"$schema": "https://unpkg.com/knip/schema.json",
-	"entry": ["src/api.ts", "src/extension.ts", "src/**/*.test.ts"],
-	"project": ["src/**/*.ts", "*.config.ts"]
+	"entry": [
+		"src/api.ts",
+		"src/extension.ts",
+		"src/**/*.test.ts",
+		"examples/**/*.test.ts",
+		"examples/docker/src/extension.ts"
+	],
+	"project": ["src/**/*.ts", "examples/**/*.ts", "*.config.ts"]
 }

@@ -29,6 +29,7 @@
 	"files": [
 		"dist",
 		"docs",
+		"examples/docker/src",
 		"README.md"
 	],
 	"pi": {
@@ -48,7 +49,9 @@
 		"fix": "pnpm fix:lint && pnpm fix:format",
 		"fix:format": "prettier --write .",
 		"fix:lint": "eslint . --fix",
-		"test": "pnpm build && vitest run"
+		"test": "pnpm build && vitest run",
+		"test:integration": "pnpm build && vitest run src/*integration.test.ts src/user-shell-rpc.test.ts",
+		"test:provider": "pnpm build && vitest run --config vitest.provider.config.ts"
 	},
 	"devDependencies": {
 		"@earendil-works/pi-ai": "1.4.0",

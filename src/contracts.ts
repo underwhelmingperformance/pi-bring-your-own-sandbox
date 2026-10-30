@@ -354,11 +354,16 @@ export interface BackendProcessContext extends SandboxOperationContext {
 
 /**
 A completed process exit. A non-zero code is a process result, not an SDK
-error.
+error. Signal termination includes the target OS signal number so consumers
+can derive a shell status without using the host signal table.
 */
 export type ProcessExit =
 	| { readonly kind: 'code'; readonly code: number }
-	| { readonly kind: 'signal'; readonly signal: string };
+	| {
+			readonly kind: 'signal';
+			readonly signal: string;
+			readonly signalNumber: number;
+	  };
 
 /**
 Provider acknowledgement of a stopped foreground job and its supported

@@ -452,10 +452,11 @@ chunks may arrive after completion.
 
 Use streaming UTF-8 decoding at text-adapter boundaries. The provider API keeps
 bytes so split code points and binary output are not corrupted. The facade's
-exit result distinguishes an exit code from signal termination and includes
-duration and truncation metadata. A non-zero exit is a command result. Failure
-to start, transport failure, cancellation and timeout are typed operation
-errors.
+exit result distinguishes an exit code from signal termination. A signal result
+includes its target OS number so adapters can derive a shell status without
+using the host signal table. The process result includes duration and truncation
+metadata. A non-zero exit is a command result. Failure to start, transport
+failure, cancellation and timeout are typed operation errors.
 
 Public deadlines use milliseconds and finite positive values. Defaults are 60
 seconds for opening, 120 seconds for foreground execution and 30 seconds for

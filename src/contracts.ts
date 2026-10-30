@@ -202,6 +202,17 @@ export interface SandboxOperationOptions {
 }
 
 /**
+Options for replacing a complete target file through the shared mutation
+queue. Parent creation and the write use one queue entry and deadline.
+*/
+export interface SandboxWriteOptions extends SandboxOperationOptions {
+	/**
+	Create missing parent directories before writing. Defaults to false.
+	*/
+	readonly createParents?: boolean;
+}
+
+/**
 Requirements checked against the selected, shared backend. Requirements do
 not select another provider or reconfigure an existing backend.
 */
@@ -585,7 +596,8 @@ Matching relative paths in provider-defined order.
 */
 export interface FindResult {
 	/**
-	Matching paths relative to the search root.
+	Matching paths relative to the search root. Directory paths end in the
+	target path separator; other paths have no trailing separator.
 	*/
 	readonly paths: readonly string[];
 
@@ -887,12 +899,13 @@ export interface SandboxFiles {
 
 	/**
 	Snapshot input bytes and replace the complete file through the shared
-	mutation queue. Missing parents are not created.
+	mutation queue. Optional parent creation is part of the same queue
+	entry; the default requires existing parents.
 	*/
 	readonly writeFile: (
 		path: string,
 		content: Uint8Array,
-		options?: SandboxOperationOptions
+		options?: SandboxWriteOptions
 	) => Promise<void>;
 
 	/**

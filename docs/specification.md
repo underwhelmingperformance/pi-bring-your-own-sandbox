@@ -507,6 +507,12 @@ Optional operation groups use target paths and typed byte/stat/search results:
   mode, glob, case handling, context and limit. Return structured results with
   explicit truncation metadata. Providers document regex, glob and ignore rules.
 
+`files.writeFile` accepts an optional `createParents` flag, which defaults to
+false. With that flag, target parent creation and the complete write use one
+mutation queue entry and deadline. A later queued transformation observes the
+completed write. Providers still implement separate `mkdir` and `writeFile`
+methods.
+
 The facade additionally exposes `files.updateText(path, transform, options)`
 when both read and write are supported. The broker runs access/read/transform/
 write as one entry in the same mutation queue as `writeFile` and `mkdir`.

@@ -51,6 +51,15 @@ upstream gaps.
 
 [coverage]: docs/pi-integration.md
 
+## Provider contract tests
+
+The optional `/testing` entry exports `defineSandboxProviderTests`. Provider
+authors supply target probes and independent checks for cancellation, policy and
+cleanup. The suite uses the provider project's Vitest installation. See the
+[provider testing guide][testing] for the fixture contract and coverage.
+
+[testing]: docs/provider-testing.md
+
 ## Development
 
 Use Node 24.22.2 and pnpm 12.15.0. Deno and pre-commit are also needed to run

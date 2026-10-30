@@ -1,4 +1,4 @@
-import { cp, mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -10,21 +10,11 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { expect, it } from 'vitest';
 
-import type {
-	isSandboxError,
-	registerSandboxProvider,
-	SandboxOperationError
-} from './api.js';
 import { discoverProviders } from './discovery.js';
 import { imageProvider } from './fixtures/image-provider.js';
 import { brokerReply } from './fixtures/protocol-peer.js';
+import { loadSdkCopy } from './fixtures/sdk-copy.js';
 import type { ensureBroker } from './service.js';
-
-interface FixtureApi {
-	readonly registerSandboxProvider: typeof registerSandboxProvider;
-	readonly isSandboxError: typeof isSandboxError;
-	readonly SandboxOperationError: typeof SandboxOperationError;
-}
 
 interface BootstrapModule {
 	readonly ensureBroker: typeof ensureBroker;
@@ -39,41 +29,12 @@ function isBootstrapModule(value: unknown): value is BootstrapModule {
 	);
 }
 
-function isFixtureApi(value: unknown): value is FixtureApi {
-	return (
-		typeof value === 'object' &&
-		value !== null &&
-		'registerSandboxProvider' in value &&
-		typeof value.registerSandboxProvider === 'function' &&
-		'isSandboxError' in value &&
-		typeof value.isSandboxError === 'function' &&
-		'SandboxOperationError' in value &&
-		typeof value.SandboxOperationError === 'function'
-	);
-}
-
-async function loadCopy(directory: string): Promise<FixtureApi> {
-	await cp(new URL('../dist/', import.meta.url), directory, {
-		recursive: true
-	});
-	const module: unknown = await import(
-		pathToFileURL(path.join(directory, 'api.js')).href
-	);
-	if (!isFixtureApi(module)) {
-		throw new TypeError(
-			'The built SDK does not export the registration and error APIs.'
-		);
-	}
-
-	return module;
-}
-
 it('interoperates across physical SDK copies and removes failed-factory responders in Pi', async () => {
 	const directory = await mkdtemp(path.join(tmpdir(), 'pi-byos-registration-'));
 
 	try {
-		const first = await loadCopy(path.join(directory, 'first'));
-		const second = await loadCopy(path.join(directory, 'second'));
+		const first = await loadSdkCopy(path.join(directory, 'first'));
+		const second = await loadSdkCopy(path.join(directory, 'second'));
 		const events = createEventBus();
 		const loader = new DefaultResourceLoader({
 			cwd: directory,
@@ -153,7 +114,7 @@ it('publishes one service during concurrent bootstrap through independent SDK co
 			path.join(directory, 'first'),
 			path.join(directory, 'second')
 		];
-		await Promise.all(copies.map((copy) => loadCopy(copy)));
+		await Promise.all(copies.map((copy) => loadSdkCopy(copy)));
 		const modules: readonly unknown[] = await Promise.all(
 			copies.map(
 				(copy) => import(pathToFileURL(path.join(copy, 'service.js')).href)

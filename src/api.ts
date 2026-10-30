@@ -1,3 +1,4 @@
+export { closeSandboxSession, getSandbox } from './client.js';
 export type * from './contracts.js';
 export {
 	DuplicateBrokerError,
@@ -25,6 +26,7 @@ export {
 	UnsupportedSandboxCapabilityError,
 	UnsupportedSandboxPolicyError
 } from './errors.js';
+export { initialiseSandboxHost } from './host.js';
 export type {
 	BrokerServiceV1,
 	BrokerState,

@@ -18,14 +18,14 @@ independent service stubs. Backend metadata, capability groups and effective
 policy are validated. Consumer facades, bounded execution, lazy broker startup
 and cleanup are implemented. A scripted model tests direct and nested calls
 through Pi approval hooks. The built-in host backend implements file operations
-and POSIX foreground execution. Public client wiring, host search and Windows
-process-tree handling remain implementation work. This appendix does not
-establish full conformance to the contract.
+and POSIX foreground execution. Host search and Windows process-tree handling
+remain implementation work. This appendix does not establish full conformance to
+the contract.
 
 ## Public API
 
-`SandboxClient` specifies consumer operations and provider registration. The SDK
-must also export explicit host initialisation:
+`/api` exports the consumer operations and provider registration specified by
+`SandboxClient`, plus explicit host initialisation:
 
 ```typescript
 initialiseSandboxHost(pi: SandboxHost, options: SandboxHostOptions): void;

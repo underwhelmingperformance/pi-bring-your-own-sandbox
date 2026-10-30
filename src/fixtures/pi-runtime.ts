@@ -21,17 +21,26 @@ import {
 	VERSION
 } from '@earendil-works/pi-coding-agent';
 
+interface RuntimeOptions {
+	readonly prepare?: (
+		directory: string,
+		agentDirectory: string
+	) => void | Promise<void>;
+}
+
 export async function withPiRuntime(
 	extensions: readonly InlineExtension[],
 	execute: (
 		runtime: AgentSessionRuntime,
 		errors: readonly unknown[]
-	) => Promise<void>
+	) => Promise<void>,
+	fixtureOptions?: RuntimeOptions
 ): Promise<void> {
 	const directory = await mkdtemp(path.join(tmpdir(), 'pi-byos-runtime-'));
 	const agentDirectory = path.join(directory, 'agent');
 	await mkdir(agentDirectory);
 	try {
+		await fixtureOptions?.prepare?.(directory, agentDirectory);
 		const modelRuntime = await ModelRuntime.create({
 			credentials: new InMemoryCredentialStore(),
 			modelsPath: path.join(agentDirectory, 'models.json'),

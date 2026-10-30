@@ -1,17 +1,21 @@
 # pi-bring-your-own-sandbox
 
-A proposed Pi extension framework through which provider extensions supply a
-sandbox and consumer extensions use a common execution API.
+A Pi extension framework under development. Provider extensions supply a sandbox
+and consumer extensions use a common execution API.
 
-The proposed SDK works without sandbox setup: built-in `passthrough` executes on
-the host by default and follows a user's separately configured sandbox provider
-when present. A configured sandbox failure never switches to host execution.
+The SDK works without sandbox setup: built-in `passthrough` executes on the host
+by default and follows a user's separately configured sandbox provider when
+present. A configured sandbox failure never switches to host execution.
 
-The scratch extension currently registers `/byos`, which reports that the
-framework is not implemented. It does not create a sandbox or replace Pi tools.
-`/api` exports structural types, provider registration and structural errors.
-The consumer acquisition and execution APIs remain unimplemented. The design
-documents describe the intended implementation:
+`/api` exports provider registration, shared sandbox acquisition, typed errors
+and explicit session cleanup. Consumers use the SDK without loading the broker
+extension separately. The built-in host backend implements filesystem operations
+and POSIX foreground execution with process-group cancellation. Host search,
+Windows process-tree handling and the optional Pi tool adapter remain
+implementation work.
+
+The default extension's `/byos` command remains a diagnostic placeholder. The
+design documents specify the remaining implementation:
 
 - [Specification][spec]: scope, contracts, discovery, lifecycle, execution and
   integration through public Pi operation hooks.

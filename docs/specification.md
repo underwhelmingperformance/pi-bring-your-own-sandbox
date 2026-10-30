@@ -1,0 +1,728 @@
+# Bring-your-own-sandbox specification
+
+Status: proposed, 30 October 2026. Initial compatibility target: Pi 1.4.0. The
+[research][research] records the verified APIs and implementation constraints.
+The [implementation plan][plan] defines delivery and acceptance tests.
+
+[research]: research.md
+[plan]: implementation-plan.md
+
+## Contract status
+
+The sections below specify intended behaviour and principal API operations. The
+[API and protocol appendix][api] specifies exact layouts, ownership rules and
+discovery envelopes alongside the exported structural declarations. Its provider
+and consumer fixtures compile. Structural error, registration and discovery
+tests pass across physical SDK copies. Single-service bootstrap is tested with
+independent stubs. Backend metadata and effective-policy validation are
+implemented. Real-broker integration must repeat the bootstrap tests and verify
+cleanup of rejected backends.
+
+[api]: api-protocol.md
+
+The contract-first stage covers:
+
+- Every public function signature, provider/backend method and consumer facade
+  operation, including typed configuration validation and capability checks.
+- The exact discovery request/reply envelopes, identity/version fields, service
+  methods, synchronous collection rules and on-demand service publication.
+- Process requests, streamed bytes, captured results, exit/cancellation
+  outcomes, recovery descriptors and the closed set of structural error
+  variants.
+- File/search inputs and results, capability metadata, path descriptors,
+  mutation completion and cancellation semantics.
+- Required versus optional fields, unknown-field handling, version
+  compatibility, immutable snapshots, byte ownership and callback lifetime.
+
+Compile-time examples of a consumer and independently implemented providers,
+plus independent-SDK-copy protocol fixtures, are acceptance criteria for that
+contract. Until those pass, the behavioural review does not establish that the
+public types or protocol are ready for implementation.
+
+## Purpose and scope
+
+Provide a backend-neutral execution service for cooperating Pi extensions.
+Consumer extensions work without installing or configuring a sandbox. The SDK
+uses its built-in `passthrough` provider by default; a user can independently
+select a provider extension for a local OS sandbox, container, SSH connection or
+VM. Consumer code stays the same. No Pi core change is required for this
+cooperative API.
+
+The framework has three roles:
+
+1. The SDK defines structural contracts, provider registration and consumer
+   discovery. Multiple installed copies of the SDK must interoperate.
+2. A shared broker service discovers providers, validates configuration, selects
+   one provider and manages one backend per Pi runtime generation. The SDK
+   creates this service on first use if a compatible service is not present.
+3. Provider extensions implement backend operations. Consumer extensions obtain
+   broker-managed handles and execute operations through them.
+
+Optional Pi integration connects public backend-operation hooks to the service.
+Pi remains responsible for tool algorithms, rendering and input handling.
+Missing hooks and execution paths that bypass those hooks require upstream Pi
+changes. The framework does not replace Pi executors to compensate for those
+gaps. The optional broker extension provides diagnostics and early service
+registration; it is not a prerequisite for SDK consumers. Neither SDK use nor
+loading that extension replaces Pi tools.
+
+The first release includes foreground execution with streamed output,
+cancellation and deadlines; optional filesystem and search capabilities; session
+cleanup; zero-configuration host execution; user-selected sandbox providers;
+diagnostics; provider/consumer examples; and tests of the real Pi loader and
+dispatch path. The framework does not require a particular production sandbox
+runtime.
+
+PTYs, interactive stdin, detached jobs, port forwarding, snapshots, automatic
+file synchronisation, provider hot-switching and cross-process discovery are
+outside the first release. The API must reject requirements for those features.
+Additional capabilities can be specified in later protocol versions.
+
+## Execution boundary
+
+This is a cooperative execution service. Pi, the broker, providers and consumers
+run with the host process's permissions. Direct Node filesystem/process calls,
+`pi.exec()`, MCP servers and extensions that do not use this service keep their
+existing execution paths. The service does not confine hostile extensions.
+
+Providers are trusted to enforce their advertised policy. SDK capability checks
+cannot prove OS isolation. Real-provider tests establish the tested provider's
+behaviour on the tested platform, not a guarantee for every provider.
+
+Host execution is the default only when configuration does not select another
+provider. An explicitly selected provider that is missing, fails to start or
+loses its transport produces an error. Unsupported requirements and permission
+denials also produce errors. None of these failures selects `passthrough`.
+Malformed or unreadable configuration is an error, not evidence that the user
+chose host execution. The framework never retries a failed sandbox operation on
+the host or automatically repeats a possibly completed remote operation.
+
+## Packaging and extension author workflow
+
+Use one npm package, provisionally `pi-bring-your-own-sandbox`, with these entry
+points:
+
+| Entry point  | Purpose                                                                                                                              |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `/api`       | Provider and consumer types, registration, discovery and typed errors. No broker state or resource allocation on import.             |
+| `/extension` | Default Pi factory for the broker. This is the sole default `pi.extensions` entry.                                                   |
+| `/pi-tools`  | Optional Pi factory for tool routing. Users load this entry explicitly through a local extension or an explicit extension-file path. |
+| `/testing`   | Reusable provider contract-test definitions, with Vitest as an optional test peer. Production entry points do not import Vitest.     |
+
+These are subpath exports of one package, not separate SDK, broker, adapter or
+passthrough packages. External providers and consumers are independently
+distributed Pi extensions. The built-in passthrough backend and on-demand broker
+service are included in the framework package.
+
+| Package role                | Dependency relationship                                                                                                                                                                     |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Framework                   | Host-provided Pi packages that it imports are peers. Initially this is `@earendil-works/pi-coding-agent`. Pinned development dependencies supply the host APIs for type checking and tests. |
+| Consumer extension          | The framework is a normal dependency. Pi packages imported by the consumer remain that consumer's host peers.                                                                               |
+| Provider extension          | The framework and runtime-specific backend clients are normal dependencies. Pi packages imported by the provider remain host peers.                                                         |
+| Provider contract-test user | Vitest is a development dependency. The framework declares it as an optional peer for `/testing`. Production exports do not import it.                                                      |
+
+The framework is not a required peer of provider or consumer packages. Its
+normal dependency can be installed independently with each extension. Runtime
+sharing uses the discovery protocol and must work across separate SDK module
+copies; package-manager deduplication is not part of the contract. Do not bundle
+backend-specific clients into the framework to support external providers.
+
+The release manifest follows Pi's guidance for host peer ranges, with `"*"` for
+host-provided Pi packages. The supported/tested Pi baseline remains explicit in
+documentation and CI; a permissive peer range does not establish compatibility.
+The current private scaffold pins its development and peer entries to Pi 1.4.0.
+Vitest's optional peer range must match the versions covered by contract tests.
+
+Publish JavaScript and declarations for importable subpaths. Include the broker
+and adapter JavaScript in the tarball. Pi supplies its own runtime packages;
+declare them as peers, keep development versions pinned for tests and never
+bundle them. Consumer/provider packages declare the SDK dependency explicitly.
+Installing that dependency does not load the broker extension in Pi. It is
+sufficient for the consumer to use `/api`: the SDK can initialise the shared
+service without a separate framework installation or a Pi settings entry.
+
+A project that installs the framework as an npm dependency can opt into tool
+routing with `.pi/extensions/byos-tools.ts`:
+
+```typescript
+export { default } from 'pi-bring-your-own-sandbox/pi-tools';
+```
+
+This requires normal Node resolution from that project. For Pi-managed packages
+with separate dependency roots, provide the equivalent explicit extension-file
+loading instructions. Do not assume that a project extension can import an SDK
+from Pi's private package installation directory.
+
+## Provider contract
+
+The SDK defines explicit types for the following contracts. They are framework
+types, not existing Pi APIs.
+
+| Type                      | Required contents and semantics                                                                                                                                                                                                            |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SandboxProvider`         | Stable provider ID, display label, protocol version, supported capabilities/policy values, configuration validator and `open(request, context)`.                                                                                           |
+| `SandboxOpenRequest`      | Runtime generation ID, Pi session ID, host workspace directory, validated provider configuration and required policy. Host paths here are provisioning metadata.                                                                           |
+| `SandboxBackend`          | Backend ID, target workspace descriptor, actual capabilities, effective policy, non-secret recovery descriptor, foreground `exec()` and idempotent async `dispose()`. Optional filesystem/search operation groups must match capabilities. |
+| `SandboxWorkspace`        | Target root, target platform/path flavour, optional target home/default shell, and a description of how workspace changes affect the host: shared, copied or remote.                                                                       |
+| `SandboxOperationContext` | An `AbortSignal`, output callback where applicable and an operation ID. Opening also receives a recovery-report callback. Providers must honour cancellation and close pending transport work.                                             |
+| `SandboxCapabilities`     | `exec` plus supported shell dialects and optional `files.read`, `files.write`, `files.list`, `search.grep` and `search.find`. Filesystem/search operations have separately specified contracts.                                            |
+
+`open()` creates or attaches to a provider-owned workspace for this generation.
+The provider decides how provisioning uses the host workspace. The broker does
+not upload files or infer mount mappings. An attached resource must be owned or
+leased explicitly so `dispose()` releases this session's allocation without
+deleting a resource owned by another session.
+
+`open()` must release partially created resources before rejecting. If release
+cannot be confirmed, the provider returns a typed allocation error with a
+non-secret recovery identifier and its lease/expiry mechanism. A failure after
+container creation but before returning a backend is the provider's cleanup
+responsibility. After releasing all reported allocations, the provider calls
+`SandboxOpenContext.confirmCleanup()` immediately before rejecting. This
+acknowledges allocation cleanup independently of operation cancellation. It
+forbids later allocation or a successful backend return. The callbacks expire
+when opening completes. Aborting an HTTP request is not proof of released
+allocation.
+
+Before provisioning, report a non-secret recovery descriptor through the opening
+context. It identifies the allocation operation or intended resource, describes
+how to recover it and specifies its lease/expiry mechanism. Update the
+descriptor when resource IDs become available, and include the final descriptor
+unchanged on the returned backend. One descriptor covers every resource from
+that opening. Each update replaces the previous snapshot and must still cover
+all outstanding resources. `lease` describes cleanup; it is not an allocation
+key. An allocation descriptor cannot be replaced with `none`. A failed opening
+acknowledges cleanup through `confirmCleanup()`. The broker retains the latest
+descriptor before cancellation or disposal starts. If a provider stops
+responding, cleanup diagnostics use that retained metadata; they do not depend
+on a timed-out operation returning recovery information. Providers without a
+persistent allocation explicitly report that fact.
+
+Provider configuration enters the validator as `unknown`. The broker accepts
+only validated values. Neither the SDK nor a consumer imports a provider's
+runtime-specific client types. Provider credentials come from provider-owned
+configuration or credential lookup, not from status output or transcript data.
+
+Provider instances belong to provider-factory state. Broker state and backend
+resources belong to the live Pi runtime generation, including when the SDK
+creates the service on demand. Immutable types and constants may be shared
+across imports; mutable registries, active backends and startup promises may
+not.
+
+## Discovery and registration protocol
+
+Use literal versioned discovery channels, initially
+`pi-byos:discovery:v1:brokers` and `pi-byos:discovery:v1:providers`. Do not
+depend on module identity, `instanceof`, a shared `Symbol`, or Pi internals.
+Validate every event payload structurally.
+
+`registerSandboxProvider(pi, provider)` synchronously installs a responder
+during the provider factory. Broker service creation also installs its responder
+synchronously. These responders answer collection requests through callbacks in
+the payload. Replies must happen before the handler returns and must perform no
+asynchronous work. The SDK collects all replies before deciding the outcome.
+This synchronous reply rule is a protocol requirement, with a Pi integration
+test for the event-bus behaviour.
+
+`getSandbox(pi, ctx, options)` runs only from a live event, command or tool
+context after extension loading. It first collects broker replies. If none
+exist, the SDK synchronously creates and publishes a session-scoped broker
+through the calling extension's Pi API, then acquires through that service.
+Discovery and publication must complete without an intervening await, so two SDK
+copies cannot each create a service before the other's registration becomes
+visible. The service owns its generation state and lifecycle handlers; it is not
+stored in a module singleton. The optional broker extension uses the same
+ensure-service operation and reuses an existing compatible service.
+
+Duplicate, malformed or incompatible broker replies are errors; they do not
+trigger creation of a second service. Backend startup and errors travel through
+the service's returned promise, not through the event bus. There is no polling
+loop or factory-time wait for another extension to load. Configuration is read
+and validated before selecting or opening any backend, including `passthrough`.
+
+On initialisation, the broker includes the built-in `passthrough` provider and
+collects the live provider declarations. That provider ID is reserved. All
+factories have completed by this point, regardless of lifecycle-handler order. A
+declaration from a failed factory has no live responder because Pi removes that
+factory's subscriptions. This avoids retaining a registration that the provider
+factory emitted before failing.
+
+The provider set is fixed for the generation after collection. A new provider,
+configuration change or provider replacement requires `/reload`. Collect and
+validate duplicate provider IDs before selection, including IDs that are not
+selected. Duplicate brokers, incompatible protocol versions and malformed
+declarations produce explicit errors; the first reply does not silently win.
+
+Service protocol version `1` is independent of npm package versions and the
+discovery-envelope version. A future service version must still answer the
+stable discovery-v1 channel with its supported service versions, so the SDK can
+distinguish an incompatible service from a missing broker. Optional metadata
+fields can be added within service version 1 when they preserve existing
+semantics. New capability literals or changes to an existing operation's meaning
+require a service protocol version change. Late or repeated discovery callbacks
+cannot modify a closed collection.
+
+## Selection and configuration
+
+Read personal configuration from the host-bound agent directory's `byos.json`,
+or from `getAgentDir()/byos.json` for the ordinary CLI. An embedded host with an
+explicit Pi `agentDir` must call `initialiseSandboxHost` from its first
+extension factory with that directory. Binding after service creation fails. A
+trusted project's `.pi/byos.json` may override it only when
+`ctx.isProjectTrusted()` is true. Provider-specific settings are under
+`providerConfig`. Invalid JSON, unknown framework keys and unknown provider IDs
+are errors. Treat an absent project file as no override; propagate other read
+errors. A broken `byos.json` symlink is a configuration error. Preserve
+`providerConfig` values without coercion so the selected provider can validate
+its own input type. Errors identify the source of effective provider
+configuration and policy independently of provider selection. Preserve more
+specific provenance supplied by a typed provider error.
+
+When merged configuration has no `provider` field, select the built-in
+`passthrough` provider. No configuration file is required. A configured
+`provider` must be a valid ID; null, an empty value or an unknown ID is an
+error. Installing a provider extension does not select it automatically, even if
+it is the only external provider. Personal selection remains effective when a
+project omits the field. An explicit `provider: "passthrough"` can restore host
+execution within the ordinary trusted configuration rules.
+
+| Situation                                                                      | Behaviour                                                            |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| Consumer uses the SDK with no sandbox/framework installation or configuration. | Create the shared service on demand and use built-in host execution. |
+| A provider extension is installed but not selected.                            | Continue using `passthrough`.                                        |
+| Configuration selects an available provider.                                   | Use that provider for every consumer of this service.                |
+| The selected provider is missing, fails to start or loses its transport.       | Return an error; do not execute on the host.                         |
+| Configuration is invalid or cannot be read.                                    | Return a configuration error; do not assume the default.             |
+
+Merge top-level configuration by replacement, not by deep union. A project
+policy or provider configuration replaces that complete object. If a project
+changes the provider ID without supplying `providerConfig`, use an empty
+provider configuration. Discard settings for the previous provider. A project
+override is allowed only through Pi's existing trust decision; the framework
+adds no separate approval UI.
+
+Illustrative configuration:
+
+```json
+{
+  "provider": "example.container",
+  "policy": {
+    "workspaceAccess": "read-write",
+    "filesystemScope": "workspace-only",
+    "networkAccess": "denied"
+  },
+  "userShell": "bash",
+  "providerConfig": {
+    "image": "example-image@sha256:replace-with-a-real-digest"
+  }
+}
+```
+
+The shared policy vocabulary is deliberately small:
+
+- `workspaceAccess`: `read-only` or `read-write` for the project workspace.
+- `filesystemScope`: `workspace-only` or `provider-default`. Workspace-only
+  forbids access to host files outside exposed workspace mounts. A provider may
+  expose its isolated runtime image, home and scratch directories; it must
+  describe these separately.
+- `networkAccess`: `denied` or `provider-default`. Denied blocks outbound
+  network access from sandboxed operations, including access through host
+  services.
+
+Require all policy fields for an explicitly selected external provider.
+`passthrough` needs no policy configuration; its defaults are `read-write`,
+`provider-default` filesystem scope and `provider-default` network access. It
+reports host permissions and no isolation. Its workspace root is `ctx.cwd`, and
+it supports ordinary host execution and filesystem operations through the same
+cancellation, result and mutation contracts. Search and shell dialect
+capabilities reflect the available implementation on that host.
+
+`passthrough` does not claim to enforce read-only access, workspace containment
+or denied network access. Requests for those protections fail before execution.
+Consumer authors ordinarily omit policy requirements so the SDK follows the
+user's separate execution-environment choice. A consumer whose function requires
+isolation may request it explicitly and explain that requirement.
+
+Providers advertise supported values and must reject a policy that they cannot
+enforce. Backend startup reports the effective policy, which must satisfy the
+request before any consumer receives a handle. `provider-default` explicitly
+delegates that policy dimension to the provider; status output must describe the
+effective behaviour without claiming a common restriction. Host-side
+control-plane traffic needed to operate a remote provider is separate from
+sandbox egress.
+
+Consumers can require capabilities and stricter common policy values when
+acquiring a handle. Those checks do not reconfigure or broaden the shared
+sandbox. A mismatch fails before execution. A consumer must not change policy
+through a command argument or request a different provider in the first release.
+
+## Consumer API
+
+`getSandbox(pi, ctx, options?)` returns a facade for the selected sandbox. The
+ordinary consumer call is `getSandbox(pi, ctx, { signal })`; it works with
+default host execution or the user's configured provider. No provider-specific
+branch or separate opt-in to the framework is required in the consumer.
+`SandboxAcquireOptions` contains optional `capabilities` and `policy`
+requirements, plus an explicit caller `signal` and waiting `timeoutMs`. The
+waiting deadline defaults to 60 seconds. It limits this acquisition only; the
+broker independently owns the shared provisioning deadline. A cancelled waiter
+rejects immediately without cancelling provisioning for other consumers. If all
+waiters cancel, provisioning continues under the broker's deadline and the
+resulting backend remains available for this generation. Shutdown still cancels
+provisioning. Check abort again before returning a facade.
+
+The facade exposes immutable identity, workspace, effective policy and
+capabilities, plus methods for supported operations. It does not expose the
+backend object, raw transport client or a consumer-callable backend disposer.
+Every invocation checks runtime validity and requirements.
+
+Ordinary consumer code uses the same API in either environment:
+
+```typescript
+const sandbox = await getSandbox(pi, ctx, { signal });
+
+const result = await sandbox.exec(
+  { kind: 'argv', executable: 'git', args: ['status', '--short'] },
+  { signal, timeoutMs: 10_000 }
+);
+```
+
+An operation that specifically requires denied network access can request it.
+This call fails if the selected provider, including default `passthrough`,
+cannot enforce the requirement:
+
+```typescript
+const sandbox = await getSandbox(pi, ctx, {
+  capabilities: ['exec'],
+  policy: { networkAccess: 'denied' },
+  signal,
+  timeoutMs: 15_000
+});
+
+const result = await sandbox.exec(
+  { kind: 'argv', executable: 'git', args: ['status', '--short'] },
+  { signal, timeoutMs: 10_000 }
+);
+```
+
+The SDK is usable from tools, commands and lifecycle handlers. In a tool, the
+consumer passes its execution signal to acquisition and execution. Pi's
+`ctx.signal` is an agent-turn signal and does not necessarily identify that tool
+call. Outside a turn, the broker still supplies its own session-lifetime signal
+and deadline. Acquiring a sandbox is async; provider registration is synchronous
+and does not acquire one.
+
+If a consumer needs Pi validation, tool hooks, renderable output and nested-call
+accounting, it should call a routed tool through `ctx.executeTool()`. Direct SDK
+operations do not pass through Pi's `tool_call` permission hooks. Providers
+enforce sandbox policy on both paths. Consumer authors must choose and document
+the appropriate path, and must not assume that an SDK call inherits Pi tool
+permission decisions.
+
+## Process execution
+
+`ProcessRequest` is a discriminated union:
+
+- `argv`: executable and argument array, with no shell interpolation.
+- `shell`: command string and explicit dialect, initially `bash`, `sh` or
+  `powershell`. The provider must advertise that dialect.
+
+Both variants accept a target working directory and explicit environment
+overrides. The default directory is the target workspace root. Relative paths
+resolve in the target environment. Executable lookup uses the target's `PATH`.
+The broker never joins an argument array into a shell command. A provider that
+needs an internal transport shell must preserve argument boundaries.
+
+The environment contains provider-owned runtime defaults and explicit caller
+overrides. `passthrough` uses the normal host environment, including inherited
+variables, as ordinary unsandboxed commands do. External providers do not
+implicitly copy the host's `process.env` or Pi credentials. Provider policy may
+reject an override. Shell adapters must filter any host environment that Pi
+passes to an external backend's `BashOperations`; Pi session metadata is opt-in
+and must not include credentials.
+
+Provider execution streams ordered
+`{ stream: "stdout" | "stderr", data: Uint8Array }` chunks and returns an exit
+result. The broker captures bounded stdout and stderr for the facade result: 1
+MiB combined by default, adjustable downward per call. Continue draining after
+the capture limit and report omitted byte counts. Output callbacks are
+synchronous and must not retain unbounded buffers; they are not a backpressure
+API. A throwing callback cancels the operation and produces a typed error. No
+chunks may arrive after completion.
+
+Use streaming UTF-8 decoding at text-adapter boundaries. The provider API keeps
+bytes so split code points and binary output are not corrupted. The facade's
+exit result distinguishes an exit code from signal termination and includes
+duration and truncation metadata. A non-zero exit is a command result. Failure
+to start, transport failure, cancellation and timeout are typed operation
+errors.
+
+Public deadlines use milliseconds and finite positive values. Defaults are 60
+seconds for opening, 120 seconds for foreground execution and 30 seconds for
+filesystem/search operations; callers can supply another finite deadline.
+Compose the caller signal, deadline and broker lifetime signal. Provider opening
+uses only the broker's provisioning deadline and lifetime signal. Each waiting
+acquisition has its independent cancellation signal and deadline.
+
+For backend process execution, specify an explicit `BackendProcessOutcome`:
+
+- `exited` includes the exit code or signal and certifies that the foreground
+  process and its supported foreground descendants have stopped.
+- `cancelled` includes `termination: "confirmed" | "unconfirmed"`. Confirmed
+  certifies that the supported foreground process tree has stopped; aborting a
+  transport request or merely submitting a kill request cannot produce that
+  acknowledgement.
+
+Caller abort, deadline and broker shutdown all request backend cancellation and
+allow a 5-second grace period for confirmation. A confirmed result produces the
+original cancellation/deadline error for the consumer. Unconfirmed termination,
+an unexpected rejection or failure to respond within the grace period marks the
+backend unhealthy and rejects further work. Report the original cancellation
+cause and uncertainty together; remote work may remain. Stop forwarding output
+when the consumer operation completes, even if a broken provider keeps emitting.
+A promise race alone is not process cancellation. Detached background processes
+are unsupported. Passthrough supervises the original POSIX process group. A
+descendant that creates another session or process group is outside that
+completion guarantee and may continue after cancellation or disposal.
+
+For file mutations, a provider's cancellation error must state whether
+completion is confirmed. Confirmed means that the operation can no longer change
+data; unknown completion makes the backend unhealthy before releasing queued
+work. Do not accept an immediate local abort rejection as proof that a remote
+write stopped. Opening has the same bounded cancellation grace and
+partial-allocation cleanup obligation. Backend disposal has a 10-second
+deadline. Cleanup that cannot finish reports recovery metadata and relies on the
+provider's lease or expiry; the broker never reports successful cleanup from
+timeout alone.
+
+## Files, search and paths
+
+Optional operation groups use target paths and typed byte/stat/search results:
+
+- Read: `readFile`, read-access check and `stat`.
+- Write: `writeFile`, write-access check and recursive `mkdir`.
+- List: `listDirectory`, plus `stat` for entry types.
+- Search: `find` with a glob/root/limit, and `grep` with pattern, literal/regex
+  mode, glob, case handling, context and limit. Return structured results with
+  explicit truncation metadata. Providers document regex, glob and ignore rules.
+
+The facade additionally exposes `files.updateText(path, transform, options)`
+when both read and write are supported. The broker runs access/read/transform/
+write as one entry in the same mutation queue as `writeFile` and `mkdir`.
+`transform` is a synchronous function from the current text to replacement text;
+it cannot perform asynchronous I/O or reacquire the mutation queue. Return the
+original and replacement text to the caller. A thrown transform does not write.
+Consumers use this operation for read-modify-write transactions. Providers still
+implement only the lower-level filesystem methods.
+
+Each method accepts cancellation and a deadline. The broker checks capabilities
+before calling the backend and never fills an absent method with host Node I/O.
+Permission denial, missing path and transport failure are distinct errors.
+Symlink resolution and access enforcement happen inside the backend boundary;
+lexical prefix checks alone are insufficient.
+
+Search capabilities describe available operations, without a Pi-compatibility
+profile. Providers document regex dialects, glob matching, ignore behaviour and
+result selection. Returned paths are target-relative and matches include typed
+line/context data. Result order is provider-defined. The broker validates paths,
+limits, duplicate identities and context bounds; it does not format Pi output.
+`truncated` reports an omitted result, including when a provider scans beyond
+its returned limit to determine that fact.
+
+The built-in host backend uses installed fd and ripgrep. Its results use UTF-8
+path ordering before limits, with numeric line ordering for grep. Find excludes
+`.git` and `node_modules`. These are host-provider behaviours, not requirements
+for every sandbox provider or changes to Pi's built-in search tools.
+
+The byte-returning file API buffers a complete file. The first release does not
+promise bounded memory for arbitrary file reads. Process-output capture has a
+separate bound; Pi's model-output truncation does not limit file-read memory.
+
+The public SDK uses target-native paths. It does not expand host `~`,
+reinterpret host absolute paths or apply host filesystem existence checks. An
+explicit path flavour controls purely lexical conversion. File contents and
+writes occur in the target workspace; remote/copied workspaces are not
+automatically synced.
+
+Pi integration translates paths only at a public backend-operation boundary.
+Target path conversion must not reproduce Pi's leading `@`, Unicode-space, image
+detection or other input-handling algorithms. If Pi resolves or probes host
+paths before invoking custom operations, that path needs an upstream hook. A
+path with incomplete routing is reported as unsupported by the integration.
+
+## Lifecycle and concurrency
+
+The broker uses explicit states: initialising, idle, opening, ready, failed,
+closing and closed. It stores an opening promise and creates at most one backend
+for a generation. Both `session_start` and acquisition can initialise session
+metadata, so a consumer's earlier start handler cannot deadlock while waiting
+for the broker's later start handler.
+
+Opening is lazy by default. Diagnostics can validate selection and capabilities
+without allocating a VM or container. Concurrent consumers share the successful
+backend. A failed opening remains failed until reload; arbitrary operations do
+not trigger repeated provisioning attempts.
+
+One failed command does not invalidate the backend. A transport failure with
+unknown operation outcome or an unconfirmed cancellation does. The broker never
+replays mutations. Serialise SDK file mutations that share a sandbox, including
+read-modify-write edits; do not serialise unrelated reads or foreground commands
+merely because they use one backend. Commands can modify files outside this
+mutation queue; the API does not promise transactional filesystem access.
+
+When the broker observes `session_shutdown`, first mark the generation closing
+and reject new work. This transition is the shutdown linearisation point. Pi
+awaits handlers in extension order, so an earlier consumer shutdown handler can
+still operate before the broker's handler runs. The framework cannot promise an
+earlier global shutdown barrier through public Pi APIs. Embedding hosts that
+need that barrier call `closeSandboxSession` before emitting shutdown.
+
+Abort startup and active operations, await them within bounded cleanup, dispose
+the backend once, revoke facades and remove generation-owned listeners. Keep the
+service's discovery responder and lifecycle handlers until Pi invalidates the
+runtime. A closed generation remains discoverable so acquisition cannot create a
+replacement broker during shutdown. If startup completes after shutdown began,
+dispose the resulting backend immediately. Do not publish that backend. Cleanup
+must be idempotent across overlapping close paths and must report failures
+without deleting unrelated provider resources.
+
+Reload, new session, resume and fork create fresh broker state and a fresh
+backend lease. Resuming a transcript does not reconnect to an old backend by
+default. Ordinary navigation within a session tree keeps the workspace; file
+changes are not rolled back with conversation navigation. These rules must be
+visible in provider documentation.
+
+Check a live Pi context at each facade entry, as well as the generation state,
+so raw Pi disposal also rejects cached handles. Bare `AgentSession` embedding
+hosts must call the exported `closeSandboxSession(pi, ctx)` before
+`session.dispose()`, or use `AgentSessionRuntime.dispose()`. Raw disposal and
+process crashes cannot guarantee async backend cleanup. Remote providers need
+leases, expiry or another provider-owned recovery mechanism.
+
+Separate Pi sessions and child agents require separate resource loaders/event
+buses and extension factories. No ambient sandbox inheritance is promised.
+Cross-process children initialise their own service and use default host
+execution unless their own configuration selects a provider. A future explicit
+sharing protocol would need independent lifetime and policy rules. An SDK host
+that deliberately shares an event bus across unrelated sessions is outside the
+first release's supported embedding configuration.
+
+## Optional Pi integration
+
+Integration is a separate opt-in extension entry. It supplies broker-backed
+operations through Pi's public extension points. Loading the default broker
+extension preserves Pi's tools and active tool selection.
+
+Pi owns argument preparation, edit matching, read ranges, image processing,
+search execution orchestration, truncation, progress updates, output schemas,
+rendering and transcript storage. The framework does not copy those algorithms
+or replace entire tool executors when Pi omits an operation hook. Private Pi
+imports and patched copies of Pi are not integration mechanisms for this
+package.
+
+For each integration path, record the public hook, the operations delegated to
+the selected backend, and any access that Pi performs outside that hook. A path
+is supported only when that boundary is sufficient. Missing hooks, host path
+probes, edit previews outside the operation boundary and host-only full-output
+references are upstream Pi issues. Record a minimal reproduction and required
+extension point; do not compensate with a local executor or presentation layer.
+
+For model shell tools, supply `BashOperations` to Pi's public definition
+factories. Pi continues to construct tool results and publish updates. Translate
+SDK cancellation/deadline failures only as required by the hook contract. Keep
+sandbox process capture separate from Pi's display and transcript storage.
+
+The public `user_bash` hook supplies operations for user shell commands. Return
+operations immediately, then acquire inside `operations.exec()` with Pi's
+per-command signal and deadline. Pi installs user-shell cancellation after the
+handler returns. A cancelled cold-start waiter must never execute its command
+when shared provisioning finishes. Resolve the configured `userShell` or the
+backend's advertised default; reject a missing or unsupported dialect.
+
+The `user_bash` bridge must return operations or throw. Returning `undefined` on
+a broker failure would permit local execution. A selected provider failure never
+switches to host execution. With no provider selected, supported hooks use the
+same default `passthrough` service as SDK consumers.
+
+Pi 1.4.0 returns a cancelled user-shell result when its abort signal is set,
+even if custom operations report an unconfirmed stop. That result does not
+confirm SDK termination. The broker quarantines the backend and diagnostics
+report the unknown outcome. Pi exposes no public way to enumerate or reorder
+competing `user_bash` handlers; document that an earlier handler can consume a
+command before this bridge runs.
+
+Direct SDK operations bypass Pi tool hooks. Model calls and nested
+`ctx.executeTool()` calls retain Pi's validation, approval and result hooks when
+Pi invokes the configured operations. Tests exercise those real dispatch paths
+with a scripted model and fake approval decisions. Neither integration path
+intercepts arbitrary extension code, MCP processes or embedding-host calls that
+omit custom operations.
+
+## Errors and diagnostics
+
+Export concrete error classes with typed context, including
+`ProviderNotFoundError`, `SandboxTimeoutError` and `SandboxTransportError`. Each
+class determines its display message and stable literal `name`. `SandboxError`
+is an abstract base; `SandboxErrorInfo` is the union of concrete errors.
+Operation, provider/backend IDs and recovery metadata are direct properties.
+Cancellation reasons and completion states use closed literal types.
+
+Consumers use `isSandboxError(error, ErrorClass)` across separate SDK
+installations. The guard checks the version marker, stable class identity and
+context. `instanceof` only recognises the local SDK's constructor. Do not
+include environment values, credentials, command contents or file contents in
+routine diagnostics. Diagnostic causes must not be serialised or printed
+automatically.
+
+Initial classes cover service initialisation, duplicate brokers, incompatible
+protocols, invalid declarations, configuration and requests, missing or
+duplicate providers, unsupported capabilities or policies, startup failure,
+stale handles, closing sessions, permission denial, missing paths, operation
+failure, transport failure, cancellation, timeouts, output callback failure,
+unconfirmed termination and cleanup failure.
+
+Provide `/byos status` and `/byos providers`. Status reports provider,
+generation, lifecycle state, target root, workspace relationship, effective
+policy, capabilities and whether Pi tool routing was requested and verified.
+Status identifies `passthrough` as host execution without isolation and states
+whether selection came from the implicit default or explicit configuration.
+Commands work in TUI and headless modes without requiring an interactive
+dialogue. A lightweight status indicator may summarise ready/failed state in the
+TUI.
+
+The framework does not write executable handles, credentials, raw provider
+configuration or backend clients into Pi session entries. Diagnostic output must
+make provider-default policy and incomplete cleanup visible. Failed-startup
+status includes outstanding recovery instructions. Shutdown displays incomplete
+cleanup before runtime invalidation. During an active turn, Pi defers custom
+messages, so the broker also writes a non-secret `byos-cleanup` entry and sends
+a UI warning.
+
+## Acceptance criteria
+
+The first release is complete when:
+
+1. Independently loaded provider and consumer extensions, with separate SDK
+   module copies, exchange operations through one broker in every factory order.
+   With only consumer extensions installed, the SDK initialises one shared
+   service and supports host execution without configuration or prompts.
+2. The same consumer works with two implementations of the provider contract
+   without provider imports or conditionals. At least one example uses an actual
+   isolated process backend before the release claims sandbox integration.
+3. An installed but unselected provider does not change default host execution.
+   Missing explicitly selected providers, policy/capability mismatches, invalid
+   configuration, duplicate IDs and backend failures produce typed errors with
+   no switch from a selected sandbox to host execution.
+4. Streaming, non-zero exit, cancellation, deadline, concurrent startup and
+   shutdown-during-startup obey the specified semantics.
+5. Reload, replacement, raw disposal and concurrent sessions reject stale work
+   and release resources according to the documented host lifecycle.
+6. Optional integration uses supported public operation hooks. Tests identify
+   the covered execution paths, retain Pi approval/result hooks and verify
+   selected-provider failures. Missing Pi extension points are documented as
+   upstream blockers; the framework does not replace Pi tool algorithms.
+7. The published tarball loads with Pi 1.4.0, importable SDK subpaths have
+   usable declarations, and automated tests require no real model credentials.
+
+These are implementation targets. The exploratory probes in the research
+document establish only the underlying Pi primitives.

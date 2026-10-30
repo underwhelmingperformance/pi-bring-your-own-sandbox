@@ -1,0 +1,65 @@
+{
+	"name": "pi-bring-your-own-sandbox",
+	"version": "0.0.0",
+	"private": true,
+	"description": "A scaffold for a provider-neutral Pi sandbox extension",
+	"type": "module",
+	"packageManager": "pnpm@12.15.0",
+	"engines": {
+		"node": "24.22.2"
+	},
+	"exports": {
+		"./api": {
+			"types": "./dist/api.d.ts",
+			"import": "./dist/api.js"
+		},
+		"./extension": {
+			"types": "./dist/extension.d.ts",
+			"import": "./dist/extension.js"
+		}
+	},
+	"files": [
+		"dist",
+		"docs",
+		"README.md"
+	],
+	"pi": {
+		"extensions": [
+			"./dist/extension.js"
+		]
+	},
+	"scripts": {
+		"build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
+		"check": "pnpm build && pnpm run --sequential '/^check:.*/'",
+		"check:format": "prettier --check .",
+		"check:knip": "knip --include dependencies,unlisted --no-progress",
+		"check:lint": "eslint . --max-warnings 0",
+		"check:markdown": "markdownlint-cli2 '**/*.md' '#node_modules' '#dist'",
+		"check:test": "pnpm test",
+		"check:types": "tsc --noEmit",
+		"fix": "pnpm fix:lint && pnpm fix:format",
+		"fix:format": "prettier --write .",
+		"fix:lint": "eslint . --fix",
+		"test": "pnpm build && vitest run"
+	},
+	"devDependencies": {
+		"@earendil-works/pi-coding-agent": "1.4.0",
+		"@eslint/js": "10.0.1",
+		"@types/node": "24.12.2",
+		"eslint": "10.13.0",
+		"eslint-config-prettier": "10.1.8",
+		"eslint-plugin-simple-import-sort": "14.0.0",
+		"eslint-plugin-unicorn": "79.0.0",
+		"globals": "17.13.0",
+		"jiti": "2.7.0",
+		"knip": "6.43.0",
+		"markdownlint-cli2": "0.23.2",
+		"prettier": "3.9.9",
+		"typescript": "6.0.3",
+		"typescript-eslint": "8.72.0",
+		"vitest": "5.0.5"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "1.4.0"
+	}
+}

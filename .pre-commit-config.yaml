@@ -1,0 +1,50 @@
+minimum_pre_commit_version: '3.2.0'
+default_install_hook_types:
+  - pre-commit
+  - commit-msg
+default_stages:
+  - pre-commit
+exclude: (^|/)dist/
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # v6.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-case-conflict
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: check-toml
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: destroyed-symlinks
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: trailing-whitespace
+
+  - repo: https://github.com/underwhelmingperformance/wrapscallion
+    rev: 84a29c83de42c3dbb294ede1205e6ad54c3de757 # v0.2.2
+    hooks:
+      - id: wrapscallion-system
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: 914e7df21a07ef503a81201c76d2b11c789d3fca # v1.7.12
+    hooks:
+      - id: actionlint
+
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: c92afdf2c6ca336aaa8f39e2bd8d48f62dbd8e1f # v1.31.1
+    hooks:
+      - id: zizmor
+        args: [--no-progress, --persona, pedantic]
+
+  - repo: local
+    hooks:
+      - id: check
+        name: pnpm check
+        entry: pnpm check
+        language: system
+        pass_filenames: false
+        always_run: true

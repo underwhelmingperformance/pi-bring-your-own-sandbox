@@ -14,7 +14,8 @@ The declarations compile, including two separate provider fixtures and a
 consumer fixture. Structural errors, provider registration and synchronous
 discovery are implemented. Tests use independent protocol messages, Pi's event
 bus and loader, and physical SDK copies. Synchronous bootstrap is tested against
-independent service stubs. Backend validation and consumer execution remain
+independent service stubs. Backend metadata, capability groups and effective
+policy are validated. Consumer execution and cleanup integration remain
 implementation work. This appendix does not establish that a running broker
 conforms to the contract.
 

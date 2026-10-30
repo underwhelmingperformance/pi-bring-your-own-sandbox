@@ -15,9 +15,10 @@ interoperability contract. Two independently implemented provider fixtures and a
 consumer fixture typecheck, including execution-only backends. Error and
 discovery validators pass independent-message and physical-SDK-copy tests on
 Pi's event bus and loader. Synchronous bootstrap is tested with independent
-service stubs, including failed and re-entrant construction. Backend validation
-and real-broker integration remain. Complete this stage before implementing
-broker behaviour.
+service stubs, including failed and re-entrant construction. Backend metadata,
+capability groups and effective-policy checks are implemented. Real-broker
+integration must repeat the independent-copy and bootstrap tests during the next
+stages.
 
 [api]: api-protocol.md
 

@@ -5,12 +5,14 @@ import path from 'node:path';
 
 import type {
 	SandboxBackend,
+	SandboxCapabilities,
 	SandboxOpenContext,
 	ShellDialect
 } from './contracts.js';
 import { hostFiles } from './host-files.js';
 import { HostOperations } from './host-operations.js';
 import { PosixProcessRunner } from './host-process.js';
+import { HostSearch } from './host-search.js';
 
 async function executable(
 	command: string,
@@ -52,6 +54,32 @@ export async function openPassthrough(
 			}
 		}
 		const processes = new PosixProcessRunner(workspace, environment, shells);
+		const [fd, fdfind, rg] = await Promise.all([
+			executable('fd', workspace, environment),
+			executable('fdfind', workspace, environment),
+			executable('rg', workspace, environment)
+		]);
+		const find = fd ?? fdfind;
+		const search = new HostSearch(
+			workspace,
+			{
+				...(find !== undefined && { find }),
+				...(rg !== undefined && { grep: rg })
+			},
+			processes,
+			operations
+		).methods();
+		const capabilities: SandboxCapabilities = {
+			operations: [
+				'exec',
+				'files.read',
+				'files.write',
+				'files.list',
+				...(search?.find === undefined ? [] : ['search.find' as const]),
+				...(search?.grep === undefined ? [] : ['search.grep' as const])
+			],
+			shells: shells.keys().toArray()
+		};
 		const defaultShell = shells.keys().next().value;
 		return {
 			id: `passthrough:${context.operationId}`,
@@ -64,10 +92,7 @@ export async function openPassthrough(
 					'The host workspace is shared. No sandbox isolation is applied.',
 				...(defaultShell !== undefined && { defaultShell })
 			},
-			capabilities: {
-				operations: ['exec', 'files.read', 'files.write', 'files.list'],
-				shells: shells.keys().toArray()
-			},
+			capabilities,
 			policy: {
 				workspaceAccess: 'read-write',
 				filesystemScope: 'provider-default',
@@ -81,6 +106,7 @@ export async function openPassthrough(
 					processes.run(request, { ...running, onOutput: execution.onOutput })
 				),
 			files: hostFiles(workspace, operations),
+			...(search !== undefined && { search }),
 			dispose: (disposal) => operations.dispose(disposal)
 		};
 	});

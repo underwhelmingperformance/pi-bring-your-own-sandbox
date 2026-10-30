@@ -8,7 +8,14 @@ export const passthroughProvider: ProviderServiceV1 =
 		id: 'passthrough',
 		label: 'Host execution without isolation',
 		capabilities: {
-			operations: ['exec', 'files.read', 'files.write', 'files.list'],
+			operations: [
+				'exec',
+				'files.read',
+				'files.write',
+				'files.list',
+				'search.find',
+				'search.grep'
+			],
 			shells: ['bash', 'sh', 'powershell']
 		},
 		policies: {

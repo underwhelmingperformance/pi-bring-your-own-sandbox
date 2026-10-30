@@ -10,9 +10,10 @@ present. A configured sandbox failure never switches to host execution.
 `/api` exports provider registration, shared sandbox acquisition, typed errors
 and explicit session cleanup. Consumers use the SDK without loading the broker
 extension separately. The built-in host backend implements filesystem operations
-and POSIX foreground execution with process-group cancellation. Host search,
-Windows process-tree handling and the optional Pi tool adapter remain
-implementation work.
+and POSIX foreground execution with process-group cancellation. Host search uses
+installed fd and ripgrep executables. Windows process-tree handling and the
+optional Pi integration remain implementation work. Integration must use public
+operation hooks; missing Pi extension points remain upstream work.
 
 The default extension's `/byos` command remains a diagnostic placeholder. The
 design documents specify the remaining implementation:
@@ -36,7 +37,9 @@ design documents specify the remaining implementation:
 ## Development
 
 Use Node 24.22.2 and pnpm 12.15.0. Deno and pre-commit are also needed to run
-the commit hooks. The private scaffold pins Pi 1.4.0 for development and peer
+the commit hooks. Native search tests require fd (`fdfind` on Debian) and
+ripgrep. The backend advertises only installed search tools and does not
+download them. The private scaffold pins Pi 1.4.0 for development and peer
 compatibility; broader host compatibility is not yet tested.
 
 ```sh

@@ -1,5 +1,9 @@
 import type { SandboxOperation, SandboxOperationContext } from './contracts.js';
-import { SandboxCleanupError, SandboxSessionClosingError } from './errors.js';
+import {
+	isSandboxError,
+	SandboxCleanupError,
+	SandboxSessionClosingError
+} from './errors.js';
 import { hostError } from './host-error.js';
 import { observe, OperationRegistry, OperationScope } from './lifecycle.js';
 import { isRecord } from './validation.js';
@@ -83,6 +87,14 @@ export class HostOperations {
 				}
 				return result;
 			} catch (error) {
+				if (
+					isSandboxError(error) &&
+					'completion' in error &&
+					error.completion === 'unknown'
+				) {
+					throw error;
+				}
+
 				if (operation !== 'exec' && scope.reason !== undefined) {
 					throw scope.cancellationError('confirmed');
 				}

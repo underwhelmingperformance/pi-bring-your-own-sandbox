@@ -198,3 +198,21 @@ investigation does not establish that no other generic sandbox framework exists.
 
 [landstrip]:
   https://github.com/landstrip/landstrip/blob/059874ba05222ed120a63eb1aa9581612b3319d0/packages/pi-landstrip/api.ts
+
+## Native host search
+
+The host backend uses fd for glob matching and ripgrep for line matching. Native
+tests cover ignore rules, limits, context and directory markers. These tests
+validate the host provider; they do not establish Pi tool compatibility. The
+local tools were fd 10.5.0 and ripgrep 15.2.0. CI installs its search test tools
+from Ubuntu's package repositories.
+
+Ripgrep's [JSON protocol][rg-json] reports binary detection in the file's `end`
+record. A local probe emitted an initial text match before detecting a NUL byte
+140,006 bytes into the file. The backend therefore keeps each file's candidate
+matches until that record, then discards binary matches. A single search thread
+keeps file records consecutive. Incremental collectors drain all tool output and
+retain candidates according to the requested result limit and context. They do
+not stop the process when the limit is reached.
+
+[rg-json]: https://docs.rs/grep-printer/0.3.1/grep_printer/struct.JSON.html

@@ -3,22 +3,21 @@
 Implement the [specification][spec] in dependency order. The
 [research][research] contains immutable upstream references and results from the
 exploratory probes. This plan authorises no publishing, deployment or user-wide
-Pi configuration changes.
+Pi configuration changes. The [validation record][validation] links the
+implemented stages to their evidence and specifies the supported boundaries.
 
 [spec]: specification.md
 [research]: research.md
+[validation]: validation.md
 
 ## 0. Freeze the public types and inter-extension protocol
 
-The exported declarations and [API/protocol appendix][api] define the proposed
-interoperability contract. Two independently implemented provider fixtures and a
-consumer fixture typecheck, including execution-only backends. Error and
-discovery validators pass independent-message and physical-SDK-copy tests on
-Pi's event bus and loader. Synchronous bootstrap is tested with independent
-service stubs, including failed and re-entrant construction. Backend metadata,
-capability groups and effective-policy checks are implemented. Real-broker
-integration must repeat the independent-copy and bootstrap tests during the next
-stages.
+The exported declarations and [API/protocol appendix][api] define service
+protocol version 1. Provider and consumer fixtures typecheck, including
+execution-only backends. Independent-message tests exercise structural errors
+and discovery. Real Pi tests repeat synchronous bootstrap and all factory orders
+through physical SDK copies. Backend validation checks metadata, capabilities
+and effective policy, including cleanup of rejected backends.
 
 [api]: api-protocol.md
 
@@ -254,8 +253,9 @@ mutation is automatically retried.
 
 Implement file/search groups with explicit target path semantics and a shared
 mutation queue. Test missing path versus denied path versus transport failure,
-remote-only files, symlink escapes, read-only policy and cross-platform lexical
-path conversion, including overlapping host/target roots. Exercise a direct SDK
+remote-only files, symlink escapes, read-only policy and target-native POSIX and
+Windows paths. Host and target roots may overlap; the SDK must forward target
+paths unchanged, without probing or mapping host files. Exercise a direct SDK
 write racing with a consumer transformation through `files.updateText`. The
 complete transformation must use the broker's mutation queue. Unknown
 cancellation of a queued mutation must quarantine the backend before subsequent

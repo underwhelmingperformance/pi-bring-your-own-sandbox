@@ -1,24 +1,23 @@
 # Bring-your-own-sandbox specification
 
-Status: proposed, 30 October 2026. Initial compatibility target: Pi 1.4.0. The
-[research][research] records the verified APIs and implementation constraints.
-The [implementation plan][plan] defines delivery and acceptance tests.
+Implemented baseline: Pi 1.4.0, 31 October 2026. The [research][research]
+records the verified APIs and implementation constraints. The [implementation
+plan][plan] defines delivery and acceptance tests.
 
 [research]: research.md
 [plan]: implementation-plan.md
 
 ## Contract status
 
-The sections below specify intended behaviour and principal API operations. The
-[API and protocol appendix][api] specifies exact layouts, ownership rules and
-discovery envelopes alongside the exported structural declarations. Its provider
-and consumer fixtures compile. Structural error, registration and discovery
-tests pass across physical SDK copies. Single-service bootstrap is tested with
-independent stubs. Backend metadata and effective-policy validation are
-implemented. Real-broker integration must repeat the bootstrap tests and verify
-cleanup of rejected backends.
+The sections below define behaviour and principal API operations. The [API and
+protocol appendix][api] specifies exact layouts, ownership rules and discovery
+envelopes alongside the exported structural declarations. The [validation
+record][validation] links compile-time, independent-copy, real-Pi and provider
+evidence to the acceptance criteria and specifies the supported platform and
+integration boundaries.
 
 [api]: api-protocol.md
+[validation]: validation.md
 
 The contract-first stage covers:
 
@@ -34,10 +33,9 @@ The contract-first stage covers:
 - Required versus optional fields, unknown-field handling, version
   compatibility, immutable snapshots, byte ownership and callback lifetime.
 
-Compile-time examples of a consumer and independently implemented providers,
-plus independent-SDK-copy protocol fixtures, are acceptance criteria for that
-contract. Until those pass, the behavioural review does not establish that the
-public types or protocol are ready for implementation.
+Compile-time fixtures exercise consumers and independently implemented
+providers. Protocol fixtures use independent messages, and real-Pi tests cover
+bootstrap, factory ordering, dispatch and cleanup across physical SDK copies.
 
 ## Purpose and scope
 
@@ -547,9 +545,9 @@ separate bound; Pi's model-output truncation does not limit file-read memory.
 
 The public SDK uses target-native paths. It does not expand host `~`,
 reinterpret host absolute paths or apply host filesystem existence checks. An
-explicit path flavour controls purely lexical conversion. File contents and
-writes occur in the target workspace; remote/copied workspaces are not
-automatically synced.
+explicit path flavour controls lexical validation of workspace metadata and
+search/list results. File contents and writes occur in the target workspace;
+remote/copied workspaces are not automatically synced.
 
 Pi integration translates paths only at a public backend-operation boundary.
 Target path conversion must not reproduce Pi's leading `@`, Unicode-space, image

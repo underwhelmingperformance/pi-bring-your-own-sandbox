@@ -11,15 +11,17 @@ present. A configured sandbox failure never switches to host execution.
 and explicit session cleanup. Consumers use the SDK without loading the broker
 extension separately. The built-in host backend implements filesystem operations
 and POSIX foreground execution with process-group cancellation. Host search uses
-installed fd and ripgrep executables. Windows process-tree handling remains
-implementation work. Optional `/pi-tools` integration connects shell-operation
-hooks while Pi keeps its tool algorithms and output handling. File/search
-routing needs upstream Pi extension points.
+installed fd and ripgrep executables. Windows host process-tree cancellation is
+unsupported. Optional `/pi-tools` integration connects shell-operation hooks
+while Pi keeps its tool algorithms and output handling. File/search routing
+needs upstream Pi extension points.
 
 The default extension provides `/byos status` and `/byos providers`. These
 commands inspect metadata without opening a backend or changing active tools.
-The design documents specify the remaining implementation:
+The following documents specify the contract and record its validation:
 
+- [Validation record][validation]: acceptance evidence, reproducible gates and
+  supported platform/integration boundaries.
 - [Specification][spec]: scope, contracts, discovery, lifecycle, execution and
   integration through public Pi operation hooks.
 - [Implementation plan][plan]: staged work, tests and release criteria.
@@ -30,6 +32,7 @@ The design documents specify the remaining implementation:
 - [Adversarial review][review]: findings from three independent reviews and the
   resulting design changes.
 
+[validation]: docs/validation.md
 [spec]: docs/specification.md
 [plan]: docs/implementation-plan.md
 [api]: docs/api-protocol.md

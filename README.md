@@ -91,6 +91,7 @@ pnpm install --frozen-lockfile
 pre-commit install
 pnpm check
 pnpm build
+pnpm test:package
 ```
 
 Try the source extension without changing Pi settings:
@@ -110,3 +111,9 @@ from Cupboard; SHA-pinned pre-commit and Wrapscallion hooks from
 Identify/Wrapscallion. `pnpm check` runs formatting, dependency usage, lint,
 Markdown, loader tests and type checks. `pnpm fix` applies ESLint and Prettier
 fixes. GitHub Actions runs checks/builds, workflow lint and commit-message lint.
+
+`pnpm test:package` packs the build and installs the tarball into separate
+temporary consumer and provider projects. It checks declarations, Pi loading,
+shared broker discovery across SDK copies and the provider's own Vitest peer.
+The gate installs dependencies with lifecycle scripts disabled and removes its
+temporary projects afterwards. It runs separately from the ordinary checks.

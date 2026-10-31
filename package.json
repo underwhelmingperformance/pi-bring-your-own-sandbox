@@ -2,7 +2,7 @@
 	"name": "pi-bring-your-own-sandbox",
 	"version": "0.0.0",
 	"private": true,
-	"description": "A scaffold for a provider-neutral Pi sandbox extension",
+	"description": "A provider-neutral sandbox framework for Pi extensions",
 	"type": "module",
 	"packageManager": "pnpm@12.15.0",
 	"engines": {
@@ -52,7 +52,8 @@
 		"fix:lint": "eslint . --fix",
 		"test": "pnpm build && vitest run",
 		"test:integration": "pnpm build && vitest run src/*integration.test.ts src/user-shell-rpc.test.ts examples/consumer/test/integration.test.ts",
-		"test:provider": "pnpm build && vitest run --config vitest.provider.config.ts"
+		"test:provider": "pnpm build && vitest run --config vitest.provider.config.ts",
+		"test:package": "vitest run --config vitest.package.config.ts"
 	},
 	"devDependencies": {
 		"@earendil-works/pi-ai": "1.4.0",

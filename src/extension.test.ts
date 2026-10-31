@@ -86,3 +86,16 @@ it('loads the optional Docker example without opening a backend', async () => {
 		)
 	}).toStrictEqual({ errors: [], tools: [], commands: [] });
 });
+
+it('loads the consumer example through the Pi extension loader', async () => {
+	const result = await load('../examples/consumer/src/index.ts');
+	expect({
+		errors: result.errors,
+		tools: result.extensions.flatMap((extension) =>
+			extension.tools.keys().toArray()
+		),
+		commands: result.extensions.flatMap((extension) =>
+			extension.commands.keys().toArray()
+		)
+	}).toStrictEqual({ errors: [], tools: ['sandbox_pwd'], commands: [] });
+});

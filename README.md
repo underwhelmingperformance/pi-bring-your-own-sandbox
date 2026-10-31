@@ -60,6 +60,15 @@ cleanup. The suite uses the provider project's Vitest installation. See the
 
 [testing]: docs/provider-testing.md
 
+## Consumer example
+
+The [consumer guide][consumer] shows a Pi tool that calls the SDK with the live
+context and per-tool cancellation signal. The same helper runs with default
+passthrough, both provider fixtures and Docker. Consumer projects install the
+framework as a normal dependency.
+
+[consumer]: docs/consumer-authoring.md
+
 ## Docker reference provider
 
 An optional [Docker example][docker] implements argv and POSIX shell execution

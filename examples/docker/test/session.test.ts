@@ -12,6 +12,7 @@ import type {
 	SandboxContext,
 	SandboxHost
 } from 'pi-bring-your-own-sandbox/api';
+import * as sandboxClient from 'pi-bring-your-own-sandbox/api';
 import {
 	closeSandboxSession,
 	getSandbox,
@@ -23,6 +24,7 @@ import { withPiRuntime } from '../../../src/fixtures/pi-runtime.js';
 import { ScriptedModel } from '../../../src/fixtures/scripted-model.js';
 import sandboxTools from '../../../src/pi-tools.js';
 import { snapshotProcessRequest } from '../../../src/process-input.js';
+import { inspectWorkspace } from '../../consumer/src/workspace.js';
 import { createDockerProvider } from '../src/provider.js';
 
 import { DockerFixture, operationContext } from './fixture.js';
@@ -34,6 +36,8 @@ afterEach(() => {
 interface DockerSession {
 	readonly runtime: AgentSessionRuntime;
 	readonly sandbox: Sandbox;
+	readonly pi: SandboxHost;
+	readonly context: SandboxContext;
 	readonly fixture: DockerFixture;
 }
 
@@ -76,7 +80,7 @@ async function withDockerSession(
 				}
 				const sandbox = await getSandbox(pi, context);
 				try {
-					await run({ sandbox, fixture, runtime });
+					await run({ sandbox, fixture, pi, context, runtime });
 				} finally {
 					expect(await closeSandboxSession(pi, context)).toStrictEqual({
 						confirmed: true,
@@ -166,6 +170,30 @@ describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
 					}
 				]
 			);
+		}, 30_000);
+
+		it('runs the shared consumer example through the selected Docker provider', async () => {
+			await withDockerSession(async ({ pi, context, fixture }) => {
+				const result = await inspectWorkspace(
+					sandboxClient,
+					pi,
+					context,
+					new AbortController().signal
+				);
+				const duration: unknown = expect.any(Number);
+				expect({ result, allocations: fixture.allocations.size }).toStrictEqual(
+					{
+						result: {
+							exit: { kind: 'code', code: 0 },
+							stdout: new TextEncoder().encode('/workspace\n'),
+							stderr: new Uint8Array(),
+							omittedBytes: { stdout: 0, stderr: 0 },
+							durationMs: duration
+						},
+						allocations: 1
+					}
+				);
+			});
 		}, 30_000);
 
 		it('preserves target signals and distinguishes a missing executable from exit 127', async () => {

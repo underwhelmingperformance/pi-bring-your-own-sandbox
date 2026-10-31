@@ -5,7 +5,8 @@
 		"src/extension.ts",
 		"src/**/*.test.ts",
 		"examples/**/*.test.ts",
-		"examples/docker/src/extension.ts"
+		"examples/docker/src/extension.ts",
+		"examples/consumer/src/extension.ts"
 	],
 	"project": ["src/**/*.ts", "examples/**/*.ts", "*.config.ts"]
 }

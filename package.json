@@ -30,6 +30,7 @@
 		"dist",
 		"docs",
 		"examples/docker/src",
+		"examples/consumer/src",
 		"README.md"
 	],
 	"pi": {
@@ -50,7 +51,7 @@
 		"fix:format": "prettier --write .",
 		"fix:lint": "eslint . --fix",
 		"test": "pnpm build && vitest run",
-		"test:integration": "pnpm build && vitest run src/*integration.test.ts src/user-shell-rpc.test.ts",
+		"test:integration": "pnpm build && vitest run src/*integration.test.ts src/user-shell-rpc.test.ts examples/consumer/test/integration.test.ts",
 		"test:provider": "pnpm build && vitest run --config vitest.provider.config.ts"
 	},
 	"devDependencies": {

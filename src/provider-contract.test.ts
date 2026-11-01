@@ -31,6 +31,7 @@ it.each([
 		const options = contractScenario();
 		const open = options.provider.open;
 		let isCleaned = false;
+
 		await expect(
 			usingProviderFixture(
 				{
@@ -44,6 +45,7 @@ it.each([
 						...(await options.createFixture()),
 						cleanup: () => {
 							isCleaned = true;
+
 							return Promise.resolve();
 						}
 					})
@@ -85,6 +87,7 @@ it.each([
 		caseName: 'idempotent disposal',
 		change: (backend: SandboxBackend): SandboxBackend => {
 			let isDisposed = false;
+
 			return {
 				...backend,
 				dispose(context) {
@@ -93,7 +96,9 @@ it.each([
 							new SandboxCleanupError({ operation: 'dispose' })
 						);
 					}
+
 					isDisposed = true;
+
 					return backend.dispose(context);
 				}
 			};
@@ -110,6 +115,7 @@ it.each([
 				} catch {
 					return { kind: 'cancelled', termination: 'unconfirmed' };
 				}
+
 				throw new Error('The cancellation probe unexpectedly exited.');
 			}
 		})
@@ -128,10 +134,13 @@ it.each([
 	const selected = providerContractCases(options).find(
 		(entry) => entry.label === caseName
 	);
+
 	expect(selected).toBeDefined();
+
 	if (selected === undefined) {
 		throw new Error('The expected contract case is missing.');
 	}
+
 	await expect(usingProviderFixture(broken, selected.run)).rejects.toThrow();
 });
 
@@ -159,6 +168,7 @@ it.each(['missing', 'failing'] as const)(
 			},
 			createFixture: async () => {
 				const fixture = await options.createFixture();
+
 				return {
 					...fixture,
 					policy: { ...fixture.policy, networkAccess: 'denied' as const },
@@ -167,6 +177,7 @@ it.each(['missing', 'failing'] as const)(
 							expect({ hasNetworkAccess: true }).toStrictEqual({
 								hasNetworkAccess: false
 							});
+
 							return Promise.resolve();
 						}
 					})
@@ -174,9 +185,11 @@ it.each(['missing', 'failing'] as const)(
 			}
 		};
 		const selected = providerContractCases(scenario)[0];
+
 		if (selected === undefined) {
 			throw new Error('The metadata case is missing.');
 		}
+
 		await expect(
 			usingProviderFixture(scenario, selected.run)
 		).rejects.toThrow();
@@ -189,6 +202,7 @@ it('checks target termination independently of the cancellation acknowledgement'
 		...options,
 		createFixture: async () => {
 			const fixture = await options.createFixture();
+
 			return {
 				...fixture,
 				cancellation: {
@@ -197,6 +211,7 @@ it('checks target termination independently of the cancellation acknowledgement'
 						expect({ isDescendantRunning: true }).toStrictEqual({
 							isDescendantRunning: false
 						});
+
 						return Promise.resolve();
 					}
 				}
@@ -206,9 +221,11 @@ it('checks target termination independently of the cancellation acknowledgement'
 	const selected = providerContractCases(scenario).find(
 		(entry) => entry.label === 'confirmed cancellation'
 	);
+
 	if (selected === undefined) {
 		throw new Error('The cancellation case is missing.');
 	}
+
 	await expect(usingProviderFixture(scenario, selected.run)).rejects.toThrow();
 });
 
@@ -218,6 +235,7 @@ it('preserves a failed assertion and a disposal failure while still running clea
 	const assertion = new Error('The target result was incorrect.');
 	const disposal = new Error('The target could not be released.');
 	let isCleaned = false;
+
 	await expect(
 		usingProviderFixture(
 			{
@@ -233,6 +251,7 @@ it('preserves a failed assertion and a disposal failure while still running clea
 					...(await options.createFixture()),
 					cleanup: () => {
 						isCleaned = true;
+
 						return Promise.resolve();
 					}
 				})
@@ -248,9 +267,11 @@ it('preserves a failed assertion and a disposal failure while still running clea
 
 it('bounds an opening that ignores its deadline and runs independent cleanup', async () => {
 	vi.useFakeTimers();
+
 	const options = contractScenario();
 	let isAborted = false;
 	let isCleaned = false;
+
 	try {
 		const running = usingProviderFixture(
 			{
@@ -266,6 +287,7 @@ it('bounds an opening that ignores its deadline and runs independent cleanup', a
 							},
 							{ once: true }
 						);
+
 						return new Promise(() => {
 							return;
 						});
@@ -275,6 +297,7 @@ it('bounds an opening that ignores its deadline and runs independent cleanup', a
 					...(await options.createFixture()),
 					cleanup: () => {
 						isCleaned = true;
+
 						return Promise.resolve();
 					}
 				})
@@ -282,6 +305,7 @@ it('bounds an opening that ignores its deadline and runs independent cleanup', a
 			() => Promise.resolve()
 		);
 		const rejected = expect(running).rejects.toThrow('exceeded its deadline');
+
 		await vi.advanceTimersByTimeAsync(11);
 		await rejected;
 		expect({ isAborted, isCleaned }).toStrictEqual({

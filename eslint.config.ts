@@ -1,4 +1,5 @@
 import eslint from '@eslint/js';
+import stylistic from '@stylistic/eslint-plugin';
 import { defineConfig } from 'eslint/config';
 import eslintConfigPrettier from 'eslint-config-prettier/flat';
 import simpleImportSort from 'eslint-plugin-simple-import-sort';
@@ -14,7 +15,10 @@ export default defineConfig(
 	unicorn.configs.recommended,
 	eslintConfigPrettier,
 	{
-		plugins: { 'simple-import-sort': simpleImportSort },
+		plugins: {
+			'@stylistic': stylistic,
+			'simple-import-sort': simpleImportSort
+		},
 		languageOptions: {
 			globals: globals.node,
 			parserOptions: {
@@ -24,6 +28,42 @@ export default defineConfig(
 		},
 		rules: {
 			curly: ['error', 'all'],
+			'@stylistic/lines-between-class-members': [
+				'error',
+				{
+					enforce: [
+						{ blankLine: 'always', prev: '*', next: 'method' },
+						{ blankLine: 'always', prev: 'method', next: '*' }
+					]
+				}
+			],
+			'@stylistic/padding-line-between-statements': [
+				'error',
+				{ blankLine: 'always', prev: '*', next: ['const', 'let', 'var'] },
+				{ blankLine: 'always', prev: ['const', 'let', 'var'], next: '*' },
+				{
+					blankLine: 'any',
+					prev: ['const', 'let', 'var'],
+					next: ['const', 'let', 'var']
+				},
+				{
+					blankLine: 'always',
+					prev: '*',
+					next: [
+						'return',
+						'throw',
+						'if',
+						'switch',
+						'for',
+						'while',
+						'do',
+						'try',
+						'function',
+						'class'
+					]
+				},
+				{ blankLine: 'always', prev: 'block-like', next: '*' }
+			],
 			'@typescript-eslint/no-unused-vars': [
 				'error',
 				{ argsIgnorePattern: '^_', varsIgnorePattern: '^_' }

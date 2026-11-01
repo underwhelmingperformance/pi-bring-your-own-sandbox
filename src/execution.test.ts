@@ -74,6 +74,7 @@ function fixture(
 			metadata.policy
 		)
 	};
+
 	return { owner, lifetime, failures };
 }
 
@@ -85,16 +86,22 @@ async function cancel(
 	switch (reason) {
 		case 'caller': {
 			caller.abort();
+
 			return;
 		}
+
 		case 'shutdown': {
 			lifetime.abort();
+
 			return;
 		}
+
 		case 'deadline': {
 			await vi.advanceTimersByTimeAsync(20);
+
 			return;
 		}
+
 		case 'output': {
 			return;
 		}
@@ -111,10 +118,12 @@ it('streams independent bytes, captures a combined bound and drains excess outpu
 	const delivered: { stream: string; bytes: number[] }[] = [];
 	const { owner } = fixture((_request, context) => {
 		const bytes = new Uint8Array([1, 2, 3]);
+
 		context.onOutput({ stream: 'stdout', data: bytes });
 		bytes.fill(9);
 		context.onOutput({ stream: 'stderr', data: new Uint8Array([4, 5, 6]) });
 		context.onOutput({ stream: 'stdout', data: new Uint8Array([7]) });
+
 		return Promise.resolve({ kind: 'exited', exit: { kind: 'code', code: 7 } });
 	});
 	const result = await executeProcess(owner, request, {
@@ -147,6 +156,7 @@ it('snapshots arguments and environment before invoking a provider', async () =>
 	const { owner } = fixture(async (input) => {
 		await Promise.resolve();
 		received.push(input);
+
 		return { kind: 'exited', exit: { kind: 'code', code: 0 } };
 	});
 	const result = executeProcess(owner, {
@@ -155,6 +165,7 @@ it('snapshots arguments and environment before invoking a provider', async () =>
 		args: arguments_,
 		env: environment
 	});
+
 	arguments_[0] = 'changed';
 	environment.KEY = 'changed';
 	await result;
@@ -173,10 +184,12 @@ it.each(['caller', 'shutdown', 'deadline', 'output'] as const)(
 	'requires termination confirmation for %s cancellation',
 	async (reason) => {
 		vi.useFakeTimers();
+
 		const caller = new AbortController();
 		let calls = 0;
 		const { owner, lifetime, failures } = fixture((_input, context) => {
 			calls++;
+
 			return new Promise((resolve) => {
 				context.signal.addEventListener(
 					'abort',
@@ -185,6 +198,7 @@ it.each(['caller', 'shutdown', 'deadline', 'output'] as const)(
 					},
 					{ once: true }
 				);
+
 				if (reason === 'output') {
 					context.onOutput({ stream: 'stdout', data: new Uint8Array([1]) });
 				}
@@ -210,6 +224,7 @@ it.each(['caller', 'shutdown', 'deadline', 'output'] as const)(
 			reason,
 			completion: 'confirmed'
 		});
+
 		await cancel(reason, caller, lifetime);
 		await rejected;
 		expect({ calls, failures }).toStrictEqual({ calls: 1, failures: [] });
@@ -220,18 +235,22 @@ it.each(['caller', 'shutdown', 'deadline', 'output'] as const)(
 	'quarantines an unresponsive backend after %s cancellation and suppresses late output',
 	async (reason) => {
 		vi.useFakeTimers();
+
 		const caller = new AbortController();
 		const chunks: number[] = [];
 		let emit: (() => void) | undefined;
 		let calls = 0;
 		const { owner, lifetime, failures } = fixture((_input, context) => {
 			calls++;
+
 			emit = () => {
 				context.onOutput({ stream: 'stdout', data: new Uint8Array([1]) });
 			};
+
 			if (reason === 'output') {
 				emit();
 			}
+
 			return Promise.withResolvers<never>().promise;
 		});
 		const result = executeProcess(owner, request, {
@@ -241,6 +260,7 @@ it.each(['caller', 'shutdown', 'deadline', 'output'] as const)(
 				if (reason === 'output') {
 					throw new Error('consumer callback failed');
 				}
+
 				chunks.push(...output.data);
 			}
 		});
@@ -249,6 +269,7 @@ it.each(['caller', 'shutdown', 'deadline', 'output'] as const)(
 			completion: 'unknown',
 			reason
 		});
+
 		await cancel(reason, caller, lifetime);
 		await vi.advanceTimersByTimeAsync(5000);
 		await rejected;
@@ -272,9 +293,11 @@ it('rejects a pre-aborted call and unsupported shell before invoking a provider'
 	let calls = 0;
 	const { owner } = fixture(() => {
 		calls++;
+
 		return Promise.resolve({ kind: 'exited', exit: { kind: 'code', code: 0 } });
 	});
 	const caller = new AbortController();
+
 	caller.abort();
 	await expect(
 		executeProcess(owner, request, { signal: caller.signal })
@@ -306,6 +329,7 @@ it.each([
 	'quarantines invalid or uncertain provider outcomes: %j',
 	async (outcome) => {
 		const { owner, failures } = fixture(() => Promise.resolve(outcome));
+
 		await expect(executeProcess(owner, request)).rejects.toMatchObject({
 			completion: 'unknown',
 			operation: 'exec'
@@ -329,8 +353,10 @@ it.each([
 		let calls = 0;
 		const { owner, failures } = fixture(() => {
 			calls++;
+
 			return Promise.reject(cause);
 		});
+
 		await expect(executeProcess(owner, request)).rejects.toMatchObject({
 			name: 'SandboxTransportError',
 			completion: 'unknown'
@@ -344,20 +370,25 @@ it('preserves known target failures and allows later calls', async () => {
 	let calls = 0;
 	const { owner, failures } = fixture(() => {
 		calls++;
+
 		if (calls === 1) {
 			throw new SandboxPathNotFoundError({ operation: 'exec' });
 		}
+
 		return Promise.resolve({
 			kind: 'exited',
 			exit: { kind: 'signal', signal: 'SIGTERM', signalNumber: 15 }
 		});
 	});
+
 	await expect(executeProcess(owner, request)).rejects.toMatchObject({
 		name: 'SandboxPathNotFoundError',
 		providerId: 'fixture',
 		backendId: 'backend'
 	});
+
 	const result = await executeProcess(owner, request);
+
 	expect({ ...result, durationMs: 0, calls, failures }).toStrictEqual({
 		exit: { kind: 'signal', signal: 'SIGTERM', signalNumber: 15 },
 		stdout: new Uint8Array(),
@@ -380,6 +411,7 @@ it.each([0, 4])(
 					data: new Uint8Array([1])
 				});
 			}
+
 			return Promise.resolve({
 				kind: 'exited',
 				exit: { kind: 'code', code: 0 }
@@ -391,6 +423,7 @@ it.each([0, 4])(
 				delivered += output.data.byteLength;
 			}
 		});
+
 		expect({ ...result, durationMs: 0, delivered }).toStrictEqual({
 			exit: { kind: 'code', code: 0 },
 			stdout: new Uint8Array(maxCaptureBytes / 2).fill(1),
@@ -422,6 +455,7 @@ it('cancels and observes an invalid asynchronous output callback', async () => {
 	const options = snapshotProcessOptions({
 		onOutput: () => Promise.reject(new Error('asynchronous callback failed'))
 	});
+
 	await expect(executeProcess(owner, request, options)).rejects.toMatchObject({
 		name: 'SandboxOutputCallbackError',
 		completion: 'confirmed',
@@ -443,12 +477,14 @@ it.each(['code', 'signal'] as const)(
 				: { kind, signal: 'SIGTERM', signalNumber: 15 };
 		const { owner } = fixture(() => Promise.resolve({ kind: 'exited', exit }));
 		const result = await executeProcess(owner, request);
+
 		if (exit.kind === 'code') {
 			exit.code = 99;
 		} else {
 			exit.signal = 'SIGKILL';
 			exit.signalNumber = 9;
 		}
+
 		expect({
 			...result,
 			durationMs: 0,

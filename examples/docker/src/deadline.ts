@@ -18,12 +18,15 @@ export class DeadlineTimer {
 
 	#schedule(): void {
 		const remaining = this.#expiresAt - performance.now();
+
 		this.#timer = setTimeout(
 			() => {
 				if (performance.now() < this.#expiresAt) {
 					this.#schedule();
+
 					return;
 				}
+
 				this.#onExpire();
 			},
 			Math.min(Math.max(0, remaining), 2_147_483_647)

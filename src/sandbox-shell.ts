@@ -45,16 +45,19 @@ export class SandboxShell {
 	): Promise<ProcessResult> {
 		const command = invocation.command;
 		const dialect = invocation.dialect;
+
 		if (
 			!isSafeText(command) ||
 			(typeof dialect !== 'function' && !isShell(dialect))
 		) {
 			throw new InvalidSandboxRequestError({ operation: 'exec' });
 		}
+
 		const timeoutMs =
 			invocation.timeoutSeconds === undefined
 				? undefined
 				: invocation.timeoutSeconds * 1000;
+
 		if (
 			timeoutMs !== undefined &&
 			(!Number.isFinite(timeoutMs) ||
@@ -63,6 +66,7 @@ export class SandboxShell {
 		) {
 			throw new InvalidSandboxRequestError({ operation: 'exec' });
 		}
+
 		const expiresAt =
 			timeoutMs === undefined ? undefined : performance.now() + timeoutMs;
 		const scope =
@@ -77,9 +81,11 @@ export class SandboxShell {
 						timeoutMs
 					);
 		const signal = scope?.context.signal ?? invocation.signal;
+
 		try {
 			scope?.check();
 			checkCaller(signal);
+
 			const sandbox = await this.#client.getSandbox(
 				pi,
 				context,
@@ -94,12 +100,15 @@ export class SandboxShell {
 			});
 			const remaining =
 				expiresAt === undefined ? undefined : expiresAt - performance.now();
+
 			if (remaining !== undefined && remaining <= 0) {
 				scope?.abort('deadline');
 			}
+
 			scope?.check();
 			checkCaller(signal);
 			scope?.dispose();
+
 			return await sandbox.exec(
 				{ ...request, cwd: sandbox.workspace.root },
 				{
@@ -130,6 +139,7 @@ export class SandboxShell {
 					{ cause: error }
 				);
 			}
+
 			throw error;
 		} finally {
 			scope?.dispose();

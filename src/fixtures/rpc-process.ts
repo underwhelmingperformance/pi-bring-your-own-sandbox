@@ -61,24 +61,31 @@ export class RpcProcess {
 
 	#fail(error: Error): void {
 		this.#failure ??= error;
+
 		for (const request of this.#requests.values()) {
 			request.reject(error);
 		}
+
 		this.#requests.clear();
+
 		for (const listener of this.#listeners) {
 			listener.pending.reject(error);
 		}
+
 		this.#listeners.clear();
 	}
 
 	#receive(line: string): void {
 		let message: unknown;
+
 		try {
 			message = JSON.parse(line);
 		} catch (error) {
 			this.#fail(new Error('Pi emitted invalid RPC JSON.', { cause: error }));
+
 			return;
 		}
+
 		if (
 			!isRecord(message) ||
 			message.type !== 'response' ||
@@ -89,8 +96,10 @@ export class RpcProcess {
 					listener.pending.resolve(message);
 				}
 			}
+
 			return;
 		}
+
 		this.#requests.get(message.id)?.resolve(message);
 	}
 
@@ -98,12 +107,16 @@ export class RpcProcess {
 		if (this.#failure !== undefined) {
 			throw this.#failure;
 		}
+
 		const pending = Promise.withResolvers<unknown>();
 		const listener = { isMatch, pending };
+
 		this.#listeners.add(listener);
+
 		const timer = setTimeout(() => {
 			pending.reject(new Error('Pi did not emit the expected RPC event.'));
 		}, 10_000);
+
 		try {
 			return await pending.promise;
 		} finally {
@@ -116,15 +129,20 @@ export class RpcProcess {
 		if (this.#failure !== undefined) {
 			throw this.#failure;
 		}
+
 		const id = String(++this.#nextId);
 		const pending = Promise.withResolvers<unknown>();
+
 		this.#requests.set(id, pending);
+
 		const timer = setTimeout(() => {
 			pending.reject(
 				new Error(`Pi RPC command ${command.type} timed out. ${this.#stderr}`)
 			);
 		}, 10_000);
+
 		this.#child.stdin.write(`${JSON.stringify({ ...command, id })}\n`);
+
 		try {
 			return await pending.promise;
 		} finally {
@@ -136,12 +154,16 @@ export class RpcProcess {
 	async close(): Promise<void> {
 		if (this.#child.exitCode !== null || this.#child.signalCode !== null) {
 			this.#reader.close();
+
 			return;
 		}
+
 		const timer = setTimeout(() => {
 			this.#child.kill('SIGKILL');
 		}, 2000);
+
 		this.#child.kill('SIGTERM');
+
 		try {
 			await this.#exited.promise;
 		} finally {

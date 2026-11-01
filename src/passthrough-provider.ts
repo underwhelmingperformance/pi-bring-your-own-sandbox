@@ -30,6 +30,7 @@ export const passthroughProvider: ProviderServiceV1 =
 					providerId: 'passthrough'
 				});
 			}
+
 			return {
 				open: (request, context) =>
 					openPassthrough(request.hostWorkspace, context)

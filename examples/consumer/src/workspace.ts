@@ -19,5 +19,6 @@ export async function inspectWorkspace(
 ): Promise<ProcessResult> {
 	const options = signal === undefined ? {} : { signal };
 	const sandbox = await client.getSandbox(pi, context, options);
+
 	return sandbox.exec({ kind: 'argv', executable: 'pwd', args: [] }, options);
 }

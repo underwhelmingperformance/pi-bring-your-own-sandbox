@@ -93,10 +93,12 @@ export function respond(
 		}
 
 		const reply = request.reply;
+
 		if (isLate) {
 			queueMicrotask(() => {
 				reply(advertisement);
 			});
+
 			return;
 		}
 

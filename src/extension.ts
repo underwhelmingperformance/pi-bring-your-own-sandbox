@@ -12,19 +12,24 @@ this extension preserves Pi's tools and active tool selection.
 */
 export default function sandboxExtension(pi: ExtensionAPI): void {
 	const service = ensureSandboxService(pi);
+
 	pi.registerCommand('byos', {
 		description: 'Show sandbox status or available providers',
 		async handler(arguments_, context) {
 			const action = arguments_.trim();
+
 			if (!['', 'status', 'providers'].includes(action)) {
 				pi.sendMessage({
 					customType: 'byos',
 					content: 'Usage: /byos status | /byos providers',
 					display: true
 				});
+
 				return;
 			}
+
 			let content: string;
+
 			try {
 				content =
 					action === 'providers'
@@ -37,11 +42,14 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 						{ cause: error }
 					);
 				}
+
 				content = `${error.name}: ${error.message}`;
 			}
+
 			if (action !== 'providers') {
 				content += `\n${describeShellIntegration(pi.events)}`;
 			}
+
 			pi.sendMessage({ customType: 'byos', content, display: true });
 		}
 	});

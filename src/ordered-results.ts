@@ -12,22 +12,29 @@ export class OrderedResults<Value> {
 	add(value: Value): void {
 		let start = 0;
 		let end = this.#values.length;
+
 		while (start < end) {
 			const middle = Math.floor((start + end) / 2);
 			const previous = this.#values[middle];
+
 			if (previous !== undefined && this.#compare(previous, value) < 0) {
 				start = middle + 1;
 				continue;
 			}
+
 			end = middle;
 		}
+
 		if (this.#values.length >= this.#limit) {
 			this.#isTruncated = true;
 		}
+
 		if (start >= this.#limit) {
 			return;
 		}
+
 		this.#values.splice(start, 0, value);
+
 		if (this.#values.length > this.#limit) {
 			this.#values.pop();
 		}

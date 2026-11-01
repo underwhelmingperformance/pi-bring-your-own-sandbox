@@ -14,6 +14,7 @@ afterEach(() => {
 
 function fixture(backend = new MemoryBackend()) {
 	const owner = new TestBackendOwner(backend);
+
 	return {
 		owner,
 		backend,
@@ -27,9 +28,12 @@ function fixture(backend = new MemoryBackend()) {
 
 it('uses target-only files and owns returned metadata and bytes', async () => {
 	const { owner, backend, invalidate } = fixture();
+
 	backend.seed('file', new Uint8Array([1, 2]));
+
 	const sandbox = createSandbox(owner);
 	const bytes = await sandbox.files.readFile('/remote/project/file');
+
 	bytes.fill(9);
 	expect(await sandbox.files.readFile('file')).toStrictEqual(
 		new Uint8Array([1, 2])
@@ -65,12 +69,16 @@ it('uses target-only files and owns returned metadata and bytes', async () => {
 
 it('serialises whole text updates with writes across consumer facades', async () => {
 	const { owner, backend } = fixture();
+
 	backend.seed('file', new TextEncoder().encode('old'));
+
 	const firstStarted = Promise.withResolvers<string>();
 	const release = Promise.withResolvers<string>();
 	let writes = 0;
+
 	backend.beforeWrite = async () => {
 		writes++;
+
 		if (writes !== 1) {
 			return;
 		}
@@ -78,11 +86,13 @@ it('serialises whole text updates with writes across consumer facades', async ()
 		firstStarted.resolve('started');
 		await release.promise;
 	};
+
 	const first = createSandbox(owner);
 	const second = createSandbox(owner);
 	const input = new TextEncoder().encode('new');
 	const write = first.files.writeFile('file', input);
 	const update = second.files.updateText('file', (text) => text + '!');
+
 	await firstStarted.promise;
 	input.fill(0);
 	expect(backend.calls).toStrictEqual([
@@ -104,8 +114,10 @@ it('cancels queued mutations before invocation without allowing later work past 
 	const release = Promise.withResolvers<string>();
 	const started = Promise.withResolvers<string>();
 	let writes = 0;
+
 	backend.beforeWrite = async () => {
 		writes++;
+
 		if (writes !== 1) {
 			return;
 		}
@@ -113,10 +125,13 @@ it('cancels queued mutations before invocation without allowing later work past 
 		started.resolve('started');
 		await release.promise;
 	};
+
 	const sandbox = createSandbox(owner);
 	const caller = new AbortController();
 	const first = sandbox.files.writeFile('first', new Uint8Array([1]));
+
 	await started.promise;
+
 	const second = sandbox.files.writeFile('cancelled', new Uint8Array([2]), {
 		signal: caller.signal
 	});
@@ -125,6 +140,7 @@ it('cancels queued mutations before invocation without allowing later work past 
 		completion: 'not-started'
 	});
 	const third = sandbox.files.writeFile('third', new Uint8Array([3]));
+
 	caller.abort();
 	await rejected;
 	expect(writes).toBe(1);
@@ -139,11 +155,14 @@ it('cancels queued mutations before invocation without allowing later work past 
 
 it('quarantines an unknown write before releasing the next queued mutation', async () => {
 	const { owner, backend, failures } = fixture();
+
 	backend.beforeWrite = () =>
 		Promise.reject(new Error('lost write acknowledgement'));
+
 	const sandbox = createSandbox(owner);
 	const first = sandbox.files.writeFile('first', new Uint8Array([1]));
 	const second = sandbox.files.writeFile('second', new Uint8Array([2]));
+
 	await expect(first).rejects.toMatchObject({
 		name: 'SandboxTransportError',
 		operation: 'writeFile'
@@ -156,18 +175,24 @@ it('quarantines an unknown write before releasing the next queued mutation', asy
 
 it('bounds an unconfirmed write cancellation before releasing queued work', async () => {
 	vi.useFakeTimers();
+
 	const { owner, backend, failures } = fixture();
 	const started = Promise.withResolvers<string>();
+
 	backend.beforeWrite = () => {
 		started.resolve('started');
+
 		return Promise.withResolvers<never>().promise;
 	};
+
 	const sandbox = createSandbox(owner);
 	const caller = new AbortController();
 	const first = sandbox.files.writeFile('first', new Uint8Array([1]), {
 		signal: caller.signal
 	});
+
 	await started.promise;
+
 	const second = sandbox.files.writeFile('second', new Uint8Array([2]));
 	const rejectedFirst = expect(first).rejects.toMatchObject({
 		name: 'UnconfirmedSandboxTerminationError',
@@ -177,6 +202,7 @@ it('bounds an unconfirmed write cancellation before releasing queued work', asyn
 	const rejectedSecond = expect(second).rejects.toMatchObject({
 		name: 'UnconfirmedSandboxTerminationError'
 	});
+
 	caller.abort();
 	await vi.advanceTimersByTimeAsync(5000);
 	await rejectedFirst;
@@ -195,6 +221,7 @@ it('bounds an unconfirmed write cancellation before releasing queued work', asyn
 it('preserves UTF-8 BOM and CRLF, and never writes after invalid input or a failed transform', async () => {
 	const { owner, backend } = fixture();
 	const sandbox = createSandbox(owner);
+
 	backend.seed('text', new TextEncoder().encode('\u{FEFF}first\r\n'));
 	expect(
 		await sandbox.files.updateText('text', (text) => text + 'last\r\n')
@@ -219,6 +246,7 @@ it('preserves UTF-8 BOM and CRLF, and never writes after invalid input or a fail
 it('keeps absent capability methods available and rejects without host fallback', async () => {
 	const { owner, backend } = fixture(new MemoryBackend('exec'));
 	const sandbox = createSandbox(owner);
+
 	await expect(sandbox.files.readFile('/etc/hosts')).rejects.toMatchObject({
 		name: 'UnsupportedSandboxCapabilityError'
 	});
@@ -258,12 +286,14 @@ function writerFixture(
 				},
 				writeFile(filename) {
 					calls.push({ operation: 'writeFile', path: filename });
+
 					return Promise.resolve();
 				}
 			}
 		}
 	};
 	const owner = new TestBackendOwner(backend);
+
 	return { sandbox: createSandbox(owner), calls, owner };
 }
 
@@ -295,6 +325,7 @@ it.each([
 			new Uint8Array([1]),
 			options
 		);
+
 		options.createParents = false;
 		await running;
 		expect(calls).toStrictEqual([
@@ -326,6 +357,7 @@ it('does not write after cancellation during confirmed parent creation', async (
 			signal: controller.signal
 		})
 	);
+
 	await started.promise;
 	controller.abort();
 	release.resolve('ready');
@@ -357,13 +389,16 @@ it('does not write after a synchronous transform overruns its deadline', async (
 	const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
 	const { owner, backend } = fixture();
 	const sandbox = createSandbox(owner);
+
 	backend.seed('file', new TextEncoder().encode('before'));
+
 	try {
 		await expect(
 			sandbox.files.updateText(
 				'file',
 				() => {
 					now = 100;
+
 					return 'after';
 				},
 				{ timeoutMs: 5 }
@@ -372,9 +407,11 @@ it('does not write after a synchronous transform overruns its deadline', async (
 			name: 'SandboxTimeoutError',
 			completion: 'confirmed'
 		});
+
 		const writes = backend.calls.filter(
 			(call) => call.operation === 'writeFile'
 		);
+
 		expect({
 			writes,
 			contents: await sandbox.files.readFile('file')

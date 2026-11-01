@@ -29,7 +29,9 @@ export async function loadSdkCopy(directory: string): Promise<FixtureApi> {
 	await cp(new URL('../../dist/', import.meta.url), directory, {
 		recursive: true
 	});
+
 	const peers = path.join(directory, 'node_modules', '@earendil-works');
+
 	await mkdir(peers, { recursive: true });
 	await symlink(
 		fileURLToPath(
@@ -41,13 +43,16 @@ export async function loadSdkCopy(directory: string): Promise<FixtureApi> {
 		path.join(peers, 'pi-coding-agent'),
 		'dir'
 	);
+
 	const module: unknown = await import(
 		pathToFileURL(path.join(directory, 'api.js')).href
 	);
+
 	if (!isFixtureApi(module)) {
 		throw new TypeError(
 			'The built SDK does not export the consumer, registration and error APIs.'
 		);
 	}
+
 	return module;
 }

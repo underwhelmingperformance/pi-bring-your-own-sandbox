@@ -49,6 +49,7 @@ export function snapshotBackend(backend: SandboxBackend): SandboxBackend {
 	});
 	const search = backend.search;
 	const workspace = backend.workspace;
+
 	return Object.freeze({
 		id: backend.id,
 		workspace: Object.freeze({

@@ -66,16 +66,22 @@ function fixture(
 								providerConfig: {}
 							})
 					});
+
 					services.push(broker);
+
 					return broker;
 				});
+
 			if (role === 'broker') {
 				service();
+
 				return;
 			}
+
 			if (role === 'provider') {
 				const register =
 					clients?.provider.registerSandboxProvider ?? registerSandboxProvider;
+
 				register(pi, {
 					id: 'fixture',
 					label: 'Fixture',
@@ -88,28 +94,36 @@ function fixture(
 					},
 					validateConfig(input: unknown): Record<string, never> {
 						configurations++;
+
 						if (!isRecord(input) || Object.keys(input).length > 0) {
 							throw new InvalidSandboxConfigError({ operation: 'configure' });
 						}
+
 						return {};
 					},
 					open: () => {
 						opens++;
+
 						const backend = new MemoryBackend();
+
 						backends.push(backend);
 						backend.seed('file', new TextEncoder().encode('remote content'));
+
 						return Promise.resolve({
 							...snapshotBackend(backend),
 							id: `memory:${String(opens)}`,
 							dispose: () => {
 								disposals++;
+
 								return Promise.resolve();
 							}
 						});
 					}
 				});
+
 				return;
 			}
+
 			const acquire = (
 				context: SandboxContext,
 				options?: SandboxAcquireOptions
@@ -117,6 +131,7 @@ function fixture(
 				clients === undefined
 					? service().acquire(context, options)
 					: clients.consumer.getSandbox(pi, context, options);
+
 			pi.registerTool({
 				name: 'sandbox_read',
 				label: 'Sandbox read',
@@ -126,6 +141,7 @@ function fixture(
 					const options = signal === undefined ? {} : { signal };
 					const sandbox = await acquire(context, options);
 					const bytes = await sandbox.files.readFile(input.path, options);
+
 					return {
 						content: [{ type: 'text', text: new TextDecoder().decode(bytes) }],
 						details: {}
@@ -139,6 +155,7 @@ function fixture(
 				parameters: createReadTool('/unused').parameters,
 				async execute(_id, input, _signal, _update, context) {
 					const result = await context.executeTool('sandbox_read', input);
+
 					return { ...result.result, isError: result.isError, details: {} };
 				}
 			});
@@ -148,6 +165,7 @@ function fixture(
 			});
 		}
 	}));
+
 	return {
 		extensions,
 		sandboxes,
@@ -186,12 +204,14 @@ it.each([
 						id: event.toolCallId,
 						parent: event.parentToolCallId
 					});
+
 					return !isAllowed && event.toolName === 'sandbox_read'
 						? { block: true, reason: 'Denied by the fake approver.' }
 						: undefined;
 				});
 			}
 		};
+
 		await withPiRuntime(
 			[...extensions, model.extension, approver],
 			async (runtime, errors) => {
@@ -199,11 +219,14 @@ it.each([
 					'scripted',
 					'scripted'
 				);
+
 				if (selected === undefined) {
 					throw new Error('The scripted model was not registered.');
 				}
+
 				await runtime.session.setModel(selected);
 				await runtime.session.prompt('Read the sandbox file.');
+
 				const results = model.requests
 					.at(1)
 					?.messages.filter((message) => message.role === 'toolResult')
@@ -218,6 +241,7 @@ it.each([
 						}))
 					}));
 				const isNested = tool === 'sandbox_nested';
+
 				expect({
 					errors,
 					requests: model.requests.length,
@@ -282,6 +306,7 @@ it.each([
 	'supports factory order %s, %s, %s across SDK copies in Pi',
 	async (...order) => {
 		const directory = await mkdtemp(path.join(tmpdir(), 'pi-byos-order-'));
+
 		try {
 			const [provider, consumer] = await Promise.all([
 				loadSdkCopy(path.join(directory, 'provider')),
@@ -301,6 +326,7 @@ it.each([
 					...consumer,
 					getSandbox(pi, context, options) {
 						acquisitions++;
+
 						return consumer.getSandbox(pi, context, options);
 					}
 				}
@@ -309,10 +335,12 @@ it.each([
 				order,
 				clients
 			);
+
 			await withPiRuntime(extensions, async (runtime, errors) => {
 				const sandbox = sandboxes[0];
 				const context = contexts[0];
 				const service = services[0];
+
 				if (
 					sandbox === undefined ||
 					context === undefined ||
@@ -322,6 +350,7 @@ it.each([
 						'The Pi start handlers did not publish the expected sandbox.'
 					);
 				}
+
 				expect({
 					errors,
 					separateCopies: provider.getSandbox !== consumer.getSandbox,
@@ -351,7 +380,9 @@ it.each([
 				await expect(service.acquire(context)).rejects.toMatchObject({
 					name: 'SandboxSessionClosingError'
 				});
+
 				const status = await service.status(context);
+
 				expect({ state: status.state, ...counts() }).toStrictEqual({
 					state: 'closed',
 					opens: 1,
@@ -367,16 +398,22 @@ it.each([
 
 it('bootstraps from a consumer without a broker extension and creates fresh leases for new sessions', async () => {
 	const { extensions, sandboxes, counts } = fixture(['consumer', 'provider']);
+
 	await withPiRuntime(extensions, async (runtime, errors) => {
 		const first = sandboxes[0];
+
 		if (first === undefined) {
 			throw new Error('The initial consumer did not acquire a sandbox.');
 		}
+
 		expect(await runtime.newSession()).toStrictEqual({ cancelled: false });
+
 		const second = sandboxes[1];
+
 		if (second === undefined) {
 			throw new Error('The replacement consumer did not acquire a sandbox.');
 		}
+
 		expect({
 			errors,
 			differentGeneration: first.generationId !== second.generationId,
@@ -398,12 +435,16 @@ it('bootstraps from a consumer without a broker extension and creates fresh leas
 
 it('recreates the broker on Pi reload and leaves raw disposal cleanup to the embedding host', async () => {
 	const { extensions, sandboxes, counts } = fixture(['consumer', 'provider']);
+
 	await withPiRuntime(extensions, async (runtime, errors) => {
 		await runtime.session.reload();
+
 		const sandbox = sandboxes[1];
+
 		if (sandbox === undefined) {
 			throw new Error('The reloaded consumer did not acquire a sandbox.');
 		}
+
 		expect({ errors, ...counts() }).toStrictEqual({
 			errors: [],
 			opens: 2,
@@ -463,11 +504,13 @@ it.each([
 							configure: () => ({
 								open: (_request, opening) => {
 									opening.reportRecovery(recovery);
+
 									return Promise.resolve({
 										...snapshotBackend(template),
 										recovery,
 										dispose: () => {
 											disposals++;
+
 											return failsCleanup
 												? Promise.reject(new Error('PRIVATE_PROVIDER_TOKEN'))
 												: Promise.resolve();
@@ -478,6 +521,7 @@ it.each([
 						}
 					]
 				});
+
 				pi.on('session_start', async (_event, context) => {
 					await broker.acquire(context);
 				});
@@ -490,6 +534,7 @@ it.each([
 			'Recovery: shutdown-allocation (lease manual cleanup)',
 			'Remove shutdown-allocation.'
 		].join('\n');
+
 		await withPiRuntime([extension], async (runtime, errors) => {
 			const session = runtime.session;
 			const isIdle = vi
@@ -498,8 +543,10 @@ it.each([
 			const isStreaming = vi
 				.spyOn(session, 'isStreaming', 'get')
 				.mockReturnValue(isBusy);
+
 			try {
 				await runtime.dispose();
+
 				const messages = session.messages
 					.filter((message) => message.role === 'custom')
 					.map(({ content, display }) => ({ content, display }));
@@ -510,6 +557,7 @@ it.each([
 							? [entry.data]
 							: []
 					);
+
 				expect({ disposals, errors, messages, entries }).toStrictEqual({
 					disposals: 1,
 					errors: [],

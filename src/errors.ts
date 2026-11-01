@@ -60,15 +60,19 @@ export abstract class SandboxError<Name extends string = string> extends Error {
 		super(message, options);
 		this.name = name;
 		this.operation = context.operation;
+
 		if (context.configurationSource !== undefined) {
 			this.configurationSource = context.configurationSource;
 		}
+
 		if (context.providerId !== undefined) {
 			this.providerId = context.providerId;
 		}
+
 		if (context.backendId !== undefined) {
 			this.backendId = context.backendId;
 		}
+
 		if (context.recovery !== undefined) {
 			this.recovery = Object.freeze({ ...context.recovery });
 		}
@@ -84,6 +88,7 @@ export class SandboxInitialisationError extends SandboxError<'SandboxInitialisat
 	Stable identity used by the structural guard across SDK copies.
 	*/
 	static readonly errorName = 'SandboxInitialisationError';
+
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			SandboxInitialisationError.errorName,
@@ -103,6 +108,7 @@ export class DuplicateBrokerError extends SandboxError<'DuplicateBrokerError'> {
 	Stable identity used by the structural guard across SDK copies.
 	*/
 	static readonly errorName = 'DuplicateBrokerError';
+
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			DuplicateBrokerError.errorName,
@@ -122,6 +128,7 @@ export class IncompatibleSandboxProtocolError extends SandboxError<'Incompatible
 	Stable identity used by the structural guard across SDK copies.
 	*/
 	static readonly errorName = 'IncompatibleSandboxProtocolError';
+
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			IncompatibleSandboxProtocolError.errorName,
@@ -141,6 +148,7 @@ export class InvalidSandboxDeclarationError extends SandboxError<'InvalidSandbox
 	Stable identity used by the structural guard across SDK copies.
 	*/
 	static readonly errorName = 'InvalidSandboxDeclarationError';
+
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			InvalidSandboxDeclarationError.errorName,
@@ -160,6 +168,7 @@ export class InvalidSandboxConfigError extends SandboxError<'InvalidSandboxConfi
 	Stable identity used by the structural guard across SDK copies.
 	*/
 	static readonly errorName = 'InvalidSandboxConfigError';
+
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			InvalidSandboxConfigError.errorName,
@@ -183,6 +192,7 @@ export class InvalidSandboxRequestError extends SandboxError<'InvalidSandboxRequ
 	Stable identity used by the structural guard across SDK copies.
 	*/
 	static readonly errorName = 'InvalidSandboxRequestError';
+
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			InvalidSandboxRequestError.errorName,
@@ -202,6 +212,7 @@ export class ProviderNotFoundError extends SandboxError<'ProviderNotFoundError'>
 	Stable identity used by the structural guard across SDK copies.
 	*/
 	static readonly errorName = 'ProviderNotFoundError';
+
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			ProviderNotFoundError.errorName,
@@ -221,6 +232,7 @@ export class DuplicateProviderError extends SandboxError<'DuplicateProviderError
 	Stable identity used by the structural guard across SDK copies.
 	*/
 	static readonly errorName = 'DuplicateProviderError';
+
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			DuplicateProviderError.errorName,
@@ -239,6 +251,7 @@ export class UnsupportedSandboxCapabilityError extends SandboxError<'Unsupported
 	Stable identity used by the structural guard across SDK copies.
 	*/
 	static readonly errorName = 'UnsupportedSandboxCapabilityError';
+
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			UnsupportedSandboxCapabilityError.errorName,
@@ -258,6 +271,7 @@ export class UnsupportedSandboxPolicyError extends SandboxError<'UnsupportedSand
 	Stable identity used by the structural guard across SDK copies.
 	*/
 	static readonly errorName = 'UnsupportedSandboxPolicyError';
+
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			UnsupportedSandboxPolicyError.errorName,
@@ -277,6 +291,7 @@ export class SandboxStartupError extends SandboxError<'SandboxStartupError'> {
 	Stable identity used by the structural guard across SDK copies.
 	*/
 	static readonly errorName = 'SandboxStartupError';
+
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			SandboxStartupError.errorName,
@@ -296,6 +311,7 @@ export class StaleSandboxHandleError extends SandboxError<'StaleSandboxHandleErr
 	Stable identity used by the structural guard across SDK copies.
 	*/
 	static readonly errorName = 'StaleSandboxHandleError';
+
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			StaleSandboxHandleError.errorName,
@@ -315,6 +331,7 @@ export class SandboxSessionClosingError extends SandboxError<'SandboxSessionClos
 	Stable identity used by the structural guard across SDK copies.
 	*/
 	static readonly errorName = 'SandboxSessionClosingError';
+
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			SandboxSessionClosingError.errorName,
@@ -334,6 +351,7 @@ export class SandboxPermissionDeniedError extends SandboxError<'SandboxPermissio
 	Stable identity used by the structural guard across SDK copies.
 	*/
 	static readonly errorName = 'SandboxPermissionDeniedError';
+
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			SandboxPermissionDeniedError.errorName,
@@ -353,6 +371,7 @@ export class SandboxPathNotFoundError extends SandboxError<'SandboxPathNotFoundE
 	Stable identity used by the structural guard across SDK copies.
 	*/
 	static readonly errorName = 'SandboxPathNotFoundError';
+
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			SandboxPathNotFoundError.errorName,
@@ -372,6 +391,7 @@ export class SandboxOperationError extends SandboxError<'SandboxOperationError'>
 	Stable identity used by the structural guard across SDK copies.
 	*/
 	static readonly errorName = 'SandboxOperationError';
+
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			SandboxOperationError.errorName,
@@ -391,6 +411,7 @@ export class SandboxCleanupError extends SandboxError<'SandboxCleanupError'> {
 	Stable identity used by the structural guard across SDK copies.
 	*/
 	static readonly errorName = 'SandboxCleanupError';
+
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			SandboxCleanupError.errorName,
@@ -420,6 +441,7 @@ export class SandboxCancelledError extends SandboxError<'SandboxCancelledError'>
 	Whether the operation started and its effects are known to have stopped.
 	*/
 	readonly completion: OperationCompletion;
+
 	constructor(
 		context: SandboxErrorContext & {
 			readonly reason: 'caller' | 'shutdown';
@@ -458,6 +480,7 @@ export class SandboxTimeoutError extends SandboxError<'SandboxTimeoutError'> {
 	effects.
 	*/
 	readonly completion: OperationCompletion;
+
 	constructor(
 		context: SandboxErrorContext & { readonly completion: OperationCompletion },
 		options?: ErrorOptions
@@ -492,6 +515,7 @@ export class SandboxOutputCallbackError extends SandboxError<'SandboxOutputCallb
 	effects.
 	*/
 	readonly completion: OperationCompletion;
+
 	constructor(
 		context: SandboxErrorContext & { readonly completion: OperationCompletion },
 		options?: ErrorOptions
@@ -525,6 +549,7 @@ export class SandboxTransportError extends SandboxError<'SandboxTransportError'>
 	The first cancellation source, if cancellation preceded the failure.
 	*/
 	declare readonly reason?: CancellationReason;
+
 	constructor(
 		context: SandboxErrorContext & { readonly reason?: CancellationReason },
 		options?: ErrorOptions
@@ -535,6 +560,7 @@ export class SandboxTransportError extends SandboxError<'SandboxTransportError'>
 			context,
 			options
 		);
+
 		if (context.reason !== undefined) {
 			this.reason = context.reason;
 		}
@@ -560,6 +586,7 @@ export class UnconfirmedSandboxTerminationError extends SandboxError<'Unconfirme
 	The first cancellation source, if cancellation preceded the failure.
 	*/
 	declare readonly reason?: CancellationReason;
+
 	constructor(
 		context: SandboxErrorContext & { readonly reason?: CancellationReason },
 		options?: ErrorOptions
@@ -570,6 +597,7 @@ export class UnconfirmedSandboxTerminationError extends SandboxError<'Unconfirme
 			context,
 			options
 		);
+
 		if (context.reason !== undefined) {
 			this.reason = context.reason;
 		}
@@ -589,72 +617,92 @@ export function rehydrateSandboxError(
 		case 'SandboxInitialisationError': {
 			return new SandboxInitialisationError(context, options);
 		}
+
 		case 'DuplicateBrokerError': {
 			return new DuplicateBrokerError(context, options);
 		}
+
 		case 'IncompatibleSandboxProtocolError': {
 			return new IncompatibleSandboxProtocolError(context, options);
 		}
+
 		case 'InvalidSandboxDeclarationError': {
 			return new InvalidSandboxDeclarationError(context, options);
 		}
+
 		case 'InvalidSandboxConfigError': {
 			return new InvalidSandboxConfigError(context, options);
 		}
+
 		case 'InvalidSandboxRequestError': {
 			return new InvalidSandboxRequestError(context, options);
 		}
+
 		case 'ProviderNotFoundError': {
 			return new ProviderNotFoundError(context, options);
 		}
+
 		case 'DuplicateProviderError': {
 			return new DuplicateProviderError(context, options);
 		}
+
 		case 'UnsupportedSandboxCapabilityError': {
 			return new UnsupportedSandboxCapabilityError(context, options);
 		}
+
 		case 'UnsupportedSandboxPolicyError': {
 			return new UnsupportedSandboxPolicyError(context, options);
 		}
+
 		case 'SandboxStartupError': {
 			return new SandboxStartupError(context, options);
 		}
+
 		case 'StaleSandboxHandleError': {
 			return new StaleSandboxHandleError(context, options);
 		}
+
 		case 'SandboxSessionClosingError': {
 			return new SandboxSessionClosingError(context, options);
 		}
+
 		case 'SandboxPermissionDeniedError': {
 			return new SandboxPermissionDeniedError(context, options);
 		}
+
 		case 'SandboxPathNotFoundError': {
 			return new SandboxPathNotFoundError(context, options);
 		}
+
 		case 'SandboxOperationError': {
 			return new SandboxOperationError(context, options);
 		}
+
 		case 'SandboxCleanupError': {
 			return new SandboxCleanupError(context, options);
 		}
+
 		case 'SandboxCancelledError': {
 			return new SandboxCancelledError(
 				{ ...context, reason: error.reason, completion: error.completion },
 				options
 			);
 		}
+
 		case 'SandboxTimeoutError': {
 			return new SandboxTimeoutError(
 				{ ...context, completion: error.completion },
 				options
 			);
 		}
+
 		case 'SandboxOutputCallbackError': {
 			return new SandboxOutputCallbackError(
 				{ ...context, completion: error.completion },
 				options
 			);
 		}
+
 		case 'SandboxTransportError': {
 			return new SandboxTransportError(
 				{
@@ -664,6 +712,7 @@ export function rehydrateSandboxError(
 				options
 			);
 		}
+
 		case 'UnconfirmedSandboxTerminationError': {
 			return new UnconfirmedSandboxTerminationError(
 				{
@@ -715,9 +764,11 @@ function isError(value: unknown): value is SandboxErrorInfo {
 	) {
 		return false;
 	}
+
 	const isCompleted = ['not-started', 'confirmed', 'unknown'].some(
 		(completion) => completion === value.completion
 	);
+
 	switch (value.name) {
 		case 'SandboxCancelledError': {
 			return (
@@ -725,12 +776,15 @@ function isError(value: unknown): value is SandboxErrorInfo {
 				(value.reason === 'caller' || value.reason === 'shutdown')
 			);
 		}
+
 		case 'SandboxTimeoutError': {
 			return isCompleted && value.reason === 'deadline';
 		}
+
 		case 'SandboxOutputCallbackError': {
 			return isCompleted && value.reason === 'output';
 		}
+
 		case 'SandboxTransportError':
 		case 'UnconfirmedSandboxTerminationError': {
 			return (
@@ -741,6 +795,7 @@ function isError(value: unknown): value is SandboxErrorInfo {
 					))
 			);
 		}
+
 		case 'SandboxInitialisationError':
 		case 'DuplicateBrokerError':
 		case 'IncompatibleSandboxProtocolError':
@@ -760,6 +815,7 @@ function isError(value: unknown): value is SandboxErrorInfo {
 		case 'SandboxCleanupError': {
 			return true;
 		}
+
 		default: {
 			return false;
 		}
@@ -790,6 +846,7 @@ export function isSandboxError<
 	value: unknown,
 	errorClass: Class
 ): value is Extract<SandboxErrorInfo, { readonly name: Class['errorName'] }>;
+
 export function isSandboxError(
 	value: unknown,
 	errorClass?: { readonly errorName: SandboxErrorName }

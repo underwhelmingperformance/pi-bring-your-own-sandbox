@@ -10,6 +10,7 @@ import {
 it('reports a loaded integration without allocating or verifying tool ownership', () => {
 	const events = createEventBus();
 	const before = describeShellIntegration(events);
+
 	registerShellIntegrationDiagnostics(events);
 	expect({ before, after: describeShellIntegration(events) }).toStrictEqual({
 		before: 'Pi shell integration: not requested; routing unverified.',
@@ -22,6 +23,7 @@ it.each([
 	{ kind: 'unexpected', discoveryVersion: 1 }
 ])('reports an unrecognised diagnostic reply as unavailable: %j', (reply) => {
 	const events = createEventBus();
+
 	respond(events, 'pi-byos:diagnostics:v1:shell-integration', reply);
 	expect(describeShellIntegration(events)).toBe(
 		'Pi shell integration: request status unavailable; routing unverified.'
@@ -30,13 +32,16 @@ it.each([
 
 it('ignores a diagnostic reply after collection closes', async () => {
 	const events = createEventBus();
+
 	respond(
 		events,
 		'pi-byos:diagnostics:v1:shell-integration',
 		{ kind: 'pi-byos.shell-integration', discoveryVersion: 1 },
 		true
 	);
+
 	const result = describeShellIntegration(events);
+
 	await Promise.resolve();
 	expect(result).toBe(
 		'Pi shell integration: not requested; routing unverified.'

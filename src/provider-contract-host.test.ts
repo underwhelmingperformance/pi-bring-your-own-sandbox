@@ -50,25 +50,30 @@ defineSandboxProviderTests({
 		const temporary = await mkdtemp(path.join(tmpdir(), 'pi-byos-contract-'));
 		const directory = await realpath(temporary);
 		const seed = new Uint8Array([0, 255, 13, 10]);
+
 		await writeFile(path.join(directory, 'seed'), seed);
 		await mkdir(path.join(directory, 'search'));
 		await writeFile(
 			path.join(directory, 'search', 'fixture.txt'),
 			'before\nneedle\nafter\n'
 		);
+
 		const directoryStat = await stat(path.join(directory, 'search'));
 		const child =
 			'require("node:fs").writeFileSync("job.pid",String(process.pid));process.stdout.write("ready\\n");setInterval(()=>{},1000)';
 		const parent = `require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(child)}],{stdio:['ignore','inherit','inherit']});setInterval(()=>{},1000)`;
+
 		const verifyStopped = async () => {
 			const pid = Number(
 				await readFile(path.join(directory, 'job.pid'), 'utf8')
 			);
+
 			expect(pid).toBeGreaterThan(0);
 			expect(() => process.kill(pid, 0)).toThrow(
 				expect.objectContaining({ code: 'ESRCH' })
 			);
 		};
+
 		return {
 			configuration: undefined,
 			hostWorkspace: directory,
@@ -170,8 +175,10 @@ defineSandboxProviderTests({
 					await readFile(path.join(directory, 'job.pid'));
 				} catch (error) {
 					expect(error).toMatchObject({ code: 'ENOENT' });
+
 					return;
 				}
+
 				await verifyStopped();
 			},
 			cleanup: () => rm(directory, { recursive: true, force: true })

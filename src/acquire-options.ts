@@ -26,12 +26,15 @@ function isPartialPolicy(value: unknown): value is Partial<SandboxPolicy> {
 			if (key === 'workspaceAccess') {
 				return item === undefined || isWorkspaceAccess(item);
 			}
+
 			if (key === 'filesystemScope') {
 				return item === undefined || isFilesystemScope(item);
 			}
+
 			if (key === 'networkAccess') {
 				return item === undefined || isNetworkAccess(item);
 			}
+
 			return false;
 		})
 	);
@@ -39,6 +42,7 @@ function isPartialPolicy(value: unknown): value is Partial<SandboxPolicy> {
 
 export function acquireOptions(input: unknown): SandboxAcquireOptions {
 	const value = input === undefined ? {} : input;
+
 	if (
 		!isRecord(value) ||
 		Object.keys(value).some(
@@ -50,10 +54,12 @@ export function acquireOptions(input: unknown): SandboxAcquireOptions {
 	) {
 		throw new InvalidSandboxRequestError({ operation: 'acquire' });
 	}
+
 	const options = operationOptions(
 		{ signal: value.signal, timeoutMs: value.timeoutMs },
 		'acquire'
 	);
+
 	return Object.freeze({
 		...options,
 		...(value.capabilities !== undefined && {
@@ -84,6 +90,7 @@ export function checkRequirements(
 		providerId: sandbox.providerId,
 		backendId: sandbox.backendId
 	};
+
 	if (
 		options.capabilities?.some(
 			(capability) => !sandbox.capabilities.operations.includes(capability)
@@ -91,6 +98,7 @@ export function checkRequirements(
 	) {
 		throw new UnsupportedSandboxCapabilityError(identity);
 	}
+
 	if (
 		options.policy !== undefined &&
 		!isPolicySatisfied(sandbox.policy, { ...sandbox.policy, ...options.policy })

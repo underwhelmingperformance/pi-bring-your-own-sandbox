@@ -24,30 +24,39 @@ function decode(value: unknown, isPath = false): string {
 	if (!isRecord(value)) {
 		throw invalidOutput();
 	}
+
 	if (typeof value.text === 'string' && value.bytes === undefined) {
 		return value.text;
 	}
+
 	if (typeof value.bytes !== 'string' || value.text !== undefined) {
 		throw invalidOutput();
 	}
+
 	const bytes = Buffer.from(value.bytes, 'base64');
+
 	if (bytes.toString('base64') !== value.bytes) {
 		throw invalidOutput();
 	}
+
 	return new TextDecoder('utf-8', { fatal: isPath }).decode(bytes);
 }
 
 function lineText(value: unknown): string {
 	let text = decode(value);
+
 	if (text.endsWith('\n')) {
 		text = text.slice(0, -1);
+
 		if (text.endsWith('\r')) {
 			text = text.slice(0, -1);
 		}
 	}
+
 	if (text.includes('\n')) {
 		throw invalidOutput();
 	}
+
 	return text;
 }
 
@@ -58,13 +67,17 @@ function adjacent(
 	direction: -1 | 1
 ): string[] {
 	const result: string[] = [];
+
 	for (let offset = 1; offset <= count; offset++) {
 		const text = lines.get(line + offset * direction);
+
 		if (text === undefined) {
 			break;
 		}
+
 		result.push(text);
 	}
+
 	return direction === -1 ? result.toReversed() : result;
 }
 
@@ -99,15 +112,20 @@ export class GrepOutput implements SearchOutput<GrepResult> {
 		) {
 			throw invalidOutput();
 		}
+
 		this.#file = undefined;
+
 		if (data.binary_offset !== null) {
 			return;
 		}
+
 		for (const line of file.matches) {
 			const text = file.lines.get(line);
+
 			if (text === undefined) {
 				throw invalidOutput();
 			}
+
 			this.#matches.add({
 				path: file.path,
 				line,
@@ -122,23 +140,32 @@ export class GrepOutput implements SearchOutput<GrepResult> {
 		if (this.#hasSummary) {
 			throw invalidOutput();
 		}
+
 		const event: unknown = JSON.parse(row);
+
 		if (!isRecord(event) || !isRecord(event.data)) {
 			throw invalidOutput();
 		}
+
 		const { data } = event;
+
 		if (event.type === 'summary') {
 			if (this.#file !== undefined) {
 				throw invalidOutput();
 			}
+
 			this.#hasSummary = true;
+
 			return;
 		}
+
 		const filename = decode(data.path, true).replace(/^\.\//u, '');
+
 		if (event.type === 'begin') {
 			if (this.#file !== undefined) {
 				throw invalidOutput();
 			}
+
 			this.#file = {
 				path: filename,
 				lines: new Map(),
@@ -146,16 +173,22 @@ export class GrepOutput implements SearchOutput<GrepResult> {
 				lastLine: 0,
 				lastMatch: 0
 			};
+
 			return;
 		}
+
 		const file = this.#file;
+
 		if (file?.path !== filename) {
 			throw invalidOutput();
 		}
+
 		if (event.type === 'end') {
 			this.#end(data, file);
+
 			return;
 		}
+
 		if (
 			(event.type !== 'match' && event.type !== 'context') ||
 			typeof data.line_number !== 'number' ||
@@ -164,11 +197,15 @@ export class GrepOutput implements SearchOutput<GrepResult> {
 		) {
 			throw invalidOutput();
 		}
+
 		file.lastLine = data.line_number;
+
 		const canRetainMatch = file.matches.size <= this.#limit;
+
 		if (canRetainMatch || data.line_number - file.lastMatch <= this.#context) {
 			file.lines.set(data.line_number, lineText(data.lines));
 		}
+
 		if (!(canRetainMatch && event.type === 'match')) {
 			return;
 		}
@@ -183,9 +220,11 @@ export class GrepOutput implements SearchOutput<GrepResult> {
 
 	finish(): GrepResult {
 		this.#output.finish();
+
 		if (!this.#hasSummary || this.#file !== undefined) {
 			throw invalidOutput();
 		}
+
 		return {
 			matches: this.#matches.values,
 			truncated: this.#matches.isTruncated

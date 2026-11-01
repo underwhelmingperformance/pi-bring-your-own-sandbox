@@ -27,6 +27,7 @@ it.each(['personal', 'project'] as const)(
 				source === 'personal'
 					? path.join(sources.agentDirectory, 'byos.json')
 					: path.join(sources.workspace, '.pi', 'byos.json');
+
 			await writeFile(filename, JSON.stringify({ provider: 'external' }));
 			await expect(readConfig(sources)).rejects.toMatchObject({
 				name: 'InvalidSandboxConfigError',
@@ -222,7 +223,9 @@ it.each(['null', 'false', '0', '"value"', '[]', '{}'])(
 				path.join(sources.agentDirectory, 'byos.json'),
 				`{"providerConfig":${payload}}`
 			);
+
 			const expected: unknown = JSON.parse(payload);
+
 			expect(await readConfig(sources)).toStrictEqual({
 				selection: {
 					providerId: 'passthrough',
@@ -286,6 +289,7 @@ it('does not automatically select an installed external provider', async () => {
 	await withSources(async (sources) => {
 		const config = await readConfig(sources);
 		const passthrough = service('passthrough');
+
 		expect(selectProvider(config, [passthrough, service('external')])).toBe(
 			passthrough
 		);

@@ -48,13 +48,17 @@ async function fixture(
 	const backend = new MemoryBackend();
 	let opens = 0;
 	let disposals = 0;
+
 	backend.dispose = () => {
 		disposals++;
+
 		return mode === 'cleanup-failure'
 			? Promise.reject(new Error(secret))
 			: Promise.resolve();
 	};
+
 	const current: { pi?: ExtensionAPI; context?: SandboxContext } = {};
+
 	await withPiRuntime(
 		[
 			{ name: 'framework', factory: sandboxExtension },
@@ -75,10 +79,12 @@ async function fixture(
 							if (!isRecord(input) || input.token !== secret) {
 								throw new Error(secret);
 							}
+
 							return { token: secret };
 						},
 						open() {
 							opens++;
+
 							return mode === 'startup-failure'
 								? Promise.reject(new Error(secret))
 								: Promise.resolve(backend);
@@ -99,9 +105,11 @@ async function fixture(
 		],
 		async (runtime, errors) => {
 			const { pi, context } = current;
+
 			if (pi === undefined || context === undefined) {
 				throw new Error('Pi did not initialise the diagnostic fixture.');
 			}
+
 			await execute({
 				pi,
 				context,
@@ -115,9 +123,11 @@ async function fixture(
 			includeBuiltins: true,
 			async prepare(_directory, agentDirectory) {
 				vi.stubEnv('PI_CODING_AGENT_DIR', agentDirectory);
+
 				if (mode === 'default') {
 					return;
 				}
+
 				const config =
 					mode === 'invalid-config'
 						? `{"token":"${secret}",`
@@ -126,6 +136,7 @@ async function fixture(
 								policy: backend.policy,
 								providerConfig: { token: secret }
 							});
+
 				await writeFile(path.join(agentDirectory, 'byos.json'), config);
 			}
 		}
@@ -137,6 +148,7 @@ function messages(runtime: AgentSessionRuntime) {
 		AgentSessionRuntime['session']['messages'][number],
 		{ role: 'custom' }
 	>;
+
 	return runtime.session.messages
 		.filter(
 			(message): message is DiagnosticMessage =>
@@ -148,11 +160,15 @@ function messages(runtime: AgentSessionRuntime) {
 it('reports default status in a headless Pi session without opening a backend or changing tools', async () => {
 	await fixture('default', async ({ pi, context, runtime, errors, counts }) => {
 		const tools = runtime.session.getActiveToolNames();
+
 		await runtime.session.prompt('/byos status');
+
 		const status = await discoverBroker(pi.events)?.status(context);
+
 		if (status === undefined) {
 			throw new Error('The framework did not publish a broker.');
 		}
+
 		expect({
 			errors,
 			tools,
@@ -207,7 +223,9 @@ it('reports the target and effective policy after acquisition', async () => {
 		'configured',
 		async ({ pi, context, runtime, errors, counts }) => {
 			const sandbox = await getSandbox(pi, context);
+
 			await runtime.session.prompt('/byos');
+
 			const output = messages(runtime).map((message) => ({
 				...message,
 				content:
@@ -215,6 +233,7 @@ it('reports the target and effective policy after acquisition', async () => {
 						? message.content.replaceAll(sandbox.generationId, '<generation>')
 						: message.content
 			}));
+
 			expect({ errors, ...counts(), output }).toStrictEqual({
 				errors: [],
 				opens: 1,
@@ -240,7 +259,9 @@ it('keeps provider enumeration available after startup fails and excludes raw er
 			});
 			await runtime.session.prompt('/byos providers');
 			await runtime.session.prompt('/byos status');
+
 			const output = JSON.stringify(messages(runtime));
+
 			expect({
 				errors,
 				...counts(),
@@ -264,7 +285,9 @@ it('reports incomplete cleanup without exposing raw disposal errors', async () =
 		await getSandbox(pi, context);
 		await closeSandboxSession(pi, context);
 		await runtime.session.prompt('/byos status');
+
 		const output = JSON.stringify(messages(runtime));
+
 		expect({
 			...counts(),
 			hasClosedState: output.includes('State: closed'),
@@ -285,7 +308,9 @@ it('reports incomplete cleanup without exposing raw disposal errors', async () =
 it('remains usable after Pi records an initial configuration error', async () => {
 	await fixture('invalid-config', async ({ runtime, errors, counts }) => {
 		await runtime.session.prompt('/byos status');
+
 		const output = JSON.stringify(messages(runtime));
+
 		expect({
 			...counts(),
 			hasInitialError: errors.length > 0,
@@ -321,7 +346,9 @@ it('reports requested shell integration without claiming verified interception',
 		'default',
 		async ({ runtime, errors, counts }) => {
 			const tools = runtime.session.getActiveToolNames();
+
 			await runtime.session.prompt('/byos status');
+
 			const lines = messages(runtime).flatMap((message) =>
 				typeof message.content === 'string'
 					? message.content
@@ -329,6 +356,7 @@ it('reports requested shell integration without claiming verified interception',
 							.filter((line) => line.startsWith('Pi shell integration:'))
 					: []
 			);
+
 			expect({
 				errors,
 				...counts(),

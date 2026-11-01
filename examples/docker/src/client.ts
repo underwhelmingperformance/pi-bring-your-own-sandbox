@@ -77,12 +77,15 @@ export class NodeDockerClient implements DockerClient {
 		};
 		const failure = (cause: unknown) =>
 			new SandboxTransportError(identity, { cause });
+
 		if (command.context.deadline <= Date.now()) {
 			return Promise.reject(
 				failure(new Error('The Docker CLI deadline has expired.'))
 			);
 		}
+
 		let child: ChildProcessWithoutNullStreams;
+
 		try {
 			child = this.#spawn(
 				this.#configuration.executable,
@@ -92,18 +95,23 @@ export class NodeDockerClient implements DockerClient {
 		} catch (error) {
 			return Promise.reject(failure(error));
 		}
+
 		child.stdin.end();
+
 		const pending = Promise.withResolvers<DockerCommandResult>();
 		const stdout: Uint8Array[] = [];
 		const stderr: Uint8Array[] = [];
 		let remaining = 1_048_576;
 		let isFinished = false;
+
 		const stop = (cause: unknown) => {
 			if (isFinished) {
 				return;
 			}
+
 			isFinished = true;
 			timer.dispose();
+
 			if (child.pid !== undefined) {
 				try {
 					this.#signals.kill(-child.pid, 'SIGKILL');
@@ -120,34 +128,43 @@ export class NodeDockerClient implements DockerClient {
 					}
 				}
 			}
+
 			child.stdin.destroy();
 			child.stdout.destroy();
 			child.stderr.destroy();
 			child.unref();
 			pending.reject(failure(cause));
 		};
+
 		const timer = new DeadlineTimer(command.context.deadline, () => {
 			stop(new Error('The Docker CLI did not finish before its deadline.'));
 		});
+
 		const deliver = (stream: 'stdout' | 'stderr', bytes: Uint8Array) => {
 			if (isFinished) {
 				return;
 			}
+
 			try {
 				if (command.onOutput !== undefined) {
 					command.onOutput({ stream, data: bytes });
+
 					return;
 				}
+
 				if (bytes.byteLength > remaining) {
 					stop(new Error('Docker management output exceeded 1 MiB.'));
+
 					return;
 				}
+
 				remaining -= bytes.byteLength;
 				(stream === 'stdout' ? stdout : stderr).push(new Uint8Array(bytes));
 			} catch (error_) {
 				stop(error_);
 			}
 		};
+
 		child.stdout.on('data', (bytes: Buffer) => {
 			deliver('stdout', bytes);
 		});
@@ -159,18 +176,23 @@ export class NodeDockerClient implements DockerClient {
 			if (isFinished) {
 				return;
 			}
+
 			isFinished = true;
 			timer.dispose();
+
 			if (status === null) {
 				pending.reject(failure(undefined));
+
 				return;
 			}
+
 			pending.resolve({
 				status,
 				stdout: new Uint8Array(Buffer.concat(stdout)),
 				stderr: new Uint8Array(Buffer.concat(stderr))
 			});
 		});
+
 		return pending.promise;
 	}
 }

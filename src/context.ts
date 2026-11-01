@@ -16,6 +16,7 @@ export function inspectContext(
 		const workspace = context.cwd;
 		const sessionId = context.sessionManager.getSessionId();
 		const isProjectTrusted = context.isProjectTrusted();
+
 		if (
 			typeof isProjectTrusted !== 'boolean' ||
 			!isNonEmptyString(workspace) ||
@@ -23,6 +24,7 @@ export function inspectContext(
 		) {
 			throw new StaleSandboxHandleError({ operation });
 		}
+
 		return Object.freeze({ workspace, sessionId, isProjectTrusted });
 	} catch (error) {
 		throw new StaleSandboxHandleError({ operation }, { cause: error });

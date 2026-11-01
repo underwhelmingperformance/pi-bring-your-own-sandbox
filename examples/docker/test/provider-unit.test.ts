@@ -36,7 +36,9 @@ class FakeDocker implements DockerClient {
 
 	command(command: DockerCommand): Promise<DockerCommandResult> {
 		this.commands.push(command);
+
 		const [operation, ...arguments_] = command.args;
+
 		if (
 			operation === 'volume' &&
 			arguments_[0] === 'create' &&
@@ -45,30 +47,36 @@ class FakeDocker implements DockerClient {
 			this.pendingAllocations.push(() => {
 				this.isVolumePresent = true;
 			});
+
 			return Promise.reject(
 				new SandboxTransportError({ operation: command.operation })
 			);
 		}
+
 		if (operation === 'create' && this.lostCreation === 'container') {
 			this.pendingAllocations.push(() => {
 				this.containers.add(arguments_[1] ?? 'missing');
 			});
+
 			return Promise.reject(
 				new SandboxTransportError({ operation: command.operation })
 			);
 		}
+
 		const result = (stdout = '') =>
 			Promise.resolve({
 				status: 0,
 				stdout: new TextEncoder().encode(stdout),
 				stderr: new Uint8Array()
 			});
+
 		if (operation === 'volume') {
 			if (arguments_[0] === 'create') {
 				this.isVolumePresent = true;
 			} else if (arguments_[0] === 'rm') {
 				this.isVolumePresent = false;
 			}
+
 			return result(
 				arguments_[0] === 'ls' && this.isVolumePresent
 					? this.commands
@@ -80,32 +88,41 @@ class FakeDocker implements DockerClient {
 					: ''
 			);
 		}
+
 		if (operation === 'create') {
 			this.containers.add(arguments_[1] ?? 'missing');
+
 			return result('container-id');
 		}
+
 		if (operation === 'rm') {
 			if (this.hasLostRemoval) {
 				for (const finish of this.waiting.values()) {
 					finish();
 				}
+
 				return Promise.reject(new SandboxTransportError({ operation: 'exec' }));
 			}
+
 			for (const name of arguments_.slice(1)) {
 				this.containers.delete(name);
 				this.waiting.get(name)?.();
 			}
+
 			return result();
 		}
+
 		if (operation === 'container') {
 			return result([...this.containers].join('\n'));
 		}
+
 		if (operation === 'inspect') {
 			const created = this.commands.findLast(
 				(entry) => entry.args[0] === 'create'
 			);
 			const isLauncher =
 				created?.args.includes('--entrypoint=/usr/local/bin/node') === true;
+
 			return result(
 				JSON.stringify({
 					Running: false,
@@ -115,9 +132,11 @@ class FakeDocker implements DockerClient {
 				})
 			);
 		}
+
 		if (operation === 'start' && this.isRunningProbe) {
 			return new Promise((resolve) => {
 				const name = arguments_.at(-1) ?? 'missing';
+
 				this.waiting.set(name, () => {
 					resolve({
 						status: 137,
@@ -125,18 +144,22 @@ class FakeDocker implements DockerClient {
 						stderr: new Uint8Array()
 					});
 				});
+
 				const ready = Buffer.from('ready').toString('base64');
 				const frame = JSON.stringify({ kind: 'stdout', data: ready }) + '\n';
+
 				command.onOutput?.({
 					stream: 'stdout',
 					data: new TextEncoder().encode(frame)
 				});
 			});
 		}
+
 		if (operation === 'start') {
 			const created = this.commands.findLast(
 				(entry) => entry.args[0] === 'create'
 			);
+
 			if (created?.args.includes('--entrypoint=/usr/local/bin/node') === true) {
 				command.onOutput?.({
 					stream: 'stdout',
@@ -149,6 +172,7 @@ class FakeDocker implements DockerClient {
 				});
 			}
 		}
+
 		return result();
 	}
 }
@@ -176,8 +200,11 @@ const request: SandboxOpenRequest<DockerConfig> = {
 
 it('reports confirmed broker cleanup after Docker opening releases partial allocations', async () => {
 	const docker = new FakeDocker();
+
 	docker.bootstrapStatus = 1;
+
 	let agentDirectory = '';
+
 	await withPiRuntime(
 		[
 			{
@@ -231,6 +258,7 @@ it('reports confirmed broker cleanup after Docker opening releases partial alloc
 it('rejects an unsupported policy before contacting Docker', async () => {
 	const docker = new FakeDocker();
 	const provider = createDockerProvider(() => docker);
+
 	await expect(
 		provider.open(
 			{
@@ -264,7 +292,9 @@ it('uses literal argv, isolated mounts and explicit target environment overrides
 			recoveries.push(recovery);
 		}
 	});
+
 	docker.status = 7;
+
 	const outcome = await backend.exec(
 		{
 			kind: 'argv',
@@ -283,6 +313,7 @@ it('uses literal argv, isolated mounts and explicit target environment overrides
 	const created = docker.commands.findLast(
 		(entry) => entry.args[0] === 'create'
 	)?.args;
+
 	expect({
 		outcome,
 		capabilities: backend.capabilities,
@@ -302,12 +333,15 @@ it('uses literal argv, isolated mounts and explicit target environment overrides
 		},
 		recoveries: [backend.recovery]
 	});
+
 	if (backend.recovery.kind !== 'allocation') {
 		throw new Error('The Docker provider must report an allocation.');
 	}
+
 	const jobName: unknown = expect.stringMatching(/^pi-byos-[a-f\d-]+$/);
 	const launcher: unknown = expect.any(String);
 	const invocation: unknown = JSON.parse(created?.at(-1) ?? '{}');
+
 	expect({
 		args: created?.slice(0, -3),
 		launcher: created?.at(-3),
@@ -369,7 +403,9 @@ it('confirms cancellation through daemon removal before permitting another job',
 			expect(recovery.kind).toBe('allocation');
 		}
 	});
+
 	docker.isRunningProbe = true;
+
 	const controller = new AbortController();
 	const operation: BackendProcessContext = {
 		...context(controller.signal),
@@ -381,6 +417,7 @@ it('confirms cancellation through daemon removal before permitting another job',
 		{ kind: 'argv', executable: '/bin/sleep', args: ['60'] },
 		operation
 	);
+
 	expect({ result, containers: docker.containers }).toStrictEqual({
 		result: { kind: 'cancelled', termination: 'confirmed' },
 		containers: new Set()
@@ -400,8 +437,10 @@ it('reports unconfirmed termination when the client finishes but the daemon cann
 			return;
 		}
 	});
+
 	docker.isRunningProbe = true;
 	docker.hasLostRemoval = true;
+
 	const controller = new AbortController();
 	const outcome = await backend.exec(
 		{ kind: 'argv', executable: '/bin/sleep', args: ['60'] },
@@ -412,6 +451,7 @@ it('reports unconfirmed termination when the client finishes but the daemon cann
 			}
 		}
 	);
+
 	expect({ outcome, hasContainer: docker.containers.size > 0 }).toStrictEqual({
 		outcome: { kind: 'cancelled', termination: 'unconfirmed' },
 		hasContainer: true
@@ -423,9 +463,12 @@ it('reports unconfirmed termination when the client finishes but the daemon cann
 
 it('releases a partial allocation when copying the workspace fails', async () => {
 	const docker = new FakeDocker();
+
 	docker.bootstrapStatus = 1;
+
 	const reported: unknown[] = [];
 	let failure: unknown;
+
 	try {
 		await createDockerProvider(() => docker).open(request, {
 			...context(),
@@ -439,11 +482,13 @@ it('releases a partial allocation when copying the workspace fails', async () =>
 	} catch (error) {
 		failure = error;
 	}
+
 	const expectedFailure: unknown = expect.objectContaining({
 		name: 'SandboxOperationError',
 		operation: 'open',
 		recovery: reported[0]
 	});
+
 	expect({
 		failure,
 		hasRecovery: reported.length === 1,
@@ -463,10 +508,13 @@ it.each(['volume', 'container'] as const)(
 	'keeps %s creation uncertain after an empty cleanup query',
 	async (kind) => {
 		const docker = new FakeDocker();
+
 		docker.lostCreation = kind;
+
 		let confirmations = 0;
 		const recoveries: unknown[] = [];
 		let failure: unknown;
+
 		try {
 			await createDockerProvider(() => docker).open(request, {
 				...context(),
@@ -480,17 +528,21 @@ it.each(['volume', 'container'] as const)(
 		} catch (error) {
 			failure = error;
 		}
+
 		const before = {
 			containers: docker.containers.size,
 			hasVolume: docker.isVolumePresent
 		};
+
 		for (const allocate of docker.pendingAllocations) {
 			allocate();
 		}
+
 		const expectedFailure: unknown = expect.objectContaining({
 			name: 'SandboxCleanupError',
 			recovery: recoveries[0]
 		});
+
 		expect({
 			failure,
 			confirmations,

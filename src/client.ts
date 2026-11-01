@@ -20,6 +20,7 @@ export async function getSandbox(
 	options?: SandboxAcquireOptions
 ): Promise<Sandbox> {
 	inspectContext(context, 'acquire');
+
 	return ensureSandboxService(pi).acquire(context, options);
 }
 
@@ -33,5 +34,6 @@ export async function closeSandboxSession(
 	context: SandboxContext
 ): Promise<SandboxCloseReport> {
 	inspectContext(context, 'dispose');
+
 	return ensureSandboxService(pi).close(context);
 }

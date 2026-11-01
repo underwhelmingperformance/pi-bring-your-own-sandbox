@@ -11,11 +11,14 @@ export class MutationQueue {
 		const previous = this.#tail;
 		const pending = Promise.try(async () => {
 			await previous;
+
 			return execute();
 		});
+
 		this.#tail = Promise.try(async () => {
 			await observe(pending);
 		});
+
 		return pending;
 	}
 }

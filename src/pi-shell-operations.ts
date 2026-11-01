@@ -20,6 +20,7 @@ export function createShellOperations(
 	dialect: ShellInvocation['dialect']
 ): BashOperations {
 	const shell = new SandboxShell();
+
 	return {
 		async exec(command, _cwd, options) {
 			try {
@@ -34,6 +35,7 @@ export function createShellOperations(
 						options.onData(Buffer.from(data));
 					}
 				});
+
 				return {
 					exitCode:
 						result.exit.kind === 'code'
@@ -48,6 +50,7 @@ export function createShellOperations(
 				) {
 					throw new Error('aborted', { cause: error });
 				}
+
 				if (
 					isSandboxError(error, SandboxTimeoutError) &&
 					error.completion !== 'unknown'
@@ -57,6 +60,7 @@ export function createShellOperations(
 						{ cause: error }
 					);
 				}
+
 				throw error;
 			}
 		}

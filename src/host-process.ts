@@ -40,14 +40,17 @@ function signalGroup(
 ): 'signalled' | 'denied' | 'missing' {
 	try {
 		signals.kill(-id, signal);
+
 		return 'signalled';
 	} catch (error) {
 		if (isRecord(error) && error.code === 'ESRCH') {
 			return 'missing';
 		}
+
 		if (isRecord(error) && error.code === 'EPERM') {
 			return 'denied';
 		}
+
 		throw error;
 	}
 }
@@ -84,13 +87,16 @@ export class PosixProcessRunner implements HostProcessRunner {
 		if (request.kind === 'argv') {
 			return { executable: request.executable, args: request.args };
 		}
+
 		const executable = this.#shells.get(request.dialect);
+
 		if (executable === undefined) {
 			throw new UnsupportedSandboxCapabilityError({
 				operation: 'exec',
 				providerId: 'passthrough'
 			});
 		}
+
 		return {
 			executable,
 			args:
@@ -116,16 +122,20 @@ export class PosixProcessRunner implements HostProcessRunner {
 				providerId: 'passthrough'
 			});
 		}
+
 		const command = this.#command(request);
 		const environment = new Map(Object.entries(this.#environment));
 		const overrides = Object.entries(request.env ?? {});
+
 		for (const [key, value] of overrides) {
 			if (typeof value === 'string') {
 				environment.set(key, value);
 				continue;
 			}
+
 			environment.delete(key);
 		}
+
 		const child = spawn(command.executable, command.args, {
 			cwd: path.resolve(this.#workspace, request.cwd ?? '.'),
 			env: Object.fromEntries(environment),
@@ -134,8 +144,10 @@ export class PosixProcessRunner implements HostProcessRunner {
 		});
 		const completion: Completion = { isClosed: false };
 		const cancellation: { startedAt?: number } = {};
+
 		const cancel = () => {
 			cancellation.startedAt ??= performance.now();
+
 			if (child.pid !== undefined) {
 				try {
 					signalGroup(child.pid, 'SIGTERM', this.#signals);
@@ -144,6 +156,7 @@ export class PosixProcessRunner implements HostProcessRunner {
 				}
 			}
 		};
+
 		for (const [stream, pipe] of [
 			['stdout', child.stdout],
 			['stderr', child.stderr]
@@ -161,19 +174,24 @@ export class PosixProcessRunner implements HostProcessRunner {
 				cancel();
 			});
 		}
+
 		child.on('error', (error) => {
 			completion.error = error;
 			cancel();
 		});
 		child.on('close', (code, signal) => {
 			completion.isClosed = true;
+
 			if (typeof code === 'number') {
 				completion.exit = { kind: 'code', code };
+
 				return;
 			}
+
 			if (signal === null) {
 				return;
 			}
+
 			completion.exit = {
 				kind: 'signal',
 				signal,
@@ -181,29 +199,36 @@ export class PosixProcessRunner implements HostProcessRunner {
 			};
 		});
 		context.signal.addEventListener('abort', cancel, { once: true });
+
 		if (context.signal.aborted) {
 			cancel();
 		}
+
 		try {
 			for (;;) {
 				const hasGroup =
 					child.pid !== undefined &&
 					signalGroup(child.pid, 0, this.#signals) !== 'missing';
+
 				if (!hasGroup && completion.isClosed) {
 					if (context.signal.aborted) {
 						return { kind: 'cancelled', termination: 'confirmed' };
 					}
+
 					if (completion.error !== undefined) {
 						throw hostError(completion.error, 'exec');
 					}
+
 					if (completion.exit === undefined) {
 						throw new SandboxOperationError({
 							operation: 'exec',
 							providerId: 'passthrough'
 						});
 					}
+
 					return { kind: 'exited', exit: completion.exit };
 				}
+
 				if (
 					hasGroup &&
 					cancellation.startedAt !== undefined &&
@@ -211,6 +236,7 @@ export class PosixProcessRunner implements HostProcessRunner {
 				) {
 					signalGroup(child.pid, 'SIGKILL', this.#signals);
 				}
+
 				await delay(20);
 			}
 		} finally {

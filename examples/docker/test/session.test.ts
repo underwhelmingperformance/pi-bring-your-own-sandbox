@@ -47,6 +47,7 @@ async function withDockerSession(
 ): Promise<void> {
 	let fixture: DockerFixture | undefined;
 	const current: { pi?: SandboxHost; context?: SandboxContext } = {};
+
 	try {
 		await withPiRuntime(
 			[
@@ -56,7 +57,9 @@ async function withDockerSession(
 						if (fixture === undefined) {
 							throw new Error('The Docker workspace was not prepared.');
 						}
+
 						const prepared = fixture;
+
 						registerSandboxProvider(
 							pi,
 							createDockerProvider(() => prepared.providerClient())
@@ -71,6 +74,7 @@ async function withDockerSession(
 			],
 			async (runtime, errors) => {
 				const { pi, context } = current;
+
 				if (
 					pi === undefined ||
 					context === undefined ||
@@ -78,7 +82,9 @@ async function withDockerSession(
 				) {
 					throw new Error('Pi did not initialise the Docker fixture.');
 				}
+
 				const sandbox = await getSandbox(pi, context);
+
 				try {
 					await run({ sandbox, fixture, pi, context, runtime });
 				} finally {
@@ -88,6 +94,7 @@ async function withDockerSession(
 						recoveries: []
 					});
 				}
+
 				expect(errors).toStrictEqual([]);
 				await fixture.verifyDisposed();
 			},
@@ -131,22 +138,28 @@ describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
 				}
 			]);
 			let approvals = 0;
+
 			await withDockerSession(
 				async ({ runtime }) => {
 					runtime.session.setActiveToolsByName(['bash']);
+
 					const selected = runtime.session.modelRuntime.getModel(
 						'scripted',
 						'scripted'
 					);
+
 					if (selected === undefined) {
 						throw new Error('The scripted model was not registered.');
 					}
+
 					await runtime.session.setModel(selected);
 					await runtime.session.prompt('Run the approved Bash tool.');
+
 					const results = model.requests
 						.at(1)
 						?.messages.filter((message) => message.role === 'toolResult')
 						.map(({ content, isError }) => ({ content, isError }));
+
 					expect({ approvals, results }).toStrictEqual({
 						approvals: 1,
 						results: [
@@ -181,6 +194,7 @@ describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
 					new AbortController().signal
 				);
 				const duration: unknown = expect.any(Number);
+
 				expect({ result, allocations: fixture.allocations.size }).toStrictEqual(
 					{
 						result: {
@@ -203,6 +217,7 @@ describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
 					executable: '/bin/sh',
 					args: ['-c', 'kill -USR1 "$$"']
 				});
+
 				await expect(
 					sandbox.exec({
 						kind: 'argv',
@@ -217,11 +232,13 @@ describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
 						args: []
 					})
 				).rejects.toMatchObject({ name: 'SandboxPermissionDeniedError' });
+
 				const nonZero = await sandbox.exec({
 					kind: 'argv',
 					executable: '/bin/sh',
 					args: ['-c', 'exit 127']
 				});
+
 				expect({ signal: signal.exit, nonZero: nonZero.exit }).toStrictEqual({
 					signal: { kind: 'signal', signal: 'SIGUSR1', signalNumber: 10 },
 					nonZero: { kind: 'code', code: 127 }
@@ -246,6 +263,7 @@ describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
 					],
 					env: { NODE_OPTIONS: '--require=/byos-missing-module' }
 				});
+
 				expect({
 					exit: result.exit,
 					stdout: new TextDecoder().decode(result.stdout),
@@ -264,6 +282,7 @@ describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
 				await expect(
 					sandbox.files.readFile('source.txt')
 				).rejects.toMatchObject({ name: 'UnsupportedSandboxCapabilityError' });
+
 				const removed: unknown = JSON.parse('null');
 				const environment = await sandbox.exec(
 					snapshotProcessRequest({
@@ -287,6 +306,7 @@ describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
 					executable: '/bin/cat',
 					args: ['source.txt']
 				});
+
 				expect({
 					environmentExit: environment.exit,
 					hasHostSentinel: keys.has('BYOS_DOCKER_SENTINEL'),
@@ -327,15 +347,18 @@ describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
 							timeoutMs: reason === 'deadline' ? 3000 : 15_000,
 							onOutput() {
 								hasStarted = true;
+
 								if (reason === 'output') {
 									throw new Error('The consumer rejected output.');
 								}
+
 								if (reason === 'caller') {
 									controller.abort();
 								}
 							}
 						}
 					);
+
 					await expect(running).rejects.toMatchObject({
 						name:
 							reason === 'deadline'
@@ -346,11 +369,13 @@ describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
 						completion: 'confirmed'
 					});
 					await fixture.noJobContainers();
+
 					const next = await sandbox.exec({
 						kind: 'argv',
 						executable: '/bin/pwd',
 						args: []
 					});
+
 					expect({
 						hasStarted,
 						exit: next.exit,
@@ -382,6 +407,7 @@ describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
 					}
 				);
 				const duration: unknown = expect.any(Number);
+
 				expect({ result, delivered }).toStrictEqual({
 					result: {
 						exit: { kind: 'code', code: 0 },
@@ -398,6 +424,7 @@ describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
 		it('isolates two sessions with the same empty host workspace', async () => {
 			const fixture = await DockerFixture.create();
 			const backends: SandboxBackend[] = [];
+
 			try {
 				for (const name of ['source.txt', 'nested', 'escape']) {
 					await rm(path.join(fixture.workspace, name), {
@@ -405,7 +432,9 @@ describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
 						force: true
 					});
 				}
+
 				const provider = createDockerProvider(() => fixture.providerClient());
+
 				for (let index = 0; index < 2; index++) {
 					backends.push(
 						await provider.open(
@@ -432,10 +461,13 @@ describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
 						)
 					);
 				}
+
 				const [left, right] = backends;
+
 				if (left === undefined || right === undefined) {
 					throw new Error('Both Docker allocations must open.');
 				}
+
 				const written = await left.exec(
 					{
 						kind: 'shell',
@@ -458,6 +490,7 @@ describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
 						}
 					}
 				);
+
 				expect({
 					isSameAllocation: left.id === right.id,
 					written,

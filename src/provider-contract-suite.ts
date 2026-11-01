@@ -54,6 +54,7 @@ async function bounded<Value>(
 			new Error('The provider contract operation exceeded its deadline.')
 		);
 	}, timeoutMs);
+
 	try {
 		return await Promise.race([
 			run({
@@ -73,15 +74,20 @@ export async function usingProviderFixture<Config>(
 	run: ContractRun
 ): Promise<void> {
 	const timeoutMs = options.timeoutMs ?? 10_000;
+
 	expect(Number.isFinite(timeoutMs) && timeoutMs > 0).toBe(true);
+
 	const fixture = await options.createFixture();
 	let backend: SandboxBackend | undefined;
 	let isCleanupConfirmed = false;
 	const failures: unknown[] = [];
+
 	try {
 		expect(isProviderInfo(options.provider)).toBe(true);
 		expect(options.provider.protocolVersion).toBe(1);
+
 		const config = options.provider.validateConfig(fixture.configuration);
+
 		backend = await bounded(timeoutMs, (context) =>
 			options.provider.open(
 				{
@@ -104,21 +110,28 @@ export async function usingProviderFixture<Config>(
 		);
 		expect(isCleanupConfirmed).toBe(false);
 		validateBackend(backend, options.provider, fixture.policy);
+
 		const capabilities = options.capabilities ?? options.provider.capabilities;
+
 		for (const capability of capabilities.operations) {
 			expect(backend.capabilities.operations).toContain(capability);
 		}
+
 		for (const shell of capabilities.shells) {
 			expect(backend.capabilities.shells).toContain(shell);
 		}
+
 		const opened = backend;
+
 		await bounded(timeoutMs, (context) => run(fixture, opened, context));
 	} catch (error) {
 		failures.push(error);
 	}
+
 	try {
 		if (isRecord(backend) && typeof backend.dispose === 'function') {
 			const closing = backend;
+
 			await bounded(timeoutMs, async (context) => {
 				await closing.dispose(context);
 				await fixture.verifyDisposed();
@@ -127,14 +140,17 @@ export async function usingProviderFixture<Config>(
 	} catch (error) {
 		failures.push(error);
 	}
+
 	try {
 		await bounded(timeoutMs, () => fixture.cleanup());
 	} catch (error) {
 		failures.push(error);
 	}
+
 	if (failures.length === 1) {
 		throw failures[0];
 	}
+
 	if (failures.length > 1) {
 		throw new AggregateError(
 			failures,
@@ -158,6 +174,7 @@ async function checkProcess(
 			);
 		}
 	});
+
 	expect({
 		outcome,
 		stdout: new Uint8Array(Buffer.concat(stdout)),
@@ -181,12 +198,14 @@ export function providerContractCases<Config>(
 					fixture.policy.workspaceAccess === 'read-only' ||
 					fixture.policy.filesystemScope === 'workspace-only' ||
 					fixture.policy.networkAccess === 'denied';
+
 				if (hasRestrictions) {
 					expect(
 						fixture.verifyPolicy,
 						'Supply independent checks for restrictive policies.'
 					).toBeTypeOf('function');
 				}
+
 				await fixture.verifyPolicy?.(backend, context);
 			}
 		},
@@ -194,6 +213,7 @@ export function providerContractCases<Config>(
 			label: 'argv execution',
 			run: async (fixture, backend, context) => {
 				expect(fixture.processes.length).toBeGreaterThan(0);
+
 				for (const probe of fixture.processes) {
 					expect(probe.request.kind).toBe('argv');
 					await checkProcess(backend, probe, context);
@@ -204,10 +224,13 @@ export function providerContractCases<Config>(
 			label: 'confirmed cancellation',
 			run: async (fixture, backend, context) => {
 				const probe = fixture.cancellation;
+
 				expect(probe.ready.byteLength).toBeGreaterThan(0);
+
 				const controller = new AbortController();
 				const stdout: Uint8Array[] = [];
 				let outcome: BackendProcessOutcome;
+
 				try {
 					outcome = await backend.exec(probe.request, {
 						...context,
@@ -216,7 +239,9 @@ export function providerContractCases<Config>(
 							if (output.stream !== 'stdout') {
 								return;
 							}
+
 							stdout.push(new Uint8Array(output.data));
+
 							if (Buffer.concat(stdout).includes(Buffer.from(probe.ready))) {
 								controller.abort();
 							}
@@ -229,8 +254,10 @@ export function providerContractCases<Config>(
 					) {
 						throw error;
 					}
+
 					outcome = { kind: 'cancelled', termination: 'confirmed' };
 				}
+
 				expect({
 					hasStarted: controller.signal.aborted,
 					outcome
@@ -249,15 +276,19 @@ export function providerContractCases<Config>(
 			}
 		}
 	];
+
 	for (const dialect of capabilities.shells) {
 		cases.push({
 			label: `${dialect} execution`,
 			run: async (fixture, backend, context) => {
 				const probe = fixture.shells?.[dialect];
+
 				expect(probe, `Supply a ${dialect} execution probe.`).toBeDefined();
+
 				if (probe === undefined) {
 					return;
 				}
+
 				expect({
 					kind: probe.request.kind,
 					dialect: probe.request.dialect
@@ -266,16 +297,20 @@ export function providerContractCases<Config>(
 			}
 		});
 	}
+
 	if (capabilities.operations.includes('files.read')) {
 		cases.push({
 			label: 'file reading',
 			run: async (fixture, backend, context) => {
 				const probe = fixture.read;
 				const reader = backend.files?.read;
+
 				expect(probe, 'Supply a seeded file for reading.').toBeDefined();
+
 				if (probe === undefined || reader === undefined) {
 					return;
 				}
+
 				await reader.access(probe.path, context);
 				expect({
 					bytes: await reader.readFile(probe.path, context),
@@ -292,29 +327,36 @@ export function providerContractCases<Config>(
 			}
 		});
 	}
+
 	if (capabilities.operations.includes('files.write')) {
 		cases.push({
 			label: 'file mutation',
 			run: async (fixture, backend, context) => {
 				const probe = fixture.write;
 				const writer = backend.files?.write;
+
 				expect(
 					probe,
 					'Supply a writable target and independent read callback.'
 				).toBeDefined();
+
 				if (probe === undefined || writer === undefined) {
 					return;
 				}
+
 				if (fixture.policy.workspaceAccess === 'read-only') {
 					await expect(async () =>
 						writer.writeFile(probe.path, new Uint8Array([42]), context)
 					).rejects.toSatisfy((error: unknown) =>
 						isSandboxError(error, SandboxPermissionDeniedError)
 					);
+
 					return;
 				}
+
 				await writer.mkdir(probe.directory, context);
 				await writer.mkdir(probe.directory, context);
+
 				for (const bytes of [
 					new Uint8Array([0, 255, 13, 10]),
 					new Uint8Array([42])
@@ -326,17 +368,22 @@ export function providerContractCases<Config>(
 			}
 		});
 	}
+
 	if (capabilities.operations.includes('files.list')) {
 		cases.push({
 			label: 'directory listing',
 			run: async (fixture, backend, context) => {
 				const probe = fixture.list;
 				const reader = backend.files?.list;
+
 				expect(probe, 'Supply a seeded directory for listing.').toBeDefined();
+
 				if (probe === undefined || reader === undefined) {
 					return;
 				}
+
 				const entries = await reader.listDirectory(probe.path, context);
+
 				expect(isDirectoryEntries(entries, backend.workspace.pathFlavor)).toBe(
 					true
 				);
@@ -350,6 +397,7 @@ export function providerContractCases<Config>(
 			}
 		});
 	}
+
 	if (capabilities.operations.includes('search.find')) {
 		cases.push({
 			label: 'glob search',
@@ -358,9 +406,12 @@ export function providerContractCases<Config>(
 					fixture.find?.length,
 					'Supply at least one glob query.'
 				).toBeGreaterThan(0);
+
 				const probes = fixture.find ?? [];
+
 				for (const probe of probes) {
 					const result = await backend.search?.find?.(probe.request, context);
+
 					expect(
 						isFindResult(
 							result,
@@ -373,6 +424,7 @@ export function providerContractCases<Config>(
 			}
 		});
 	}
+
 	if (capabilities.operations.includes('search.grep')) {
 		cases.push({
 			label: 'line search',
@@ -381,9 +433,12 @@ export function providerContractCases<Config>(
 					fixture.grep?.length,
 					'Supply at least one line query.'
 				).toBeGreaterThan(0);
+
 				const probes = fixture.grep ?? [];
+
 				for (const probe of probes) {
 					const result = await backend.search?.grep?.(probe.request, context);
+
 					expect(
 						isGrepResult(
 							result,
@@ -397,6 +452,7 @@ export function providerContractCases<Config>(
 			}
 		});
 	}
+
 	return cases;
 }
 

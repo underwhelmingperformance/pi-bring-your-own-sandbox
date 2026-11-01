@@ -23,17 +23,21 @@ function isInvocation(value: unknown): value is TargetInvocation {
 
 function launch(invocation: TargetInvocation): void {
 	const environment = new Map<string, string>();
+
 	for (const [key, value] of Object.entries(process.env)) {
 		if (value !== undefined) {
 			environment.set(key, value);
 		}
 	}
+
 	environment.set('HOME', '/tmp');
+
 	for (const [key, value] of Object.entries(invocation.env)) {
 		if (value === null) {
 			environment.delete(key);
 			continue;
 		}
+
 		environment.set(key, value);
 	}
 
@@ -49,6 +53,7 @@ function launch(invocation: TargetInvocation): void {
 		if (process.stdout.write(JSON.stringify(frame) + '\n')) {
 			return;
 		}
+
 		child.stdout.pause();
 		child.stderr.pause();
 	}
@@ -65,8 +70,10 @@ function launch(invocation: TargetInvocation): void {
 	});
 
 	let failure: LaunchFrame | undefined;
+
 	child.on('error', (error) => {
 		const code: unknown = 'code' in error ? error.code : undefined;
+
 		failure = {
 			kind:
 				code === 'ENOENT' || code === 'ENOTDIR'
@@ -79,8 +86,10 @@ function launch(invocation: TargetInvocation): void {
 	child.on('close', (code, signal) => {
 		if (failure !== undefined) {
 			emit(failure);
+
 			return;
 		}
+
 		if (signal !== null) {
 			emit({
 				kind: 'exited',
@@ -90,17 +99,22 @@ function launch(invocation: TargetInvocation): void {
 					signalNumber: constants.signals[signal]
 				}
 			});
+
 			return;
 		}
+
 		if (code === null) {
 			emit({ kind: 'start-failed' });
+
 			return;
 		}
+
 		emit({ kind: 'exited', exit: { kind: 'code', code } });
 	});
 }
 
 const input: unknown = JSON.parse(process.argv[1] ?? '{}');
+
 if (!isInvocation(input)) {
 	throw new TypeError(
 		'The Docker launcher requires a valid target invocation.'

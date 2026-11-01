@@ -40,7 +40,9 @@ export const provider: SandboxProvider<undefined> = {
 	open(request, context) {
 		state.opens++;
 		context.reportRecovery({ kind: 'none' });
+
 		let isDisposed = false;
+
 		return Promise.resolve({
 			id: 'packed-backend',
 			workspace: {
@@ -55,28 +57,37 @@ export const provider: SandboxProvider<undefined> = {
 			recovery: { kind: 'none' },
 			async exec(invocation, execution) {
 				state.calls.push(invocation);
+
 				if (invocation.kind === 'argv' && invocation.executable === 'wait') {
 					state.isRunning = true;
+
 					const stopped = Promise.withResolvers<undefined>();
+
 					const stop = () => {
 						state.isRunning = false;
 						stopped.resolve(undefined);
 					};
+
 					execution.signal.addEventListener('abort', stop, { once: true });
+
 					try {
 						execution.onOutput({
 							stream: 'stdout',
 							data: new TextEncoder().encode('ready')
 						});
+
 						if (execution.signal.aborted) {
 							stop();
 						}
+
 						await stopped.promise;
+
 						return { kind: 'cancelled', termination: 'confirmed' };
 					} finally {
 						execution.signal.removeEventListener('abort', stop);
 					}
 				}
+
 				assert.deepEqual(invocation, {
 					kind: 'argv',
 					executable: 'pwd',
@@ -86,6 +97,7 @@ export const provider: SandboxProvider<undefined> = {
 					stream: 'stdout',
 					data: new TextEncoder().encode('/packed/project\n')
 				});
+
 				return { kind: 'exited', exit: { kind: 'code', code: 0 } };
 			},
 			dispose() {
@@ -93,6 +105,7 @@ export const provider: SandboxProvider<undefined> = {
 					isDisposed = true;
 					state.disposals++;
 				}
+
 				return Promise.resolve();
 			}
 		});

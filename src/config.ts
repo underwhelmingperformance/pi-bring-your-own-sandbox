@@ -69,11 +69,14 @@ async function readConfigFile(
 	source: 'personal' | 'project'
 ): Promise<ConfigFile> {
 	let hasEntry = false;
+
 	try {
 		await lstat(filename);
 		hasEntry = true;
+
 		const contents = await readFile(filename, 'utf8');
 		const value: unknown = JSON.parse(contents);
+
 		if (!isConfigFile(value)) {
 			throw new InvalidSandboxConfigError({
 				operation: 'configure',
@@ -118,6 +121,7 @@ export async function readConfig(
 			: 'project';
 	const policy =
 		merged.policy ?? (providerId === 'passthrough' ? defaultPolicy : undefined);
+
 	if (policy === undefined) {
 		throw new InvalidSandboxConfigError({
 			operation: 'configure',
@@ -168,6 +172,7 @@ export function selectProvider(
 ): ProviderServiceV1 {
 	const { providerId, policy } = config.selection;
 	const provider = providers.find((candidate) => candidate.id === providerId);
+
 	if (provider === undefined) {
 		throw new ProviderNotFoundError({
 			operation: 'configure',

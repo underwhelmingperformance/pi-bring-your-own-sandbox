@@ -7,6 +7,7 @@ import {
 } from './process-input.js';
 
 const sparseArguments: string[] = [];
+
 sparseArguments.length = 1;
 
 it.each([
@@ -47,6 +48,7 @@ it.each([
 
 it('preserves empty arguments, explicit environment deletion and an empty shell command', () => {
 	const environment: unknown = JSON.parse('{"DELETE":null,"EMPTY":""}');
+
 	expect([
 		snapshotProcessRequest({
 			kind: 'argv',

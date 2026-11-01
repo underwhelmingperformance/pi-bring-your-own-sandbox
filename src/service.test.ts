@@ -19,11 +19,14 @@ function fixtureContext() {
 it('publishes synchronously and constructs exactly one service on first use', () => {
 	const events = createEventBus();
 	let constructions = 0;
+
 	const create = (id: string) => {
 		constructions++;
 		expect(discoverBroker(events)?.id).toBe(id);
+
 		return brokerReply(id).service;
 	};
+
 	const first = ensureBroker(events, create);
 	const second = ensureBroker(events, create);
 
@@ -36,13 +39,17 @@ it('publishes synchronously and constructs exactly one service on first use', ()
 it('retains a failed bootstrap so a later caller cannot create a replacement', async () => {
 	const events = createEventBus();
 	let constructions = 0;
+
 	const create = () => {
 		constructions++;
+
 		throw new Error('deliberate construction failure');
 	};
+
 	expect(() => ensureBroker(events, create)).toThrow(
 		expect.objectContaining({ name: 'SandboxInitialisationError' })
 	);
+
 	const failed = ensureBroker(events, create);
 
 	await expect(failed.providers(fixtureContext())).rejects.toMatchObject({
@@ -57,10 +64,13 @@ it('rejects re-entrant acquisition during construction without creating another 
 	let constructions = 0;
 	const service = ensureBroker(events, (id) => {
 		constructions++;
+
 		const pending = ensureBroker(events, () => {
 			throw new Error('Must reuse the published service.');
 		});
+
 		reentrant = pending.providers(fixtureContext());
+
 		return brokerReply(id).service;
 	});
 
@@ -75,6 +85,7 @@ it('rejects re-entrant acquisition during construction without creating another 
 
 it('does not construct a replacement for an incompatible advertisement', () => {
 	const events = createEventBus();
+
 	respond(events, 'pi-byos:discovery:v1:brokers', {
 		...brokerReply(),
 		serviceVersions: [2]

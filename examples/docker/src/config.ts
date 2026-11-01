@@ -14,11 +14,13 @@ export function dockerConfig(input: unknown): DockerConfig {
 			providerId: 'example.docker'
 		});
 	}
+
 	const keys = Object.keys(input);
 	const socketPath =
 		'socketPath' in input ? input.socketPath : '/var/run/docker.sock';
 	const executable =
 		'executable' in input ? input.executable : '/usr/bin/docker';
+
 	if (
 		typeof socketPath !== 'string' ||
 		typeof executable !== 'string' ||
@@ -37,5 +39,6 @@ export function dockerConfig(input: unknown): DockerConfig {
 			}
 		);
 	}
+
 	return { socketPath, executable };
 }

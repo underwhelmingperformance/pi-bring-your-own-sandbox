@@ -17,9 +17,11 @@ function kind(entry: Dirent | Stats): FileKind {
 	if (entry.isSymbolicLink()) {
 		return 'symlink';
 	}
+
 	if (entry.isDirectory()) {
 		return 'directory';
 	}
+
 	return entry.isFile() ? 'file' : 'other';
 }
 
@@ -28,8 +30,10 @@ export function hostFiles(
 	operations: HostOperations
 ): BackendFiles {
 	const resolve = (filename: string) => path.resolve(workspace, filename);
+
 	const fileStat = async (filename: string): Promise<FileStat> => {
 		const entry = await stat(resolve(filename));
+
 		return {
 			kind: entry.isDirectory()
 				? 'directory'
@@ -39,6 +43,7 @@ export function hostFiles(
 			size: entry.size
 		};
 	};
+
 	return {
 		read: {
 			readFile: (filename, context) =>
@@ -79,6 +84,7 @@ export function hostFiles(
 					const entries = await readdir(resolve(filename), {
 						withFileTypes: true
 					});
+
 					return entries
 						.map((entry) => ({ name: entry.name, kind: kind(entry) }))
 						.toSorted((left, right) =>

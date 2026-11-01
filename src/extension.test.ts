@@ -11,6 +11,7 @@ import { expect, it } from 'vitest';
 
 async function load(extensionPath: string) {
 	const directory = await mkdtemp(path.join(tmpdir(), 'pi-byos-'));
+
 	try {
 		const loader = new DefaultResourceLoader({
 			cwd: directory,
@@ -25,7 +26,9 @@ async function load(extensionPath: string) {
 			noPromptTemplates: true,
 			noContextFiles: true
 		});
+
 		await loader.reload();
+
 		return loader.getExtensions();
 	} finally {
 		await rm(directory, { recursive: true, force: true });
@@ -42,6 +45,7 @@ it.each(['extension.ts', '../dist/extension.js'])(
 				description: command.description
 			}))
 		);
+
 		expect({ errors: result.errors, commands }).toStrictEqual({
 			errors: [],
 			commands: [
@@ -58,6 +62,7 @@ it.each(['pi-tools.ts', '../dist/pi-tools.js'])(
 	'loads only the supported shell definitions through Pi: %s',
 	async (extensionPath) => {
 		const result = await load(extensionPath);
+
 		expect({
 			errors: result.errors,
 			tools: result.extensions.flatMap((extension) =>
@@ -76,6 +81,7 @@ it.each(['pi-tools.ts', '../dist/pi-tools.js'])(
 
 it('loads the optional Docker example without opening a backend', async () => {
 	const result = await load('../examples/docker/src/index.ts');
+
 	expect({
 		errors: result.errors,
 		tools: result.extensions.flatMap((extension) =>
@@ -89,6 +95,7 @@ it('loads the optional Docker example without opening a backend', async () => {
 
 it('loads the consumer example through the Pi extension loader', async () => {
 	const result = await load('../examples/consumer/src/index.ts');
+
 	expect({
 		errors: result.errors,
 		tools: result.extensions.flatMap((extension) =>

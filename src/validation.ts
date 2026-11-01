@@ -45,6 +45,7 @@ export function isUniqueList<Item>(
 	}
 
 	const items: readonly unknown[] = value;
+
 	return items.values().every(isItem) && new Set(items).size === items.length;
 }
 

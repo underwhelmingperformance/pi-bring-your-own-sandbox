@@ -55,15 +55,18 @@ export class DockerFixture {
 			directory,
 			workspace ?? path.join(directory, 'workspace')
 		);
+
 		try {
 			await mkdir(fixture.workspace, { recursive: true });
 			await mkdir(path.join(fixture.workspace, 'nested'));
 			await writeFile(path.join(fixture.workspace, 'source.txt'), 'original');
 			await writeFile(fixture.outside, 'host-only');
 			await symlink(fixture.outside, path.join(fixture.workspace, 'escape'));
+
 			return fixture;
 		} catch (error) {
 			await fixture.cleanup();
+
 			throw error;
 		}
 	}
@@ -101,6 +104,7 @@ export class DockerFixture {
 		]);
 		this.hasServer = true;
 		await this.docker(['start', this.server]);
+
 		const networks: unknown = JSON.parse(
 			await this.docker([
 				'inspect',
@@ -109,6 +113,7 @@ export class DockerFixture {
 				this.server
 			])
 		);
+
 		if (
 			typeof networks !== 'object' ||
 			networks === null ||
@@ -122,8 +127,11 @@ export class DockerFixture {
 				'Docker did not return a bridge address for the controlled server.'
 			);
 		}
+
 		const address = networks.bridge.IPAddress;
+
 		expect(address).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
+
 		const control = await this.docker([
 			'run',
 			'--rm',
@@ -136,7 +144,9 @@ export class DockerFixture {
 			NETWORK_PROBE,
 			`http://${address}:8080/`
 		]);
+
 		expect(control).toBe('controlled');
+
 		return address;
 	}
 
@@ -146,6 +156,7 @@ export class DockerFixture {
 				if (command.recovery.kind === 'allocation') {
 					this.allocations.add(command.recovery.id);
 				}
+
 				return this.#client.command(command);
 			}
 		};
@@ -158,10 +169,12 @@ export class DockerFixture {
 			context: operationContext(),
 			recovery: { kind: 'none' }
 		});
+
 		expect(
 			result.status,
 			`Docker ${arguments_[0] ?? 'command'} failed: ${new TextDecoder().decode(result.stderr)}`
 		).toBe(0);
+
 		return new TextDecoder().decode(result.stdout);
 	}
 
@@ -183,6 +196,7 @@ export class DockerFixture {
 
 	async verifyDisposed(): Promise<void> {
 		await this.noJobContainers();
+
 		for (const allocation of this.allocations) {
 			expect(
 				await this.docker([
@@ -222,10 +236,12 @@ export class DockerFixture {
 				}
 			}
 		);
+
 		expect(result).toStrictEqual({
 			kind: 'exited',
 			exit: { kind: 'code', code: 0 }
 		});
+
 		if (backend.policy.workspaceAccess === 'read-only') {
 			const denied = await backend.exec(
 				{
@@ -252,16 +268,19 @@ export class DockerFixture {
 				'/bin/cat',
 				'/workspace/source.txt'
 			]);
+
 			expect({ denied, content }).toStrictEqual({
 				denied: { kind: 'exited', exit: { kind: 'code', code: 2 } },
 				content: 'original'
 			});
 		}
+
 		expect(await readFile(this.outside, 'utf8')).toBe('host-only');
 	}
 
 	contract(policy: SandboxPolicy): SandboxProviderTestFixture {
 		const cwd = '/workspace/nested';
+
 		return {
 			configuration: this.config,
 			hostWorkspace: this.workspace,
@@ -328,6 +347,7 @@ export class DockerFixture {
 			if (this.hasServer) {
 				await this.docker(['rm', '--force', this.server]);
 			}
+
 			for (const allocation of this.allocations) {
 				const listed = await this.docker([
 					'container',
@@ -339,9 +359,11 @@ export class DockerFixture {
 					'{{.ID}}'
 				]);
 				const containers = listed.trim().split('\n').filter(Boolean);
+
 				if (containers.length > 0) {
 					await this.docker(['rm', '--force', ...containers]);
 				}
+
 				const listedVolumes = await this.docker([
 					'volume',
 					'ls',
@@ -351,6 +373,7 @@ export class DockerFixture {
 					'{{.Name}}'
 				]);
 				const volumes = listedVolumes.trim();
+
 				if (volumes !== '') {
 					await this.docker(['volume', 'rm', allocation]);
 				}

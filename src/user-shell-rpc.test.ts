@@ -14,6 +14,7 @@ async function fixture(
 	shouldWaitForReady = false
 ): Promise<void> {
 	const directory = await mkdtemp(path.join(tmpdir(), 'pi-byos-user-rpc-'));
+
 	try {
 		await mkdir(path.join(directory, 'agent'));
 		await writeFile(
@@ -28,6 +29,7 @@ async function fixture(
 				}
 			})
 		);
+
 		const extension = fileURLToPath(
 			new URL('fixtures/user-shell-rpc-extension.ts', import.meta.url)
 		);
@@ -36,6 +38,7 @@ async function fixture(
 		);
 		const cli = path.join(path.dirname(packageEntry), 'bundle', 'cli.js');
 		const rpc = new RpcProcess(cli, directory, extension);
+
 		try {
 			await rpc.send({ type: 'get_state' });
 			await execute(rpc);
@@ -56,6 +59,7 @@ it.each([false, true])(
 				command: 'user command',
 				excludeFromContext
 			});
+
 			if (
 				!isRecord(response) ||
 				!isRecord(response.data) ||
@@ -63,7 +67,9 @@ it.each([false, true])(
 			) {
 				throw new Error('Pi returned an invalid RPC response.');
 			}
+
 			const output: unknown = JSON.parse(response.data.output);
+
 			expect({
 				...response,
 				id: '<id>',
@@ -95,7 +101,9 @@ it.each([false, true])(
 					truncated: false
 				}
 			});
+
 			const messages = await rpc.send({ type: 'get_messages' });
+
 			if (
 				!isRecord(messages) ||
 				!isRecord(messages.data) ||
@@ -103,6 +111,7 @@ it.each([false, true])(
 			) {
 				throw new Error('Pi returned an invalid message list.');
 			}
+
 			const records: unknown[] = messages.data.messages;
 			const shellMessages = records
 				.filter(
@@ -112,9 +121,12 @@ it.each([false, true])(
 					if (!isRecord(message) || typeof message.output !== 'string') {
 						throw new Error('A shell transcript record is invalid.');
 					}
+
 					const request: unknown = JSON.parse(message.output);
+
 					return { ...message, timestamp: '<time>', output: request };
 				});
+
 			expect(shellMessages).toStrictEqual([
 				{
 					role: 'bashExecution',
@@ -161,21 +173,28 @@ it('aborts cold user-shell startup through RPC and runs only a later command', a
 		const running = observe(
 			rpc.send({ type: 'bash', command: 'cancelled command' })
 		);
+
 		expect(await opening).toMatchObject({ kind: 'resolved' });
+
 		const aborted = await rpc.send({ type: 'abort_bash' });
+
 		if (!isRecord(aborted)) {
 			throw new Error('Pi returned an invalid abort response.');
 		}
+
 		expect({ ...aborted, id: '<id>' }).toStrictEqual({
 			id: '<id>',
 			type: 'response',
 			command: 'abort_bash',
 			success: true
 		});
+
 		const cancelled = await running;
+
 		if (cancelled.kind !== 'resolved' || !isRecord(cancelled.value)) {
 			throw new Error('The cancelled RPC command did not complete.');
 		}
+
 		expect({ ...cancelled.value, id: '<id>' }).toStrictEqual({
 			id: '<id>',
 			type: 'response',
@@ -184,7 +203,9 @@ it('aborts cold user-shell startup through RPC and runs only a later command', a
 			data: { output: '', cancelled: true, truncated: false }
 		});
 		await rpc.send({ type: 'prompt', message: '/fixture-ready' });
+
 		const later = await rpc.send({ type: 'bash', command: 'later command' });
+
 		if (
 			!isRecord(later) ||
 			!isRecord(later.data) ||
@@ -192,7 +213,9 @@ it('aborts cold user-shell startup through RPC and runs only a later command', a
 		) {
 			throw new Error('Pi returned an invalid later command result.');
 		}
+
 		const output: unknown = JSON.parse(later.data.output);
+
 		expect({
 			...later,
 			id: '<id>',

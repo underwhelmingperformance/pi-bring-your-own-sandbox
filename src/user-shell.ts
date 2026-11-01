@@ -17,6 +17,7 @@ async function selectDialect(
 ): Promise<ShellDialect> {
 	const status = await ensureSandboxService(pi).status(context);
 	const dialect = status.selection?.userShell ?? sandbox.workspace.defaultShell;
+
 	if (dialect === undefined) {
 		throw new UnsupportedSandboxCapabilityError({
 			operation: 'exec',
@@ -24,6 +25,7 @@ async function selectDialect(
 			backendId: sandbox.backendId
 		});
 	}
+
 	return dialect;
 }
 

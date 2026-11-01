@@ -10,17 +10,20 @@ describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
 	() => {
 		for (const workspaceAccess of ['read-write', 'read-only'] as const) {
 			let fixture: DockerFixture | undefined;
+
 			defineSandboxProviderTests({
 				label: `Docker ${workspaceAccess}`,
 				provider: createDockerProvider(() => {
 					if (fixture === undefined) {
 						throw new Error('The Docker fixture has not been prepared.');
 					}
+
 					return fixture.providerClient();
 				}),
 				timeoutMs: 30_000,
 				createFixture: async () => {
 					fixture = await DockerFixture.create();
+
 					return fixture.contract({
 						workspaceAccess,
 						filesystemScope: 'workspace-only',

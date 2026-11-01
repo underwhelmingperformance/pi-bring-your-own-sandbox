@@ -25,6 +25,7 @@ afterEach(() => {
 
 async function workspace(run: (directory: string) => Promise<void>) {
 	const directory = await mkdtemp(path.join(tmpdir(), 'pi-byos-boundary-'));
+
 	try {
 		await run(directory);
 	} catch (error) {
@@ -45,6 +46,7 @@ it('resolves a custom read using host filename variants', async () => {
 			operations: {
 				access(filename) {
 					calls.push(filename);
+
 					return Promise.resolve();
 				},
 				readFile: (filename) =>
@@ -58,8 +60,11 @@ it('resolves a custom read using host filename variants', async () => {
 			}
 		});
 		const before = await tool.execute('before', { path: requested });
+
 		await writeFile(path.join(directory, variant), 'host sentinel');
+
 		const after = await tool.execute('after', { path: requested });
+
 		expect({
 			calls,
 			before: before.content,
@@ -77,7 +82,9 @@ it.each(['write', 'edit'] as const)(
 	async (operation) => {
 		await workspace(async (directory) => {
 			const filename = path.join(directory, 'cycle');
+
 			await symlink('cycle', filename);
+
 			const calls: string[] = [];
 			const invocation =
 				operation === 'write'
@@ -85,10 +92,12 @@ it.each(['write', 'edit'] as const)(
 							operations: {
 								mkdir(target) {
 									calls.push(target);
+
 									return Promise.resolve();
 								},
 								writeFile(target) {
 									calls.push(target);
+
 									return Promise.resolve();
 								}
 							}
@@ -97,14 +106,17 @@ it.each(['write', 'edit'] as const)(
 							operations: {
 								access(target) {
 									calls.push(target);
+
 									return Promise.resolve();
 								},
 								readFile(target) {
 									calls.push(target);
+
 									return Promise.resolve(Buffer.from('target old'));
 								},
 								writeFile(target) {
 									calls.push(target);
+
 									return Promise.resolve();
 								}
 							}
@@ -112,6 +124,7 @@ it.each(['write', 'edit'] as const)(
 							path: 'cycle',
 							edits: [{ oldText: 'target old', newText: 'target new' }]
 						});
+
 			await expect(invocation).rejects.toMatchObject({ code: 'ELOOP' });
 			expect(calls).toStrictEqual([]);
 		});
@@ -132,6 +145,7 @@ it.each(['find', 'ls'] as const)(
 								exists: () => true,
 								glob(_pattern, root) {
 									calls.push(root);
+
 									return [];
 								}
 							}
@@ -142,10 +156,12 @@ it.each(['find', 'ls'] as const)(
 								stat: () => ({ isDirectory: () => true }),
 								readdir(root) {
 									calls.push(root);
+
 									return [];
 								}
 							}
 						}).execute('search', { path: target });
+
 			await invocation;
 			expect({ calls, hasTargetRoot: calls.includes(target) }).toStrictEqual({
 				calls: [path.resolve(directory, target)],
@@ -159,11 +175,13 @@ it('searches host content despite custom grep operations', async () => {
 	await promisify(execFile)('rg', ['--version']);
 	await workspace(async (directory) => {
 		await writeFile(path.join(directory, 'sentinel.txt'), 'host-only-needle\n');
+
 		const calls: string[] = [];
 		const tool = createGrepTool(directory, {
 			operations: {
 				isDirectory(root) {
 					calls.push(root);
+
 					return true;
 				},
 				readFile: () => 'target-only-needle\n'
@@ -173,6 +191,7 @@ it('searches host content despite custom grep operations', async () => {
 		const target = await tool.execute('target', {
 			pattern: 'target-only-needle'
 		});
+
 		expect({ calls, host: host.content, target: target.content }).toStrictEqual(
 			{
 				calls: [directory, directory],
@@ -197,32 +216,40 @@ it('reads host content for an edit preview before execution', async () => {
 		],
 		async (runtime) => {
 			const directory = runtime.services.cwd;
+
 			await writeFile(
 				path.join(directory, 'preview.txt'),
 				'host sentinel\nold\n'
 			);
+
 			const calls: string[] = [];
 			const tool = createEditToolDefinition(directory, {
 				operations: {
 					access(filename) {
 						calls.push(filename);
+
 						return Promise.resolve();
 					},
 					readFile(filename) {
 						calls.push(filename);
+
 						return Promise.resolve(Buffer.from('target sentinel\nold\n'));
 					},
 					writeFile(filename) {
 						calls.push(filename);
+
 						return Promise.resolve();
 					}
 				}
 			});
 			const render = tool.renderCall;
+
 			expect(render).toBeTypeOf('function');
+
 			if (render === undefined) {
 				throw new Error('Pi did not expose the edit call renderer.');
 			}
+
 			const updated = Promise.withResolvers<undefined>();
 			const context = {
 				args: {
@@ -247,13 +274,16 @@ it('reads host content for an edit preview before execution', async () => {
 			};
 			const theme = runtime.session.extensionRunner.getUIContext().theme;
 			const component = render(context.args, theme, context);
+
 			await updated.promise;
+
 			const text = render(context.args, theme, {
 				...context,
 				lastComponent: component
 			})
 				.render(120)
 				.join('\n');
+
 			expect({
 				calls,
 				hasHost: text.includes('host sentinel'),

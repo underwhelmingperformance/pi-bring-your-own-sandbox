@@ -20,11 +20,15 @@ async function executable(
 	environment: NodeJS.ProcessEnv
 ): Promise<string | undefined> {
 	const directories = (environment.PATH ?? '').split(path.delimiter);
+
 	for (const directory of directories) {
 		const candidate = path.resolve(workspace, directory, command);
+
 		try {
 			await access(candidate, constants.X_OK);
+
 			const entry = await stat(candidate);
+
 			if (entry.isFile()) {
 				return candidate;
 			}
@@ -32,6 +36,7 @@ async function executable(
 			continue;
 		}
 	}
+
 	return undefined;
 }
 
@@ -41,18 +46,22 @@ export async function openPassthrough(
 ): Promise<SandboxBackend> {
 	const operations = new HostOperations();
 	const environment = { ...process.env };
+
 	return operations.run('open', context, async () => {
 		const shells = new Map<ShellDialect, string>();
+
 		for (const [dialect, command] of [
 			['bash', 'bash'],
 			['sh', 'sh'],
 			['powershell', 'pwsh']
 		] as const) {
 			const filename = await executable(command, workspace, environment);
+
 			if (filename !== undefined) {
 				shells.set(dialect, filename);
 			}
 		}
+
 		const processes = new PosixProcessRunner(workspace, environment, shells);
 		const [fd, fdfind, rg] = await Promise.all([
 			executable('fd', workspace, environment),
@@ -81,6 +90,7 @@ export async function openPassthrough(
 			shells: shells.keys().toArray()
 		};
 		const defaultShell = shells.keys().next().value;
+
 		return {
 			id: `passthrough:${context.operationId}`,
 			workspace: {

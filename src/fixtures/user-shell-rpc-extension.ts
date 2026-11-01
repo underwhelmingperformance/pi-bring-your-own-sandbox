@@ -12,17 +12,21 @@ import { isRecord } from '../validation.js';
 export default function rpcFixture(pi: ExtensionAPI): void {
 	const ready = Promise.withResolvers<'ready'>();
 	const requests: ProcessRequest[] = [];
+
 	pi.registerCommand('fixture-ready', {
 		description: 'Finish fake startup',
 		handler() {
 			ready.resolve('ready');
+
 			return Promise.resolve();
 		}
 	});
+
 	const capabilities: SandboxCapabilities = {
 		operations: ['exec'],
 		shells: ['sh']
 	};
+
 	registerSandboxProvider(pi, {
 		id: 'fixture',
 		label: 'RPC fixture',
@@ -37,6 +41,7 @@ export default function rpcFixture(pi: ExtensionAPI): void {
 			if (!isRecord(input) || typeof input.shouldWaitForReady !== 'boolean') {
 				throw new InvalidSandboxConfigError({ operation: 'configure' });
 			}
+
 			return { shouldWaitForReady: input.shouldWaitForReady };
 		},
 		async open(request) {
@@ -45,9 +50,11 @@ export default function rpcFixture(pi: ExtensionAPI): void {
 				content: 'Opening the fake backend.',
 				display: true
 			});
+
 			if (request.configuration.shouldWaitForReady) {
 				await ready.promise;
 			}
+
 			const backend: SandboxBackend = {
 				id: 'rpc-target',
 				workspace: {
@@ -73,6 +80,7 @@ export default function rpcFixture(pi: ExtensionAPI): void {
 							JSON.stringify({ requests, request: command })
 						)
 					});
+
 					return Promise.resolve({
 						kind: 'exited',
 						exit: { kind: 'code', code: 3 }
@@ -82,6 +90,7 @@ export default function rpcFixture(pi: ExtensionAPI): void {
 					return Promise.resolve();
 				}
 			};
+
 			return backend;
 		}
 	});

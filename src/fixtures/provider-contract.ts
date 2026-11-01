@@ -33,6 +33,7 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 			memory = new MemoryBackend();
 			memory.seed('seed', new Uint8Array([0, 255, 10]));
 			isDisposed = false;
+
 			const backend: SandboxBackend = {
 				id: memory.id,
 				workspace: memory.workspace,
@@ -43,6 +44,7 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 				capabilities: provider.capabilities,
 				exec: async (request, execution) => {
 					const target = request;
+
 					if (target.kind === 'argv' && target.executable === 'pwd') {
 						expect(target).toStrictEqual({
 							kind: 'argv',
@@ -53,8 +55,10 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 							stream: 'stdout',
 							data: encode('/remote/project\n')
 						});
+
 						return { kind: 'exited', exit: { kind: 'code', code: 0 } };
 					}
+
 					if (target.kind === 'argv' && target.executable === 'wait') {
 						isRunning = true;
 						await new Promise<undefined>((resolve) => {
@@ -68,12 +72,14 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 							execution.onOutput({ stream: 'stdout', data: encode('ready') });
 						});
 						isRunning = false;
+
 						throw new SandboxCancelledError({
 							operation: 'exec',
 							reason: 'caller',
 							completion: 'confirmed'
 						});
 					}
+
 					expect(target).toStrictEqual(
 						target.kind === 'argv'
 							? {
@@ -89,13 +95,16 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 					});
 					execution.onOutput({ stream: 'stderr', data: encode('error') });
 					execution.onOutput({ stream: 'stdout', data: new Uint8Array([10]) });
+
 					return { kind: 'exited', exit: { kind: 'code', code: 7 } };
 				},
 				dispose: () => {
 					isDisposed = true;
+
 					return Promise.resolve();
 				}
 			};
+
 			return Promise.resolve(backend);
 		}
 	};
@@ -104,6 +113,7 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 		stdout: new Uint8Array([0, 255, 10]),
 		stderr: encode('error')
 	} as const;
+
 	return {
 		label: provider.id,
 		provider,
@@ -153,11 +163,13 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 					ready: encode('ready'),
 					verifyStopped: () => {
 						expect(isRunning).toBe(false);
+
 						return Promise.resolve();
 					}
 				},
 				verifyDisposed: () => {
 					expect(isDisposed).toBe(true);
+
 					return Promise.resolve();
 				},
 				cleanup: () => Promise.resolve()

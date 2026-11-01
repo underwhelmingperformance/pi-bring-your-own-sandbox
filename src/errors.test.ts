@@ -55,13 +55,17 @@ it('narrows errors structurally by their concrete name', () => {
 		operation: 'exec',
 		completion: 'confirmed'
 	});
+
 	if (!isSandboxError(error, SandboxTimeoutError)) {
 		throw new TypeError('The timeout error must pass its structural guard.');
 	}
+
 	expectTypeOf<typeof error.reason>().toEqualTypeOf<'deadline'>();
 	expect(isSandboxError(error, SandboxCancelledError)).toBe(false);
+
 	const serialised = JSON.stringify(error);
 	const metadata: unknown = JSON.parse(serialised);
+
 	expect(metadata).toStrictEqual({
 		sandboxErrorVersion: 1,
 		name: 'SandboxTimeoutError',
@@ -83,6 +87,7 @@ it('copies recovery metadata and excludes the diagnostic cause from serialisatio
 		{ operation: 'dispose', recovery },
 		{ cause }
 	);
+
 	expect({
 		recovery: error.recovery,
 		frozen: Object.isFrozen(error.recovery),
@@ -368,12 +373,14 @@ const cases = [
 	readonly name: string;
 	readonly create: (cause: unknown) => SandboxErrorInfo;
 }[];
+
 it.each(cases)(
 	'constructs and rehydrates the concrete $name',
 	({ name, create }) => {
 		const cause = new Error('private provider detail');
 		const original = create(cause);
 		const restored = rehydrateSandboxError(original, { cause });
+
 		for (const error of [original, restored]) {
 			expect(JSON.stringify(error)).toBe(JSON.stringify(original));
 			expect({

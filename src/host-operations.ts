@@ -20,11 +20,13 @@ export class HostOperations {
 			{ signal: context.signal },
 			Math.max(1, context.deadline - Date.now())
 		);
+
 		try {
 			const result = await Promise.race([
 				observe(this.#operations.drain()),
 				scope.whenCancelled()
 			]);
+
 			if (result.kind !== 'resolved') {
 				throw new SandboxCleanupError({
 					operation: 'dispose',
@@ -59,23 +61,28 @@ export class HostOperations {
 				providerId: 'passthrough'
 			});
 		}
+
 		const scope = new OperationScope(
 			{ operation, providerId: 'passthrough' },
 			this.#lifetime.signal,
 			{ signal: context.signal },
 			Math.max(1, context.deadline - Date.now())
 		);
+
 		if (context.deadline <= Date.now()) {
 			scope.abort('deadline');
 		}
+
 		return this.#operations.run(scope, async () => {
 			scope.check();
+
 			try {
 				const result = await execute({
 					...scope.context,
 					operationId: context.operationId,
 					deadline: context.deadline
 				});
+
 				if (
 					scope.reason !== undefined &&
 					(operation !== 'exec' ||
@@ -85,6 +92,7 @@ export class HostOperations {
 				) {
 					throw scope.cancellationError('confirmed');
 				}
+
 				return result;
 			} catch (error) {
 				if (
@@ -98,6 +106,7 @@ export class HostOperations {
 				if (operation !== 'exec' && scope.reason !== undefined) {
 					throw scope.cancellationError('confirmed');
 				}
+
 				throw hostError(error, operation);
 			}
 		});
@@ -107,10 +116,13 @@ export class HostOperations {
 		if (this.#closing !== undefined) {
 			return this.#closing;
 		}
+
 		const pending = Promise.withResolvers<undefined>();
+
 		this.#closing = pending.promise;
 		this.#lifetime.abort();
 		void this.#finishDispose(context, pending);
+
 		return pending.promise;
 	}
 }

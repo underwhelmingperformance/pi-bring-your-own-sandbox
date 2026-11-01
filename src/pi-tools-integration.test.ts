@@ -46,6 +46,7 @@ function shellBackend(output = 'target output') {
 				stream: 'stdout',
 				data: new TextEncoder().encode(output)
 			});
+
 			return Promise.resolve({
 				kind: 'exited',
 				exit: { kind: 'code', code: 0 }
@@ -53,6 +54,7 @@ function shellBackend(output = 'target output') {
 		},
 		dispose: () => Promise.resolve()
 	};
+
 	return { backend, requests };
 }
 
@@ -113,6 +115,7 @@ it.each(['confirmed', 'unconfirmed'] as const)(
 					data: new TextEncoder().encode('valuable diagnostic\n')
 				});
 				started.resolve(undefined);
+
 				return new Promise((resolve) => {
 					context.signal.addEventListener(
 						'abort',
@@ -132,6 +135,7 @@ it.each(['confirmed', 'unconfirmed'] as const)(
 				arguments: { command: 'long build', timeout: 0.05 }
 			}
 		]);
+
 		await withPiRuntime(
 			[
 				provider(waiting),
@@ -140,24 +144,31 @@ it.each(['confirmed', 'unconfirmed'] as const)(
 			],
 			async (runtime) => {
 				runtime.session.setActiveToolsByName(['bash']);
+
 				const selected = runtime.session.modelRuntime.getModel(
 					'scripted',
 					'scripted'
 				);
+
 				if (selected === undefined) {
 					throw new Error('The scripted model was not registered.');
 				}
+
 				await runtime.session.setModel(selected);
 				vi.useFakeTimers();
+
 				const running = runtime.session.prompt('Run the build.');
+
 				await started.promise;
 				await vi.advanceTimersByTimeAsync(50);
 				await running;
 				vi.useRealTimers();
+
 				const results = model.requests
 					.at(1)
 					?.messages.filter((message) => message.role === 'toolResult')
 					.map(({ content, isError }) => ({ content, isError }));
+
 				expect(results).toStrictEqual([
 					{
 						content: [
@@ -187,6 +198,7 @@ it('preserves output when Pi shell operations receive confirmed cancellation', a
 				stream: 'stdout',
 				data: new TextEncoder().encode('cancel diagnostic\n')
 			});
+
 			return Promise.reject(
 				new SandboxCancelledError({
 					operation: 'exec',
@@ -196,6 +208,7 @@ it('preserves output when Pi shell operations receive confirmed cancellation', a
 			);
 		}
 	};
+
 	await withPiRuntime(
 		[
 			provider(cancelled),
@@ -208,6 +221,7 @@ it('preserves output when Pi shell operations receive confirmed cancellation', a
 							const tool = createBashTool(context.cwd, {
 								operations: createShellOperations(pi, context, 'bash')
 							});
+
 							await expect(
 								tool.execute('cancel', { command: 'cancelled build' })
 							).rejects.toThrow('cancel diagnostic\n\n\nCommand aborted');
@@ -255,6 +269,7 @@ it.each([
 				});
 			}
 		};
+
 		await withPiRuntime(
 			[
 				provider(backend),
@@ -264,15 +279,19 @@ it.each([
 			],
 			async (runtime, errors) => {
 				runtime.session.setActiveToolsByName([tool]);
+
 				const selected = runtime.session.modelRuntime.getModel(
 					'scripted',
 					'scripted'
 				);
+
 				if (selected === undefined) {
 					throw new Error('The scripted model was not registered.');
 				}
+
 				await runtime.session.setModel(selected);
 				await runtime.session.prompt('Run the shell tool.');
+
 				const measuredTime: unknown = expect.any(Number);
 				const results = model.requests
 					.at(1)
@@ -281,6 +300,7 @@ it.each([
 						content: message.content,
 						isError: message.isError
 					}));
+
 				expect({ errors, requests, results, structured }).toStrictEqual({
 					errors: [],
 					requests: isAllowed
@@ -341,6 +361,7 @@ it.each([
 	'preserves Pi tool activation: $tools, builtins $includeBuiltins',
 	async ({ includeBuiltins, tools, expected }) => {
 		let extension: ExtensionAPI | undefined;
+
 		await withPiRuntime(
 			[
 				{
@@ -355,10 +376,12 @@ it.each([
 				if (extension === undefined) {
 					throw new Error('The extension did not load.');
 				}
+
 				expect({ errors, active: extension.getActiveTools() }).toStrictEqual({
 					errors: [],
 					active: expected
 				});
+
 				return Promise.resolve();
 			},
 			{ includeBuiltins, ...(tools !== undefined && { tools }) }
@@ -388,6 +411,7 @@ it.each([
 							'bash',
 							isValid ? input : { command: { value: true } }
 						);
+
 						return {
 							...outcome.result,
 							details: undefined,
@@ -397,6 +421,7 @@ it.each([
 				});
 				pi.on('tool_call', (event) => {
 					calls.push({ tool: event.toolName, parent: event.parentToolCallId });
+
 					return !isAllowed && event.toolName === 'bash'
 						? { block: true, reason: 'Nested approval denied.' }
 						: undefined;
@@ -416,6 +441,7 @@ it.each([
 				arguments: { command: 'printf nested' }
 			}
 		]);
+
 		await withPiRuntime(
 			[
 				provider(backend),
@@ -425,15 +451,19 @@ it.each([
 			],
 			async (runtime, errors) => {
 				runtime.session.setActiveToolsByName(['nested_shell', 'bash']);
+
 				const selected = runtime.session.modelRuntime.getModel(
 					'scripted',
 					'scripted'
 				);
+
 				if (selected === undefined) {
 					throw new Error('The scripted model was not registered.');
 				}
+
 				await runtime.session.setModel(selected);
 				await runtime.session.prompt('Use the nested shell.');
+
 				const results = model.requests
 					.at(1)
 					?.messages.filter((message) => message.role === 'toolResult')
@@ -450,6 +480,7 @@ it.each([
 						? 'transformed target output'
 						: 'Nested approval denied.'
 					: expect.stringContaining('command');
+
 				expect({ errors, calls, requests, results }).toStrictEqual({
 					errors: [],
 					calls: [
@@ -511,6 +542,7 @@ it('keeps Pi full-output storage and formatting for large target output', async 
 			});
 		}
 	};
+
 	await withPiRuntime(
 		[
 			provider(backend),
@@ -520,20 +552,26 @@ it('keeps Pi full-output storage and formatting for large target output', async 
 		],
 		async (runtime, errors) => {
 			runtime.session.setActiveToolsByName(['bash']);
+
 			const selected = runtime.session.modelRuntime.getModel(
 				'scripted',
 				'scripted'
 			);
+
 			if (selected === undefined) {
 				throw new Error('The scripted model was not registered.');
 			}
+
 			await runtime.session.setModel(selected);
 			await runtime.session.prompt('Produce large output.');
+
 			const structured = result?.structuredContent;
 			const details = result?.details;
+
 			if (!isRecord(details) || typeof details.fullOutputPath !== 'string') {
 				throw new Error('Pi did not publish its full-output path.');
 			}
+
 			const filename = details.fullOutputPath;
 			const contents = await readFile(filename, 'utf8');
 			const measuredTime: unknown = expect.any(Number);
@@ -541,6 +579,7 @@ it('keeps Pi full-output storage and formatting for large target output', async 
 				.filter((block) => block.type === 'text')
 				.map((block) => block.text)
 				.join('\n');
+
 			expect({
 				errors,
 				isError: result?.isError,
@@ -580,6 +619,7 @@ it('returns a selected-provider transport failure without local execution', asyn
 		...backend,
 		exec(request) {
 			requests.push(request);
+
 			return Promise.reject(new SandboxTransportError({ operation: 'exec' }));
 		}
 	};
@@ -591,6 +631,7 @@ it('returns a selected-provider transport failure without local execution', asyn
 			arguments: { command: 'must not run on host' }
 		}
 	]);
+
 	await withPiRuntime(
 		[
 			provider(failed),
@@ -599,15 +640,19 @@ it('returns a selected-provider transport failure without local execution', asyn
 		],
 		async (runtime, errors) => {
 			runtime.session.setActiveToolsByName(['bash']);
+
 			const selected = runtime.session.modelRuntime.getModel(
 				'scripted',
 				'scripted'
 			);
+
 			if (selected === undefined) {
 				throw new Error('The scripted model was not registered.');
 			}
+
 			await runtime.session.setModel(selected);
 			await runtime.session.prompt('Run the selected provider.');
+
 			const results = model.requests
 				.at(1)
 				?.messages.filter((message) => message.role === 'toolResult')
@@ -615,6 +660,7 @@ it('returns a selected-provider transport failure without local execution', asyn
 					content: message.content,
 					isError: message.isError
 				}));
+
 			expect({ errors, requests, results }).toStrictEqual({
 				errors: [],
 				requests: [
@@ -651,6 +697,7 @@ it('preserves the current Pi Bash command prefix through sandbox execution', asy
 			arguments: { command: 'printf "%s" "${BYOS_PREFIX_TEST:-unset}"' }
 		}
 	]);
+
 	await withPiRuntime(
 		[{ name: 'shell', factory: sandboxTools }, model.extension],
 		async (runtime, errors) => {
@@ -658,19 +705,24 @@ it('preserves the current Pi Bash command prefix through sandbox execution', asy
 				'export BYOS_PREFIX_TEST=present'
 			);
 			runtime.session.setActiveToolsByName(['bash']);
+
 			const selected = runtime.session.modelRuntime.getModel(
 				'scripted',
 				'scripted'
 			);
+
 			if (selected === undefined) {
 				throw new Error('The scripted model was not registered.');
 			}
+
 			await runtime.session.setModel(selected);
 			await runtime.session.prompt('Check the configured environment.');
+
 			const results = model.requests
 				.at(1)
 				?.messages.filter((message) => message.role === 'toolResult')
 				.map(({ content, isError }) => ({ content, isError }));
+
 			expect({ errors, results }).toStrictEqual({
 				errors: [],
 				results: [
@@ -695,6 +747,7 @@ it.each(['bash', 'powershell'])(
 				const parameters: unknown = runtime.session
 					.getAllTools()
 					.find((tool) => tool.name === name)?.parameters;
+
 				expect(parameters).toMatchObject({
 					properties: {
 						timeout: {
@@ -703,6 +756,7 @@ it.each(['bash', 'powershell'])(
 						}
 					}
 				});
+
 				return Promise.resolve();
 			}
 		);

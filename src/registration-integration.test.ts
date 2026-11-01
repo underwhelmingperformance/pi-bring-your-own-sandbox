@@ -63,6 +63,7 @@ it('interoperates across physical SDK copies and removes failed-factory responde
 							...imageProvider,
 							id: 'failed'
 						});
+
 						throw new Error('deliberate factory failure');
 					}
 				},
@@ -77,7 +78,9 @@ it('interoperates across physical SDK copies and removes failed-factory responde
 				}
 			]
 		});
+
 		await loader.reload();
+
 		const error = new first.SandboxOperationError({
 			operation: 'exec'
 		});
@@ -114,7 +117,9 @@ it('publishes one service during concurrent bootstrap through independent SDK co
 			path.join(directory, 'first'),
 			path.join(directory, 'second')
 		];
+
 		await Promise.all(copies.map((copy) => loadSdkCopy(copy)));
+
 		const modules: readonly unknown[] = await Promise.all(
 			copies.map(
 				(copy) => import(pathToFileURL(path.join(copy, 'service.js')).href)
@@ -133,6 +138,7 @@ it('publishes one service during concurrent bootstrap through independent SDK co
 				return Promise.try(() =>
 					module.ensureBroker(events, (id) => {
 						constructions++;
+
 						return brokerReply(id).service;
 					})
 				);

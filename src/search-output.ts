@@ -26,9 +26,12 @@ export class DelimitedOutput {
 
 	#consume(text: string): void {
 		this.#pending += text;
+
 		let offset = this.#pending.indexOf(this.#delimiter);
+
 		while (offset !== -1) {
 			const entry = this.#pending.slice(0, offset);
+
 			this.#pending = this.#pending.slice(offset + this.#delimiter.length);
 			this.#accept(entry);
 			offset = this.#pending.indexOf(this.#delimiter);
@@ -41,6 +44,7 @@ export class DelimitedOutput {
 
 	finish(): void {
 		this.#consume(this.#decoder.decode());
+
 		if (this.#pending !== '') {
 			throw new SandboxOperationError({
 				operation: this.#operation,
@@ -65,6 +69,7 @@ export class FindOutput implements SearchOutput<FindResult> {
 					providerId: 'passthrough'
 				});
 			}
+
 			this.#paths.add(entry.replace(/^\.\//u, ''));
 		});
 	}
@@ -75,6 +80,7 @@ export class FindOutput implements SearchOutput<FindResult> {
 
 	finish(): FindResult {
 		this.#output.finish();
+
 		return { paths: this.#paths.values, truncated: this.#paths.isTruncated };
 	}
 }

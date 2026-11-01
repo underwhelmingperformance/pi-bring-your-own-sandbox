@@ -108,6 +108,7 @@ export class DockerResources {
 				context,
 				operation
 			);
+
 			if (remaining.stdout.byteLength !== 0) {
 				throw error;
 			}
@@ -122,6 +123,7 @@ export class DockerResources {
 		if (isCancelled(context)) {
 			return;
 		}
+
 		await this.#client.command({
 			args: ['start', '--attach', name],
 			context,
@@ -129,9 +131,11 @@ export class DockerResources {
 			recovery: this.recovery,
 			onOutput: context.onOutput
 		});
+
 		if (isCancelled(context)) {
 			return;
 		}
+
 		const inspected = await this.checked(
 			['inspect', '--format', '{{json .State}}', name],
 			context,
@@ -140,18 +144,22 @@ export class DockerResources {
 		const state: unknown = JSON.parse(
 			new TextDecoder().decode(inspected.stdout)
 		);
+
 		if (!isState(state)) {
 			throw new TypeError('Docker returned invalid container state metadata.');
 		}
+
 		if (state.Error.length > 0) {
 			throw new SandboxOperationError(
 				{ operation, providerId: 'example.docker', recovery: this.recovery },
 				{ cause: new Error(state.Error) }
 			);
 		}
+
 		if (state.Running || state.Status !== 'exited') {
 			throw new TypeError('Docker did not confirm foreground completion.');
 		}
+
 		return { kind: 'exited', exit: { kind: 'code', code: state.ExitCode } };
 	}
 
@@ -170,6 +178,7 @@ export class DockerResources {
 				operation,
 				recovery: this.recovery
 			});
+
 			if (result.status !== 0) {
 				throw new SandboxTransportError(
 					{ operation, providerId: 'example.docker', recovery: this.recovery },
@@ -180,6 +189,7 @@ export class DockerResources {
 					}
 				);
 			}
+
 			return result;
 		} catch (error) {
 			if (
@@ -188,6 +198,7 @@ export class DockerResources {
 			) {
 				this.#hasUnconfirmedAllocation = true;
 			}
+
 			throw error;
 		}
 	}
@@ -211,19 +222,25 @@ export class DockerResources {
 				recovery: this.recovery
 			});
 		}
+
 		const name = `${this.volume}-${randomUUID()}`;
 		let hasCreated = false;
 		let removal: Promise<void> | undefined;
+
 		const remove = () => {
 			removal ??= this.#remove(name, cleanupContext(context), operation);
 			void Promise.allSettled([removal]);
+
 			return removal;
 		};
+
 		const cancel = () => {
 			void remove();
 		};
+
 		let result: BackendProcessOutcome | undefined;
 		let failure: unknown;
+
 		try {
 			await this.checked(
 				[
@@ -239,38 +256,46 @@ export class DockerResources {
 			);
 			hasCreated = true;
 			context.signal.addEventListener('abort', cancel, { once: true });
+
 			if (isCancelled(context)) {
 				cancel();
 			}
+
 			result = await this.#attach(name, context, operation);
 		} catch (error) {
 			failure = error;
 		}
+
 		try {
 			await remove();
 		} catch (error) {
 			if (isCancelled(context)) {
 				return { kind: 'cancelled', termination: 'unconfirmed' };
 			}
+
 			throw error;
 		} finally {
 			context.signal.removeEventListener('abort', cancel);
 		}
+
 		if (isCancelled(context)) {
 			return {
 				kind: 'cancelled',
 				termination: hasCreated ? 'confirmed' : 'unconfirmed'
 			};
 		}
+
 		if (failure !== undefined) {
 			if (isSandboxError(failure)) {
 				throw failure;
 			}
+
 			throw new SandboxTransportError(
 				{ operation, providerId: 'example.docker', recovery: this.recovery },
 				{ cause: failure }
 			);
 		}
+
 		if (result === undefined) {
 			throw new SandboxTransportError({
 				operation,
@@ -278,6 +303,7 @@ export class DockerResources {
 				recovery: this.recovery
 			});
 		}
+
 		return result;
 	}
 
@@ -303,9 +329,11 @@ export class DockerResources {
 			.trim()
 			.split('\n')
 			.filter(Boolean);
+
 		if (ids.length > 0) {
 			await this.checked(['rm', '--force', ...ids], context, 'dispose');
 		}
+
 		const volumes = await this.checked(
 			[
 				'volume',
@@ -323,9 +351,11 @@ export class DockerResources {
 			.trim()
 			.split('\n')
 			.filter(Boolean);
+
 		if (names.includes(this.volume)) {
 			await this.checked(['volume', 'rm', this.volume], context, 'dispose');
 		}
+
 		if (this.#hasUnconfirmedAllocation) {
 			throw new SandboxCleanupError({
 				operation: 'dispose',

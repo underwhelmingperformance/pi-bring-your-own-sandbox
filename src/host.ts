@@ -25,8 +25,10 @@ export function initialiseSandboxHost(
 	) {
 		throw new InvalidSandboxRequestError({ operation: 'configure' });
 	}
+
 	if (discoverBroker(pi.events) !== undefined) {
 		throw new SandboxInitialisationError({ operation: 'configure' });
 	}
+
 	ensureSandboxService(pi, options.agentDirectory);
 }

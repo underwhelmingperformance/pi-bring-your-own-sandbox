@@ -42,7 +42,9 @@ export class OperationScope {
 		defaultMs: number
 	) {
 		this.#identity = identity;
+
 		const timeoutMs = options.timeoutMs ?? defaultMs;
+
 		if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
 			throw new InvalidSandboxRequestError({
 				...identity
@@ -56,9 +58,11 @@ export class OperationScope {
 			deadline: Date.now() + timeoutMs
 		});
 		this.#listen(lifetime, 'shutdown');
+
 		if (options.signal !== undefined) {
 			this.#listen(options.signal, 'caller');
 		}
+
 		if (this.#reason === undefined) {
 			this.#scheduleDeadline();
 		}
@@ -67,12 +71,14 @@ export class OperationScope {
 	#listen(signal: AbortSignal, reason: CancellationReason): void {
 		if (signal.aborted) {
 			this.abort(reason);
+
 			return;
 		}
 
 		const listener = () => {
 			this.abort(reason);
 		};
+
 		signal.addEventListener('abort', listener, { once: true });
 		this.#listeners.push(() => {
 			signal.removeEventListener('abort', listener);
@@ -81,8 +87,10 @@ export class OperationScope {
 
 	#scheduleDeadline(): void {
 		const remaining = this.#expiresAt - performance.now();
+
 		if (remaining <= 0) {
 			this.abort('deadline');
+
 			return;
 		}
 
@@ -98,6 +106,7 @@ export class OperationScope {
 		if (this.#reason === undefined && performance.now() >= this.#expiresAt) {
 			this.abort('deadline');
 		}
+
 		return this.#reason;
 	}
 
@@ -120,6 +129,7 @@ export class OperationScope {
 
 	async whenCancelled(): Promise<{ readonly kind: 'cancelled' }> {
 		await this.#cancelled.promise;
+
 		return { kind: 'cancelled' };
 	}
 
@@ -136,12 +146,14 @@ export class OperationScope {
 					{ cause: this.#cause }
 				);
 			}
+
 			case 'deadline': {
 				return new SandboxTimeoutError({
 					...this.#identity,
 					completion
 				});
 			}
+
 			case 'output': {
 				return new SandboxOutputCallbackError(
 					{
@@ -151,6 +163,7 @@ export class OperationScope {
 					{ cause: this.#cause }
 				);
 			}
+
 			default: {
 				throw new SandboxOperationError({ ...this.#identity });
 			}
@@ -164,9 +177,11 @@ export class OperationScope {
 
 		this.#isFinished = true;
 		clearTimeout(this.#timer);
+
 		for (const remove of this.#listeners) {
 			remove();
 		}
+
 		this.#listeners.length = 0;
 	}
 }
@@ -179,7 +194,9 @@ export class OperationRegistry {
 		execute: () => Promise<Value>
 	): Promise<Value> {
 		const finished = Promise.withResolvers<'finished'>();
+
 		this.#active.add(finished.promise);
+
 		try {
 			return await execute();
 		} finally {
@@ -216,6 +233,7 @@ export async function settleOperation<Value>(
 ): Promise<Settlement<Value>> {
 	const completion = observe(promise);
 	const first = await Promise.race([completion, scope.whenCancelled()]);
+
 	if (first.kind !== 'cancelled') {
 		return first;
 	}

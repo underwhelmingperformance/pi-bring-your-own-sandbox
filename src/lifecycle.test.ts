@@ -25,6 +25,7 @@ it('composes caller cancellation and lifetime with a stable first cause', () => 
 		{ signal: caller.signal },
 		120_000
 	);
+
 	caller.abort();
 	lifetime.abort();
 
@@ -41,7 +42,9 @@ it('composes caller cancellation and lifetime with a stable first cause', () => 
 
 it('rejects already-aborted work before provider invocation', () => {
 	const caller = new AbortController();
+
 	caller.abort();
+
 	const scope = new OperationScope(
 		identity,
 		new AbortController().signal,
@@ -65,12 +68,14 @@ it('rejects already-aborted work before provider invocation', () => {
 it('uses milliseconds and removes its timer when finished', async () => {
 	vi.useFakeTimers();
 	vi.setSystemTime(1000);
+
 	const scope = new OperationScope(
 		identity,
 		new AbortController().signal,
 		{ timeoutMs: 20 },
 		120_000
 	);
+
 	expect(scope.context.deadline).toBe(1020);
 	await vi.advanceTimersByTimeAsync(20);
 	expect(scope.cancellationError('confirmed')).toMatchObject({
@@ -101,10 +106,12 @@ it.each([0, -1, NaN, Infinity])(
 
 it('waits for an acknowledgement after cancellation', async () => {
 	vi.useFakeTimers();
+
 	const lifetime = new AbortController();
 	const scope = new OperationScope(identity, lifetime.signal, {}, 120_000);
 	const operation = Promise.withResolvers<string>();
 	const result = settleOperation(scope, operation.promise);
+
 	lifetime.abort();
 	await vi.advanceTimersByTimeAsync(1000);
 	operation.resolve('stopped');
@@ -116,10 +123,12 @@ it('waits for an acknowledgement after cancellation', async () => {
 
 it('bounds an unresponsive cancellation and observes a later rejection', async () => {
 	vi.useFakeTimers();
+
 	const lifetime = new AbortController();
 	const scope = new OperationScope(identity, lifetime.signal, {}, 120_000);
 	const operation = Promise.withResolvers<string>();
 	const result = settleOperation(scope, operation.promise);
+
 	lifetime.abort();
 	await vi.advanceTimersByTimeAsync(5000);
 
@@ -133,12 +142,14 @@ it('bounds an unresponsive cancellation and observes a later rejection', async (
 it('keeps elapsed timeouts stable when the wall clock changes', async () => {
 	vi.useFakeTimers();
 	vi.setSystemTime(1000);
+
 	const scope = new OperationScope(
 		identity,
 		new AbortController().signal,
 		{ timeoutMs: 20 },
 		120_000
 	);
+
 	vi.setSystemTime(-1000);
 	await vi.advanceTimersByTimeAsync(20);
 	expect({
@@ -150,12 +161,14 @@ it('keeps elapsed timeouts stable when the wall clock changes', async () => {
 
 it('supports deadlines beyond one native timer interval', async () => {
 	vi.useFakeTimers();
+
 	const scope = new OperationScope(
 		identity,
 		new AbortController().signal,
 		{ timeoutMs: 2_147_483_650 },
 		120_000
 	);
+
 	await vi.advanceTimersByTimeAsync(2_147_483_647);
 	expect(scope.reason).toBeUndefined();
 	await vi.advanceTimersByTimeAsync(3);
@@ -166,6 +179,7 @@ it('supports deadlines beyond one native timer interval', async () => {
 
 it('drains all registered work and releases scopes on rejection', async () => {
 	vi.useFakeTimers();
+
 	const registry = new OperationRegistry();
 	const first = Promise.withResolvers<string>();
 	const second = Promise.withResolvers<string>();
@@ -176,16 +190,21 @@ it('drains all registered work and releases scopes on rejection', async () => {
 		)
 	);
 	let isDrained = false;
+
 	async function drain() {
 		await registry.drain();
 		isDrained = true;
 	}
+
 	const draining = drain();
+
 	first.resolve('first');
 	expect(await scopes[0]).toBe('first');
 	expect(isDrained).toBe(false);
+
 	const cause = new Error('provider failed');
 	const rejected = expect(scopes[1]).rejects.toBe(cause);
+
 	second.reject(cause);
 	await rejected;
 	await draining;
@@ -204,6 +223,7 @@ it('checks elapsed time before the deadline timer can dispatch', () => {
 		{ timeoutMs: 5 },
 		120_000
 	);
+
 	try {
 		now = 100;
 		expect(() => {

@@ -36,11 +36,14 @@ function observedProvider<Config>(
 				...provider,
 				async open(request, context) {
 					opening.push(provider.id);
+
 					const backend = await provider.open(request, context);
+
 					return {
 						...backend,
 						exec: (request, context) => {
 							calls.push(request);
+
 							return backend.exec(request, context);
 						},
 						dispose: (context) => backend.dispose(context)
@@ -100,6 +103,7 @@ it.each([
 			arguments: {}
 		}
 	]);
+
 	await withPiRuntime(
 		[
 			{ name: 'consumer-example', factory: consumerExtension },
@@ -114,11 +118,14 @@ it.each([
 				'scripted',
 				'scripted'
 			);
+
 			if (selected === undefined) {
 				throw new Error('The scripted model was not registered.');
 			}
+
 			await runtime.session.setModel(selected);
 			await runtime.session.prompt('Inspect the selected workspace.');
+
 			const results = model.requests
 				.at(1)
 				?.messages.filter((message) => message.role === 'toolResult')
@@ -128,6 +135,7 @@ it.each([
 					content: message.content
 				}));
 			const target = scenario.target ?? (await realpath(runtime.services.cwd));
+
 			expect({ errors, opening, calls, results }).toStrictEqual({
 				errors: [],
 				opening: scenario.provider === 'passthrough' ? [] : [scenario.provider],
@@ -157,6 +165,7 @@ it.each([
 		{
 			prepare: async (_directory, agentDirectory) => {
 				vi.stubEnv('PI_CODING_AGENT_DIR', agentDirectory);
+
 				if (scenario.provider !== 'passthrough') {
 					await writeFile(
 						path.join(agentDirectory, 'byos.json'),
@@ -192,6 +201,7 @@ it('uses Pi approval before the consumer can acquire or execute', async () => {
 			}));
 		}
 	};
+
 	await withPiRuntime(
 		[
 			{ name: 'consumer-example', factory: consumerExtension },
@@ -204,11 +214,14 @@ it('uses Pi approval before the consumer can acquire or execute', async () => {
 				'scripted',
 				'scripted'
 			);
+
 			if (selected === undefined) {
 				throw new Error('The scripted model was not registered.');
 			}
+
 			await runtime.session.setModel(selected);
 			await runtime.session.prompt('Inspect the selected workspace.');
+
 			const result = model.requests
 				.at(1)
 				?.messages.filter((message) => message.role === 'toolResult')
@@ -216,6 +229,7 @@ it('uses Pi approval before the consumer can acquire or execute', async () => {
 					isError: message.isError,
 					content: message.content
 				}));
+
 			expect({ errors, opening, calls, result }).toStrictEqual({
 				errors: [],
 				opening: [],

@@ -22,6 +22,7 @@ function shellDefinition(
 		description:
 			'Timeout in seconds for startup and execution. If omitted, startup allows 60 seconds and execution 120 seconds.'
 	};
+
 	return {
 		...base,
 		defaultActive: false,
@@ -45,6 +46,7 @@ function shellDefinition(
 				exposeSessionEnvironment: false,
 				operations: createShellOperations(pi, context, dialect)
 			});
+
 			return tool.execute(id, input, signal, update, context);
 		}
 	};

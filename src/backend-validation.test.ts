@@ -54,6 +54,7 @@ function backend(): SandboxBackend {
 
 it('accepts an execution-only backend with fewer capabilities than its provider', () => {
 	const value = backend();
+
 	expect(validateBackend(value, provider, policy)).toBe(value);
 });
 
@@ -155,6 +156,7 @@ it('validates target-native Windows paths without probing the host', () => {
 			description: 'Target-native Windows fixture.'
 		}
 	};
+
 	expect(validateBackend(value, provider, policy)).toBe(value);
 });
 
@@ -209,6 +211,7 @@ it('accepts restrictive effective policy for a delegated dimension', () => {
 			networkAccess: 'denied' as const
 		}
 	};
+
 	expect(validateBackend(value, provider, policy)).toBe(value);
 	expect(isPolicySatisfied(value.policy, { networkAccess: 'denied' })).toBe(
 		true
@@ -228,6 +231,7 @@ it('rejects effective policy that the provider did not advertise', () => {
 		...backend(),
 		policy: { ...policy, networkAccess: 'denied' as const }
 	};
+
 	expect(() => validateBackend(value, declaration, policy)).toThrow(
 		expect.objectContaining({
 			name: 'InvalidSandboxDeclarationError',

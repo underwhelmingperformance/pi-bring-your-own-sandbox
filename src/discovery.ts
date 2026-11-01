@@ -122,6 +122,7 @@ export function discoverProviders(
 	events: EventBus
 ): readonly ProviderServiceV1[] {
 	const ids = new Set<string>();
+
 	return collect(events, PROVIDER_DISCOVERY_CHANNEL, 'pi-byos.provider').map(
 		({ id, service }) => {
 			if (!isProviderService(service) || service.id !== id) {
@@ -139,6 +140,7 @@ export function discoverProviders(
 			}
 
 			ids.add(id);
+
 			return Object.freeze({
 				id,
 				label: service.label,

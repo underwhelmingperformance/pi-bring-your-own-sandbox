@@ -53,34 +53,47 @@ class MessageBackend implements SandboxBackend {
 
 	#dispatch(message: unknown): void {
 		assert.ok(isRecord(message));
+
 		if (message.kind === 'dispose') {
 			this.#jobs.clear();
 			this.#channel.port2.postMessage({ kind: 'disposed' });
+
 			return;
 		}
+
 		assert.equal(typeof message.id, 'string');
+
 		if (typeof message.id !== 'string') {
 			return;
 		}
+
 		const id = message.id;
+
 		const reply = (value: object) => {
 			this.#channel.port2.postMessage({ ...value, id });
 		};
+
 		if (message.kind === 'cancel') {
 			if (this.#jobs.delete(id)) {
 				reply({ kind: 'cancelled' });
 			}
+
 			return;
 		}
+
 		try {
 			assert.equal(message.kind, 'exec');
 			assert.ok(isRecord(message.request));
+
 			const request = message.request;
+
 			if (request.kind === 'argv' && request.executable === 'wait') {
 				this.#jobs.add(id);
 				reply({ kind: 'output', stream: 'stdout', data: encode('ready') });
+
 				return;
 			}
+
 			if (request.kind === 'argv' && request.executable === 'pwd') {
 				assert.deepEqual(request, {
 					kind: 'argv',
@@ -93,14 +106,17 @@ class MessageBackend implements SandboxBackend {
 					data: encode('/message/project\n')
 				});
 				reply({ kind: 'exited', code: 0 });
+
 				return;
 			}
+
 			assert.deepEqual(
 				request,
 				request.kind === 'argv'
 					? { kind: 'argv', executable: 'probe', args: ['$HOME', '; exit 99'] }
 					: { kind: 'shell', dialect: 'sh', command: 'probe' }
 			);
+
 			for (const [stream, data] of [
 				['stdout', new Uint8Array([0, 255])],
 				['stderr', encode('error')],
@@ -108,6 +124,7 @@ class MessageBackend implements SandboxBackend {
 			] as const) {
 				reply({ kind: 'output', stream, data });
 			}
+
 			reply({ kind: 'exited', code: 7 });
 		} catch (error) {
 			reply({ kind: 'rejected', error });
@@ -116,16 +133,23 @@ class MessageBackend implements SandboxBackend {
 
 	#receive(message: unknown): void {
 		assert.ok(isRecord(message));
+
 		if (message.kind === 'disposed') {
 			this.#disposed.resolve(undefined);
+
 			return;
 		}
+
 		assert.equal(typeof message.id, 'string');
+
 		if (typeof message.id !== 'string') {
 			return;
 		}
+
 		const pending = this.#pending.get(message.id);
+
 		assert.ok(pending);
+
 		switch (message.kind) {
 			case 'output': {
 				assert.ok(message.stream === 'stdout' || message.stream === 'stderr');
@@ -134,22 +158,29 @@ class MessageBackend implements SandboxBackend {
 					stream: message.stream,
 					data: message.data
 				});
+
 				return;
 			}
+
 			case 'exited': {
 				assert.equal(typeof message.code, 'number');
+
 				if (typeof message.code === 'number') {
 					pending.resolve({
 						kind: 'exited',
 						exit: { kind: 'code', code: message.code }
 					});
 				}
+
 				return;
 			}
+
 			case 'cancelled': {
 				pending.resolve({ kind: 'cancelled', termination: 'confirmed' });
+
 				return;
 			}
+
 			default: {
 				pending.reject(
 					new SandboxOperationError(
@@ -176,21 +207,27 @@ class MessageBackend implements SandboxBackend {
 		if (context.signal.aborted) {
 			return { kind: 'cancelled', termination: 'confirmed' };
 		}
+
 		const completion = Promise.withResolvers<BackendProcessOutcome>();
+
 		this.#pending.set(context.operationId, { ...completion, context });
+
 		const cancel = () => {
 			this.#channel.port1.postMessage({
 				kind: 'cancel',
 				id: context.operationId
 			});
 		};
+
 		context.signal.addEventListener('abort', cancel, { once: true });
+
 		try {
 			this.#channel.port1.postMessage({
 				kind: 'exec',
 				id: context.operationId,
 				request
 			});
+
 			return await completion.promise;
 		} finally {
 			context.signal.removeEventListener('abort', cancel);
@@ -203,17 +240,21 @@ class MessageBackend implements SandboxBackend {
 			const closed = [this.#channel.port1, this.#channel.port2].map(
 				async (port) => {
 					const event = once(port, 'close');
+
 					port.close();
 					await event;
 				}
 			);
+
 			for (const pending of this.#pending.values()) {
 				pending.reject(new SandboxTransportError({ operation: 'exec' }));
 			}
+
 			this.#jobs.clear();
 			await Promise.all(closed);
 			this.#isClosed = true;
 		})();
+
 		return this.#closing;
 	}
 
@@ -241,8 +282,11 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 		},
 		open(request, context) {
 			context.reportRecovery({ kind: 'none' });
+
 			const backend = new MessageBackend(request.policy);
+
 			connections.push(backend);
+
 			return Promise.resolve(backend);
 		}
 	};
@@ -251,6 +295,7 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 		stdout: new Uint8Array([0, 255, 10]),
 		stderr: encode('error')
 	} as const;
+
 	return {
 		label: provider.id,
 		provider,
@@ -287,6 +332,7 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 							connections.map((connection) => connection.activeJobs),
 							connections.map(() => 0)
 						);
+
 						return Promise.resolve();
 					}
 				},
@@ -295,6 +341,7 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 						connections.map((connection) => connection.isClosed),
 						connections.map(() => true)
 					);
+
 					return Promise.resolve();
 				},
 				cleanup: async () => {

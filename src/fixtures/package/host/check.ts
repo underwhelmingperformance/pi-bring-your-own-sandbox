@@ -51,6 +51,7 @@ function isConsumer(value: unknown): value is Consumer {
 const root = process.cwd();
 const apiUrl = import.meta.resolve('pi-bring-your-own-sandbox/api');
 const sdkRoot = path.dirname(path.dirname(fileURLToPath(apiUrl)));
+
 assert.notEqual(
 	await realpath(fileURLToPath(apiUrl)),
 	await realpath(fileURLToPath(peer.apiUrl))
@@ -63,13 +64,17 @@ assert.equal(
 	),
 	true
 );
+
 const testRunner = 'vitest';
+
 await assert.rejects(import(testRunner), { code: 'ERR_MODULE_NOT_FOUND' });
 await assert.rejects(import('pi-bring-your-own-sandbox/testing'), {
 	code: 'ERR_MODULE_NOT_FOUND'
 });
+
 const workspace = path.join(root, 'workspace');
 const agentDirectory = path.join(root, 'agent');
+
 await mkdir(workspace);
 await mkdir(agentDirectory);
 process.env.PI_CODING_AGENT_DIR = agentDirectory;
@@ -84,18 +89,23 @@ await writeFile(
 		}
 	})
 );
+
 const consumer = path.join(workspace, '.pi/extensions/consumer');
 const docker = path.join(workspace, '.pi/extensions/docker');
+
 await cp(path.join(sdkRoot, 'examples/consumer/src'), consumer, {
 	recursive: true
 });
 await cp(path.join(sdkRoot, 'examples/docker/src'), docker, {
 	recursive: true
 });
+
 const helper: unknown = await import(
 	pathToFileURL(path.join(consumer, 'workspace.ts')).href
 );
+
 assert.ok(isConsumer(helper));
+
 const modelRuntime = await ModelRuntime.create({
 	credentials: new InMemoryCredentialStore(),
 	modelsStore: new InMemoryModelsStore(),
@@ -104,6 +114,7 @@ const modelRuntime = await ModelRuntime.create({
 	refreshOnCreate: false
 });
 const vertex = modelRuntime.getProvider('google-vertex');
+
 if (vertex !== undefined) {
 	modelRuntime.registerNativeProvider({
 		...vertex,
@@ -115,8 +126,10 @@ if (vertex !== undefined) {
 		}
 	});
 }
+
 const live: { pi?: ExtensionAPI; context?: ExtensionContext } = {};
 const errors: unknown[] = [];
+
 const create: CreateAgentSessionRuntimeFactory = async (options) => {
 	const services = await createAgentSessionServices({
 		cwd: options.cwd,
@@ -150,6 +163,7 @@ const create: CreateAgentSessionRuntimeFactory = async (options) => {
 		}
 	});
 	const loaded = services.resourceLoader.getExtensions();
+
 	assert.deepEqual(
 		{
 			errors: loaded.errors,
@@ -166,18 +180,22 @@ const create: CreateAgentSessionRuntimeFactory = async (options) => {
 			commands: ['byos']
 		}
 	);
+
 	const result = await createAgentSessionFromServices({
 		services,
 		sessionManager: options.sessionManager,
 		noTools: 'builtin'
 	});
+
 	return { ...result, services, diagnostics: services.diagnostics };
 };
+
 const runtime = await createAgentSessionRuntime(create, {
 	cwd: workspace,
 	agentDir: agentDirectory,
 	sessionManager: SessionManager.inMemory(workspace)
 });
+
 try {
 	await runtime.session.bindExtensions({
 		onError(error) {
@@ -187,15 +205,19 @@ try {
 	assert.deepEqual(errors, []);
 	assert.ok(live.pi);
 	assert.ok(live.context);
+
 	const [first, second] = await Promise.all([
 		sdk.getSandbox(live.pi, live.context),
 		peer.sdk.getSandbox(live.pi, live.context)
 	]);
+
 	assert.deepEqual(
 		{ generationId: first.generationId, backendId: first.backendId },
 		{ generationId: second.generationId, backendId: second.backendId }
 	);
+
 	const results = [];
+
 	for (const client of [sdk, peer.sdk]) {
 		const result = await helper.inspectWorkspace(
 			client,
@@ -203,6 +225,7 @@ try {
 			live.context,
 			new AbortController().signal
 		);
+
 		results.push({
 			exit: result.exit,
 			stdout: new TextDecoder().decode(result.stdout),
@@ -210,6 +233,7 @@ try {
 			omittedBytes: result.omittedBytes
 		});
 	}
+
 	assert.deepEqual(
 		results,
 		[0, 1].map(() => ({

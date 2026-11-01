@@ -78,15 +78,19 @@ async function add(
 
 function packedPaths(output: string): string[] {
 	const result: unknown = JSON.parse(output);
+
 	expect(isRecord(result) && Array.isArray(result.files)).toBe(true);
+
 	if (!isRecord(result) || !Array.isArray(result.files)) {
 		throw new Error('pnpm pack did not report the packed files.');
 	}
+
 	return result.files
 		.map((file: unknown) => {
 			if (!isRecord(file) || typeof file.path !== 'string') {
 				throw new Error('pnpm pack reported an invalid file path.');
 			}
+
 			return file.path;
 		})
 		.toSorted((left, right) => left.localeCompare(right));
@@ -103,18 +107,22 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 			'dist',
 			`obsolete-package-test-${randomUUID()}.js`
 		);
+
 		try {
 			await mkdir(artifacts);
 			await mkdir('dist', { recursive: true });
 			await writeFile(obsolete, 'export {};\n');
 			await run(process.cwd(), 'pnpm', ['build']);
+
 			const dryRun = await run(process.cwd(), 'pnpm', [
 				'pack',
 				'--dry-run',
 				'--json'
 			]);
 			const preview = packedPaths(dryRun.stdout);
+
 			expect(preview).not.toContain(obsolete.split(path.sep).join('/'));
+
 			const packed = await run(process.cwd(), 'pnpm', [
 				'pack',
 				'--json',
@@ -122,6 +130,7 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 				artifacts
 			]);
 			const paths = packedPaths(packed.stdout);
+
 			expect(paths).toStrictEqual(preview);
 			expect(
 				paths.filter((file) =>
@@ -130,11 +139,13 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 					)
 				)
 			).toStrictEqual([]);
+
 			const tarball = path.join(
 				artifacts,
 				'pi-bring-your-own-sandbox-0.0.0.tgz'
 			);
 			const archive = await run(directory, 'tar', ['-tzf', tarball]);
+
 			expect(
 				archive.stdout
 					.trim()
@@ -142,10 +153,12 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 					.map((file) => file.replace(/^package\//, ''))
 					.toSorted((left, right) => left.localeCompare(right))
 			).toStrictEqual(paths);
+
 			for (const subpath of ['api', 'extension', 'pi-tools', 'testing']) {
 				expect(paths).toContain(`dist/${subpath}.js`);
 				expect(paths).toContain(`dist/${subpath}.d.ts`);
 			}
+
 			await project(host);
 			await project(provider);
 			await add(host, [
@@ -154,6 +167,7 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 				'@earendil-works/pi-ai@1.4.0'
 			]);
 			await add(provider, [tarball]);
+
 			const installed = path.join(
 				host,
 				'node_modules/pi-bring-your-own-sandbox'
@@ -161,10 +175,13 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 			const manifest: unknown = JSON.parse(
 				await readFile(path.join(installed, 'package.json'), 'utf8')
 			);
+
 			expect(isRecord(manifest)).toBe(true);
+
 			if (!isRecord(manifest)) {
 				throw new Error('The installed manifest must be an object.');
 			}
+
 			expect({
 				dependencies: manifest.dependencies,
 				peers: manifest.peerDependencies,
@@ -183,10 +200,12 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 					])
 				)
 			});
+
 			const declarations = await readFile(
 				path.join(installed, 'dist/contracts.d.ts'),
 				'utf8'
 			);
+
 			expect(declarations).toContain(
 				'Cancellation and deadline settings for one consumer call.'
 			);
@@ -212,7 +231,9 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 				path.join(provider, 'contract.test.ts')
 			);
 			await run(provider, 'pnpm', ['exec', 'tsc', '--noEmit']);
+
 			const report = path.join(provider, 'report.json');
+
 			await run(provider, 'pnpm', [
 				'exec',
 				'vitest',
@@ -222,7 +243,9 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 				'--outputFile',
 				report
 			]);
+
 			const result: unknown = JSON.parse(await readFile(report, 'utf8'));
+
 			expect(result).toMatchObject({
 				success: true,
 				numTotalTests: 4,

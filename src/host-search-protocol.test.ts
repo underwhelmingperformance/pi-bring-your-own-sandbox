@@ -38,14 +38,18 @@ class ScriptedProcess implements HostProcessRunner {
 		context: BackendProcessContext
 	): Promise<BackendProcessOutcome> {
 		this.calls.push(request);
+
 		const bytes = new TextEncoder().encode(this.#output);
+
 		for (let offset = 0; offset < bytes.byteLength; offset++) {
 			context.onOutput({
 				stream: 'stdout',
 				data: bytes.subarray(offset, offset + 1)
 			});
 		}
+
 		this.#beforeResult?.();
+
 		return Promise.resolve(this.#outcome);
 	}
 }
@@ -64,8 +68,10 @@ async function fixture(processes: HostProcessRunner) {
 	const directory = await mkdtemp(
 		path.join(tmpdir(), 'pi-byos-search-protocol-')
 	);
+
 	directories.push(directory);
 	await mkdir(path.join(directory, '.git'));
+
 	const operations = new HostOperations();
 	const search = new HostSearch(
 		directory,
@@ -78,6 +84,7 @@ async function fixture(processes: HostProcessRunner) {
 		signal: new AbortController().signal,
 		deadline: Date.now() + 5000
 	};
+
 	return { directory, search, context };
 }
 
@@ -93,6 +100,7 @@ function grepOutput(): string[] {
 it('preserves split UTF-8 bytes and invokes only an argv search process inside the selected root', async () => {
 	const processes = new ScriptedProcess(`${grepOutput().join('\n')}\n`);
 	const { directory, search, context } = await fixture(processes);
+
 	expect({
 		result: await search.grep({ pattern: 'needle' }, context),
 		calls: processes.calls
@@ -137,25 +145,30 @@ it.each([
 	'invalid-json'
 ] as const)('rejects malformed grep output: %s', async (malformed) => {
 	const rows = grepOutput();
+
 	switch (malformed) {
 		case 'missing-end': {
 			rows.splice(2, 1);
 			break;
 		}
+
 		case 'missing-summary': {
 			rows.pop();
 			break;
 		}
+
 		case 'invalid-encoding': {
 			rows[1] =
 				'{"type":"match","data":{"path":{"text":"./file"},"line_number":1,"lines":{"bytes":"invalid!"}}}';
 			break;
 		}
+
 		case 'invalid-line': {
 			rows[1] =
 				'{"type":"match","data":{"path":{"text":"./file"},"line_number":0,"lines":{"text":"needle"}}}';
 			break;
 		}
+
 		case 'invalid-json': {
 			rows[1] = '{';
 			break;
@@ -165,6 +178,7 @@ it.each([
 	const { search, context } = await fixture(
 		new ScriptedProcess(`${rows.join('\n')}\n`)
 	);
+
 	await expect(
 		search.grep({ pattern: 'needle' }, context)
 	).rejects.toMatchObject({ name: 'SandboxOperationError' });
@@ -172,6 +186,7 @@ it.each([
 
 it('rejects an incomplete null-delimited find record', async () => {
 	const { search, context } = await fixture(new ScriptedProcess('./partial'));
+
 	await expect(search.find({ pattern: '*' }, context)).rejects.toMatchObject({
 		name: 'SandboxOperationError'
 	});
@@ -181,6 +196,7 @@ it('replaces retained find candidates when an earlier path arrives after the lim
 	const { search, context } = await fixture(
 		new ScriptedProcess('./z\0./y\0./a\0')
 	);
+
 	expect(await search.find({ pattern: '*', limit: 2 }, context)).toStrictEqual({
 		paths: ['a', 'y'],
 		truncated: true
@@ -193,10 +209,13 @@ it('applies the grep limit across complete files without depending on enumeratio
 			.slice(0, -1)
 			.map((row) => row.replaceAll('./file', () => `./${filename}`))
 	);
+
 	rows.push('{"type":"summary","data":{}}');
+
 	const { search, context } = await fixture(
 		new ScriptedProcess(`${rows.join('\n')}\n`)
 	);
+
 	expect(
 		await search.grep({ pattern: 'needle', limit: 2 }, context)
 	).toStrictEqual({
@@ -218,6 +237,7 @@ it('preserves unknown termination after caller cancellation', async () => {
 		}
 	);
 	const { search, context } = await fixture(processes);
+
 	await expect(
 		search.grep(
 			{ pattern: 'needle' },
@@ -243,6 +263,7 @@ it.each([
 			new ScriptedProcess(''),
 			new HostOperations()
 		);
+
 		expect(Object.keys(search.methods() ?? {})).toStrictEqual(methods);
 	}
 );

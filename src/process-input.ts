@@ -47,6 +47,7 @@ function isArguments(value: unknown): value is readonly string[] {
 	}
 
 	const entries: readonly unknown[] = value;
+
 	return entries.values().every(isSafeText);
 }
 
@@ -88,6 +89,7 @@ export function snapshotProcessRequest(value: unknown): ProcessRequest {
 		...(value.cwd !== undefined && { cwd: value.cwd }),
 		...(value.env !== undefined && { env: Object.freeze({ ...value.env }) })
 	};
+
 	return value.kind === 'argv'
 		? Object.freeze({
 				...location,
@@ -125,6 +127,7 @@ function isOptions(value: unknown): value is ProcessOptions {
 
 export function snapshotProcessOptions(input: unknown): ProcessOptions {
 	const value = input === undefined ? {} : input;
+
 	if (!isOptions(value)) {
 		throw new InvalidSandboxRequestError({ operation: 'exec' });
 	}

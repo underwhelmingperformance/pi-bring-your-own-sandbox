@@ -57,6 +57,7 @@ export interface SandboxOwner extends BackendOwner {
 
 class Files implements SandboxFiles {
 	readonly #owner: SandboxOwner;
+
 	constructor(owner: SandboxOwner) {
 		this.#owner = owner;
 	}
@@ -67,30 +68,40 @@ class Files implements SandboxFiles {
 			operation
 		});
 	}
+
 	#read(operation: SandboxOperation): BackendFileReader {
 		this.#owner.assertLive(operation);
+
 		const group = this.#owner.backend.files?.read;
+
 		return group === undefined ||
 			!this.#owner.backend.capabilities.operations.includes('files.read')
 			? this.#unsupported(operation)
 			: group;
 	}
+
 	#write(operation: SandboxOperation): BackendFileWriter {
 		this.#owner.assertLive(operation);
+
 		const group = this.#owner.backend.files?.write;
+
 		return group === undefined ||
 			!this.#owner.backend.capabilities.operations.includes('files.write')
 			? this.#unsupported(operation)
 			: group;
 	}
+
 	#list(operation: SandboxOperation): BackendDirectoryReader {
 		this.#owner.assertLive(operation);
+
 		const group = this.#owner.backend.files?.list;
+
 		return group === undefined ||
 			!this.#owner.backend.capabilities.operations.includes('files.list')
 			? this.#unsupported(operation)
 			: group;
 	}
+
 	#invalid(operation: SandboxOperation): never {
 		throw new InvalidSandboxDeclarationError({
 			...this.#owner.identity,
@@ -105,26 +116,32 @@ class Files implements SandboxFiles {
 		const group = this.#read('readFile');
 		const target = requirePath(filename, 'readFile');
 		const options = operationOptions(input, 'readFile');
+
 		return runOperation(this.#owner, 'readFile', options, async (context) => {
 			const bytes: unknown = await group.readFile(target, context);
+
 			return bytes instanceof Uint8Array
 				? new Uint8Array(bytes)
 				: this.#invalid('readFile');
 		});
 	}
+
 	async writeFile(
 		filename: string,
 		content: Uint8Array,
 		input?: SandboxWriteOptions
 	): Promise<void> {
 		this.#owner.assertLive('writeFile');
+
 		if (!(content instanceof Uint8Array)) {
 			throw new InvalidSandboxRequestError({ operation: 'writeFile' });
 		}
+
 		const group = this.#write('writeFile');
 		const target = requirePath(filename, 'writeFile');
 		const options = writeOptions(input);
 		const bytes = new Uint8Array(content);
+
 		return runOperation(
 			this.#owner,
 			'writeFile',
@@ -136,14 +153,17 @@ class Files implements SandboxFiles {
 						context
 					);
 				}
+
 				if (context.signal.aborted) {
 					return;
 				}
+
 				await group.writeFile(target, bytes, context);
 			},
 			this.#owner.mutations
 		);
 	}
+
 	async mkdir(
 		filename: string,
 		input?: SandboxOperationOptions
@@ -151,6 +171,7 @@ class Files implements SandboxFiles {
 		const group = this.#write('mkdir');
 		const target = requirePath(filename, 'mkdir');
 		const options = operationOptions(input, 'mkdir');
+
 		return runOperation(
 			this.#owner,
 			'mkdir',
@@ -159,6 +180,7 @@ class Files implements SandboxFiles {
 			this.#owner.mutations
 		);
 	}
+
 	async access(
 		filename: string,
 		mode: 'read' | 'write',
@@ -169,10 +191,12 @@ class Files implements SandboxFiles {
 			checked === 'read' ? this.#read('access') : this.#write('access');
 		const target = requirePath(filename, 'access');
 		const options = operationOptions(input, 'access');
+
 		return runOperation(this.#owner, 'access', options, (context) =>
 			group.access(target, context)
 		);
 	}
+
 	async stat(
 		filename: string,
 		input?: SandboxOperationOptions
@@ -184,13 +208,16 @@ class Files implements SandboxFiles {
 			: this.#list('stat');
 		const target = requirePath(filename, 'stat');
 		const options = operationOptions(input, 'stat');
+
 		return runOperation(this.#owner, 'stat', options, async (context) => {
 			const stat: unknown = await group.stat(target, context);
+
 			return isFileStat(stat)
 				? Object.freeze({ kind: stat.kind, size: stat.size })
 				: this.#invalid('stat');
 		});
 	}
+
 	async listDirectory(
 		filename: string,
 		input?: SandboxOperationOptions
@@ -198,12 +225,14 @@ class Files implements SandboxFiles {
 		const group = this.#list('listDirectory');
 		const target = requirePath(filename, 'listDirectory');
 		const options = operationOptions(input, 'listDirectory');
+
 		return runOperation(
 			this.#owner,
 			'listDirectory',
 			options,
 			async (context) => {
 				const entries: unknown = await group.listDirectory(target, context);
+
 				return isDirectoryEntries(
 					entries,
 					this.#owner.backend.workspace.pathFlavor
@@ -217,31 +246,39 @@ class Files implements SandboxFiles {
 			}
 		);
 	}
+
 	async updateText(
 		filename: string,
 		transform: (text: string) => string,
 		input?: SandboxOperationOptions
 	): Promise<TextUpdate> {
 		this.#owner.assertLive('updateText');
+
 		if (typeof transform !== 'function') {
 			throw new InvalidSandboxRequestError({ operation: 'updateText' });
 		}
+
 		const read = this.#read('updateText');
 		const write = this.#write('updateText');
 		const target = requirePath(filename, 'updateText');
 		const options = operationOptions(input, 'updateText');
+
 		return runOperation(
 			this.#owner,
 			'updateText',
 			options,
 			async (context, check) => {
 				await write.access(target, context);
+
 				const bytes: unknown = await read.readFile(target, context);
+
 				if (!(bytes instanceof Uint8Array)) {
 					return this.#invalid('updateText');
 				}
+
 				let before: string;
 				let after: unknown;
+
 				try {
 					before = new TextDecoder('utf-8', {
 						fatal: true,
@@ -254,14 +291,18 @@ class Files implements SandboxFiles {
 						{ cause: error }
 					);
 				}
+
 				if (typeof after !== 'string') {
 					if (isRecord(after) && typeof after.then === 'function') {
 						void Promise.allSettled([Promise.resolve(after)]);
 					}
+
 					throw new InvalidSandboxRequestError({ operation: 'updateText' });
 				}
+
 				check();
 				await write.writeFile(target, new TextEncoder().encode(after), context);
+
 				return Object.freeze({ before, after });
 			},
 			this.#owner.mutations
@@ -271,16 +312,20 @@ class Files implements SandboxFiles {
 
 class Search implements SandboxSearch {
 	readonly #owner: SandboxOwner;
+
 	constructor(owner: SandboxOwner) {
 		this.#owner = owner;
 	}
+
 	async find(
 		input: FindRequest,
 		settings?: SandboxOperationOptions
 	): Promise<FindResult> {
 		this.#owner.assertLive('find');
+
 		const backend = this.#owner.backend;
 		const group = backend.search;
+
 		if (
 			!backend.capabilities.operations.includes('search.find') ||
 			group?.find === undefined
@@ -290,11 +335,14 @@ class Search implements SandboxSearch {
 				operation: 'find'
 			});
 		}
+
 		const request = findRequest(input);
 		const options = operationOptions(settings, 'find');
 		const find = group.find.bind(group);
+
 		return runOperation(this.#owner, 'find', options, async (context) => {
 			const result: unknown = await find(request, context);
+
 			if (
 				!isFindResult(
 					result,
@@ -307,19 +355,23 @@ class Search implements SandboxSearch {
 					operation: 'find'
 				});
 			}
+
 			return Object.freeze({
 				paths: Object.freeze([...result.paths]),
 				truncated: result.truncated
 			});
 		});
 	}
+
 	async grep(
 		input: GrepRequest,
 		settings?: SandboxOperationOptions
 	): Promise<GrepResult> {
 		this.#owner.assertLive('grep');
+
 		const backend = this.#owner.backend;
 		const group = backend.search;
+
 		if (
 			!backend.capabilities.operations.includes('search.grep') ||
 			group?.grep === undefined
@@ -329,11 +381,14 @@ class Search implements SandboxSearch {
 				operation: 'grep'
 			});
 		}
+
 		const request = grepRequest(input);
 		const options = operationOptions(settings, 'grep');
 		const grep = group.grep.bind(group);
+
 		return runOperation(this.#owner, 'grep', options, async (context) => {
 			const result: unknown = await grep(request, context);
+
 			if (
 				!isGrepResult(
 					result,
@@ -347,6 +402,7 @@ class Search implements SandboxSearch {
 					operation: 'grep'
 				});
 			}
+
 			return Object.freeze({
 				matches: Object.freeze(
 					result.matches.map((match) =>
@@ -367,6 +423,7 @@ class Search implements SandboxSearch {
 
 export function createSandbox(owner: SandboxOwner): Sandbox {
 	const backend = owner.backend;
+
 	return Object.freeze({
 		providerId: owner.identity.providerId,
 		backendId: owner.identity.backendId,

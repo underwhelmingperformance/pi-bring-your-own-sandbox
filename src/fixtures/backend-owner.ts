@@ -22,20 +22,25 @@ export class TestBackendOwner implements SandboxOwner {
 		this.backend = backend;
 		this.identity = { providerId: 'fixture', backendId: backend.id };
 	}
+
 	get lifetime(): AbortSignal {
 		return this.shutdown.signal;
 	}
+
 	assertLive(operation: SandboxOperation): void {
 		if (!this.#isLive) {
 			throw new StaleSandboxHandleError({ operation });
 		}
+
 		if (this.failures[0] !== undefined) {
 			throw this.failures[0];
 		}
 	}
+
 	markUnhealthy(failure: SandboxErrorInfo): void {
 		this.failures.push(failure);
 	}
+
 	invalidate(): void {
 		this.#isLive = false;
 	}

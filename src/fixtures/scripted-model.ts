@@ -31,11 +31,13 @@ export class ScriptedModel {
 					],
 					streamSimple: (model, context) => {
 						this.requests.push(structuredClone(context));
+
 						if (this.requests.length > 2) {
 							throw new Error(
 								'Pi requested more turns than the scripted model provides.'
 							);
 						}
+
 						const isFirst = this.requests.length === 1 && calls.length > 0;
 						const message: AssistantMessage = {
 							role: 'assistant',
@@ -63,10 +65,12 @@ export class ScriptedModel {
 							}
 						};
 						const stream = createAssistantMessageEventStream();
+
 						stream.push({
 							type: 'start',
 							partial: { ...message, content: [] }
 						});
+
 						for (const [contentIndex, block] of message.content.entries()) {
 							if (block.type === 'toolCall') {
 								stream.push({
@@ -81,6 +85,7 @@ export class ScriptedModel {
 									partial: message
 								});
 							}
+
 							if (block.type !== 'text') {
 								continue;
 							}
@@ -103,11 +108,13 @@ export class ScriptedModel {
 								partial: message
 							});
 						}
+
 						stream.push({
 							type: 'done',
 							reason: isFirst ? 'toolUse' : 'stop',
 							message
 						});
+
 						return stream;
 					}
 				});

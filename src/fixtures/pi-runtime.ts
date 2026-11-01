@@ -40,9 +40,12 @@ export async function withPiRuntime(
 ): Promise<void> {
 	const directory = await mkdtemp(path.join(tmpdir(), 'pi-byos-runtime-'));
 	const agentDirectory = path.join(directory, 'agent');
+
 	await mkdir(agentDirectory);
+
 	try {
 		await fixtureOptions?.prepare?.(directory, agentDirectory);
+
 		const modelRuntime = await ModelRuntime.create({
 			credentials: new InMemoryCredentialStore(),
 			modelsPath: path.join(agentDirectory, 'models.json'),
@@ -52,6 +55,7 @@ export async function withPiRuntime(
 		});
 		// Provider registration refreshes Vertex auth even with model network access disabled.
 		const vertex = modelRuntime.getProvider('google-vertex');
+
 		if (vertex !== undefined) {
 			modelRuntime.registerNativeProvider({
 				...vertex,
@@ -63,7 +67,9 @@ export async function withPiRuntime(
 				}
 			});
 		}
+
 		const errors: unknown[] = [];
+
 		const create: CreateAgentSessionRuntimeFactory = async (options) => {
 			const services = await createAgentSessionServices({
 				cwd: options.cwd,
@@ -90,13 +96,16 @@ export async function withPiRuntime(
 					sessionStartEvent: options.sessionStartEvent
 				})
 			});
+
 			return { ...result, services, diagnostics: services.diagnostics };
 		};
+
 		const runtime = await createAgentSessionRuntime(create, {
 			cwd: directory,
 			agentDir: agentDirectory,
 			sessionManager: SessionManager.inMemory(directory)
 		});
+
 		runtime.setRebindSession((session) =>
 			session.bindExtensions({
 				onError: (error) => {
@@ -104,6 +113,7 @@ export async function withPiRuntime(
 				}
 			})
 		);
+
 		try {
 			await runtime.session.bindExtensions({
 				onError: (error) => {

@@ -30,8 +30,10 @@ export function isDirectoryEntries(
 	if (!Array.isArray(value)) {
 		return false;
 	}
+
 	const entries: readonly unknown[] = value;
 	const ids = new Set<string>();
+
 	return entries.values().every((entry) => {
 		if (
 			!isRecord(entry) ||
@@ -46,7 +48,9 @@ export function isDirectoryEntries(
 		) {
 			return false;
 		}
+
 		ids.add(entry.name);
+
 		return true;
 	});
 }
@@ -58,7 +62,9 @@ function isRelativePath(
 	if (!isTargetPath(value) || path[flavor].parse(value).root !== '') {
 		return false;
 	}
+
 	const segments = flavor === 'posix' ? value.split('/') : value.split(/[/\\]/);
+
 	return segments.every((segment) => !['', '.', '..'].includes(segment));
 }
 
@@ -76,20 +82,26 @@ export function isFindResult(
 	) {
 		return false;
 	}
+
 	const paths: readonly unknown[] = value.paths;
 	const ids = new Set<string>();
+
 	return paths.values().every((entry) => {
 		if (typeof entry !== 'string') {
 			return false;
 		}
+
 		const hasMarker =
 			entry.endsWith('/') || (flavor === 'win32' && entry.endsWith('\\'));
 		const target = hasMarker ? entry.slice(0, -1) : entry;
 		const id = flavor === 'win32' ? target.replaceAll('\\', '/') : target;
+
 		if (!isRelativePath(target, flavor) || ids.has(id)) {
 			return false;
 		}
+
 		ids.add(id);
+
 		return true;
 	});
 }
@@ -98,7 +110,9 @@ function isLines(value: unknown): value is readonly string[] {
 	if (!Array.isArray(value)) {
 		return false;
 	}
+
 	const entries: readonly unknown[] = value;
+
 	return entries
 		.values()
 		.every((entry) => isSafeText(entry) && !entry.includes('\n'));
@@ -136,8 +150,10 @@ export function isGrepResult(
 	) {
 		return false;
 	}
+
 	const matches: readonly unknown[] = value.matches;
 	const ids = new Set<string>();
+
 	return matches.values().every((entry) => {
 		if (
 			!isMatch(entry, flavor) ||
@@ -147,13 +163,17 @@ export function isGrepResult(
 		) {
 			return false;
 		}
+
 		const filename =
 			flavor === 'win32' ? entry.path.replaceAll('\\', '/') : entry.path;
 		const id = `${filename}\0${String(entry.line)}`;
+
 		if (ids.has(id)) {
 			return false;
 		}
+
 		ids.add(id);
+
 		return true;
 	});
 }

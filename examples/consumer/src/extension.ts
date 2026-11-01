@@ -21,6 +21,7 @@ export default function workspaceExtension(pi: ExtensionAPI): void {
 				stderr: new TextDecoder().decode(result.stderr),
 				omittedBytes: result.omittedBytes
 			};
+
 			return {
 				content: [{ type: 'text', text: JSON.stringify(output) }],
 				details: output

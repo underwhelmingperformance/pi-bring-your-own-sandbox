@@ -60,11 +60,14 @@ export function registerSandboxProvider<Config>(
 		policies: snapshotPolicies(provider.policies),
 		configure(input: unknown) {
 			let config: Config;
+
 			try {
 				config = validate(input);
+
 				if (isRecord(config) && typeof config.then === 'function') {
 					// An invalid async validator can reject after this method has thrown.
 					void Promise.allSettled([Promise.resolve(config)]);
+
 					throw new InvalidSandboxConfigError({
 						operation: 'configure',
 						providerId: id
@@ -88,6 +91,7 @@ export function registerSandboxProvider<Config>(
 				open: (request, context) =>
 					open({ ...request, configuration: config }, context)
 			};
+
 			return Object.freeze(configured);
 		}
 	});

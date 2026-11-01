@@ -24,6 +24,7 @@ import { registerUserShell } from './user-shell.js';
 
 vi.mock(import('node:child_process'), async (importOriginal) => {
 	const actual = await importOriginal();
+
 	return {
 		...actual,
 		spawn: vi.fn(() => {
@@ -68,6 +69,7 @@ function fixture(
 				stream: 'stdout',
 				data: new TextEncoder().encode('remote user output')
 			});
+
 			return (
 				run?.(request, context) ??
 				Promise.resolve({ kind: 'exited', exit: { kind: 'code', code: 7 } })
@@ -89,6 +91,7 @@ function fixture(
 				open: async () => {
 					counts.opens++;
 					await opening?.();
+
 					return backend;
 				}
 			};
@@ -123,6 +126,7 @@ function fixture(
 			registerUserShell(pi);
 		}
 	};
+
 	return { extension, calls, counts, binding };
 }
 
@@ -141,6 +145,7 @@ it.each([
 			...(userShell !== undefined && { userShell }),
 			shells: ['bash', 'sh', 'powershell']
 		});
+
 		await withPiRuntime([extension], async (runtime, errors) => {
 			const event = await runtime.session.extensionRunner.emitUserBash({
 				type: 'user_bash',
@@ -148,6 +153,7 @@ it.each([
 				excludeFromContext: false,
 				cwd: runtime.session.sessionManager.getCwd()
 			});
+
 			expect({
 				errors,
 				calls,
@@ -159,14 +165,17 @@ it.each([
 				opens: 0,
 				hasOperations: true
 			});
+
 			if (event?.operations === undefined) {
 				throw new Error('The adapter did not provide user-shell operations.');
 			}
+
 			const result = await runtime.session.executeBash(
 				'user command',
 				undefined,
 				{ operations: event.operations }
 			);
+
 			expect({ result, calls, opens: counts.opens }).toStrictEqual({
 				result: {
 					output: 'remote user output',
@@ -200,6 +209,7 @@ it.each([
 	'rejects missing or unsupported user-shell selection: %j',
 	async (config) => {
 		const { extension, calls } = fixture(config);
+
 		await withPiRuntime([extension], async (runtime) => {
 			const event = await runtime.session.extensionRunner.emitUserBash({
 				type: 'user_bash',
@@ -207,9 +217,11 @@ it.each([
 				excludeFromContext: false,
 				cwd: runtime.session.sessionManager.getCwd()
 			});
+
 			if (event?.operations === undefined) {
 				throw new Error('The adapter did not provide user-shell operations.');
 			}
+
 			await expect(
 				runtime.session.executeBash('must not run', undefined, {
 					operations: event.operations
@@ -235,6 +247,7 @@ it('cancels a cold startup waiter before the backend becomes ready', async () =>
 			await finish.promise;
 		}
 	);
+
 	await withPiRuntime([extension], async (runtime, errors) => {
 		const event = await runtime.session.extensionRunner.emitUserBash({
 			type: 'user_bash',
@@ -242,22 +255,30 @@ it('cancels a cold startup waiter before the backend becomes ready', async () =>
 			excludeFromContext: false,
 			cwd: runtime.session.sessionManager.getCwd()
 		});
+
 		if (event?.operations === undefined) {
 			throw new Error('The adapter did not provide user-shell operations.');
 		}
+
 		const running = observe(
 			runtime.session.executeBash('cancelled user command', undefined, {
 				operations: event.operations
 			})
 		);
+
 		await started.promise;
 		runtime.session.abortBash();
+
 		const result = await running;
+
 		finish.resolve('ready');
+
 		if (binding.pi === undefined || binding.context === undefined) {
 			throw new Error('The runtime binding is missing.');
 		}
+
 		const sandbox = await getSandbox(binding.pi, binding.context);
+
 		expect(sandbox.backendId).toBe('target');
 		expect({ errors, result, calls, opens: counts.opens }).toStrictEqual({
 			errors: [],
@@ -285,6 +306,7 @@ it.each([false, true])(
 			shells: ['bash']
 		});
 		const model = new ScriptedModel([]);
+
 		await withPiRuntime(
 			[extension, model.extension],
 			async (runtime, errors) => {
@@ -294,26 +316,33 @@ it.each([false, true])(
 					excludeFromContext,
 					cwd: runtime.session.sessionManager.getCwd()
 				});
+
 				if (event?.operations === undefined) {
 					throw new Error('The adapter did not provide user-shell operations.');
 				}
+
 				await runtime.session.executeBash('private user command', undefined, {
 					operations: event.operations,
 					excludeFromContext
 				});
+
 				const selected = runtime.session.modelRuntime.getModel(
 					'scripted',
 					'scripted'
 				);
+
 				if (selected === undefined) {
 					throw new Error('The scripted model was not registered.');
 				}
+
 				await runtime.session.setModel(selected);
 				await runtime.session.prompt('Inspect the previous command.');
+
 				const messages = model.requests
 					.at(0)
 					?.messages.filter((message) => message.role === 'user')
 					.map((message) => message.content);
+
 				expect({
 					errors,
 					calls,
@@ -354,6 +383,7 @@ it('keeps a configured startup failure and never switches to host execution', as
 		{ defaultShell: 'bash', shells: ['bash'] },
 		() => Promise.reject(new Error('The provider is unavailable.'))
 	);
+
 	await withPiRuntime([extension], async (runtime, errors) => {
 		const event = await runtime.session.extensionRunner.emitUserBash({
 			type: 'user_bash',
@@ -361,9 +391,11 @@ it('keeps a configured startup failure and never switches to host execution', as
 			excludeFromContext: false,
 			cwd: runtime.session.sessionManager.getCwd()
 		});
+
 		if (event?.operations === undefined) {
 			throw new Error('The adapter did not provide user-shell operations.');
 		}
+
 		for (let attempt = 0; attempt < 2; attempt++) {
 			await expect(
 				runtime.session.executeBash('must not run', undefined, {
@@ -374,6 +406,7 @@ it('keeps a configured startup failure and never switches to host execution', as
 				providerId: 'fixture'
 			});
 		}
+
 		expect({ errors, calls, opens: counts.opens }).toStrictEqual({
 			errors: [],
 			calls: [],
@@ -398,9 +431,11 @@ it('quarantines unconfirmed user-shell termination even when Pi returns a cancel
 					{ once: true }
 				);
 			});
+
 			return { kind: 'cancelled', termination: 'unconfirmed' };
 		}
 	);
+
 	await withPiRuntime([extension], async (runtime, errors) => {
 		const event = await runtime.session.extensionRunner.emitUserBash({
 			type: 'user_bash',
@@ -408,17 +443,22 @@ it('quarantines unconfirmed user-shell termination even when Pi returns a cancel
 			excludeFromContext: false,
 			cwd: runtime.session.sessionManager.getCwd()
 		});
+
 		if (event?.operations === undefined) {
 			throw new Error('The adapter did not provide user-shell operations.');
 		}
+
 		const running = observe(
 			runtime.session.executeBash('uncertain command', undefined, {
 				operations: event.operations
 			})
 		);
+
 		await started.promise;
 		runtime.session.abortBash();
+
 		const stopped = await running;
+
 		await expect(
 			runtime.session.executeBash('later command', undefined, {
 				operations: event.operations
@@ -427,12 +467,15 @@ it('quarantines unconfirmed user-shell termination even when Pi returns a cancel
 			name: 'UnconfirmedSandboxTerminationError',
 			completion: 'unknown'
 		});
+
 		if (binding.pi === undefined || binding.context === undefined) {
 			throw new Error('The runtime binding is missing.');
 		}
+
 		const status = await discoverBroker(binding.pi.events)?.status(
 			binding.context
 		);
+
 		expect({
 			errors,
 			stopped,

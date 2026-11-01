@@ -16,6 +16,7 @@ import {
 it('accepts an independently authored provider on the actual Pi event bus', () => {
 	const events = createEventBus();
 	const reply = providerReply();
+
 	respond(events, 'pi-byos:discovery:v1:providers', reply);
 
 	expect(
@@ -45,8 +46,11 @@ it('accepts an independently authored provider on the actual Pi event bus', () =
 it('snapshots metadata from an independent peer before asynchronous work', () => {
 	const events = createEventBus();
 	const reply = providerReply();
+
 	respond(events, 'pi-byos:discovery:v1:providers', reply);
+
 	const services = discoverProviders(events);
+
 	reply.service.capabilities.operations.push('files.write');
 
 	expect(
@@ -65,7 +69,9 @@ it('snapshots metadata from an independent peer before asynchronous work', () =>
 it('accepts an independent broker service and preserves its method receiver', async () => {
 	const events = createEventBus();
 	const reply = brokerReply();
+
 	respond(events, 'pi-byos:discovery:v1:brokers', reply);
+
 	const service = discoverBroker(events);
 
 	expect({
@@ -84,10 +90,13 @@ it('accepts an independent broker service and preserves its method receiver', as
 it('collects every synchronous reply before validating and ignores late replies', async () => {
 	const events = createEventBus();
 	const late = providerReply('late');
+
 	respond(events, 'pi-byos:discovery:v1:providers', providerReply('first'));
 	respond(events, 'pi-byos:discovery:v1:providers', late, true);
 	respond(events, 'pi-byos:discovery:v1:providers', providerReply('last'));
+
 	const result = discoverProviders(events);
+
 	await Promise.resolve();
 
 	expect(result.map((provider) => provider.id)).toStrictEqual([
@@ -172,6 +181,7 @@ it.each([
 	]
 ])('fails on %s even alongside a valid provider', (_label, reply, name) => {
 	const events = createEventBus();
+
 	respond(events, 'pi-byos:discovery:v1:providers', reply);
 	respond(events, 'pi-byos:discovery:v1:providers', providerReply('valid'));
 
@@ -184,6 +194,7 @@ it.each(['same', 'different'])(
 	'rejects multiple brokers with %s identities',
 	(identity) => {
 		const events = createEventBus();
+
 		respond(events, 'pi-byos:discovery:v1:brokers', brokerReply('same'));
 		respond(events, 'pi-byos:discovery:v1:brokers', brokerReply(identity));
 
@@ -196,6 +207,7 @@ it.each(['same', 'different'])(
 it('rejects a repeated provider callback', () => {
 	const events = createEventBus();
 	const reply = providerReply();
+
 	respond(events, 'pi-byos:discovery:v1:providers', reply);
 	respond(events, 'pi-byos:discovery:v1:providers', reply);
 
@@ -207,6 +219,7 @@ it('rejects a repeated provider callback', () => {
 it('registers a typed provider without allocating or validating configuration', () => {
 	const events = createEventBus();
 	let opens = 0;
+
 	registerSandboxProvider(
 		{
 			events,
@@ -224,11 +237,14 @@ it('registers a typed provider without allocating or validating configuration', 
 			...imageProvider,
 			open(request, context) {
 				opens++;
+
 				return imageProvider.open(request, context);
 			}
 		}
 	);
+
 	const [service] = discoverProviders(events);
+
 	expect({ id: service?.id, opens }).toStrictEqual({
 		id: 'fixture.image',
 		opens: 0
@@ -240,6 +256,7 @@ it('registers a typed provider without allocating or validating configuration', 
 
 it('preserves explicit provider configuration provenance through registration', () => {
 	const events = createEventBus();
+
 	registerSandboxProvider(
 		{
 			events,
@@ -263,7 +280,9 @@ it('preserves explicit provider configuration provenance through registration', 
 			}
 		}
 	);
+
 	const [service] = discoverProviders(events);
+
 	expect(() => service?.configure({})).toThrow(
 		expect.objectContaining({
 			name: 'InvalidSandboxConfigError',
@@ -285,6 +304,7 @@ it.each([
 	'rejects $outcome asynchronous validation before opening',
 	({ validateConfig }) => {
 		const events = createEventBus();
+
 		registerSandboxProvider(
 			{
 				events,
@@ -304,6 +324,7 @@ it.each([
 				open: () => Promise.reject(new Error('Opening must not occur.'))
 			}
 		);
+
 		const [service] = discoverProviders(events);
 
 		expect(() => service?.configure({})).toThrow(

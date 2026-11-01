@@ -21,17 +21,20 @@ afterEach(async () => {
 	for (const release of releases.splice(0).toReversed()) {
 		await release();
 	}
+
 	vi.unstubAllEnvs();
 });
 
 async function fixture(prepare?: (directory: string) => void | Promise<void>) {
 	const temporary = await mkdtemp(path.join(tmpdir(), 'pi-byos-search-'));
 	const directory = await realpath(temporary);
+
 	releases.push(() => rm(directory, { recursive: true, force: true }));
 	vi.stubEnv('GIT_CONFIG_GLOBAL', path.join(directory, 'absent-git-config'));
 	vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');
 	vi.stubEnv('PI_CODING_AGENT_DIR', path.join(directory, 'agent'));
 	await prepare?.(directory);
+
 	const backend = await openPassthrough(directory, {
 		operationId: 'open',
 		signal: new AbortController().signal,
@@ -43,6 +46,7 @@ async function fixture(prepare?: (directory: string) => void | Promise<void>) {
 			expect(recovery).toStrictEqual({ kind: 'none' });
 		}
 	});
+
 	releases.push(() =>
 		backend.dispose({
 			operationId: 'dispose',
@@ -50,6 +54,7 @@ async function fixture(prepare?: (directory: string) => void | Promise<void>) {
 			deadline: Date.now() + 10_000
 		})
 	);
+
 	return { directory, sandbox: createSandbox(new TestBackendOwner(backend)) };
 }
 
@@ -60,6 +65,7 @@ async function seed(
 	await Promise.all(
 		Object.entries(files).map(async ([filename, content]) => {
 			const target = path.join(directory, filename);
+
 			await mkdir(path.dirname(target), { recursive: true });
 			await writeFile(target, content);
 		})
@@ -68,6 +74,7 @@ async function seed(
 
 it('finds hidden files, respects ignore files, excludes dependency directories and orders paths as UTF-8', async () => {
 	const { directory, sandbox } = await fixture();
+
 	await seed(directory, {
 		'.hidden.txt': '',
 		'a.txt': '',
@@ -106,6 +113,7 @@ it('drains grep output beyond the process capture bound while retaining the orde
 		{ length: 16_000 },
 		(_value, index) => `needle ${String(index + 1)}`
 	);
+
 	await seed(directory, { 'large.txt': `${lines.join('\n')}\n` });
 	expect(
 		await sandbox.search.grep({ pattern: 'needle', limit: 2, context: 1 })
@@ -132,6 +140,7 @@ it('drains grep output beyond the process capture bound while retaining the orde
 
 it('returns ordered matching lines with overlapping context and CRLF removed', async () => {
 	const { directory, sandbox } = await fixture();
+
 	await seed(directory, {
 		'z.txt': 'needle z\n',
 		'a.txt': 'before\r\nneedle needle\r\nneedle next\r\nafter\r\n',
@@ -176,10 +185,12 @@ it.each([
 	'uses ripgrep matching for literal=$literal and ignoreCase=$ignoreCase',
 	async ({ literal, ignoreCase, lines }) => {
 		const { directory, sandbox } = await fixture();
+
 		await seed(directory, {
 			'file.txt': 'a.b\naxb\nA.B\n',
 			'other.md': 'a.b\n'
 		});
+
 		const result = await sandbox.search.grep({
 			pattern: 'a.b',
 			glob: '*.txt',
@@ -187,6 +198,7 @@ it.each([
 			ignoreCase
 		});
 		const text = ['a.b', 'axb', 'A.B'];
+
 		expect(result).toStrictEqual({
 			matches: lines.map((line) => ({
 				path: 'file.txt',
@@ -203,6 +215,7 @@ it.each([
 it('discards early matches when ripgrep later detects binary content and does not follow directory symlinks', async () => {
 	const { directory, sandbox } = await fixture();
 	const outside = await mkdtemp(path.join(tmpdir(), 'pi-byos-search-outside-'));
+
 	releases.push(() => rm(outside, { recursive: true, force: true }));
 	await seed(outside, { 'external.txt': 'needle outside\n' });
 	await symlink(outside, path.join(directory, 'linked'));
@@ -224,6 +237,7 @@ it.each([1, 2, 3])(
 	'applies limit %s after ordering and reports only omitted results',
 	async (limit) => {
 		const { directory, sandbox } = await fixture();
+
 		await seed(directory, { 'z.txt': 'needle z\n', 'a.txt': 'needle a\n' });
 		expect({
 			find: await sandbox.search.find({ pattern: '*.txt', limit }),
@@ -243,6 +257,7 @@ it.each([1, 2, 3])(
 
 it('resolves explicit file and directory roots and treats a leading bang in a find pattern literally', async () => {
 	const { directory, sandbox } = await fixture();
+
 	await seed(directory, {
 		'nested/file.txt': 'needle\n',
 		'nested/!file.txt': 'needle bang\n',
@@ -272,6 +287,7 @@ it('resolves explicit file and directory roots and treats a leading bang in a fi
 
 it('returns empty results and preserves backend usability after missing roots and invalid regexes', async () => {
 	const { directory, sandbox } = await fixture();
+
 	await seed(directory, { file: 'content\n' });
 	expect({
 		find: await sandbox.search.find({ pattern: '*.absent' }),
@@ -296,6 +312,7 @@ it('returns empty results and preserves backend usability after missing roots an
 
 it('honours ignore files outside a repository and preserves nested repository boundaries', async () => {
 	const { directory, sandbox } = await fixture();
+
 	await seed(directory, {
 		'.gitignore': 'ignored.txt\n',
 		'.ignore': 'ignored-again.txt\n',
@@ -346,6 +363,7 @@ it('ignores ambient ripgrep flags and decodes base64 line data without changing 
 		});
 		vi.stubEnv('RIPGREP_CONFIG_PATH', path.join(directory, 'rg-options'));
 	});
+
 	expect(await sandbox.search.grep({ pattern: 'needle' })).toStrictEqual({
 		matches: [
 			{ path: 'file.txt', line: 1, text: 'needle �', before: [], after: [] }
@@ -358,6 +376,7 @@ it('omits search capabilities when ripgrep is unavailable and never downloads a 
 	const { sandbox } = await fixture((directory) => {
 		vi.stubEnv('PATH', directory);
 	});
+
 	expect(sandbox.capabilities).toStrictEqual({
 		operations: ['exec', 'files.read', 'files.write', 'files.list'],
 		shells: []
@@ -369,6 +388,7 @@ it('omits search capabilities when ripgrep is unavailable and never downloads a 
 
 it('preserves directory markers from fd', async () => {
 	const { directory, sandbox } = await fixture();
+
 	await seed(directory, { 'folder/file.txt': '' });
 	expect(await sandbox.search.find({ pattern: '*' })).toStrictEqual({
 		paths: ['folder/', 'folder/file.txt'],

@@ -20,6 +20,7 @@ export function registerShellIntegrationDiagnostics(events: EventBus): void {
 export function describeShellIntegration(events: EventBus): string {
 	const replies: unknown[] = [];
 	let isCollecting = true;
+
 	try {
 		events.emit(CHANNEL, {
 			kind: 'pi-byos.discover',
@@ -35,15 +36,18 @@ export function describeShellIntegration(events: EventBus): string {
 	} finally {
 		isCollecting = false;
 	}
+
 	if (replies.length === 0) {
 		return 'Pi shell integration: not requested; routing unverified.';
 	}
+
 	const hasValidReplies = replies.every(
 		(reply) =>
 			isRecord(reply) &&
 			reply.kind === 'pi-byos.shell-integration' &&
 			reply.discoveryVersion === 1
 	);
+
 	return hasValidReplies
 		? 'Pi shell integration: requested; routing unverified.'
 		: 'Pi shell integration: request status unavailable; routing unverified.';

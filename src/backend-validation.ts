@@ -102,6 +102,7 @@ function isWorkspace(
 		isNonEmptyString(input) &&
 		!input.includes('\0') &&
 		targetPaths.isAbsolute(input);
+
 	return (
 		isAbsolute(value.root) &&
 		isNonEmptyString(value.description) &&

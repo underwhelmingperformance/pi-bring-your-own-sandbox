@@ -16,6 +16,7 @@ export function requirePath(
 	if (!isTargetPath(path)) {
 		throw new InvalidSandboxRequestError({ operation });
 	}
+
 	return path;
 }
 
@@ -24,6 +25,7 @@ export function operationOptions(
 	operation: SandboxOperation
 ): SandboxOperationOptions {
 	const value = input === undefined ? {} : input;
+
 	if (
 		!isRecord(value) ||
 		Object.keys(value).some((key) => !['signal', 'timeoutMs'].includes(key)) ||
@@ -35,11 +37,13 @@ export function operationOptions(
 	) {
 		throw new InvalidSandboxRequestError({ operation });
 	}
+
 	return Object.freeze({ ...value });
 }
 
 export function writeOptions(input: unknown): SandboxWriteOptions {
 	const value = input === undefined ? {} : input;
+
 	if (
 		!isRecord(value) ||
 		(value.createParents !== undefined &&
@@ -47,7 +51,9 @@ export function writeOptions(input: unknown): SandboxWriteOptions {
 	) {
 		throw new InvalidSandboxRequestError({ operation: 'writeFile' });
 	}
+
 	const { createParents, ...remaining } = value;
+
 	return Object.freeze({
 		...operationOptions(remaining, 'writeFile'),
 		...(createParents !== undefined && { createParents })
@@ -70,6 +76,7 @@ export function findRequest(value: unknown): FindRequest {
 	) {
 		throw new InvalidSandboxRequestError({ operation: 'find' });
 	}
+
 	return Object.freeze({
 		pattern: value.pattern,
 		...(value.path !== undefined && { path: value.path }),
@@ -105,6 +112,7 @@ export function grepRequest(value: unknown): GrepRequest {
 	) {
 		throw new InvalidSandboxRequestError({ operation: 'grep' });
 	}
+
 	return Object.freeze({
 		pattern: value.pattern,
 		...(value.path !== undefined && { path: value.path }),
@@ -120,5 +128,6 @@ export function accessMode(value: unknown): 'read' | 'write' {
 	if (value !== 'read' && value !== 'write') {
 		throw new InvalidSandboxRequestError({ operation: 'access' });
 	}
+
 	return value;
 }

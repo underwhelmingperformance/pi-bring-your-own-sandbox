@@ -41,9 +41,11 @@ interface SearchRoot {
 
 async function isInsideRepository(directory: string): Promise<boolean> {
 	let current = directory;
+
 	for (;;) {
 		try {
 			await access(path.join(current, '.git'));
+
 			return true;
 		} catch (error) {
 			if (
@@ -53,10 +55,13 @@ async function isInsideRepository(directory: string): Promise<boolean> {
 				throw error;
 			}
 		}
+
 		const parent = path.dirname(current);
+
 		if (parent === current) {
 			return false;
 		}
+
 		current = parent;
 	}
 }
@@ -85,16 +90,19 @@ export class HostSearch {
 	): Promise<SearchRoot> {
 		const absolute = path.resolve(this.#workspace, filename ?? '.');
 		const entry = await stat(absolute);
+
 		if (
 			(!entry.isDirectory() && !entry.isFile()) ||
 			(operation === 'find' && !entry.isDirectory())
 		) {
 			throw new SandboxOperationError({ operation, providerId: 'passthrough' });
 		}
+
 		await access(
 			absolute,
 			entry.isDirectory() ? constants.R_OK | constants.X_OK : constants.R_OK
 		);
+
 		return {
 			directory: entry.isDirectory() ? absolute : path.dirname(absolute),
 			target: entry.isDirectory() ? '.' : path.basename(absolute)
@@ -114,8 +122,10 @@ export class HostSearch {
 			onOutput(chunk) {
 				if (chunk.stream === 'stdout') {
 					output.write(chunk.data);
+
 					return;
 				}
+
 				if (errorOutput.length < 65_536) {
 					errorOutput += stderr
 						.decode(chunk.data, { stream: true })
@@ -123,6 +133,7 @@ export class HostSearch {
 				}
 			}
 		});
+
 		if (outcome.kind === 'cancelled') {
 			if (outcome.termination === 'unconfirmed') {
 				throw new UnconfirmedSandboxTerminationError({
@@ -130,6 +141,7 @@ export class HostSearch {
 					providerId: 'passthrough'
 				});
 			}
+
 			throw new SandboxCancelledError({
 				operation,
 				providerId: 'passthrough',
@@ -137,7 +149,9 @@ export class HostSearch {
 				completion: 'confirmed'
 			});
 		}
+
 		const successCodes = operation === 'grep' ? [0, 1] : [0];
+
 		if (
 			outcome.exit.kind !== 'code' ||
 			!successCodes.includes(outcome.exit.code)
@@ -147,6 +161,7 @@ export class HostSearch {
 				{ cause: new Error(errorOutput) }
 			);
 		}
+
 		return output.finish();
 	}
 
@@ -156,12 +171,14 @@ export class HostSearch {
 	): Promise<FindResult> {
 		return this.#operations.run('find', context, async (running) => {
 			const executable = this.#tools.find;
+
 			if (executable === undefined) {
 				throw new UnsupportedSandboxCapabilityError({
 					operation: 'find',
 					providerId: 'passthrough'
 				});
 			}
+
 			const root = await this.#root(request.path, 'find');
 			const arguments_ = [
 				'--glob',
@@ -173,17 +190,23 @@ export class HostSearch {
 				'--exclude',
 				'node_modules'
 			];
+
 			if (!(await isInsideRepository(root.directory))) {
 				arguments_.push('--no-require-git');
 			}
+
 			let pattern = request.pattern;
+
 			if (pattern.includes('/')) {
 				arguments_.push('--full-path');
+
 				if (!pattern.startsWith('/') && !pattern.startsWith('**/')) {
 					pattern = `**/${pattern}`;
 				}
 			}
+
 			arguments_.push('--', pattern, root.target);
+
 			return this.#run(
 				{
 					operation: 'find',
@@ -206,12 +229,14 @@ export class HostSearch {
 	): Promise<GrepResult> {
 		return this.#operations.run('grep', context, async (running) => {
 			const executable = this.#tools.grep;
+
 			if (executable === undefined) {
 				throw new UnsupportedSandboxCapabilityError({
 					operation: 'grep',
 					providerId: 'passthrough'
 				});
 			}
+
 			const root = await this.#root(request.path, 'grep');
 			const arguments_ = [
 				'--no-config',
@@ -226,19 +251,25 @@ export class HostSearch {
 				'--context',
 				String(request.context ?? 0)
 			];
+
 			if (!(await isInsideRepository(root.directory))) {
 				arguments_.push('--no-require-git');
 			}
+
 			if (request.ignoreCase === true) {
 				arguments_.push('--ignore-case');
 			}
+
 			if (request.literal === true) {
 				arguments_.push('--fixed-strings');
 			}
+
 			if (request.glob !== undefined) {
 				arguments_.push(`--glob=${request.glob}`);
 			}
+
 			arguments_.push('--', request.pattern, root.target);
+
 			return this.#run(
 				{
 					operation: 'grep',
@@ -259,6 +290,7 @@ export class HostSearch {
 		if (this.#tools.find === undefined && this.#tools.grep === undefined) {
 			return undefined;
 		}
+
 		return {
 			...(this.#tools.find !== undefined && { find: this.find.bind(this) }),
 			...(this.#tools.grep !== undefined && { grep: this.grep.bind(this) })

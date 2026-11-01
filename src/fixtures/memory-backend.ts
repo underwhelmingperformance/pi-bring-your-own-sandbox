@@ -50,19 +50,26 @@ export class MemoryBackend implements SandboxBackend {
 					: ['exec'],
 			shells: []
 		};
+
 		if (mode === 'exec') {
 			return;
 		}
+
 		this.files = {
 			read: {
 				readFile: (filename, context) => {
 					this.#check(context);
+
 					const target = this.#resolve(filename);
+
 					this.calls.push({ operation: 'readFile', path: target });
+
 					const bytes = this.#contents.get(target);
+
 					if (bytes === undefined) {
 						throw new SandboxPathNotFoundError({ operation: 'readFile' });
 					}
+
 					return Promise.resolve(new Uint8Array(bytes));
 				},
 				access: (filename, context) => this.#access(filename, context),
@@ -71,6 +78,7 @@ export class MemoryBackend implements SandboxBackend {
 			write: {
 				writeFile: async (filename, content, context) => {
 					const target = this.#resolve(filename);
+
 					this.#check(context);
 					this.calls.push({ operation: 'writeFile', path: target });
 					await this.beforeWrite?.(target, content, context);
@@ -82,7 +90,9 @@ export class MemoryBackend implements SandboxBackend {
 					this.#check(context);
 					await this.beforeMkdir?.(this.#resolve(filename), context);
 					this.#check(context);
+
 					let target = this.#resolve(filename);
+
 					while (target !== path.posix.dirname(target)) {
 						this.#directories.add(target);
 						target = path.posix.dirname(target);
@@ -93,16 +103,21 @@ export class MemoryBackend implements SandboxBackend {
 				stat: (filename, context) => this.#stat(filename, context),
 				listDirectory: (filename, context) => {
 					this.#check(context);
+
 					const target = this.#resolve(filename);
+
 					if (!this.#directories.has(target)) {
 						throw new SandboxPathNotFoundError({ operation: 'listDirectory' });
 					}
+
 					const entries: DirectoryEntry[] = [];
+
 					for (const file of this.#contents.keys()) {
 						if (path.posix.dirname(file) === target) {
 							entries.push({ name: path.posix.basename(file), kind: 'file' });
 						}
 					}
+
 					for (const directory of this.#directories) {
 						if (path.posix.dirname(directory) === target) {
 							entries.push({
@@ -111,6 +126,7 @@ export class MemoryBackend implements SandboxBackend {
 							});
 						}
 					}
+
 					return Promise.resolve(entries);
 				}
 			}
@@ -120,6 +136,7 @@ export class MemoryBackend implements SandboxBackend {
 	#resolve(filename: string): string {
 		return path.posix.resolve(this.workspace.root, filename);
 	}
+
 	#check(context: SandboxOperationContext): void {
 		if (context.signal.aborted) {
 			throw new SandboxCancelledError({
@@ -129,36 +146,48 @@ export class MemoryBackend implements SandboxBackend {
 			});
 		}
 	}
+
 	#access(filename: string, context: SandboxOperationContext): Promise<void> {
 		this.#check(context);
+
 		const target = this.#resolve(filename);
+
 		if (!this.#contents.has(target) && !this.#directories.has(target)) {
 			throw new SandboxPathNotFoundError({ operation: 'access' });
 		}
+
 		return Promise.resolve();
 	}
+
 	#stat(filename: string, context: SandboxOperationContext) {
 		this.#check(context);
+
 		const target = this.#resolve(filename);
 		const bytes = this.#contents.get(target);
+
 		if (bytes !== undefined) {
 			return Promise.resolve({ kind: 'file' as const, size: bytes.byteLength });
 		}
+
 		if (this.#directories.has(target)) {
 			return Promise.resolve({ kind: 'directory' as const, size: 0 });
 		}
+
 		throw new SandboxPathNotFoundError({ operation: 'stat' });
 	}
 
 	seed(filename: string, bytes: Uint8Array): void {
 		this.#contents.set(this.#resolve(filename), new Uint8Array(bytes));
 	}
+
 	bytes(filename: string): Uint8Array | undefined {
 		return this.#contents.get(this.#resolve(filename));
 	}
+
 	exec(): ReturnType<SandboxBackend['exec']> {
 		return Promise.resolve({ kind: 'exited', exit: { kind: 'code', code: 0 } });
 	}
+
 	dispose(): Promise<void> {
 		return Promise.resolve();
 	}

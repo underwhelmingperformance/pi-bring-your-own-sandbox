@@ -49,6 +49,7 @@ it('binds independent runtime directories across SDK copies without changing the
 			let agentDirectory = '';
 			let host: SandboxHost | undefined;
 			let liveContext: SandboxContext | undefined;
+
 			await withPiRuntime(
 				[
 					{
@@ -66,16 +67,20 @@ it('binds independent runtime directories across SDK copies without changing the
 					if (host === undefined || liveContext === undefined) {
 						throw new Error('Pi did not initialise the host fixture.');
 					}
+
 					const copy = await loadSdkCopy(
 						path.join(liveContext.cwd, 'sdk-copy')
 					);
+
 					await expect(
 						copy.getSandbox(host, liveContext)
 					).rejects.toMatchObject({
 						name: 'ProviderNotFoundError',
 						providerId
 					});
+
 					const pi = host;
+
 					expect(() => {
 						initialiseSandboxHost(pi, { agentDirectory });
 					}).toThrow(SandboxInitialisationError);
@@ -109,6 +114,7 @@ async function fixture(
 	extensions: readonly InlineExtension[] = []
 ): Promise<void> {
 	const current: { pi?: SandboxHost; context?: SandboxContext } = {};
+
 	await withPiRuntime(
 		[
 			{
@@ -124,9 +130,11 @@ async function fixture(
 		],
 		async (runtime, errors) => {
 			const { pi, context } = current;
+
 			if (pi === undefined || context === undefined) {
 				throw new Error('Pi did not initialise the consumer fixture.');
 			}
+
 			vi.stubEnv('PI_CODING_AGENT_DIR', path.join(context.cwd, 'agent'));
 			await execute({ pi, context, runtime, errors });
 		}
@@ -135,6 +143,7 @@ async function fixture(
 
 function provider(open: () => Promise<MemoryBackend>): InlineExtension {
 	const template = new MemoryBackend();
+
 	return {
 		name: 'fixture-provider',
 		factory(pi) {
@@ -174,14 +183,17 @@ const fixtureConfig = {
 it('provides a shared host backend with only a consumer and no configuration', async () => {
 	await fixture(async ({ pi, context, errors }) => {
 		expect(discoverBroker(pi.events)).toBeUndefined();
+
 		const [first, second] = await Promise.all([
 			getSandbox(pi, context),
 			getSandbox(pi, context)
 		]);
+
 		await first.files.writeFile(
 			'result',
 			new TextEncoder().encode('host content')
 		);
+
 		const result = await second.exec({
 			kind: 'argv',
 			executable: process.execPath,
@@ -190,6 +202,7 @@ it('provides a shared host backend with only a consumer and no configuration', a
 				'process.stdout.write(require("node:fs").readFileSync("result"))'
 			]
 		});
+
 		expect({
 			errors,
 			provider: first.providerId,
@@ -212,10 +225,13 @@ it('provides a shared host backend with only a consumer and no configuration', a
 
 it('uses the same consumer operations with a configured provider and no broker extension', async () => {
 	const backend = new MemoryBackend();
+
 	await fixture(
 		async ({ pi, context, errors }) => {
 			await selectFixtureProvider(context);
+
 			const sandbox = await getSandbox(pi, context);
+
 			await sandbox.files.writeFile(
 				'result',
 				new TextEncoder().encode('remote content')
@@ -246,9 +262,11 @@ it('uses the same consumer operations with a configured provider and no broker e
 
 it('keeps an installed but unselected provider idle', async () => {
 	let opens = 0;
+
 	await fixture(
 		async ({ pi, context }) => {
 			const sandbox = await getSandbox(pi, context);
+
 			expect({ provider: sandbox.providerId, opens }).toStrictEqual({
 				provider: 'passthrough',
 				opens: 0
@@ -257,6 +275,7 @@ it('keeps an installed but unselected provider idle', async () => {
 		[
 			provider(() => {
 				opens++;
+
 				return Promise.resolve(new MemoryBackend());
 			})
 		]
@@ -269,10 +288,12 @@ it.each(['missing', 'startup'] as const)(
 		await fixture(
 			async ({ pi, context }) => {
 				await selectFixtureProvider(context);
+
 				const name =
 					failure === 'missing'
 						? 'ProviderNotFoundError'
 						: 'SandboxStartupError';
+
 				await expect(getSandbox(pi, context)).rejects.toMatchObject({
 					name,
 					providerId: 'fixture',
@@ -282,8 +303,10 @@ it.each(['missing', 'startup'] as const)(
 					name,
 					providerId: 'fixture'
 				});
+
 				const broker = discoverBroker(pi.events);
 				const status = await broker?.status(context);
+
 				expect({
 					state: status?.state,
 					backendId: status?.backendId
@@ -322,6 +345,7 @@ it('closes explicitly before raw disposal and keeps a closed service until inval
 	await fixture(async ({ pi, context, runtime }) => {
 		const sandbox = await getSandbox(pi, context);
 		const report = await closeSandboxSession(pi, context);
+
 		expect({
 			report,
 			repeated: await closeSandboxSession(pi, context)
@@ -349,6 +373,7 @@ it('shares consumer-only startup across physical SDK copies', async () => {
 			first.getSandbox(pi, context),
 			second.getSandbox(pi, context)
 		]);
+
 		await left.files.writeFile(
 			'shared',
 			new TextEncoder().encode('shared content')
@@ -378,8 +403,10 @@ it('shares consumer-only startup across physical SDK copies', async () => {
 it('keeps concurrent Pi sessions in separate generations and workspaces', async () => {
 	await fixture(async (first) => {
 		const left = await getSandbox(first.pi, first.context);
+
 		await fixture(async (second) => {
 			const right = await getSandbox(second.pi, second.context);
+
 			await Promise.all([
 				left.files.writeFile('file', new Uint8Array([1])),
 				right.files.writeFile('file', new Uint8Array([2]))
@@ -422,6 +449,7 @@ it.each([true, false])(
 						const options = signal === undefined ? {} : { signal };
 						const sandbox = await getSandbox(pi, context, options);
 						const bytes = await sandbox.files.readFile(input.path, options);
+
 						return {
 							content: [
 								{ type: 'text', text: new TextDecoder().decode(bytes) }
@@ -437,18 +465,23 @@ it.each([true, false])(
 				);
 			}
 		};
+
 		await fixture(
 			async ({ pi, context, runtime, errors }) => {
 				await writeFile(path.join(context.cwd, 'result'), 'host data');
+
 				const selected = runtime.session.modelRuntime.getModel(
 					'scripted',
 					'scripted'
 				);
+
 				if (selected === undefined) {
 					throw new Error('The scripted model was not registered.');
 				}
+
 				await runtime.session.setModel(selected);
 				await runtime.session.prompt('Read the sandbox data.');
+
 				const results = model.requests
 					.at(1)
 					?.messages.filter((message) => message.role === 'toolResult')
@@ -456,6 +489,7 @@ it.each([true, false])(
 						isError: message.isError,
 						content: message.content
 					}));
+
 				expect({
 					errors,
 					hasBroker: discoverBroker(pi.events) !== undefined,

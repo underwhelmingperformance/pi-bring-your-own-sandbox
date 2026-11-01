@@ -39,6 +39,7 @@ class FakeClient implements Pick<SandboxClient, 'getSandbox'> {
 		this.#sandbox = sandbox;
 		this.#acquire = acquire;
 	}
+
 	async getSandbox(
 		_pi: SandboxHost,
 		_context: SandboxContext,
@@ -46,6 +47,7 @@ class FakeClient implements Pick<SandboxClient, 'getSandbox'> {
 	): Promise<Sandbox> {
 		this.signals.push(options?.signal);
 		await this.#acquire?.(options?.signal);
+
 		return this.#sandbox;
 	}
 }
@@ -72,6 +74,7 @@ function fixture(
 				stream: 'stdout',
 				data: new TextEncoder().encode('target output')
 			});
+
 			return (
 				run?.(context) ??
 				Promise.resolve({
@@ -111,12 +114,14 @@ function fixture(
 			output.push(chunk);
 		}
 	};
+
 	return { shell, pi, context, invocation, calls, output, client, owner };
 }
 
 it('routes shell text to the target root without inheriting host cwd or environment', async () => {
 	const { shell, pi, context, invocation, calls, output } = fixture();
 	const result = await shell.execute(pi, context, invocation);
+
 	expect({
 		calls,
 		output,
@@ -138,6 +143,7 @@ it.each([0, -1, NaN, Infinity, 2_147_484])(
 	'rejects invalid timeout %s before acquiring a backend',
 	async (timeoutSeconds) => {
 		const { shell, pi, context, invocation, client } = fixture();
+
 		await expect(
 			shell.execute(pi, context, { ...invocation, timeoutSeconds })
 		).rejects.toMatchObject({
@@ -153,6 +159,7 @@ it('does not execute when a caller cancels during acquisition', async () => {
 	const controller = new AbortController();
 	const { shell, pi, context, invocation, calls } = fixture(async (signal) => {
 		await gate.promise;
+
 		if (signal?.aborted === true) {
 			throw new SandboxCancelledError({
 				operation: 'acquire',
@@ -169,6 +176,7 @@ it('does not execute when a caller cancels during acquisition', async () => {
 		name: 'SandboxCancelledError',
 		completion: 'not-started'
 	});
+
 	controller.abort();
 	gate.resolve('ready');
 	await rejected;
@@ -177,6 +185,7 @@ it('does not execute when a caller cancels during acquisition', async () => {
 
 it('includes acquisition in an explicit timeout and never starts an expired command', async () => {
 	vi.useFakeTimers();
+
 	const gate = Promise.withResolvers<'ready'>();
 	const { shell, pi, context, invocation, calls } = fixture(async () => {
 		await gate.promise;
@@ -189,6 +198,7 @@ it('includes acquisition in an explicit timeout and never starts an expired comm
 		name: 'SandboxTimeoutError',
 		completion: 'not-started'
 	});
+
 	await vi.advanceTimersByTimeAsync(10);
 	gate.resolve('ready');
 	await rejected;
@@ -197,6 +207,7 @@ it('includes acquisition in an explicit timeout and never starts an expired comm
 
 it('preserves backend identity when an explicit deadline stops a running command', async () => {
 	vi.useFakeTimers();
+
 	const started = Promise.withResolvers<'started'>();
 	const { shell, pi, context, invocation, calls } = fixture(
 		undefined,
@@ -211,6 +222,7 @@ it('preserves backend identity when an explicit deadline stops a running command
 					{ once: true }
 				);
 			});
+
 			return { kind: 'cancelled', termination: 'confirmed' };
 		}
 	);
@@ -219,6 +231,7 @@ it('preserves backend identity when an explicit deadline stops a running command
 		timeoutSeconds: 0.01
 	});
 	const observed = observe(running);
+
 	await started.promise;
 	await vi.advanceTimersByTimeAsync(10);
 	expect(await observed).toMatchObject({
@@ -238,6 +251,7 @@ it('preserves backend identity when an explicit deadline stops a running command
 
 it('rejects invalid command text before acquiring a backend', async () => {
 	const { shell, pi, context, invocation, client } = fixture();
+
 	await expect(
 		shell.execute(pi, context, { ...invocation, command: 'invalid\0command' })
 	).rejects.toMatchObject({
@@ -256,6 +270,7 @@ it.each([
 	'preserves $source and unknown completion after $kind termination',
 	async ({ kind, source }) => {
 		vi.useFakeTimers();
+
 		const started = Promise.withResolvers<undefined>();
 		const controller = new AbortController();
 		const { shell, pi, context, invocation, owner } = fixture(
@@ -271,9 +286,11 @@ it.each([
 						{ once: true }
 					);
 				});
+
 				if (kind === 'transport') {
 					throw new SandboxTransportError({ operation: 'exec' });
 				}
+
 				return { kind: 'cancelled', termination: 'unconfirmed' };
 			}
 		);
@@ -284,10 +301,13 @@ it.each([
 				timeoutSeconds: 0.01
 			})
 		);
+
 		await started.promise;
+
 		if (source === 'caller') {
 			controller.abort();
 		}
+
 		await vi.advanceTimersByTimeAsync(10);
 		expect(await running).toMatchObject({
 			kind: 'rejected',

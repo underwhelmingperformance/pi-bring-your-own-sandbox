@@ -30,10 +30,12 @@ function fixture(findResult: unknown, grepResult: unknown) {
 			search: {
 				find(request: FindRequest) {
 					calls.push(request);
+
 					return Promise.resolve(findResult);
 				},
 				grep(request: GrepRequest) {
 					calls.push(request);
+
 					return Promise.resolve(grepResult);
 				}
 			}
@@ -51,6 +53,7 @@ function fixture(findResult: unknown, grepResult: unknown) {
 		memory.policy
 	);
 	const owner = new TestBackendOwner(backend);
+
 	return { sandbox: createSandbox(owner), calls, failures: owner.failures };
 }
 
@@ -65,9 +68,12 @@ it('snapshots requests, applies defaults and copies structured results', async (
 	);
 	const request = { pattern: 'original' };
 	const find = sandbox.search.find(request);
+
 	request.pattern = 'changed';
+
 	const found = await find;
 	const grepped = await sandbox.search.grep({ pattern: 'text' });
+
 	paths[0] = 'changed';
 	matches[0] = {
 		path: 'changed',
@@ -109,6 +115,7 @@ it.each([
 			{ paths: [], truncated: false },
 			{ matches: [], truncated: false }
 		);
+
 		await expect(sandbox.search.find(request)).rejects.toMatchObject({
 			name: 'InvalidSandboxRequestError'
 		});
@@ -124,6 +131,7 @@ it('rejects invalid provider results without substituting host search', async ()
 			truncated: false
 		}
 	);
+
 	await expect(sandbox.search.find({ pattern: '*' })).rejects.toMatchObject({
 		name: 'InvalidSandboxDeclarationError'
 	});

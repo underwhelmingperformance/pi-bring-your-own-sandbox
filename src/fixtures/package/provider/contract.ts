@@ -12,6 +12,7 @@ defineSandboxProviderTests({
 		state.opens = 0;
 		state.disposals = 0;
 		state.calls.length = 0;
+
 		return Promise.resolve({
 			configuration: {},
 			hostWorkspace: process.cwd(),
@@ -33,6 +34,7 @@ defineSandboxProviderTests({
 				ready: new TextEncoder().encode('ready'),
 				verifyStopped() {
 					assert.equal(state.isRunning, false);
+
 					return Promise.resolve();
 				}
 			},
@@ -45,6 +47,7 @@ defineSandboxProviderTests({
 					},
 					{ opens: 1, disposals: 1, isRunning: false }
 				);
+
 				return Promise.resolve();
 			},
 			cleanup: () => Promise.resolve()

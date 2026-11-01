@@ -6,6 +6,7 @@ import { MemoryBackend } from './fixtures/memory-backend.js';
 
 it('shows a configured shell that the ready backend does not support', () => {
 	const backend = new MemoryBackend();
+
 	expect(
 		formatStatus({
 			generationId: 'generation',
@@ -40,6 +41,7 @@ it('shows a configured shell that the ready backend does not support', () => {
 
 it('shows allocation recovery instructions and expiry when cleanup is incomplete', () => {
 	const backend = new MemoryBackend();
+
 	expect(
 		formatStatus({
 			generationId: 'generation',
@@ -91,6 +93,7 @@ it('shows recovery from an opening that failed before returning a backend', () =
 		},
 		{ cause: new Error('PRIVATE_PROVIDER_TOKEN') }
 	);
+
 	expect(
 		formatStatus({ generationId: 'generation', state: 'failed', failure })
 	).toBe(

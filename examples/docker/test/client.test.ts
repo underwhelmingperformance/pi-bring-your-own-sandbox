@@ -29,6 +29,7 @@ function command(arguments_: readonly string[]): DockerCommand {
 it('uses the fixed local daemon, preserves argv and excludes inherited Docker settings', async () => {
 	vi.stubEnv('DOCKER_CONTEXT', 'unexpected-context');
 	vi.stubEnv('BYOS_DOCKER_SENTINEL', 'synthetic-secret');
+
 	const client = new NodeDockerClient(
 		{ executable: process.execPath, socketPath: '/fixture/docker.sock' },
 		(executable, arguments_, options) =>
@@ -47,6 +48,7 @@ it('uses the fixed local daemon, preserves argv and excludes inherited Docker se
 		command(['inspect', '$HOME', '; exit 99'])
 	);
 	const parsed: unknown = JSON.parse(new TextDecoder().decode(result.stdout));
+
 	expect({
 		status: result.status,
 		stdout: parsed,
@@ -90,6 +92,7 @@ it('streams attached bytes without retaining a second copy', async () => {
 			);
 		}
 	});
+
 	expect({
 		result,
 		stdout: new Uint8Array(Buffer.concat(stdout)),
@@ -106,6 +109,7 @@ it('reports a lost CLI as a typed transport failure', async () => {
 		executable: '/byos-missing-docker',
 		socketPath: '/fixture/docker.sock'
 	});
+
 	await expect(client.command(command([]))).rejects.toMatchObject({
 		name: 'SandboxTransportError',
 		completion: 'unknown'
@@ -123,6 +127,7 @@ it('bounds a CLI that never completes without claiming target termination', asyn
 			)
 	);
 	const request = command([]);
+
 	await expect(
 		client.command({
 			...request,
@@ -146,7 +151,9 @@ it.each(['deadline', 'output-limit'] as const)(
 		const failures: unknown[] = [];
 		const grandchild = `const fs=require('node:fs'); process.stdout.write('ready'); setInterval(()=>{ if(fs.existsSync(${JSON.stringify(release)})) process.exit(0); if(fs.existsSync(${JSON.stringify(flood)})) process.stdout.write(Buffer.alloc(2*1024*1024)); },10);`;
 		const wrapper = `require('node:child_process').spawn(process.execPath, ['-e',${JSON.stringify(grandchild)}], {stdio:'inherit'}); setInterval(()=>{},1000);`;
+
 		vi.useFakeTimers();
+
 		const client = new NodeDockerClient(
 			{ executable: process.execPath, socketPath: '/fixture/docker.sock' },
 			(executable, arguments_, options) => {
@@ -155,17 +162,22 @@ it.each(['deadline', 'output-limit'] as const)(
 					['-e', wrapper, '--', ...arguments_],
 					options
 				);
+
 				child.stdout.once('data', () => {
 					started.resolve(undefined);
 				});
 				child.once('close', () => {
 					closed.resolve(undefined);
 				});
+
 				const didSendSignal = child.kill.bind(child);
+
 				child.kill = (signal) => {
 					stopped.resolve(undefined);
+
 					return didSendSignal(signal);
 				};
+
 				return child;
 			},
 			{
@@ -187,13 +199,16 @@ it.each(['deadline', 'output-limit'] as const)(
 				failures.push(error);
 			}
 		})();
+
 		try {
 			await started.promise;
+
 			if (mode === 'deadline') {
 				await vi.advanceTimersByTimeAsync(100);
 			} else {
 				await writeFile(flood, 'flood');
 			}
+
 			await stopped.promise;
 			await vi.advanceTimersByTimeAsync(0);
 			expect(failures).toMatchObject([
@@ -225,6 +240,7 @@ it('allows a short CLI command with a deadline beyond the Node timer range', asy
 			)
 	);
 	const request = command([]);
+
 	expect(
 		await client.command({
 			...request,

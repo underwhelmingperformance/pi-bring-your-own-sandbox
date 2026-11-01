@@ -28,9 +28,11 @@ it('decodes split frames and preserves binary stdout, stderr and target signal s
 				exit: { kind: 'signal', signal: 'SIGTERM', signalNumber: 15 }
 			})
 		].join('\n') + '\n';
+
 	for (const character of data) {
 		frames.accept({ stream: 'stdout', data: encode(character) });
 	}
+
 	expect({ output, outcome: frames.finish() }).toStrictEqual({
 		output: [
 			{ stream: 'stdout', data: new Uint8Array([0, 255, 10]) },
@@ -54,6 +56,7 @@ it.each([
 		},
 		{ kind: 'none' }
 	);
+
 	frames.accept({
 		stream: 'stdout',
 		data: encode(JSON.stringify({ kind }) + '\n')
@@ -77,6 +80,7 @@ it.each([
 		},
 		{ kind: 'none' }
 	);
+
 	expect(() => {
 		frames.accept({ stream: 'stdout', data: encode(data) });
 	}).toThrow();
@@ -90,6 +94,7 @@ it('requires a complete final frame before accepting completion', () => {
 		},
 		{ kind: 'none' }
 	);
+
 	frames.accept({
 		stream: 'stdout',
 		data: encode('{"kind":"stdout","data":""}\n')

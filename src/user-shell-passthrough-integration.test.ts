@@ -20,12 +20,15 @@ it('runs an unconfigured Pi user shell through default passthrough', async () =>
 				excludeFromContext: false,
 				cwd: runtime.session.sessionManager.getCwd()
 			});
+
 			if (event?.operations === undefined) {
 				throw new Error('The adapter did not provide user-shell operations.');
 			}
+
 			const result = await runtime.session.executeBash(command, undefined, {
 				operations: event.operations
 			});
+
 			expect({ errors, result }).toStrictEqual({
 				errors: [],
 				result: {

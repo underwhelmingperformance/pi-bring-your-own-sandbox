@@ -65,6 +65,7 @@ interface Prepared {
 interface Disposable {
 	readonly dispose: (context: SandboxOperationContext) => Promise<void>;
 }
+
 function isDisposable(value: unknown): value is Disposable {
 	return isRecord(value) && typeof value.dispose === 'function';
 }
@@ -107,6 +108,7 @@ export class SandboxGeneration {
 	#assertContext(context: SandboxContext, operation: SandboxOperation): void {
 		const actual = inspectContext(context, operation);
 		const original = inspectContext(this.#context, operation);
+
 		if (
 			actual.sessionId !== this.#session.sessionId ||
 			actual.workspace !== this.#session.workspace ||
@@ -116,14 +118,17 @@ export class SandboxGeneration {
 			throw new StaleSandboxHandleError({ operation });
 		}
 	}
+
 	#assertOpen(operation: SandboxOperation): void {
 		if (this.#state === 'closing' || this.#state === 'closed') {
 			throw new SandboxSessionClosingError({ operation });
 		}
+
 		if (this.#failure !== undefined) {
 			throw this.#failure;
 		}
 	}
+
 	#normalise(cause: unknown, operation: SandboxOperation): SandboxErrorInfo {
 		const recovery =
 			this.#recovery.kind === 'none'
@@ -149,35 +154,45 @@ export class SandboxGeneration {
 			...(!this.#isOpenCleanupConfirmed &&
 				recovery.kind !== 'none' && { recovery })
 		};
+
 		if (isSandboxError(cause)) {
 			return rehydrateSandboxError(cause, { cause }, context);
 		}
+
 		return operation === 'open'
 			? new SandboxStartupError(context, { cause })
 			: new SandboxInitialisationError(context, { cause });
 	}
+
 	#fail(error: SandboxErrorInfo): void {
 		this.#failure ??= error;
+
 		if (this.#state !== 'closing' && this.#state !== 'closed') {
 			this.#state = 'failed';
 		}
 	}
+
 	#prepare(): Promise<Prepared> {
 		if (this.#prepared !== undefined) {
 			return this.#prepared;
 		}
+
 		const pending = Promise.withResolvers<Prepared>();
+
 		this.#prepared = pending.promise;
 		void observe(pending.promise);
 		void this.#load(pending);
+
 		return pending.promise;
 	}
+
 	async #load(pending: PromiseWithResolvers<Prepared>): Promise<void> {
 		try {
 			const providers = Object.freeze(
 				this.#dependencies.providers().map((provider) => {
 					const capabilities = snapshotCapabilities(provider.capabilities);
 					const policies = snapshotPolicies(provider.policies);
+
 					return Object.freeze({
 						id: provider.id,
 						label: provider.label,
@@ -187,6 +202,7 @@ export class SandboxGeneration {
 					});
 				})
 			);
+
 			this.#providerInfos = Object.freeze(
 				providers.map((provider) =>
 					Object.freeze({
@@ -197,10 +213,13 @@ export class SandboxGeneration {
 					})
 				)
 			);
+
 			const config = await this.#dependencies.readConfig(this.#session);
+
 			if (this.#lifetime.signal.aborted) {
 				throw new SandboxSessionClosingError({ operation: 'configure' });
 			}
+
 			this.#selection = Object.freeze({
 				providerId: config.selection.providerId,
 				source: config.selection.source,
@@ -209,32 +228,44 @@ export class SandboxGeneration {
 					userShell: config.selection.userShell
 				})
 			});
+
 			const provider = selectProvider(config, providers);
+
 			this.#configurationSource = config.providerConfigSource;
+
 			const configured = provider.configure(config.providerConfig);
+
 			this.#configurationSource = undefined;
+
 			if (this.#state === 'initialising') {
 				this.#state = 'idle';
 			}
+
 			pending.resolve({ provider, configured });
 		} catch (error_) {
 			const error = this.#normalise(error_, 'configure');
+
 			this.#fail(error);
 			pending.reject(error);
 		}
 	}
+
 	#start(): Promise<
 		Exclude<Settlement<SandboxBackend>, { kind: 'abandoned' }>
 	> {
 		if (this.#opening !== undefined) {
 			return this.#opening;
 		}
+
 		const pending = Promise.withResolvers<SandboxBackend>();
+
 		this.#opening = observe(pending.promise);
 		this.#state = 'opening';
 		void this.#open(pending);
+
 		return this.#opening;
 	}
+
 	#reportRecovery(value: unknown): void {
 		if (
 			!isRecovery(value) ||
@@ -242,19 +273,24 @@ export class SandboxGeneration {
 		) {
 			throw new InvalidSandboxDeclarationError({ operation: 'open' });
 		}
+
 		this.#recordRecovery(value);
 		this.#hasRecovery = true;
 	}
+
 	#recordRecovery(recovery: RecoveryDescriptor): void {
 		this.#recovery = snapshotRecovery(recovery);
 	}
 
 	async #allocate(scope: OperationScope): Promise<SandboxBackend> {
 		const prepared = await this.#prepare();
+
 		scope.check();
 		this.#hasInvokedOpen = true;
+
 		let isOpening = true;
 		let candidate: unknown;
+
 		try {
 			candidate = await prepared.configured.open(
 				{
@@ -269,12 +305,14 @@ export class SandboxGeneration {
 						if (!isOpening || this.#isOpenCleanupConfirmed) {
 							throw new InvalidSandboxDeclarationError({ operation: 'open' });
 						}
+
 						this.#reportRecovery(recovery);
 					},
 					confirmCleanup: () => {
 						if (!isOpening) {
 							throw new InvalidSandboxDeclarationError({ operation: 'open' });
 						}
+
 						this.#isOpenCleanupConfirmed = true;
 					}
 				}
@@ -282,28 +320,37 @@ export class SandboxGeneration {
 		} finally {
 			isOpening = false;
 		}
+
 		this.#candidate = candidate;
+
 		if (isRecord(candidate) && isRecovery(candidate.recovery)) {
 			this.#candidateRecovery = snapshotRecovery(candidate.recovery);
+
 			if (!this.#hasRecovery) {
 				this.#recordRecovery(candidate.recovery);
 			}
 		}
+
 		if (this.#isOpenCleanupConfirmed) {
 			this.#isOpenCleanupConfirmed = false;
+
 			throw new InvalidSandboxDeclarationError({ operation: 'open' });
 		}
+
 		if (
 			scope.reason !== undefined ||
 			this.#state === 'closing' ||
 			this.#state === 'closed'
 		) {
 			const isDisposed = await this.#dispose();
+
 			throw scope.cancellationError(isDisposed ? 'confirmed' : 'unknown');
 		}
+
 		const backend = snapshotBackend(
 			validateBackend(candidate, prepared.provider, this.#selectionPolicy())
 		);
+
 		if (
 			(backend.recovery.kind === 'allocation' && !this.#hasRecovery) ||
 			!isSameRecovery(this.#recovery, backend.recovery)
@@ -313,19 +360,24 @@ export class SandboxGeneration {
 				providerId: prepared.provider.id
 			});
 		}
+
 		this.#recordRecovery(backend.recovery);
 
 		this.#candidate = backend;
 		this.#backend = backend;
 		this.#state = 'ready';
+
 		return backend;
 	}
+
 	#selectionPolicy() {
 		if (this.#selection === undefined) {
 			throw new SandboxInitialisationError({ operation: 'open' });
 		}
+
 		return this.#selection.policy;
 	}
+
 	async #open(pending: PromiseWithResolvers<SandboxBackend>): Promise<void> {
 		const scope = new OperationScope(
 			{ operation: 'open' },
@@ -333,25 +385,31 @@ export class SandboxGeneration {
 			{},
 			60_000
 		);
+
 		try {
 			const allocation = Promise.try(() => this.#allocate(scope));
 			const completion = observe(allocation);
 			const first = await Promise.race([completion, scope.whenCancelled()]);
+
 			if (!this.#hasInvokedOpen && first.kind === 'cancelled') {
 				throw scope.cancellationError('not-started');
 			}
+
 			const result =
 				first.kind === 'cancelled'
 					? await settleOperation(scope, allocation)
 					: first;
+
 			if (result.kind === 'abandoned') {
 				this.#isUncertain = true;
+
 				throw new UnconfirmedSandboxTerminationError({
 					operation: 'open',
 					...(scope.reason !== undefined && { reason: scope.reason }),
 					...(this.#recovery.kind !== 'none' && { recovery: this.#recovery })
 				});
 			}
+
 			if (result.kind === 'rejected') {
 				if (
 					this.#candidate === undefined &&
@@ -359,30 +417,39 @@ export class SandboxGeneration {
 				) {
 					this.#isUncertain = !this.#isOpenCleanupConfirmed;
 				}
+
 				throw result.error;
 			}
+
 			pending.resolve(result.value);
 		} catch (error_) {
 			let error = this.#normalise(error_, 'open');
+
 			this.#fail(error);
+
 			if (this.#candidate !== undefined) {
 				const isDisposed = await this.#dispose();
+
 				if (isDisposed && !this.#isUncertain) {
 					this.#isOpenCleanupConfirmed = true;
 					error = this.#normalise(error_, 'open');
 					this.#failure = error;
 				}
 			}
+
 			pending.reject(error);
 		} finally {
 			scope.dispose();
 		}
 	}
+
 	#owner(context: SandboxContext, backend: SandboxBackend): SandboxOwner {
 		const selection = this.#selection;
+
 		if (selection === undefined) {
 			throw new SandboxInitialisationError({ operation: 'acquire' });
 		}
+
 		return {
 			identity: {
 				providerId: selection.providerId,
@@ -403,22 +470,29 @@ export class SandboxGeneration {
 			}
 		};
 	}
+
 	#dispose(): Promise<boolean> {
 		if (this.#disposing !== undefined) {
 			return this.#disposing;
 		}
+
 		const candidate = this.#candidate;
+
 		if (candidate === undefined) {
 			return Promise.resolve(
 				!this.#isUncertain &&
 					(this.#isOpenCleanupConfirmed || this.#recovery.kind === 'none')
 			);
 		}
+
 		const pending = Promise.withResolvers<boolean>();
+
 		this.#disposing = pending.promise;
 		void this.#release(candidate, pending);
+
 		return pending.promise;
 	}
+
 	async #release(
 		candidate: unknown,
 		pending: PromiseWithResolvers<boolean>
@@ -429,14 +503,17 @@ export class SandboxGeneration {
 			{},
 			10_000
 		);
+
 		try {
 			if (!isDisposable(candidate)) {
 				throw new SandboxCleanupError({ operation: 'dispose' });
 			}
+
 			const result = await Promise.race([
 				observe(Promise.try(() => candidate.dispose(scope.context))),
 				scope.whenCancelled()
 			]);
+
 			if (result.kind !== 'resolved') {
 				throw new SandboxCleanupError(
 					{
@@ -451,6 +528,7 @@ export class SandboxGeneration {
 					}
 				);
 			}
+
 			pending.resolve(true);
 		} catch (error) {
 			this.#cleanupFailures.push(
@@ -467,6 +545,7 @@ export class SandboxGeneration {
 			scope.dispose();
 		}
 	}
+
 	#closeReport(
 		isConfirmed: boolean,
 		failures: readonly SandboxErrorInfo[]
@@ -482,12 +561,14 @@ export class SandboxGeneration {
 							: [])
 					]
 		);
+
 		return Object.freeze({
 			confirmed: isConfirmed,
 			recoveries,
 			failures: Object.freeze([...failures])
 		});
 	}
+
 	async #finishClose(
 		pending: PromiseWithResolvers<SandboxCloseReport>
 	): Promise<void> {
@@ -495,13 +576,17 @@ export class SandboxGeneration {
 			if (this.#opening !== undefined) {
 				await this.#opening;
 			}
+
 			await this.#operations.drain();
+
 			const isDisposed = await this.#dispose();
 			const isConfirmed = isDisposed && !this.#isUncertain;
 			const failures = [...this.#cleanupFailures];
+
 			if (this.#isUncertain && this.#failure !== undefined) {
 				failures.unshift(this.#failure);
 			}
+
 			this.#state = 'closed';
 			pending.resolve(this.#closeReport(isConfirmed, failures));
 		} catch (error) {
@@ -518,12 +603,14 @@ export class SandboxGeneration {
 		this.#assertOpen('configure');
 		await this.#prepare();
 	}
+
 	async acquire(
 		context: SandboxContext,
 		input?: SandboxAcquireOptions
 	): Promise<Sandbox> {
 		this.#assertContext(context, 'acquire');
 		this.#assertOpen('acquire');
+
 		const options = acquireOptions(input);
 		const scope = new OperationScope(
 			{ operation: 'acquire' },
@@ -531,30 +618,42 @@ export class SandboxGeneration {
 			options,
 			60_000
 		);
+
 		try {
 			scope.check();
+
 			const result = await Promise.race([this.#start(), scope.whenCancelled()]);
+
 			if (result.kind === 'cancelled') {
 				throw scope.cancellationError('not-started');
 			}
+
 			scope.check();
+
 			if (result.kind === 'rejected') {
 				throw result.error;
 			}
+
 			this.#assertContext(context, 'acquire');
 			this.#assertOpen('acquire');
+
 			const sandbox = createSandbox(this.#owner(context, result.value));
+
 			checkRequirements(sandbox, options);
+
 			return sandbox;
 		} finally {
 			scope.dispose();
 		}
 	}
+
 	async status(): Promise<SandboxStatus> {
 		if (this.#state !== 'closing' && this.#state !== 'closed') {
 			await observe(this.#prepare());
 		}
+
 		const backend = this.#backend;
+
 		return Object.freeze({
 			generationId: this.#id,
 			state: this.#state,
@@ -571,22 +670,30 @@ export class SandboxGeneration {
 				this.#state === 'closed' && { closeReport: await this.#closing })
 		});
 	}
+
 	async providers(): Promise<readonly ProviderInfo[]> {
 		if (this.#state === 'closing' || this.#state === 'closed') {
 			throw new SandboxSessionClosingError({ operation: 'discover' });
 		}
+
 		await this.#prepare();
+
 		return this.#providerInfos;
 	}
+
 	close(): Promise<SandboxCloseReport> {
 		if (this.#closing !== undefined) {
 			return this.#closing;
 		}
+
 		this.#state = 'closing';
+
 		const pending = Promise.withResolvers<SandboxCloseReport>();
+
 		this.#closing = pending.promise;
 		this.#lifetime.abort('shutdown');
 		void this.#finishClose(pending);
+
 		return pending.promise;
 	}
 }

@@ -36,6 +36,7 @@ it.each(['providerConfig', 'policy'] as const)(
 			isProjectTrusted: true
 		};
 		const backend = new MemoryBackend();
+
 		try {
 			await mkdir(sources.agentDirectory);
 			await mkdir(path.join(sources.workspace, '.pi'), { recursive: true });
@@ -60,6 +61,7 @@ it.each(['providerConfig', 'policy'] as const)(
 							: { valid: false }
 				})
 			);
+
 			const context = {
 				cwd: sources.workspace,
 				isProjectTrusted: () => true,
@@ -83,6 +85,7 @@ it.each(['providerConfig', 'policy'] as const)(
 					}
 				]
 			});
+
 			try {
 				await expect(generation.acquire(context)).rejects.toMatchObject({
 					name:
@@ -103,8 +106,10 @@ it.each(['providerConfig', 'policy'] as const)(
 it('rejects a backend returned after failed-open cleanup was acknowledged', async () => {
 	const { generation, context, backend, counts } = fixture((opening) => {
 		opening.confirmCleanup();
+
 		return Promise.resolve(backend);
 	});
+
 	await expect(generation.acquire(context)).rejects.toMatchObject({
 		name: 'InvalidSandboxDeclarationError'
 	});
@@ -118,13 +123,18 @@ it('expires both opening callbacks after a backend is returned', async () => {
 	let opening: SandboxOpenContext | undefined;
 	const { generation, context, backend } = fixture((context) => {
 		opening = context;
+
 		return Promise.resolve(backend);
 	});
+
 	await generation.acquire(context);
+
 	if (opening === undefined) {
 		throw new Error('The opening context was not captured.');
 	}
+
 	const finished = opening;
+
 	expect(() => {
 		finished.confirmCleanup();
 	}).toThrow();
@@ -155,9 +165,11 @@ it.each([true, false])(
 					{ once: true }
 				);
 			});
+
 			if (isCleanupConfirmed) {
 				opening.confirmCleanup();
 			}
+
 			throw new SandboxCancelledError({
 				operation: 'open',
 				reason: 'shutdown',
@@ -165,8 +177,11 @@ it.each([true, false])(
 			});
 		});
 		const acquisition = observe(generation.acquire(context));
+
 		await started.promise;
+
 		const report = await generation.close();
+
 		await acquisition;
 		expect({
 			confirmed: report.confirmed,
@@ -199,6 +214,7 @@ it('preserves the configuration source when recording a typed initialisation fai
 		providers: () => [],
 		readConfig: () => Promise.reject(cause)
 	});
+
 	await expect(generation.acquire(context)).rejects.toMatchObject({
 		name: 'InvalidSandboxConfigError',
 		configurationSource: 'project',
@@ -223,12 +239,14 @@ function fixture(
 			if (!isLive) {
 				throw new Error('Pi context was invalidated');
 			}
+
 			return hostWorkspace;
 		},
 		isProjectTrusted() {
 			if (!isLive) {
 				throw new Error('Pi context was invalidated');
 			}
+
 			return true;
 		},
 		sessionManager
@@ -244,22 +262,28 @@ function fixture(
 		},
 		configure: () => {
 			configure?.();
+
 			return {
 				open: (_request, opening) => {
 					opens++;
+
 					return open === undefined ? Promise.resolve(backend) : open(opening);
 				}
 			};
 		}
 	};
+
 	backend.dispose = () => {
 		disposals++;
+
 		return Promise.resolve();
 	};
+
 	const generation = new SandboxGeneration(context, {
 		providers: () => [provider],
 		readConfig: () => {
 			reads++;
+
 			return Promise.resolve({
 				selection: {
 					providerId: 'fixture',
@@ -270,6 +294,7 @@ function fixture(
 			});
 		}
 	});
+
 	return {
 		generation,
 		context,
@@ -284,16 +309,21 @@ function fixture(
 it('initialises diagnostics without provisioning, then shares one lazy startup', async () => {
 	const { generation, context, counts } = fixture();
 	const status = await generation.status();
+
 	expect(status.state).toBe('idle');
+
 	const providersInfo = await generation.providers();
+
 	expect(providersInfo.map((provider) => provider.id)).toStrictEqual([
 		'fixture'
 	]);
 	expect(counts()).toStrictEqual({ opens: 0, disposals: 0, reads: 1 });
+
 	const [first, second] = await Promise.all([
 		generation.acquire(context),
 		generation.acquire(context)
 	]);
+
 	expect({
 		backendIds: [first.backendId, second.backendId],
 		sameGeneration: first.generationId === second.generationId,
@@ -326,6 +356,7 @@ it('keeps startup running when all current acquisition waiters cancel', async ()
 	const started = Promise.withResolvers<SandboxOpenContext>();
 	const { generation, context, backend, counts } = fixture((opening) => {
 		started.resolve(opening);
+
 		return gate.promise;
 	});
 	const caller = new AbortController();
@@ -336,11 +367,14 @@ it('keeps startup running when all current acquisition waiters cancel', async ()
 		completion: 'not-started'
 	});
 	const opening = await started.promise;
+
 	caller.abort();
 	await rejected;
 	expect(opening.signal.aborted).toBe(false);
 	gate.resolve(backend);
+
 	const sandbox = await generation.acquire(context);
+
 	expect({ backendId: sandbox.backendId, ...counts() }).toStrictEqual({
 		backendId: 'memory',
 		opens: 1,
@@ -352,6 +386,7 @@ it('keeps startup running when all current acquisition waiters cancel', async ()
 
 it('uses independent waiter deadlines and preserves startup failure until close', async () => {
 	vi.useFakeTimers();
+
 	const gate = Promise.withResolvers<SandboxBackend>();
 	const { generation, context, counts } = fixture(() => gate.promise);
 	const short = generation.acquire(context, { timeoutMs: 10 });
@@ -363,6 +398,7 @@ it('uses independent waiter deadlines and preserves startup failure until close'
 	const rejectedLong = expect(long).rejects.toMatchObject({
 		name: 'SandboxStartupError'
 	});
+
 	await vi.advanceTimersByTimeAsync(10);
 	await rejectedShort;
 	gate.reject(new Error('provider failed'));
@@ -380,6 +416,7 @@ it('sets the close barrier before awaiting opening and never publishes a late ba
 	const started = Promise.withResolvers<SandboxOpenContext>();
 	const { generation, context, backend, counts } = fixture((opening) => {
 		started.resolve(opening);
+
 		return gate.promise;
 	});
 	const acquiring = generation.acquire(context);
@@ -389,6 +426,7 @@ it('sets the close barrier before awaiting opening and never publishes a late ba
 	});
 	const opening = await started.promise;
 	const closing = generation.close();
+
 	expect(opening.signal.aborted).toBe(true);
 	await expect(generation.acquire(context)).rejects.toMatchObject({
 		name: 'SandboxSessionClosingError'
@@ -406,6 +444,7 @@ it('sets the close barrier before awaiting opening and never publishes a late ba
 it('checks the live Pi context on every cached facade operation', async () => {
 	const { generation, context, invalidate } = fixture();
 	const sandbox = await generation.acquire(context);
+
 	invalidate();
 	await expect(
 		sandbox.exec({ kind: 'argv', executable: 'program', args: [] })
@@ -418,10 +457,13 @@ it('checks the live Pi context on every cached facade operation', async () => {
 
 it('checks requirements independently after sharing startup', async () => {
 	const { generation, context, counts } = fixture();
+
 	await expect(
 		generation.acquire(context, { capabilities: ['search.grep'] })
 	).rejects.toMatchObject({ name: 'UnsupportedSandboxCapabilityError' });
+
 	const sandbox = await generation.acquire(context);
+
 	expect(sandbox.backendId).toBe('memory');
 	expect(counts()).toStrictEqual({ opens: 1, disposals: 0, reads: 1 });
 	await generation.close();
@@ -429,6 +471,7 @@ it('checks requirements independently after sharing startup', async () => {
 
 it('bounds unresponsive opening, reports recovery, and disposes a later allocation once', async () => {
 	vi.useFakeTimers();
+
 	const gate = Promise.withResolvers<SandboxBackend>();
 	const started = Promise.withResolvers<SandboxOpenContext>();
 	const { generation, context, backend, counts } = fixture((opening) => {
@@ -439,6 +482,7 @@ it('bounds unresponsive opening, reports recovery, and disposes a later allocati
 			instructions: 'Recover allocations with lease.'
 		});
 		started.resolve(opening);
+
 		return gate.promise;
 	});
 	const acquiring = generation.acquire(context);
@@ -446,11 +490,16 @@ it('bounds unresponsive opening, reports recovery, and disposes a later allocati
 		name: 'SandboxCancelledError',
 		reason: 'shutdown'
 	});
+
 	await started.promise;
+
 	const closing = generation.close();
+
 	await vi.advanceTimersByTimeAsync(5000);
 	await rejected;
+
 	const report = await closing;
+
 	expect({
 		confirmed: report.confirmed,
 		recoveries: report.recoveries,
@@ -476,12 +525,18 @@ it('bounds unresponsive opening, reports recovery, and disposes a later allocati
 
 it('bounds disposal and preserves recovery when cleanup is unconfirmed', async () => {
 	vi.useFakeTimers();
+
 	const { generation, context, backend } = fixture();
+
 	backend.dispose = () => Promise.withResolvers<never>().promise;
 	await generation.acquire(context);
+
 	const closing = generation.close();
+
 	await vi.advanceTimersByTimeAsync(10_000);
+
 	const report = await closing;
+
 	expect({
 		confirmed: report.confirmed,
 		failures: report.failures.map((error) => error.name)
@@ -515,10 +570,12 @@ it('freezes provider services before asynchronous configuration completes', asyn
 		providers: () => providers,
 		readConfig: () => {
 			configured.resolve('configured');
+
 			return configGate.promise;
 		}
 	});
 	const acquisition = generation.acquire(context);
+
 	await configured.promise;
 	providers.length = 0;
 	configGate.resolve({
@@ -529,9 +586,13 @@ it('freezes provider services before asynchronous configuration completes', asyn
 		},
 		providerConfig: {}
 	});
+
 	const sandbox = await acquisition;
+
 	expect(sandbox.providerId).toBe('fixture');
+
 	const providersInfo = await generation.providers();
+
 	expect(providersInfo.map((provider) => provider.id)).toStrictEqual([
 		'fixture'
 	]);
@@ -540,6 +601,7 @@ it('freezes provider services before asynchronous configuration completes', asyn
 
 it('closes before configuration completes without starting a provider afterwards', async () => {
 	vi.useFakeTimers();
+
 	const backend = new MemoryBackend();
 	const gate = Promise.withResolvers<SandboxConfig>();
 	const configured = Promise.withResolvers<string>();
@@ -556,6 +618,7 @@ it('closes before configuration completes without starting a provider afterwards
 		configure: () => ({
 			open: () => {
 				opens++;
+
 				return Promise.resolve(backend);
 			}
 		})
@@ -569,6 +632,7 @@ it('closes before configuration completes without starting a provider afterwards
 		providers: () => [provider],
 		readConfig: () => {
 			configured.resolve('configured');
+
 			return gate.promise;
 		}
 	});
@@ -576,15 +640,23 @@ it('closes before configuration completes without starting a provider afterwards
 	const rejected = expect(acquisition).rejects.toMatchObject({
 		name: 'SandboxCancelledError'
 	});
+
 	await configured.promise;
+
 	const closing = generation.close();
+
 	await vi.advanceTimersByTimeAsync(0);
+
 	let isClosed = false;
+
 	async function recordClose() {
 		const report = await closing;
+
 		isClosed = report.confirmed;
 	}
+
 	const recorded = recordClose();
+
 	await vi.advanceTimersByTimeAsync(0);
 	expect(isClosed).toBe(true);
 	gate.resolve({
@@ -612,12 +684,14 @@ it('disposes an invalid opened backend once and keeps the startup failure', asyn
 		workspace: { ...backend.workspace, root: 'relative' },
 		dispose: () => {
 			disposals++;
+
 			return Promise.resolve();
 		}
 	};
 	const { generation, context, counts } = fixture(() =>
 		Promise.resolve(invalid)
 	);
+
 	await expect(generation.acquire(context)).rejects.toMatchObject({
 		name: 'InvalidSandboxDeclarationError'
 	});
@@ -652,10 +726,13 @@ it.each(['relative', '/remote/project'])(
 			dispose: () => Promise.reject(new Error('cleanup failed'))
 		};
 		const { generation, context } = fixture(() => Promise.resolve(invalid));
+
 		await expect(generation.acquire(context)).rejects.toMatchObject({
 			name: 'InvalidSandboxDeclarationError'
 		});
+
 		const report = await generation.close();
+
 		expect({
 			confirmed: report.confirmed,
 			recoveries: report.recoveries,
@@ -672,10 +749,14 @@ it.each(['/remote', '/remote/project/nested'])(
 	'keeps target paths unchanged when the host workspace overlaps: %s',
 	async (hostWorkspace) => {
 		const { generation, context, backend } = fixture(undefined, hostWorkspace);
+
 		backend.seed('file', new Uint8Array([1, 2]));
+
 		const sandbox = await generation.acquire(context);
+
 		try {
 			const bytes = await sandbox.files.readFile('/remote/project/file');
+
 			expect({
 				host: context.cwd,
 				target: sandbox.workspace.root,
@@ -709,13 +790,17 @@ it('replaces the aggregate recovery descriptor when its lease description change
 	const { generation, context } = fixture((opening) => {
 		opening.reportRecovery(initial);
 		opening.reportRecovery(latest);
+
 		return Promise.reject(new Error('startup failed'));
 	});
+
 	await expect(generation.acquire(context)).rejects.toMatchObject({
 		name: 'SandboxStartupError',
 		recovery: latest
 	});
+
 	const report = await generation.close();
+
 	expect({
 		confirmed: report.confirmed,
 		recoveries: report.recoveries
@@ -736,17 +821,21 @@ it('rejects conflicting backend recovery metadata without losing either recovery
 	};
 	const { generation, context, backend } = fixture((opening) => {
 		opening.reportRecovery(reported);
+
 		return Promise.resolve({
 			...snapshotBackend(backend),
 			recovery: candidate,
 			dispose: () => Promise.reject(new Error('cleanup failed'))
 		});
 	});
+
 	await expect(generation.acquire(context)).rejects.toMatchObject({
 		name: 'InvalidSandboxDeclarationError',
 		recovery: reported
 	});
+
 	const report = await generation.close();
+
 	expect({
 		confirmed: report.confirmed,
 		recoveries: report.recoveries
@@ -763,13 +852,17 @@ it('rejects an attempt to erase outstanding recovery metadata', async () => {
 	const { generation, context } = fixture((opening) => {
 		opening.reportRecovery(recovery);
 		opening.reportRecovery({ kind: 'none' });
+
 		return Promise.reject(new Error('unreachable'));
 	});
+
 	await expect(generation.acquire(context)).rejects.toMatchObject({
 		name: 'InvalidSandboxDeclarationError',
 		recovery
 	});
+
 	const report = await generation.close();
+
 	expect({
 		confirmed: report.confirmed,
 		recoveries: report.recoveries
@@ -780,14 +873,18 @@ it.each(['workspaceAccess', 'filesystemScope', 'networkAccess'] as const)(
 	'treats undefined %s requirements as omitted',
 	async (field) => {
 		const options = acquireOptions({ policy: { [field]: undefined } });
+
 		expect(options).toStrictEqual({
 			signal: undefined,
 			timeoutMs: undefined,
 			policy: {}
 		});
+
 		const { generation, context } = fixture();
+
 		try {
 			const sandbox = await generation.acquire(context, options);
+
 			expect(sandbox.backendId).toBe('memory');
 		} finally {
 			await generation.close();
@@ -814,18 +911,23 @@ it.each([true, false])(
 			if (reportsNone) {
 				opening.reportRecovery({ kind: 'none' });
 			}
+
 			opening.confirmCleanup();
+
 			return Promise.resolve({
 				...snapshotBackend(backend),
 				recovery,
 				dispose: () => Promise.reject(new Error('disposal failed'))
 			});
 		});
+
 		await expect(generation.acquire(context)).rejects.toMatchObject({
 			name: 'InvalidSandboxDeclarationError',
 			recovery
 		});
+
 		const report = await generation.close();
+
 		expect({
 			confirmed: report.confirmed,
 			recoveries: report.recoveries,
@@ -847,6 +949,7 @@ it('omits recovery after a rejected backend confirms disposal', async () => {
 	} as const;
 	const { generation, context, backend } = fixture((opening) => {
 		opening.reportRecovery(recovery);
+
 		return Promise.resolve({
 			...snapshotBackend(backend),
 			workspace: { ...backend.workspace, root: 'invalid' },
@@ -855,6 +958,7 @@ it('omits recovery after a rejected backend confirms disposal', async () => {
 	});
 	const result = await observe(generation.acquire(context));
 	const status = await generation.status();
+
 	expect({
 		kind: result.kind,
 		recovery: status.failure?.recovery,
@@ -876,14 +980,18 @@ it('expires one acquisition waiter after synchronous configuration without cance
 			now = 100;
 		}
 	);
+
 	try {
 		const first = observe(generation.acquire(context, { timeoutMs: 5 }));
 		const second = generation.acquire(context, { timeoutMs: 1000 });
+
 		expect(await first).toMatchObject({
 			kind: 'rejected',
 			error: { name: 'SandboxTimeoutError', completion: 'not-started' }
 		});
+
 		const sandbox = await second;
+
 		expect({
 			backendId: sandbox.backendId,
 			counts: counts()
@@ -906,6 +1014,7 @@ it.each([
 	'classifies late $source opening from disposal confirmation: failure $failsCleanup',
 	async ({ source, failsCleanup }) => {
 		vi.useFakeTimers();
+
 		const gate = Promise.withResolvers<SandboxBackend>();
 		const started = Promise.withResolvers<undefined>();
 		const recovery = {
@@ -917,16 +1026,21 @@ it.each([
 		const { generation, context, backend } = fixture((opening) => {
 			opening.reportRecovery(recovery);
 			started.resolve(undefined);
+
 			return gate.promise;
 		});
 		const acquiring = observe(
 			generation.acquire(context, { timeoutMs: 120_000 })
 		);
+
 		await started.promise;
+
 		const closing = source === 'shutdown' ? generation.close() : undefined;
+
 		if (source === 'deadline') {
 			await vi.advanceTimersByTimeAsync(60_000);
 		}
+
 		gate.resolve({
 			...snapshotBackend(backend),
 			recovery,
@@ -935,10 +1049,12 @@ it.each([
 					? Promise.reject(new Error('disposal failed'))
 					: Promise.resolve()
 		});
+
 		const acquired = await acquiring;
 		const report = await (closing ?? generation.close());
 		const status = await generation.status();
 		const failure = status.failure;
+
 		expect({
 			acquisition: acquired.kind === 'rejected' ? acquired.error : undefined,
 			failure: {
@@ -990,9 +1106,11 @@ it('returns the expired waiter deadline before a synchronous configuration rejec
 		'/host/workspace',
 		() => {
 			now = 100;
+
 			throw new Error('Configuration failed.');
 		}
 	);
+
 	try {
 		await expect(
 			generation.acquire(context, { timeoutMs: 5 })

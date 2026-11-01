@@ -48,16 +48,19 @@ child.on('message', () => {
   ${isCancelled ? 'setInterval(() => {}, 1000);' : ''}
 });
 `;
+
 		releases.push(async () => {
 			await writeFile(path.join(directory, 'release'), 'go');
 			await vi.waitFor(() => readFile(path.join(directory, 'late'), 'utf8'));
 		});
+
 		let outcome:
 			| ProcessExit
 			| {
 					readonly name: 'SandboxCancelledError';
 					readonly completion: OperationCompletion;
 			  };
+
 		try {
 			const result = await sandbox.exec(
 				{
@@ -74,24 +77,32 @@ child.on('message', () => {
 					}
 				}
 			);
+
 			outcome = result.exit;
 		} catch (error) {
 			if (!isSandboxError(error, SandboxCancelledError)) {
 				throw error;
 			}
+
 			outcome = { name: error.name, completion: error.completion };
 		}
+
 		await dispose();
+
 		const marker = path.join(directory, 'late');
 		let before: string;
+
 		try {
 			before = await readFile(marker, 'utf8');
 		} catch (error) {
 			expect(error).toMatchObject({ code: 'ENOENT' });
 			before = 'absent';
 		}
+
 		await writeFile(path.join(directory, 'release'), 'go');
+
 		const after = await vi.waitFor(() => readFile(marker, 'utf8'));
+
 		expect({ outcome, before, after }).toStrictEqual({
 			outcome: isCancelled
 				? { name: 'SandboxCancelledError', completion: 'confirmed' }
@@ -114,6 +125,7 @@ it('waits for process-group disappearance after a denied existence probe', async
 					{ code: 'EPERM' }
 				);
 			}
+
 			process.kill(id, signal);
 		}
 	});
@@ -132,6 +144,7 @@ it('waits for process-group disappearance after a denied existence probe', async
 			}
 		}
 	);
+
 	expect({ result, output }).toStrictEqual({
 		result: { kind: 'exited', exit: { kind: 'code', code: 0 } },
 		output: ['finished']
@@ -140,6 +153,7 @@ it('waits for process-group disappearance after a denied existence probe', async
 
 afterEach(async () => {
 	vi.unstubAllEnvs();
+
 	for (const release of releases.splice(0).toReversed()) {
 		await release();
 	}
@@ -154,8 +168,10 @@ async function fixture(
 }> {
 	const temporary = await mkdtemp(path.join(tmpdir(), 'pi-byos-host-'));
 	const directory = await realpath(temporary);
+
 	releases.push(() => rm(directory, { recursive: true, force: true }));
 	await prepare?.(directory);
+
 	const backend = await openPassthrough(directory, {
 		operationId: 'open',
 		signal: new AbortController().signal,
@@ -174,12 +190,15 @@ async function fixture(
 			signal: new AbortController().signal,
 			deadline: Date.now() + 10_000
 		});
+
 	releases.push(dispose);
+
 	return { directory, sandbox: createSandbox(owner), dispose };
 }
 
 it('shares host files, preserves byte ownership and follows filesystem links', async () => {
 	const { directory, sandbox } = await fixture();
+
 	await sandbox.files.mkdir('nested');
 	await sandbox.files.writeFile(
 		'nested/file',
@@ -187,11 +206,13 @@ it('shares host files, preserves byte ownership and follows filesystem links', a
 	);
 	await symlink('nested/file', path.join(directory, 'link'));
 	await symlink('absent', path.join(directory, 'dangling'));
+
 	const update = await sandbox.files.updateText(
 		'link',
 		(text) => `${text}second\n`
 	);
 	const entries = await sandbox.files.listDirectory('.');
+
 	expect({
 		workspace: sandbox.workspace,
 		policy: sandbox.policy,
@@ -224,7 +245,9 @@ it('shares host files, preserves byte ownership and follows filesystem links', a
 	await expect(sandbox.files.stat('dangling')).rejects.toMatchObject({
 		name: 'SandboxPathNotFoundError'
 	});
+
 	const bytes = await sandbox.files.readFile('link');
+
 	bytes.fill(0);
 	expect(await sandbox.files.readFile('link')).toStrictEqual(
 		new TextEncoder().encode('first\r\nsecond\n')
@@ -236,14 +259,20 @@ it.each(['file', 'directory'] as const)(
 	async (entry) => {
 		const { sandbox } = await fixture(async (directory) => {
 			await mkdir(path.join(directory, 'bin'));
+
 			const filename = path.join(directory, 'bin', 'bash');
+
 			vi.stubEnv('PATH', './bin');
+
 			if (entry === 'file') {
 				await symlink('/bin/bash', filename);
+
 				return;
 			}
+
 			await mkdir(filename);
 		});
+
 		expect(sandbox.capabilities.shells).toStrictEqual(
 			entry === 'file' ? ['bash'] : []
 		);
@@ -252,7 +281,9 @@ it.each(['file', 'directory'] as const)(
 
 it('executes argv without shell expansion and merges the inherited host environment', async () => {
 	const { directory, sandbox } = await fixture();
+
 	await mkdir(path.join(directory, 'cwd'));
+
 	const removed: unknown = JSON.parse('null');
 	const request = snapshotProcessRequest({
 		kind: 'argv',
@@ -268,6 +299,7 @@ it('executes argv without shell expansion and merges the inherited host environm
 	});
 	const result = await sandbox.exec(request);
 	const stdout: unknown = JSON.parse(new TextDecoder().decode(result.stdout));
+
 	expect({
 		exit: result.exit,
 		stdout,
@@ -297,6 +329,7 @@ it.each(['bash', 'sh'] as const)(
 			command: 'printf "%s" "$BYOS_TEST_VALUE"',
 			env: { BYOS_TEST_VALUE: 'shell value' }
 		});
+
 		expect({
 			exit: result.exit,
 			stdout: new TextDecoder().decode(result.stdout)
@@ -323,6 +356,7 @@ it.each(['file', 'executable', 'cwd'] as const)(
 						args: [],
 						...(missing === 'cwd' && { cwd: 'absent' })
 					});
+
 		await expect(operation).rejects.toMatchObject({
 			name: 'SandboxPathNotFoundError'
 		});
@@ -336,6 +370,7 @@ it.each(['file', 'executable', 'cwd'] as const)(
 it('rejects cancellation before invocation without host side effects', async () => {
 	const { directory, sandbox } = await fixture();
 	const controller = new AbortController();
+
 	controller.abort();
 	await expect(
 		sandbox.exec(
@@ -362,6 +397,7 @@ it('confirms cancellation only after a real foreground descendant stops', async 
 	const child =
 		'process.stdout.write(String(process.pid)+"\\n");setInterval(()=>{},1000)';
 	const script = `require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(child)}],{stdio:['ignore','inherit','inherit']});setInterval(()=>{},1000)`;
+
 	await expect(
 		sandbox.exec(
 			{ kind: 'argv', executable: process.execPath, args: ['-e', script] },
@@ -392,6 +428,7 @@ it('does not acknowledge an exited parent while a foreground descendant is still
 		executable: process.execPath,
 		args: ['-e', script]
 	});
+
 	expect({
 		exit: result.exit,
 		descendant: await readFile(path.join(directory, 'descendant'), 'utf8')
@@ -417,6 +454,7 @@ it('aborts active host jobs during idempotent disposal and refuses later work', 
 		name: 'SandboxCancelledError',
 		completion: 'confirmed'
 	});
+
 	await started.promise;
 	await Promise.all([dispose(), dispose(), rejected]);
 	await expect(
@@ -446,6 +484,7 @@ it.each(['deadline', 'output'] as const)(
 						}
 					}
 		);
+
 		await expect(running).rejects.toMatchObject({
 			name:
 				reason === 'deadline'
@@ -467,6 +506,7 @@ it('reports the native signal number for a signal-terminated process', async () 
 		executable: process.execPath,
 		args: ['-e', 'process.kill(process.pid, "SIGTERM")']
 	});
+
 	expect({ ...result, durationMs: 0 }).toStrictEqual({
 		exit: {
 			kind: 'signal',

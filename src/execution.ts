@@ -79,10 +79,12 @@ function concatenate(chunks: readonly Uint8Array[]): Uint8Array {
 		chunks.reduce((size, chunk) => size + chunk.byteLength, 0)
 	);
 	let offset = 0;
+
 	for (const chunk of chunks) {
 		result.set(chunk, offset);
 		offset += chunk.byteLength;
 	}
+
 	return result;
 }
 
@@ -100,7 +102,9 @@ export function unknownCompletion(
 		...(scope.reason !== undefined && { reason: scope.reason })
 	};
 	const failure = new errorClass(context, { cause });
+
 	owner.markUnhealthy(failure);
+
 	return failure;
 }
 
@@ -115,6 +119,7 @@ function executionOutcome(
 
 	if (result.kind === 'rejected') {
 		const error = result.error;
+
 		if (!isSandboxError(error)) {
 			throw unknownCompletion(
 				owner,
@@ -134,6 +139,7 @@ function executionOutcome(
 			if ('completion' in error) {
 				throw scope.cancellationError(error.completion);
 			}
+
 			throw unknownCompletion(owner, scope, error);
 		}
 
@@ -172,7 +178,9 @@ export async function executeProcess(
 	input?: ProcessOptions
 ): Promise<ProcessResult> {
 	owner.assertLive('exec');
+
 	const snapshot = snapshotProcessRequest(request);
+
 	if (
 		snapshot.kind === 'shell' &&
 		!owner.backend.capabilities.shells.includes(snapshot.dialect)
@@ -190,15 +198,18 @@ export async function executeProcess(
 		options,
 		DEFAULT_EXEC_TIMEOUT_MS
 	);
+
 	return owner.operations.run(scope, async () => {
 		scope.check();
 		owner.assertLive('exec');
+
 		const stdout: Uint8Array[] = [];
 		const stderr: Uint8Array[] = [];
 		const omittedBytes = { stdout: 0, stderr: 0 };
 		let remaining = options.maxCaptureBytes ?? MAX_CAPTURE_BYTES;
 		let isDelivering = true;
 		const started = performance.now();
+
 		const onOutput = (output: ProcessOutput) => {
 			if (!isDelivering || scope.reason !== undefined) {
 				return;
@@ -211,19 +222,26 @@ export async function executeProcess(
 						operation: 'exec'
 					});
 				}
+
 				const count = Math.min(remaining, output.data.byteLength);
+
 				if (count > 0) {
 					const captured = new Uint8Array(output.data.subarray(0, count));
+
 					(output.stream === 'stdout' ? stdout : stderr).push(captured);
 				}
+
 				remaining -= count;
 				omittedBytes[output.stream] += output.data.byteLength - count;
+
 				const returned: unknown = options.onOutput?.({
 					stream: output.stream,
 					data: new Uint8Array(output.data)
 				});
+
 				if (isRecord(returned) && typeof returned.then === 'function') {
 					void Promise.allSettled([Promise.resolve(returned)]);
+
 					throw new InvalidSandboxRequestError({
 						...owner.identity,
 						operation: 'exec'
@@ -242,6 +260,7 @@ export async function executeProcess(
 				)
 			);
 			const outcome = executionOutcome(owner, scope, result);
+
 			return Object.freeze({
 				exit: snapshotExit(outcome.exit),
 				stdout: concatenate(stdout),

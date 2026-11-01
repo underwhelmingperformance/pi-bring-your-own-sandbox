@@ -19,6 +19,7 @@ export function ensureBroker(
 	create: (id: string) => BrokerServiceV1
 ): BrokerServiceV1 {
 	const existing = discoverBroker(events);
+
 	if (existing !== undefined) {
 		return existing;
 	}
@@ -28,6 +29,7 @@ export function ensureBroker(
 	let failure = new SandboxInitialisationError({
 		operation: 'discover'
 	});
+
 	const invoke = <Result>(
 		operation: (service: BrokerServiceV1) => Promise<Result>
 	): Promise<Result> => {
@@ -48,6 +50,7 @@ export function ensureBroker(
 			);
 		}
 	};
+
 	const service = Object.freeze<BrokerServiceV1>({
 		id,
 		acquire: (context, options) =>
@@ -70,7 +73,9 @@ export function ensureBroker(
 				request.reply(advertisement);
 			}
 		});
+
 		const created: unknown = create(id);
+
 		if (!isBrokerService(created) || created.id !== id) {
 			throw new InvalidSandboxDeclarationError({
 				operation: 'discover'
@@ -85,6 +90,7 @@ export function ensureBroker(
 			},
 			{ cause: error }
 		);
+
 		throw failure;
 	}
 

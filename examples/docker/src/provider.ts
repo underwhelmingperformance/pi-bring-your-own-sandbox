@@ -136,11 +136,13 @@ class DockerBackend implements SandboxBackend {
 			},
 			'exec'
 		);
+
 		return result.kind === 'cancelled' ? result : frames.finish();
 	}
 
 	async #dispose(context: SandboxOperationContext): Promise<void> {
 		const expired = Promise.withResolvers<never>();
+
 		const fail = () => {
 			expired.reject(
 				new SandboxCleanupError({
@@ -151,17 +153,22 @@ class DockerBackend implements SandboxBackend {
 				})
 			);
 		};
+
 		const timer = new DeadlineTimer(context.deadline, fail);
+
 		context.signal.addEventListener('abort', fail, { once: true });
+
 		if (context.signal.aborted) {
 			fail();
 		}
+
 		try {
 			await Promise.race([Promise.allSettled(this.#active), expired.promise]);
 		} finally {
 			timer.dispose();
 			context.signal.removeEventListener('abort', fail);
 		}
+
 		await this.#resources.dispose(context);
 	}
 
@@ -170,6 +177,7 @@ class DockerBackend implements SandboxBackend {
 		context: SandboxOpenContext
 	): Promise<void> {
 		context.reportRecovery(this.recovery);
+
 		if (context.signal.aborted) {
 			throw new SandboxCancelledError({
 				operation: 'open',
@@ -177,6 +185,7 @@ class DockerBackend implements SandboxBackend {
 				completion: 'not-started'
 			});
 		}
+
 		try {
 			await this.#resources.checked(
 				[
@@ -189,6 +198,7 @@ class DockerBackend implements SandboxBackend {
 				context,
 				'open'
 			);
+
 			const source = await realpath(hostWorkspace);
 			const copied = await this.#resources.job(
 				[
@@ -222,6 +232,7 @@ class DockerBackend implements SandboxBackend {
 				},
 				'open'
 			);
+
 			if (copied.kind === 'cancelled') {
 				throw new SandboxCancelledError({
 					operation: 'open',
@@ -231,6 +242,7 @@ class DockerBackend implements SandboxBackend {
 					recovery: this.recovery
 				});
 			}
+
 			if (copied.exit.kind !== 'code' || copied.exit.code !== 0) {
 				throw new SandboxOperationError({
 					operation: 'open',
@@ -260,7 +272,9 @@ class DockerBackend implements SandboxBackend {
 					}
 				);
 			}
+
 			context.confirmCleanup();
+
 			throw error;
 		}
 	}
@@ -278,6 +292,7 @@ class DockerBackend implements SandboxBackend {
 				})
 			);
 		}
+
 		if (
 			request.kind === 'shell' &&
 			request.dialect !== 'sh' &&
@@ -291,11 +306,14 @@ class DockerBackend implements SandboxBackend {
 				})
 			);
 		}
+
 		const running = this.#run(request, context);
+
 		this.#active.add(running);
 		void Promise.allSettled([running]).then(() => {
 			this.#active.delete(running);
 		});
+
 		return running;
 	}
 
@@ -303,8 +321,10 @@ class DockerBackend implements SandboxBackend {
 		if (this.#closing !== undefined) {
 			return this.#closing;
 		}
+
 		this.#lifetime.abort();
 		this.#closing = this.#dispose(context);
+
 		return this.#closing;
 	}
 }
@@ -341,6 +361,7 @@ export function createDockerProvider(
 					providerId: 'example.docker'
 				});
 			}
+
 			const client =
 				createClient?.(request.configuration) ??
 				new NodeDockerClient(request.configuration);
@@ -353,7 +374,9 @@ export function createDockerProvider(
 				request.policy,
 				launcher
 			);
+
 			await backend.initialise(request.hostWorkspace, context);
+
 			return backend;
 		}
 	};

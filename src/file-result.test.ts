@@ -64,6 +64,7 @@ it('accepts provider match order and checks limits and context', () => {
 		before: [],
 		after: []
 	};
+
 	expect([
 		isGrepResult({ matches: [first, second], truncated: false }, 'posix', 2, 1),
 		isGrepResult({ matches: [second, first], truncated: false }, 'posix', 2, 1),

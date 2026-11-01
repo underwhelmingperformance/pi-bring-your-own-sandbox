@@ -1,4 +1,4 @@
-# Writing a consumer extension
+# Consumer extension example
 
 Add `pi-bring-your-own-sandbox` as a normal dependency of the extension project.
 Import the SDK from `pi-bring-your-own-sandbox/api`. Pi supplies the extension
@@ -13,7 +13,7 @@ is returned as an error.
 
 ## Run the example
 
-Build and pack this development checkout:
+Build and pack this development checkout from the repository root:
 
 ```sh
 pnpm build
@@ -32,7 +32,7 @@ The example registers `sandbox_pwd`. It requires a target with a `pwd`
 executable, including POSIX passthrough and the [Docker reference
 provider][docker].
 
-[docker]: docker-provider.md
+[docker]: ../docker/README.md
 
 From this checkout, load the source directly:
 
@@ -102,7 +102,7 @@ tool call. Extensions that need Pi's tool approval should invoke a registered
 tool through Pi's public tool path. The optional framework `/pi-tools` entry
 connects supported built-in shell hooks; see the [coverage table][coverage].
 
-[coverage]: pi-integration.md
+[coverage]: ../../docs/pi-integration.md
 
 SDK failures use concrete typed errors. Use
 `isSandboxError(error, ConcreteErrorClass)` to narrow errors when extensions may
@@ -139,4 +139,4 @@ transport and separate target paths. The fixtures create no OS isolation.
 provider's [contract-test guide][testing] describes the separate provider
 obligations.
 
-[testing]: provider-testing.md
+[testing]: ../../docs/provider-testing.md

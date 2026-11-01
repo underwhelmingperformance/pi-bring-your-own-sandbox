@@ -29,7 +29,9 @@
 	"files": [
 		"dist",
 		"docs",
+		"examples/docker/README.md",
 		"examples/docker/src",
+		"examples/consumer/README.md",
 		"examples/consumer/src",
 		"README.md"
 	],

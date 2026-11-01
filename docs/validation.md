@@ -37,7 +37,7 @@ dedicated commands execute those cases. Model and approval fixtures are local;
 the gates need no real model credentials. Commit hooks also check file hygiene,
 workflows and commit-message formatting.
 
-[docker]: docker-provider.md
+[docker]: ../examples/docker/README.md
 
 ## Specification acceptance evidence
 
@@ -110,7 +110,7 @@ imports from the installed archive.
 [provider-suite]: ../src/provider-contract.test.ts
 [provider-guide]: provider-testing.md
 [diagnostics]: ../src/diagnostics-integration.test.ts
-[consumer-guide]: consumer-authoring.md
+[consumer-guide]: ../examples/consumer/README.md
 
 ## Platform and integration limits
 

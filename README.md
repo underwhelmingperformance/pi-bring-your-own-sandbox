@@ -70,7 +70,7 @@ context and per-tool cancellation signal. The same helper runs with default
 passthrough, both provider fixtures and Docker. Consumer projects install the
 framework as a normal dependency.
 
-[consumer]: docs/consumer-authoring.md
+[consumer]: examples/consumer/README.md
 
 ## Docker reference provider
 
@@ -79,7 +79,7 @@ with a copied workspace volume, unprivileged target commands, denied network
 access and confirmed container removal. It uses the public provider API.
 `pnpm test:provider` runs its separate daemon-backed integration gate.
 
-[docker]: docs/docker-provider.md
+[docker]: examples/docker/README.md
 
 ## Development
 

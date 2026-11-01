@@ -1,8 +1,8 @@
 # Docker reference provider
 
-The optional example in `examples/docker/src` implements the public provider
-contract with a local Docker daemon. It advertises `exec`, POSIX `sh` and Bash.
-Filesystem and search facades reject unsupported capability requests.
+This example implements the public provider contract with a local Docker daemon.
+It advertises `exec`, POSIX `sh` and Bash. Filesystem and search facades reject
+unsupported capability requests.
 
 The framework's runtime does not depend on Docker. Registering the example does
 not contact the daemon. Docker is required when a consumer acquires an
@@ -16,7 +16,8 @@ defaults to `/usr/bin/docker` and `/var/run/docker.sock`. Set absolute
 management CLI receives an empty environment and an explicit daemon address;
 Docker context and environment settings do not select another daemon.
 
-Pull the pinned image before opening a backend:
+Run these commands from the repository root. Pull the pinned image before
+opening a backend:
 
 ```sh
 image=$(node --input-type=module -e 'import { DOCKER_IMAGE } from "./examples/docker/src/image.ts"; process.stdout.write(DOCKER_IMAGE)')
@@ -35,6 +36,9 @@ loads its `index.ts`, which re-exports the extension factory. Keep the launcher
 file beside the provider modules. The example uses public imports from
 `pi-bring-your-own-sandbox/api` and needs the framework as a normal project
 dependency.
+
+Pi supplies TypeBox at runtime. Add `typebox` as a development dependency to
+type-check the copied example outside Pi.
 
 Select the provider in a trusted project's `.pi/byos.json`:
 
@@ -65,7 +69,7 @@ Load `/pi-tools` separately to route supported Pi shell hooks. See the
 [integration coverage table][coverage] for those hooks and the upstream
 file/search gaps.
 
-[coverage]: pi-integration.md
+[coverage]: ../../docs/pi-integration.md
 
 ## Workspace and process behaviour
 

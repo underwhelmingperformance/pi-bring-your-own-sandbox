@@ -190,7 +190,11 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 				exports: manifest.exports
 			}).toStrictEqual({
 				dependencies: undefined,
-				peers: { '@earendil-works/pi-coding-agent': '1.4.0', vitest: '5.0.5' },
+				peers: {
+					'@earendil-works/pi-coding-agent': '1.4.0',
+					typebox: '1.3.27',
+					vitest: '5.0.5'
+				},
 				optional: { vitest: { optional: true } },
 				pi: { extensions: ['./dist/extension.js'] },
 				exports: Object.fromEntries(
@@ -217,7 +221,11 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 				new URL('fixtures/package/provider/provider.ts', import.meta.url),
 				path.join(provider, 'provider.ts')
 			);
-			await add(host, ['typescript@6.0.3', '@types/node@24.12.2'], true);
+			await add(
+				host,
+				['typescript@6.0.3', '@types/node@24.12.2', 'typebox@1.3.27'],
+				true
+			);
 			await run(host, 'pnpm', ['exec', 'tsc']);
 			await run(host, process.execPath, ['check.js']);
 			await run(host, 'pnpm', ['exec', 'tsc', '--noEmit']);

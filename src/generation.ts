@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import { Type } from 'typebox';
+
 import { acquireOptions, checkRequirements } from './acquire-options.js';
 import { snapshotBackend, snapshotRecovery } from './backend-snapshot.js';
 import { validateBackend } from './backend-validation.js';
@@ -47,6 +49,7 @@ import type {
 	ProviderServiceV1,
 	SandboxStatus
 } from './protocol.js';
+import { callable, checker } from './schemas.js';
 import {
 	isRecord,
 	isRecovery,
@@ -66,9 +69,9 @@ interface Disposable {
 	readonly dispose: (context: SandboxOperationContext) => Promise<void>;
 }
 
-function isDisposable(value: unknown): value is Disposable {
-	return isRecord(value) && typeof value.dispose === 'function';
-}
+const isDisposable = checker(
+	Type.Object({ dispose: callable<Disposable['dispose']>() })
+);
 
 export class SandboxGeneration {
 	readonly #context: SandboxContext;

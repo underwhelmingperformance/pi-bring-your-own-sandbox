@@ -11,23 +11,15 @@ import type {
 	ServiceAdvertisementV1
 } from './protocol.js';
 import { PROVIDER_DISCOVERY_CHANNEL } from './protocol.js';
+import { checker } from './schemas.js';
+import { providerDeclarationSchema } from './service-schemas.js';
 import {
-	isProviderInfo,
 	isRecord,
 	snapshotCapabilities,
 	snapshotPolicies
 } from './validation.js';
 
-function isProviderDeclaration(value: unknown): boolean {
-	return (
-		isRecord(value) &&
-		isProviderInfo(value) &&
-		value.protocolVersion === 1 &&
-		value.id !== 'passthrough' &&
-		typeof value.validateConfig === 'function' &&
-		typeof value.open === 'function'
-	);
-}
+const isProviderDeclaration = checker(providerDeclarationSchema);
 
 /**
 Register synchronously during a Pi extension factory, before consumers

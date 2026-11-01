@@ -1,57 +1,20 @@
 import { isPolicySatisfied } from './backend-validation.js';
-import type {
-	Sandbox,
-	SandboxAcquireOptions,
-	SandboxPolicy
-} from './contracts.js';
+import type { Sandbox, SandboxAcquireOptions } from './contracts.js';
 import {
 	InvalidSandboxRequestError,
 	UnsupportedSandboxCapabilityError,
 	UnsupportedSandboxPolicyError
 } from './errors.js';
 import { operationOptions } from './file-input.js';
-import {
-	isCapability,
-	isFilesystemScope,
-	isNetworkAccess,
-	isRecord,
-	isUniqueList,
-	isWorkspaceAccess
-} from './validation.js';
+import { acquireOptionsSchema } from './request-schemas.js';
+import { checker } from './schemas.js';
 
-function isPartialPolicy(value: unknown): value is Partial<SandboxPolicy> {
-	return (
-		isRecord(value) &&
-		Object.entries(value).every(([key, item]) => {
-			if (key === 'workspaceAccess') {
-				return item === undefined || isWorkspaceAccess(item);
-			}
-
-			if (key === 'filesystemScope') {
-				return item === undefined || isFilesystemScope(item);
-			}
-
-			if (key === 'networkAccess') {
-				return item === undefined || isNetworkAccess(item);
-			}
-
-			return false;
-		})
-	);
-}
+const isAcquireOptions = checker(acquireOptionsSchema);
 
 export function acquireOptions(input: unknown): SandboxAcquireOptions {
 	const value = input === undefined ? {} : input;
 
-	if (
-		!isRecord(value) ||
-		Object.keys(value).some(
-			(key) => !['signal', 'timeoutMs', 'capabilities', 'policy'].includes(key)
-		) ||
-		(value.capabilities !== undefined &&
-			!isUniqueList(value.capabilities, isCapability)) ||
-		(value.policy !== undefined && !isPartialPolicy(value.policy))
-	) {
+	if (!isAcquireOptions(value)) {
 		throw new InvalidSandboxRequestError({ operation: 'acquire' });
 	}
 

@@ -17,62 +17,21 @@ import {
 	BROKER_DISCOVERY_CHANNEL,
 	PROVIDER_DISCOVERY_CHANNEL
 } from './protocol.js';
+import { checker } from './schemas.js';
 import {
-	isNonEmptyString,
-	isProviderInfo,
-	isRecord,
-	isUniqueList,
-	snapshotCapabilities,
-	snapshotPolicies
-} from './validation.js';
+	advertisementSchema,
+	brokerServiceSchema,
+	discoveryRequestSchema,
+	providerServiceSchema
+} from './service-schemas.js';
+import { snapshotCapabilities, snapshotPolicies } from './validation.js';
 
-export function isDiscoveryRequest(
-	value: unknown
-): value is DiscoveryRequestV1 {
-	return (
-		isRecord(value) &&
-		value.kind === 'pi-byos.discover' &&
-		value.discoveryVersion === 1 &&
-		typeof value.reply === 'function'
-	);
-}
+export const isDiscoveryRequest = checker(discoveryRequestSchema);
 
-function isAdvertisement(value: unknown): value is ServiceAdvertisementV1 {
-	return (
-		isRecord(value) &&
-		(value.kind === 'pi-byos.broker' || value.kind === 'pi-byos.provider') &&
-		value.discoveryVersion === 1 &&
-		isNonEmptyString(value.id) &&
-		isUniqueList(
-			value.serviceVersions,
-			(version): version is number =>
-				typeof version === 'number' &&
-				Number.isSafeInteger(version) &&
-				version > 0
-		) &&
-		value.serviceVersions.length > 0 &&
-		isRecord(value.service)
-	);
-}
+const isAdvertisement = checker(advertisementSchema);
 
-export function isProviderService(value: unknown): value is ProviderServiceV1 {
-	return (
-		isRecord(value) &&
-		isProviderInfo(value) &&
-		typeof value.configure === 'function'
-	);
-}
-
-export function isBrokerService(value: unknown): value is BrokerServiceV1 {
-	return (
-		isRecord(value) &&
-		isNonEmptyString(value.id) &&
-		typeof value.acquire === 'function' &&
-		typeof value.close === 'function' &&
-		typeof value.status === 'function' &&
-		typeof value.providers === 'function'
-	);
-}
+export const isProviderService = checker(providerServiceSchema);
+export const isBrokerService = checker(brokerServiceSchema);
 
 function collect(
 	events: EventBus,

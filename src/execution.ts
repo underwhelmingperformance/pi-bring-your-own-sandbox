@@ -30,7 +30,9 @@ import {
 	snapshotProcessOptions,
 	snapshotProcessRequest
 } from './process-input.js';
-import { isNonEmptyString, isRecord } from './validation.js';
+import { processOutcomeSchema, processOutputSchema } from './result-schemas.js';
+import { checker } from './schemas.js';
+import { isRecord } from './validation.js';
 
 export interface BackendOwner {
 	readonly identity: Omit<OperationIdentity, 'operation'>;
@@ -41,38 +43,8 @@ export interface BackendOwner {
 	readonly markUnhealthy: (failure: SandboxErrorInfo) => void;
 }
 
-function isOutcome(value: unknown): value is BackendProcessOutcome {
-	if (!isRecord(value)) {
-		return false;
-	}
-
-	if (value.kind === 'cancelled') {
-		return (
-			value.termination === 'confirmed' || value.termination === 'unconfirmed'
-		);
-	}
-
-	return (
-		value.kind === 'exited' &&
-		isRecord(value.exit) &&
-		((value.exit.kind === 'code' &&
-			typeof value.exit.code === 'number' &&
-			Number.isSafeInteger(value.exit.code)) ||
-			(value.exit.kind === 'signal' &&
-				isNonEmptyString(value.exit.signal) &&
-				typeof value.exit.signalNumber === 'number' &&
-				Number.isSafeInteger(value.exit.signalNumber) &&
-				value.exit.signalNumber > 0))
-	);
-}
-
-function isOutput(value: unknown): value is ProcessOutput {
-	return (
-		isRecord(value) &&
-		(value.stream === 'stdout' || value.stream === 'stderr') &&
-		value.data instanceof Uint8Array
-	);
-}
+const isOutcome = checker(processOutcomeSchema);
+const isOutput = checker(processOutputSchema);
 
 function concatenate(chunks: readonly Uint8Array[]): Uint8Array {
 	const result = new Uint8Array(

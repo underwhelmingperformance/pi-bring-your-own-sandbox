@@ -2,7 +2,10 @@ import type { EventBus } from '@earendil-works/pi-coding-agent';
 
 import { isDiscoveryRequest } from './discovery.js';
 import type { DiscoveryRequestV1 } from './protocol.js';
-import { isRecord } from './validation.js';
+import { checker } from './schemas.js';
+import { shellIntegrationSchema } from './service-schemas.js';
+
+const isShellIntegration = checker(shellIntegrationSchema);
 
 const CHANNEL = 'pi-byos:diagnostics:v1:shell-integration';
 
@@ -41,12 +44,7 @@ export function describeShellIntegration(events: EventBus): string {
 		return 'Pi shell integration: not requested; routing unverified.';
 	}
 
-	const hasValidReplies = replies.every(
-		(reply) =>
-			isRecord(reply) &&
-			reply.kind === 'pi-byos.shell-integration' &&
-			reply.discoveryVersion === 1
-	);
+	const hasValidReplies = replies.every((reply) => isShellIntegration(reply));
 
 	return hasValidReplies
 		? 'Pi shell integration: requested; routing unverified.'

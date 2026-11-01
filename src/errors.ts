@@ -7,7 +7,8 @@ import type {
 	SandboxErrorName,
 	SandboxOperation
 } from './contracts.js';
-import { isNonEmptyString, isRecord, isRecovery } from './validation.js';
+import { errorSchema } from './error-schema.js';
+import { checker } from './schemas.js';
 
 /**
 Shared context for concrete sandbox errors. Construct a specific subclass.
@@ -725,102 +726,7 @@ export function rehydrateSandboxError(
 	}
 }
 
-function isOperation(value: unknown): value is SandboxOperation {
-	return (
-		typeof value === 'string' &&
-		[
-			'acquire',
-			'discover',
-			'configure',
-			'open',
-			'exec',
-			'readFile',
-			'writeFile',
-			'mkdir',
-			'access',
-			'stat',
-			'listDirectory',
-			'updateText',
-			'find',
-			'grep',
-			'dispose'
-		].includes(value)
-	);
-}
-
-function isError(value: unknown): value is SandboxErrorInfo {
-	if (
-		!isRecord(value) ||
-		value.sandboxErrorVersion !== 1 ||
-		typeof value.message !== 'string' ||
-		!isOperation(value.operation) ||
-		(value.configurationSource !== undefined &&
-			['personal', 'project'].every(
-				(source) => source !== value.configurationSource
-			)) ||
-		(value.providerId !== undefined && !isNonEmptyString(value.providerId)) ||
-		(value.backendId !== undefined && !isNonEmptyString(value.backendId)) ||
-		(value.recovery !== undefined && !isRecovery(value.recovery))
-	) {
-		return false;
-	}
-
-	const isCompleted = ['not-started', 'confirmed', 'unknown'].some(
-		(completion) => completion === value.completion
-	);
-
-	switch (value.name) {
-		case 'SandboxCancelledError': {
-			return (
-				isCompleted &&
-				(value.reason === 'caller' || value.reason === 'shutdown')
-			);
-		}
-
-		case 'SandboxTimeoutError': {
-			return isCompleted && value.reason === 'deadline';
-		}
-
-		case 'SandboxOutputCallbackError': {
-			return isCompleted && value.reason === 'output';
-		}
-
-		case 'SandboxTransportError':
-		case 'UnconfirmedSandboxTerminationError': {
-			return (
-				value.completion === 'unknown' &&
-				(value.reason === undefined ||
-					['caller', 'deadline', 'shutdown', 'output'].some(
-						(reason) => reason === value.reason
-					))
-			);
-		}
-
-		case 'SandboxInitialisationError':
-		case 'DuplicateBrokerError':
-		case 'IncompatibleSandboxProtocolError':
-		case 'InvalidSandboxDeclarationError':
-		case 'InvalidSandboxConfigError':
-		case 'InvalidSandboxRequestError':
-		case 'ProviderNotFoundError':
-		case 'DuplicateProviderError':
-		case 'UnsupportedSandboxCapabilityError':
-		case 'UnsupportedSandboxPolicyError':
-		case 'SandboxStartupError':
-		case 'StaleSandboxHandleError':
-		case 'SandboxSessionClosingError':
-		case 'SandboxPermissionDeniedError':
-		case 'SandboxPathNotFoundError':
-		case 'SandboxOperationError':
-		case 'SandboxCleanupError': {
-			return true;
-		}
-
-		default: {
-			return false;
-		}
-	}
-}
+const isError = checker(errorSchema);
 
 /**
 Recognises sandbox errors without relying on constructor identity. Pass a

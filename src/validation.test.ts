@@ -1,6 +1,8 @@
+import { Type } from 'typebox';
 import { expect, it } from 'vitest';
 
-import { isCapabilities, isUniqueList } from './validation.js';
+import { checker, denseArray } from './schemas.js';
+import { isCapabilities } from './validation.js';
 
 it.each(['operations', 'shells'] as const)(
 	'rejects holes in capability %s arrays',
@@ -23,10 +25,8 @@ it('rejects sparse version lists without treating missing elements as versions',
 	const versions: number[] = [];
 
 	versions.length = 1;
-	expect(
-		isUniqueList(
-			versions,
-			(value): value is number => typeof value === 'number'
-		)
-	).toBe(false);
+
+	const isVersions = checker(denseArray(Type.Number(), { uniqueItems: true }));
+
+	expect(isVersions(versions)).toBe(false);
 });

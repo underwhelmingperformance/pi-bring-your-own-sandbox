@@ -11,26 +11,11 @@ import {
 	SandboxPermissionDeniedError,
 	SandboxTransportError
 } from 'pi-bring-your-own-sandbox/api';
+import { Compile } from 'typebox/compile';
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
+import { launchFrameSchema } from './schemas.js';
 
-function isExit(value: unknown): value is ProcessExit {
-	return (
-		isRecord(value) &&
-		(value.kind === 'code'
-			? typeof value.code === 'number' &&
-				Number.isSafeInteger(value.code) &&
-				value.code >= 0
-			: value.kind === 'signal' &&
-				typeof value.signal === 'string' &&
-				value.signal.length > 0 &&
-				typeof value.signalNumber === 'number' &&
-				Number.isSafeInteger(value.signalNumber) &&
-				value.signalNumber > 0)
-	);
-}
+const frameValidator = Compile(launchFrameSchema);
 
 /**
 Decodes bounded launcher frames and forwards only child output to SDK consumers.
@@ -68,20 +53,12 @@ export class LaunchFrames {
 	}
 
 	#frame(value: unknown): void {
-		if (this.#hasFinal || !isRecord(value)) {
+		if (this.#hasFinal || !frameValidator.Check(value)) {
 			this.#invalid();
 		}
 
 		if (value.kind === 'stdout' || value.kind === 'stderr') {
-			if (typeof value.data !== 'string') {
-				this.#invalid();
-			}
-
 			const bytes = Buffer.from(value.data, 'base64');
-
-			if (bytes.toString('base64') !== value.data) {
-				this.#invalid();
-			}
 
 			this.#onOutput({ stream: value.kind, data: bytes });
 
@@ -98,10 +75,6 @@ export class LaunchFrames {
 
 		switch (value.kind) {
 			case 'exited': {
-				if (!isExit(value.exit)) {
-					this.#invalid();
-				}
-
 				this.#exit = value.exit;
 
 				return;

@@ -13,12 +13,14 @@ import {
 	SandboxOperationError,
 	SandboxTransportError
 } from 'pi-bring-your-own-sandbox/api';
+import { Compile } from 'typebox/compile';
 
 import type {
 	DockerClient,
 	DockerCommand,
 	DockerCommandResult
 } from './contracts.js';
+import { containerStateSchema } from './schemas.js';
 
 /**
 Label shared by a generation's volume and its job containers.
@@ -39,27 +41,7 @@ function cleanupContext(
 	};
 }
 
-function isState(value: unknown): value is {
-	Running: boolean;
-	Status: string;
-	ExitCode: number;
-	Error: string;
-} {
-	return (
-		typeof value === 'object' &&
-		value !== null &&
-		'Running' in value &&
-		typeof value.Running === 'boolean' &&
-		'Status' in value &&
-		typeof value.Status === 'string' &&
-		'ExitCode' in value &&
-		Number.isSafeInteger(value.ExitCode) &&
-		typeof value.ExitCode === 'number' &&
-		value.ExitCode >= 0 &&
-		'Error' in value &&
-		typeof value.Error === 'string'
-	);
-}
+const stateValidator = Compile(containerStateSchema);
 
 /**
 Manages only resources with one generation's unpredictable allocation identity.
@@ -145,7 +127,7 @@ export class DockerResources {
 			new TextDecoder().decode(inspected.stdout)
 		);
 
-		if (!isState(state)) {
+		if (!stateValidator.Check(state)) {
 			throw new TypeError('Docker returned invalid container state metadata.');
 		}
 

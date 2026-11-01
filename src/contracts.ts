@@ -2,6 +2,15 @@ import type {
 	ExtensionAPI,
 	ExtensionContext
 } from '@earendil-works/pi-coding-agent';
+import type { Static } from 'typebox';
+
+import type {
+	operationSchema,
+	ordinaryErrorNameSchema
+} from './error-schema.js';
+import type { environmentSchema } from './request-schemas.js';
+import type { processExitSchema } from './result-schemas.js';
+import type { capabilitySchema, shellSchema } from './schemas.js';
 
 /**
 Pi's event bus, lifecycle handlers and diagnostic writers, supplied by a live
@@ -37,17 +46,11 @@ export type SandboxContext = Pick<
 Command languages that a provider can advertise independently of argv
 execution.
 */
-export type ShellDialect = 'bash' | 'sh' | 'powershell';
+export type ShellDialect = Static<typeof shellSchema>;
 /**
 Operation groups that consumers can require before using a shared backend.
 */
-export type SandboxCapability =
-	| 'exec'
-	| 'files.read'
-	| 'files.write'
-	| 'files.list'
-	| 'search.find'
-	| 'search.grep';
+export type SandboxCapability = Static<typeof capabilitySchema>;
 
 /**
 Implemented operations and shell dialects. An opened
@@ -280,7 +283,7 @@ Overrides for the target runtime environment. Strings set values; `null`
 removes variables. Unspecified keys preserve provider defaults. External
 providers receive no implicit host credentials.
 */
-export type ProcessEnvironment = Readonly<Record<string, string | null>>;
+export type ProcessEnvironment = Readonly<Static<typeof environmentSchema>>;
 
 interface ProcessLocation {
 	/**
@@ -368,13 +371,7 @@ A completed process exit. A non-zero code is a process result, not an SDK
 error. Signal termination includes the target OS signal number so consumers
 can derive a shell status without using the host signal table.
 */
-export type ProcessExit =
-	| { readonly kind: 'code'; readonly code: number }
-	| {
-			readonly kind: 'signal';
-			readonly signal: string;
-			readonly signalNumber: number;
-	  };
+export type ProcessExit = Readonly<Static<typeof processExitSchema>>;
 
 /**
 Provider acknowledgement of a stopped foreground job and its supported
@@ -1057,22 +1054,7 @@ export type OperationCompletion = 'not-started' | 'confirmed' | 'unknown';
 /**
 SDK operations recorded in error context and provider operation identities.
 */
-export type SandboxOperation =
-	| 'acquire'
-	| 'discover'
-	| 'configure'
-	| 'open'
-	| 'exec'
-	| 'readFile'
-	| 'writeFile'
-	| 'mkdir'
-	| 'access'
-	| 'stat'
-	| 'listDirectory'
-	| 'updateText'
-	| 'find'
-	| 'grep'
-	| 'dispose';
+export type SandboxOperation = Static<typeof operationSchema>;
 
 /**
 Identifies the operation and resources associated with an error.
@@ -1104,24 +1086,7 @@ export interface SandboxErrorContext {
 	readonly recovery?: RecoveryDescriptor;
 }
 
-type OrdinarySandboxErrorName =
-	| 'SandboxInitialisationError'
-	| 'DuplicateBrokerError'
-	| 'IncompatibleSandboxProtocolError'
-	| 'InvalidSandboxDeclarationError'
-	| 'InvalidSandboxConfigError'
-	| 'InvalidSandboxRequestError'
-	| 'ProviderNotFoundError'
-	| 'DuplicateProviderError'
-	| 'UnsupportedSandboxCapabilityError'
-	| 'UnsupportedSandboxPolicyError'
-	| 'SandboxStartupError'
-	| 'StaleSandboxHandleError'
-	| 'SandboxSessionClosingError'
-	| 'SandboxPermissionDeniedError'
-	| 'SandboxPathNotFoundError'
-	| 'SandboxOperationError'
-	| 'SandboxCleanupError';
+type OrdinarySandboxErrorName = Static<typeof ordinaryErrorNameSchema>;
 
 /**
 Structural shapes of the concrete sandbox errors, identified by stable class name.

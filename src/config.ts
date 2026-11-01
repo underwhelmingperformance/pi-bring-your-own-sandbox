@@ -1,14 +1,18 @@
 import { lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { SandboxPolicy, ShellDialect } from './contracts.js';
+import type { Static } from 'typebox';
+
+import type { SandboxPolicy } from './contracts.js';
 import {
 	InvalidSandboxConfigError,
 	ProviderNotFoundError,
 	UnsupportedSandboxPolicyError
 } from './errors.js';
 import type { ProviderSelection, ProviderServiceV1 } from './protocol.js';
-import { isNonEmptyString, isPolicy, isRecord, isShell } from './validation.js';
+import { configFileSchema } from './request-schemas.js';
+import { checker } from './schemas.js';
+import { isRecord } from './validation.js';
 
 export interface ConfigSources {
 	readonly agentDirectory: string;
@@ -23,46 +27,15 @@ export interface SandboxConfig {
 	readonly policySource?: 'personal' | 'project';
 }
 
-interface ConfigFile {
-	readonly provider?: string;
-	readonly policy?: SandboxPolicy;
-	readonly userShell?: ShellDialect;
-	readonly providerConfig?: unknown;
-}
+type ConfigFile = Static<typeof configFileSchema>;
+
+const isConfigFile = checker(configFileSchema);
 
 const defaultPolicy: SandboxPolicy = Object.freeze({
 	workspaceAccess: 'read-write',
 	filesystemScope: 'provider-default',
 	networkAccess: 'provider-default'
 });
-
-function isConfigFile(value: unknown): value is ConfigFile {
-	if (
-		!isRecord(value) ||
-		Object.keys(value).some(
-			(key) =>
-				!['provider', 'policy', 'userShell', 'providerConfig'].includes(key)
-		)
-	) {
-		return false;
-	}
-
-	if (value.provider !== undefined && !isNonEmptyString(value.provider)) {
-		return false;
-	}
-
-	if (value.userShell !== undefined && !isShell(value.userShell)) {
-		return false;
-	}
-
-	return (
-		value.policy === undefined ||
-		(isPolicy(value.policy) &&
-			Object.keys(value.policy).every((key) =>
-				['workspaceAccess', 'filesystemScope', 'networkAccess'].includes(key)
-			))
-	);
-}
 
 async function readConfigFile(
 	filename: string,

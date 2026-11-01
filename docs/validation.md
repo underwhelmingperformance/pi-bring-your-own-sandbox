@@ -16,8 +16,12 @@ not been observed as part of this local validation.
 
 ## Reproduce the gates
 
+Use the pinned Node and pnpm versions. Commit hooks require pre-commit and Deno.
+Native search tests require fd (`fdfind` on Debian) and ripgrep.
+
 ```sh
 pnpm install --frozen-lockfile
+pre-commit install
 pnpm check
 pnpm test:integration
 pnpm test:package
@@ -32,12 +36,28 @@ roots, with dependency lifecycle scripts disabled. The Docker gate requires a
 working local daemon and the pinned image. The [Docker guide][docker] documents
 its executable/socket overrides and image preparation.
 
+Use `pnpm fix` to apply ESLint and Prettier fixes.
+
 The ordinary run visibly skips the package case and the daemon-backed cases. The
 dedicated commands execute those cases. Model and approval fixtures are local;
 the gates need no real model credentials. Commit hooks also check file hygiene,
 workflows and commit-message formatting.
 
 [docker]: ../examples/docker/README.md
+
+## Try the development checkout
+
+Load the source diagnostic extension without changing Pi settings:
+
+```sh
+pi --no-extensions -e ./src/extension.ts
+```
+
+Run `/byos status`, `/byos providers` or `/byos approval-policies`. These
+commands produce displayable Pi messages in TUI and headless sessions.
+`pnpm build` produces the compiled extension selected by the package manifest.
+The loader tests exercise both source and compiled entries without model
+credentials.
 
 ## Specification acceptance evidence
 

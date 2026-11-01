@@ -1,138 +1,85 @@
 # pi-bring-your-own-sandbox
 
-A Pi extension framework under development. Provider extensions supply a sandbox
-and consumer extensions use a common execution API.
+A shared sandbox API for Pi extensions. Provider extensions supply execution
+environments, and consumer extensions use them without depending on a specific
+sandbox implementation.
 
-The SDK works without sandbox setup: built-in `passthrough` executes on the host
-by default and follows a user's separately configured sandbox provider when
-present. A configured sandbox failure never switches to host execution.
+Users choose a sandbox separately from installing a consumer extension. With no
+configuration, the SDK uses host passthrough. Once a provider is selected,
+consumers use it automatically. A configured provider failure returns an error.
 
-`/api` exports provider registration, shared sandbox acquisition, typed errors
-and explicit session cleanup. Consumers use the SDK without loading the broker
-extension separately. The built-in host backend implements filesystem operations
-and POSIX foreground execution with process-group cancellation. Host search uses
-installed fd and ripgrep executables. Windows host process-tree cancellation is
-unsupported. Optional `/pi-tools` integration connects shell-operation hooks
-while Pi keeps its tool algorithms and output handling. File/search routing
-needs upstream Pi extension points.
+This is a cooperative framework: only operations sent through its API use the
+selected sandbox. The package is currently a private development build for Pi
+1.4.0.
 
-The default extension provides `/byos status` and `/byos providers`. These
-commands inspect metadata without opening a backend or changing active tools.
-The following documents specify the contract and record its validation:
+## Use the SDK in an extension
 
-- [Validation record][validation]: acceptance evidence, reproducible gates and
-  supported platform/integration boundaries.
-- [User-flow coverage][user-flows]: integration evidence for supported entry
-  points, approval decisions, lifecycle and diagnostics.
-- [Specification][spec]: scope, contracts, discovery, lifecycle, execution and
-  integration through public Pi operation hooks.
-- [Implementation plan][plan]: staged work, tests and release criteria.
-- [API/protocol appendix][api]: structural declarations, byte ownership and
-  versioned discovery semantics.
-- [Research][research]: verified Pi APIs, source references and exploratory
-  results from Pi 1.4.0.
-- [Adversarial review][review]: findings from three independent reviews and the
-  resulting design changes.
+Follow the [consumer guide][consumer] to build, install and try the package from
+this checkout. Add it as a normal dependency of your extension.
 
-[validation]: docs/validation.md
-[user-flows]: docs/user-flow-coverage.md
-[spec]: docs/specification.md
-[plan]: docs/implementation-plan.md
-[api]: docs/api-protocol.md
-[research]: docs/research.md
-[review]: docs/review.md
+Inside a Pi tool's execution callback, acquire the shared sandbox with the live
+context and cancellation signal:
 
-## Optional Pi integration
+```typescript
+import { getSandbox } from 'pi-bring-your-own-sandbox/api';
 
-Load the shell integration explicitly from a project extension:
+const options = signal === undefined ? {} : { signal };
+const sandbox = await getSandbox(pi, context, options);
+const result = await sandbox.exec(
+  { kind: 'argv', executable: 'pwd', args: [] },
+  options
+);
+```
+
+Commands and paths refer to the target environment. The consumer guide explains
+results, capabilities, errors and cleanup.
+
+To supply a sandbox, start with the [Docker provider example][docker]. The
+[provider testing guide][testing] explains how to check a provider against the
+shared contract.
+
+[consumer]: examples/consumer/README.md
+[docker]: examples/docker/README.md
+[testing]: docs/provider-testing.md
+
+## Choose where commands run
+
+Load a provider extension and select it in your personal agent directory's
+`byos.json`. Follow the provider's setup instructions; the Docker example
+includes a complete configuration.
+
+To route Pi's Bash, PowerShell and user-shell commands through the framework,
+create `.pi/extensions/sandbox-tools.ts`:
 
 ```typescript
 export { default } from 'pi-bring-your-own-sandbox/pi-tools';
 ```
 
-Bash, PowerShell and user shell commands use the selected provider. Pi file and
-search tools retain their own execution paths. See the [coverage
-table][coverage] for supported hooks, tests, host transcript storage and
-upstream gaps.
+Pi's file and search tools retain their own execution paths. See the [Pi
+integration guide][integration] for supported hooks and limits.
 
-[coverage]: docs/pi-integration.md
+Extensions can also request execution outside the sandbox. By default, these
+requests use the environment that Pi would ordinarily use and ask the user for
+approval. Users can select a different approval policy or a provider-defined
+outside environment independently. See [approvals and outside
+execution][approvals] for configuration and examples.
 
-## Provider contract tests
-
-The optional `/testing` entry exports `defineSandboxProviderTests`. Provider
-authors supply target probes and independent checks for cancellation, policy and
-cleanup. The suite uses the provider project's Vitest installation. See the
-[provider testing guide][testing] for the fixture contract and coverage.
-
-[testing]: docs/provider-testing.md
-
-## Consumer example
-
-The [consumer guide][consumer] shows a Pi tool that calls the SDK with the live
-context and per-tool cancellation signal. The same helper runs with default
-passthrough, both provider fixtures and Docker. Consumer projects install the
-framework as a normal dependency.
-
-[consumer]: examples/consumer/README.md
-
-## Docker reference provider
-
-An optional [Docker example][docker] implements argv and POSIX shell execution
-with a copied workspace volume, unprivileged target commands, denied network
-access and confirmed container removal. It uses the public provider API.
-`pnpm test:provider` runs its separate daemon-backed integration gate.
-
-[docker]: examples/docker/README.md
+[integration]: docs/pi-integration.md
+[approvals]: docs/approval-execution.md
 
 ## Development
 
-Use Node 24.22.2 and pnpm 12.15.0. Deno and pre-commit are also needed to run
-the commit hooks. Native search tests require fd (`fdfind` on Debian) and
-ripgrep. The backend advertises only installed search tools and does not
-download them. The private scaffold pins Pi 1.4.0 for development and peer
-compatibility; broader host compatibility is not yet tested.
+Use the Node and pnpm versions pinned in this repository:
 
 ```sh
 pnpm install --frozen-lockfile
 pre-commit install
 pnpm check
-pnpm build
-pnpm test:package
 ```
 
-Try the source extension without changing Pi settings:
+The [development and validation guide][validation] lists prerequisites, test
+commands and coverage. The [specification][spec] describes the design and links
+to the API reference.
 
-```sh
-pi --no-extensions -e ./src/extension.ts
-```
-
-Run `/byos status` or `/byos providers`. Both commands produce displayable Pi
-messages in TUI and headless sessions. The package manifest loads
-`dist/extension.js` after a build. `pnpm test` checks both source and compiled
-loading with Pi's actual extension loader, without model credentials.
-
-Tooling follows the sibling repositories: pnpm and typed ESLint with Unicorn and
-import sorting from Identify/Cupboard; Prettier, Markdownlint and EditorConfig
-from Cupboard; SHA-pinned pre-commit and Wrapscallion hooks from
-Identify/Wrapscallion. `pnpm check` runs formatting, dependency usage, lint,
-Markdown, loader tests and type checks. `pnpm fix` applies ESLint and Prettier
-fixes. GitHub Actions runs checks/builds, workflow lint and commit-message lint.
-
-`pnpm test:package` packs the build and installs the tarball into separate
-temporary consumer and provider projects. It checks declarations, Pi loading,
-shared broker discovery across SDK copies and the provider's own Vitest peer.
-The gate installs dependencies with lifecycle scripts disabled and removes its
-temporary projects afterwards. It runs separately from the ordinary checks.
-
-## Execution approvals
-
-The framework provides user prompting, always-allow and never-allow policies.
-Extensions can register other approval policies independently of sandbox
-providers. SDK consumers and Pi Bash/PowerShell tools can request explicit
-execution outside the sandbox. Personal configuration selects the approval
-policy and execution destination independently.
-
-See [approval and outside execution][approval-execution] for configuration,
-provider capabilities, SDK calls and lifecycle guarantees.
-
-[approval-execution]: docs/approval-execution.md
+[validation]: docs/validation.md
+[spec]: docs/specification.md

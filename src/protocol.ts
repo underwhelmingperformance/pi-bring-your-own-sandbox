@@ -13,6 +13,7 @@ import type {
 	ShellDialect,
 	SupportedSandboxPolicies
 } from './contracts.js';
+import type { OutsideProviderServiceV1 } from './outside-execution.js';
 
 /**
 Synchronous Pi event-bus channel for discovering the runtime broker,
@@ -101,6 +102,10 @@ Discovery and configuration allocate no backend.
 */
 export interface ProviderServiceV1 {
 	/**
+	Optional provider-defined execution destination, independent of approval selection.
+	*/
+	readonly outsideSandbox?: OutsideProviderServiceV1;
+	/**
 	Discovery identity; duplicate IDs prevent selection.
 	*/
 	readonly id: string;
@@ -141,19 +146,18 @@ export type BrokerState =
 	| 'closed';
 
 /**
-Trusted, merged selection with its source and complete protection policy.
+Personal selection with its source and complete protection policy.
 */
 export interface ProviderSelection {
 	/**
-	Provider chosen by trusted configuration, defaulting to `passthrough`.
+	Provider chosen by personal configuration, defaulting to `passthrough`.
 	*/
 	readonly providerId: string;
 
 	/**
-	Whether the selection was implicit or specified by personal or trusted
-	project settings.
+	Whether selection used the implicit default or personal settings.
 	*/
-	readonly source: 'default' | 'personal' | 'project';
+	readonly source: 'default' | 'personal';
 
 	/**
 	Complete requirements applied before backend publication.

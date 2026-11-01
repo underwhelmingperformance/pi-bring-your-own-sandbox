@@ -10,17 +10,22 @@ export class ScriptedModel {
 	readonly requests: TranscriptContext[] = [];
 	readonly extension: InlineExtension;
 
-	constructor(calls: readonly ToolCall[]) {
+	constructor(
+		calls: readonly ToolCall[],
+		options?: { readonly providerId?: string; readonly response?: string }
+	) {
+		const providerId = options?.providerId ?? 'scripted';
+
 		this.extension = {
 			name: 'scripted-model',
 			factory: (pi) => {
-				pi.registerProvider('scripted', {
-					api: 'scripted-api',
+				pi.registerProvider(providerId, {
+					api: `${providerId}-api`,
 					baseUrl: 'https://scripted.invalid',
 					apiKey: 'test-only',
 					models: [
 						{
-							id: 'scripted',
+							id: providerId,
 							name: 'Scripted fixture',
 							reasoning: false,
 							input: ['text'],
@@ -46,7 +51,7 @@ export class ScriptedModel {
 							model: model.id,
 							content: isFirst
 								? structuredClone([...calls])
-								: [{ type: 'text', text: 'Finished.' }],
+								: [{ type: 'text', text: options?.response ?? 'Finished.' }],
 							stopReason: isFirst ? 'toolUse' : 'stop',
 							timestamp: 0,
 							usage: {

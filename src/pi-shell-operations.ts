@@ -43,26 +43,33 @@ export function createShellOperations(
 							: 128 + result.exit.signalNumber
 				};
 			} catch (error) {
-				// Pi retains captured output only for these exact error messages.
-				if (
-					isSandboxError(error, SandboxCancelledError) &&
-					error.completion !== 'unknown'
-				) {
-					throw new Error('aborted', { cause: error });
-				}
-
-				if (
-					isSandboxError(error, SandboxTimeoutError) &&
-					error.completion !== 'unknown'
-				) {
-					throw new Error(
-						`timeout:${String(options.timeout ?? DEFAULT_EXEC_TIMEOUT_MS / 1000)}`,
-						{ cause: error }
-					);
-				}
-
-				throw error;
+				throwShellOperationError(error, options.timeout);
 			}
 		}
 	};
+}
+
+export function throwShellOperationError(
+	error: unknown,
+	timeoutSeconds?: number
+): never {
+	// Pi retains captured output only for these exact error messages.
+	if (
+		isSandboxError(error, SandboxCancelledError) &&
+		error.completion !== 'unknown'
+	) {
+		throw new Error('aborted', { cause: error });
+	}
+
+	if (
+		isSandboxError(error, SandboxTimeoutError) &&
+		error.completion !== 'unknown'
+	) {
+		throw new Error(
+			`timeout:${String(timeoutSeconds ?? DEFAULT_EXEC_TIMEOUT_MS / 1000)}`,
+			{ cause: error }
+		);
+	}
+
+	throw error;
 }

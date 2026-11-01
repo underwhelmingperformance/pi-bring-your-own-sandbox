@@ -28,7 +28,7 @@ export function absolutePathSchema(flavor: 'posix' | 'win32') {
 	);
 }
 
-function workspaceSchema(flavor: 'posix' | 'win32') {
+function workspaceShape(flavor: 'posix' | 'win32') {
 	return Type.Object({
 		pathFlavor: Type.Literal(flavor),
 		root: absolutePathSchema(flavor),
@@ -38,6 +38,11 @@ function workspaceSchema(flavor: 'posix' | 'win32') {
 		defaultShell: Type.Optional(shellSchema)
 	});
 }
+
+export const workspaceSchema = Type.Union([
+	workspaceShape('posix'),
+	workspaceShape('win32')
+]);
 
 const fileReaderSchema = Type.Object({
 	readFile: callable<BackendFileReader['readFile']>(),
@@ -66,7 +71,7 @@ const searchSchema = Type.Object({
 const backendShape = Type.Object({
 	id: nonEmptyStringSchema,
 	capabilities: capabilitiesSchema,
-	workspace: Type.Union([workspaceSchema('posix'), workspaceSchema('win32')]),
+	workspace: workspaceSchema,
 	policy: policySchema,
 	policyDescription: nonEmptyStringSchema,
 	recovery: recoverySchema,

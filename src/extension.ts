@@ -1,9 +1,12 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 
+import { isApprovalError } from './approval-errors.js';
 import { ensureSandboxService } from './default-broker.js';
 import { formatProviders, formatStatus } from './diagnostics.js';
 import { isSandboxError, SandboxInitialisationError } from './errors.js';
+import { approvalService } from './execution-approval.js';
 import { describeShellIntegration } from './pi-integration-status.js';
+import { runtimeSettings } from './runtime-settings.js';
 
 /**
 Register optional sandbox diagnostics. Status and provider enumeration use
@@ -14,14 +17,15 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	const service = ensureSandboxService(pi);
 
 	pi.registerCommand('byos', {
-		description: 'Show sandbox status or available providers',
+		description: 'Show sandbox and approval status or available services',
 		async handler(arguments_, context) {
 			const action = arguments_.trim();
 
-			if (!['', 'status', 'providers'].includes(action)) {
+			if (!['', 'status', 'providers', 'approval-policies'].includes(action)) {
 				pi.sendMessage({
 					customType: 'byos',
-					content: 'Usage: /byos status | /byos providers',
+					content:
+						'Usage: /byos status | /byos providers | /byos approval-policies',
 					display: true
 				});
 
@@ -31,12 +35,46 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			let content: string;
 
 			try {
-				content =
-					action === 'providers'
-						? formatProviders(await service.providers(context))
-						: formatStatus(await service.status(context));
+				if (action === 'approval-policies') {
+					content = [
+						'Available execution approval policies:',
+						...approvalService(pi)
+							.policies()
+							.map((policy) => `${policy.id}: ${policy.label}`)
+					].join('\n');
+				} else if (action === 'providers') {
+					content = formatProviders(await service.providers(context));
+				} else {
+					const status = await service.status(context);
+
+					content = formatStatus(status);
+
+					try {
+						const settings = runtimeSettings(pi);
+						const config = await settings.read();
+						const policies = approvalService(pi).policies();
+						const selected = config.approval?.policy ?? 'user';
+						const isAvailable = policies.some(
+							(policy) => policy.id === selected
+						);
+						const destination = config.outsideSandbox?.destination ?? 'normal';
+
+						const selection = [
+							`Approval policy: ${selected}${isAvailable ? '' : ' (unavailable)'}`,
+							`Outside execution destination: ${destination}${destination === 'provider' ? ` (${config.selection.providerId})` : settings.normalExecutor === undefined ? '' : ` (${settings.normalExecutor.label})`}`
+						].join('\n');
+
+						content += `\n${selection}`;
+					} catch (error) {
+						if (!isSandboxError(error) && !isApprovalError(error)) {
+							throw error;
+						}
+
+						content += `\nExecution settings: ${error.name}: ${error.message}`;
+					}
+				}
 			} catch (error) {
-				if (!isSandboxError(error)) {
+				if (!isSandboxError(error) && !isApprovalError(error)) {
 					throw new SandboxInitialisationError(
 						{ operation: 'configure' },
 						{ cause: error }
@@ -46,7 +84,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 				content = `${error.name}: ${error.message}`;
 			}
 
-			if (action !== 'providers') {
+			if (action !== 'providers' && action !== 'approval-policies') {
 				content += `\n${describeShellIntegration(pi.events)}`;
 			}
 

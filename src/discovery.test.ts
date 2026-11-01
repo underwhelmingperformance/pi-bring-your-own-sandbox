@@ -78,7 +78,7 @@ it('accepts an independent broker service and preserves its method receiver', as
 		id: service?.id,
 		report: await service?.close({
 			cwd: '/fixture',
-			isProjectTrusted: () => false,
+
 			sessionManager: SessionManager.inMemory('/fixture')
 		})
 	}).toStrictEqual({
@@ -275,7 +275,7 @@ it('preserves explicit provider configuration provenance through registration', 
 			validateConfig() {
 				throw new InvalidSandboxConfigError({
 					operation: 'configure',
-					configurationSource: 'project'
+					configurationSource: 'personal'
 				});
 			}
 		}
@@ -286,7 +286,7 @@ it('preserves explicit provider configuration provenance through registration', 
 	expect(() => service?.configure({})).toThrow(
 		expect.objectContaining({
 			name: 'InvalidSandboxConfigError',
-			configurationSource: 'project'
+			configurationSource: 'personal'
 		})
 	);
 });
@@ -319,7 +319,11 @@ it.each([
 				}
 			},
 			{
-				...imageProvider,
+				id: imageProvider.id,
+				label: imageProvider.label,
+				protocolVersion: 1,
+				capabilities: imageProvider.capabilities,
+				policies: imageProvider.policies,
 				validateConfig,
 				open: () => Promise.reject(new Error('Opening must not occur.'))
 			}

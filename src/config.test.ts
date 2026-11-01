@@ -19,30 +19,15 @@ const defaultPolicy = {
 	networkAccess: 'provider-default'
 } as const;
 
-it.each(['personal', 'project'] as const)(
-	'identifies %s settings when a selected provider has no policy',
-	async (source) => {
-		await withSources(async (sources) => {
-			const filename =
-				source === 'personal'
-					? path.join(sources.agentDirectory, 'byos.json')
-					: path.join(sources.workspace, '.pi', 'byos.json');
-
-			await writeFile(filename, JSON.stringify({ provider: 'external' }));
-			await expect(readConfig(sources)).rejects.toMatchObject({
-				name: 'InvalidSandboxConfigError',
-				configurationSource: source
-			});
-		});
-	}
-);
-
-async function withSources(run: (sources: ConfigSources) => Promise<void>) {
+async function withSources(
+	run: (
+		sources: ConfigSources & { readonly workspace: string }
+	) => Promise<void>
+) {
 	const directory = await mkdtemp(path.join(tmpdir(), 'pi-byos-settings-'));
 	const sources = {
 		agentDirectory: path.join(directory, 'agent'),
-		workspace: path.join(directory, 'workspace'),
-		isProjectTrusted: true
+		workspace: path.join(directory, 'workspace')
 	};
 
 	try {
@@ -68,103 +53,38 @@ it('uses the implicit host default without creating any configuration', async ()
 });
 
 it.each([
-	{
-		project: {},
-		expected: {
-			providerId: 'personal',
-			source: 'personal',
-			policy: isolatedPolicy
-		},
-		config: { secretReference: 'personal' },
-		configSource: 'personal'
-	},
-	{
-		project: { provider: 'other' },
-		expected: {
-			providerId: 'other',
-			source: 'project',
-			policy: isolatedPolicy
-		},
-		config: {},
-		configSource: undefined
-	},
-	{
-		project: { provider: 'personal' },
-		expected: {
-			providerId: 'personal',
-			source: 'project',
-			policy: isolatedPolicy
-		},
-		config: { secretReference: 'personal' },
-		configSource: 'personal'
-	},
-	{
-		project: { providerConfig: { image: 'project' } },
-		expected: {
-			providerId: 'personal',
-			source: 'personal',
-			policy: isolatedPolicy
-		},
-		config: { image: 'project' },
-		configSource: 'project'
-	},
-	{
-		project: { provider: 'passthrough', policy: defaultPolicy },
-		expected: {
-			providerId: 'passthrough',
-			source: 'project',
-			policy: defaultPolicy
-		},
-		config: {},
-		configSource: undefined
-	}
+	'invalid JSON',
+	'{"provider":"passthrough"}',
+	'{"approval":{"policy":"always"}}'
 ])(
-	'merges top-level settings by replacement: $project',
-	async ({ project, expected, config, configSource }) => {
+	'uses personal configuration independently of workspace files: %s',
+	async (contents) => {
 		await withSources(async (sources) => {
 			await writeFile(
 				path.join(sources.agentDirectory, 'byos.json'),
 				JSON.stringify({
 					provider: 'personal',
 					policy: isolatedPolicy,
-					providerConfig: { secretReference: 'personal' }
+					providerConfig: { image: 'personal-image' }
 				})
 			);
 			await writeFile(
 				path.join(sources.workspace, '.pi', 'byos.json'),
-				JSON.stringify(project)
+				contents
 			);
-
 			expect(await readConfig(sources)).toStrictEqual({
-				selection: expected,
-				providerConfig: config,
-				policySource: Object.hasOwn(project, 'policy') ? 'project' : 'personal',
-				...(configSource !== undefined && {
-					providerConfigSource: configSource
-				})
+				selection: {
+					providerId: 'personal',
+					source: 'personal',
+					policy: isolatedPolicy
+				},
+				providerConfig: { image: 'personal-image' },
+				providerConfigSource: 'personal',
+				policySource: 'personal'
 			});
 		});
 	}
 );
-
-it('does not read project configuration before Pi grants trust', async () => {
-	await withSources(async (sources) => {
-		await writeFile(
-			path.join(sources.workspace, '.pi', 'byos.json'),
-			'invalid JSON'
-		);
-		expect(
-			await readConfig({ ...sources, isProjectTrusted: false })
-		).toStrictEqual({
-			selection: {
-				providerId: 'passthrough',
-				source: 'default',
-				policy: defaultPolicy
-			},
-			providerConfig: {}
-		});
-	});
-});
 
 it.each([
 	'not JSON',
@@ -190,7 +110,7 @@ it.each([
 	}
 );
 
-it('propagates an unreadable configuration entry and validates both sources', async () => {
+it('propagates an unreadable personal configuration entry', async () => {
 	await withSources(async (sources) => {
 		await mkdir(path.join(sources.agentDirectory, 'byos.json'));
 		await writeFile(
@@ -258,13 +178,6 @@ it('requires a complete replacement policy and retains an explicit shell dialect
 			},
 			policySource: 'personal',
 			providerConfig: {}
-		});
-		await writeFile(
-			path.join(sources.workspace, '.pi', 'byos.json'),
-			JSON.stringify({ policy: { networkAccess: 'denied' } })
-		);
-		await expect(readConfig(sources)).rejects.toMatchObject({
-			name: 'InvalidSandboxConfigError'
 		});
 	});
 });

@@ -1,4 +1,4 @@
-import { formatCleanupReport } from './cleanup-report.js';
+import { reportCleanup } from './cleanup-report.js';
 import { inspectContext } from './context.js';
 import type {
 	SandboxAcquireOptions,
@@ -23,10 +23,16 @@ export class SandboxBroker implements BrokerServiceV1 {
 	constructor(
 		id: string,
 		pi: SandboxHost,
-		dependencies: GenerationDependencies
+		dependencies: GenerationDependencies,
+		lifecycle: 'session' | 'owner' = 'session'
 	) {
 		this.id = id;
 		this.#dependencies = dependencies;
+
+		if (lifecycle === 'owner') {
+			return;
+		}
+
 		pi.on('session_start', async (_event, context) => {
 			if (this.#isClosing) {
 				return;
@@ -37,21 +43,7 @@ export class SandboxBroker implements BrokerServiceV1 {
 		pi.on('session_shutdown', async (_event, context) => {
 			const report = await this.close(context);
 
-			if (report.confirmed) {
-				return;
-			}
-
-			const content = formatCleanupReport(report);
-
-			if (!context.isIdle()) {
-				pi.appendEntry('byos-cleanup', { content });
-				context.ui.notify(content, 'warning');
-			}
-
-			pi.sendMessage(
-				{ customType: 'byos', content, display: true },
-				{ triggerTurn: false }
-			);
+			reportCleanup(pi, context, report);
 		});
 	}
 

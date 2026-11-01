@@ -22,6 +22,8 @@ The following documents specify the contract and record its validation:
 
 - [Validation record][validation]: acceptance evidence, reproducible gates and
   supported platform/integration boundaries.
+- [User-flow coverage][user-flows]: integration evidence for supported entry
+  points, approval decisions, lifecycle and diagnostics.
 - [Specification][spec]: scope, contracts, discovery, lifecycle, execution and
   integration through public Pi operation hooks.
 - [Implementation plan][plan]: staged work, tests and release criteria.
@@ -33,6 +35,7 @@ The following documents specify the contract and record its validation:
   resulting design changes.
 
 [validation]: docs/validation.md
+[user-flows]: docs/user-flow-coverage.md
 [spec]: docs/specification.md
 [plan]: docs/implementation-plan.md
 [api]: docs/api-protocol.md
@@ -120,3 +123,16 @@ temporary consumer and provider projects. It checks declarations, Pi loading,
 shared broker discovery across SDK copies and the provider's own Vitest peer.
 The gate installs dependencies with lifecycle scripts disabled and removes its
 temporary projects afterwards. It runs separately from the ordinary checks.
+
+## Execution approvals
+
+The framework provides user prompting, always-allow and never-allow policies.
+Extensions can register other approval policies independently of sandbox
+providers. SDK consumers and Pi Bash/PowerShell tools can request explicit
+execution outside the sandbox. Personal configuration selects the approval
+policy and execution destination independently.
+
+See [approval and outside execution][approval-execution] for configuration,
+provider capabilities, SDK calls and lifecycle guarantees.
+
+[approval-execution]: docs/approval-execution.md

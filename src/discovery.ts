@@ -105,6 +105,18 @@ export function discoverProviders(
 				label: service.label,
 				capabilities: snapshotCapabilities(service.capabilities),
 				policies: snapshotPolicies(service.policies),
+				...(service.outsideSandbox !== undefined && {
+					outsideSandbox: Object.freeze({
+						label: service.outsideSandbox.label,
+						capabilities: snapshotCapabilities(
+							service.outsideSandbox.capabilities
+						),
+						policy: Object.freeze({ ...service.outsideSandbox.policy }),
+						configure: service.outsideSandbox.configure.bind(
+							service.outsideSandbox
+						)
+					})
+				}),
 				configure: service.configure.bind(service)
 			});
 		}

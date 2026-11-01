@@ -191,7 +191,7 @@ it('reports default status in a headless Pi session without opening a backend or
 				{
 					display: true,
 					content:
-						'Provider: passthrough (default)\nState: idle\nGeneration: <generation>\nTarget: not opened\nRequested policy: workspace read-write; filesystem provider-default; network provider-default\nUser shell: provider default (not opened)\nHost execution without isolation.\nPi shell integration: not requested; routing unverified.'
+						'Provider: passthrough (default)\nState: idle\nGeneration: <generation>\nTarget: not opened\nRequested policy: workspace read-write; filesystem provider-default; network provider-default\nUser shell: provider default (not opened)\nHost execution without isolation.\nApproval policy: user\nOutside execution destination: normal\nPi shell integration: not requested; routing unverified.'
 				}
 			]
 		});
@@ -242,7 +242,7 @@ it('reports the target and effective policy after acquisition', async () => {
 					{
 						display: true,
 						content:
-							'Provider: fixture (personal)\nState: ready\nGeneration: <generation>\nBackend: memory\nTarget: /remote/project (remote)\nEffective policy: workspace read-write; filesystem provider-default; network provider-default\nOperations: exec, files.read, files.write, files.list\nShells: none\nUser shell: unavailable\nBoundary: In-memory test fixture; no OS isolation.\nPi shell integration: not requested; routing unverified.'
+							'Provider: fixture (personal)\nState: ready\nGeneration: <generation>\nBackend: memory\nTarget: /remote/project (remote)\nEffective policy: workspace read-write; filesystem provider-default; network provider-default\nOperations: exec, files.read, files.write, files.list\nShells: none\nUser shell: unavailable\nBoundary: In-memory test fixture; no OS isolation.\nApproval policy: user\nOutside execution destination: normal\nPi shell integration: not requested; routing unverified.'
 					}
 				]
 			});
@@ -335,7 +335,11 @@ it('prints command usage without starting a model turn', async () => {
 			opens: 0,
 			disposals: 0,
 			output: [
-				{ display: true, content: 'Usage: /byos status | /byos providers' }
+				{
+					display: true,
+					content:
+						'Usage: /byos status | /byos providers | /byos approval-policies'
+				}
 			]
 		});
 	});
@@ -372,4 +376,24 @@ it('reports requested shell integration without claiming verified interception',
 		},
 		[{ name: 'shell-integration', factory: sandboxTools }]
 	);
+});
+
+it('enumerates built-in approval policies without allocating a backend', async () => {
+	await fixture('default', async ({ runtime, errors, counts }) => {
+		await runtime.session.prompt('/byos approval-policies');
+		expect({ errors, ...counts(), responses: messages(runtime) }).toStrictEqual(
+			{
+				errors: [],
+				opens: 0,
+				disposals: 0,
+				responses: [
+					{
+						display: true,
+						content:
+							'Available execution approval policies:\nuser: user\nalways: always\nnever: never'
+					}
+				]
+			}
+		);
+	});
 });

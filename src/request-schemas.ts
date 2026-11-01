@@ -18,9 +18,25 @@ import {
 
 export const MAX_CAPTURE_BYTES = 1_048_576;
 
+const approvalSelectionSchema = Type.Object(
+	{
+		policy: nonEmptyStringSchema,
+		config: Type.Optional(Type.Unknown())
+	},
+	{ additionalProperties: false }
+);
+const outsideSelectionSchema = Type.Object(
+	{
+		destination: Type.Enum(['normal', 'provider'])
+	},
+	{ additionalProperties: false }
+);
+
 export const configFileSchema = Type.Object(
 	{
 		provider: Type.Optional(nonEmptyStringSchema),
+		approval: Type.Optional(approvalSelectionSchema),
+		outsideSandbox: Type.Optional(outsideSelectionSchema),
 		policy: Type.Optional(
 			Type.Object(policySchema.properties, { additionalProperties: false })
 		),

@@ -25,15 +25,14 @@ afterEach(() => {
 });
 
 it.each(['providerConfig', 'policy'] as const)(
-	'reports project provenance for an overridden %s',
+	'reports personal provenance for invalid %s',
 	async (field) => {
 		const directory = await mkdtemp(
 			path.join(tmpdir(), 'pi-byos-config-generation-')
 		);
 		const sources = {
 			agentDirectory: path.join(directory, 'agent'),
-			workspace: path.join(directory, 'workspace'),
-			isProjectTrusted: true
+			workspace: path.join(directory, 'workspace')
 		};
 		const backend = new MemoryBackend();
 
@@ -44,27 +43,17 @@ it.each(['providerConfig', 'policy'] as const)(
 				path.join(sources.agentDirectory, 'byos.json'),
 				JSON.stringify({
 					provider: 'fixture',
-					policy: backend.policy,
-					providerConfig: { valid: true }
-				})
-			);
-			await writeFile(
-				path.join(sources.workspace, '.pi', 'byos.json'),
-				JSON.stringify({
-					[field]:
+					policy:
 						field === 'policy'
-							? {
-									...backend.policy,
-									filesystemScope: 'workspace-only',
-									networkAccess: 'denied'
-								}
-							: { valid: false }
+							? { ...backend.policy, filesystemScope: 'workspace-only' }
+							: backend.policy,
+					providerConfig: { valid: false }
 				})
 			);
 
 			const context = {
 				cwd: sources.workspace,
-				isProjectTrusted: () => true,
+
 				sessionManager: SessionManager.inMemory(sources.workspace)
 			};
 			const generation = new SandboxGeneration(context, {
@@ -92,7 +81,7 @@ it.each(['providerConfig', 'policy'] as const)(
 						field === 'policy'
 							? 'UnsupportedSandboxPolicyError'
 							: 'InvalidSandboxConfigError',
-					configurationSource: 'project'
+					configurationSource: 'personal'
 				});
 			} finally {
 				await generation.close();
@@ -208,7 +197,7 @@ it('preserves the configuration source when recording a typed initialisation fai
 	const { context } = fixture();
 	const cause = new InvalidSandboxConfigError({
 		operation: 'configure',
-		configurationSource: 'project'
+		configurationSource: 'personal'
 	});
 	const generation = new SandboxGeneration(context, {
 		providers: () => [],
@@ -217,7 +206,7 @@ it('preserves the configuration source when recording a typed initialisation fai
 
 	await expect(generation.acquire(context)).rejects.toMatchObject({
 		name: 'InvalidSandboxConfigError',
-		configurationSource: 'project',
+		configurationSource: 'personal',
 		cause
 	});
 	await generation.close();
@@ -241,13 +230,6 @@ function fixture(
 			}
 
 			return hostWorkspace;
-		},
-		isProjectTrusted() {
-			if (!isLive) {
-				throw new Error('Pi context was invalidated');
-			}
-
-			return true;
 		},
 		sessionManager
 	};
@@ -563,7 +545,7 @@ it('freezes provider services before asynchronous configuration completes', asyn
 	];
 	const context: SandboxContext = {
 		cwd: '/host/workspace',
-		isProjectTrusted: () => true,
+
 		sessionManager: SessionManager.inMemory('/host/workspace')
 	};
 	const generation = new SandboxGeneration(context, {
@@ -625,7 +607,7 @@ it('closes before configuration completes without starting a provider afterwards
 	};
 	const context: SandboxContext = {
 		cwd: '/host/workspace',
-		isProjectTrusted: () => true,
+
 		sessionManager: SessionManager.inMemory('/host/workspace')
 	};
 	const generation = new SandboxGeneration(context, {

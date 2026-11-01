@@ -265,24 +265,21 @@ cannot modify a closed collection.
 Read personal configuration from the host-bound agent directory's `byos.json`,
 or from `getAgentDir()/byos.json` for the ordinary CLI. An embedded host with an
 explicit Pi `agentDir` must call `initialiseSandboxHost` from its first
-extension factory with that directory. Binding after service creation fails. A
-trusted project's `.pi/byos.json` may override it only when
-`ctx.isProjectTrusted()` is true. Provider-specific settings are under
-`providerConfig`. Invalid JSON, unknown framework keys and unknown provider IDs
-are errors. Treat an absent project file as no override; propagate other read
-errors. A broken `byos.json` symlink is a configuration error. Preserve
-`providerConfig` values without coercion so the selected provider can validate
-its own input type. Errors identify the source of effective provider
-configuration and policy independently of provider selection. Preserve more
-specific provenance supplied by a typed provider error.
+extension factory with that directory. Binding after service creation fails.
+Configuration comes from this personal file only. Provider-specific settings are
+under `providerConfig`. Invalid JSON, unknown framework keys and unknown
+provider IDs are errors. An absent file selects the defaults; other read errors
+propagate. A broken `byos.json` symlink is a configuration error. Preserve
+provider-specific values without coercion so the selected provider can validate
+its own input type. Configuration errors identify the personal source
+independently of provider selection.
 
-When merged configuration has no `provider` field, select the built-in
+When personal configuration has no `provider` field, select the built-in
 `passthrough` provider. No configuration file is required. A configured
 `provider` must be a valid ID; null, an empty value or an unknown ID is an
 error. Installing a provider extension does not select it automatically, even if
-it is the only external provider. Personal selection remains effective when a
-project omits the field. An explicit `provider: "passthrough"` can restore host
-execution within the ordinary trusted configuration rules.
+it is the only external provider. An explicit `provider: "passthrough"` selects
+normal host execution.
 
 | Situation                                                                      | Behaviour                                                            |
 | ------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
@@ -292,12 +289,12 @@ execution within the ordinary trusted configuration rules.
 | The selected provider is missing, fails to start or loses its transport.       | Return an error; do not execute on the host.                         |
 | Configuration is invalid or cannot be read.                                    | Return a configuration error; do not assume the default.             |
 
-Merge top-level configuration by replacement, not by deep union. A project
-policy or provider configuration replaces that complete object. If a project
-changes the provider ID without supplying `providerConfig`, use an empty
-provider configuration. Discard settings for the previous provider. A project
-override is allowed only through Pi's existing trust decision; the framework
-adds no separate approval UI.
+Approval policy selection and the destination for explicit outside execution are
+independent of sandbox provider selection. Their contracts are specified in
+[approval and outside execution][approval-execution]. Ordinary sandbox failures
+never request outside execution.
+
+[approval-execution]: approval-execution.md
 
 Illustrative configuration:
 

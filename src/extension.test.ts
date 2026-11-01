@@ -51,7 +51,7 @@ it.each(['extension.ts', '../dist/extension.js'])(
 			commands: [
 				{
 					name: 'byos',
-					description: 'Show sandbox status or available providers'
+					description: 'Show sandbox and approval status or available services'
 				}
 			]
 		});

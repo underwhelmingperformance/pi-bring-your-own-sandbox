@@ -1,13 +1,14 @@
-import path from 'node:path';
-
 import type { SandboxHost, SandboxHostOptions } from './contracts.js';
-import { ensureSandboxService } from './default-broker.js';
 import { discoverBroker } from './discovery.js';
 import {
 	InvalidSandboxRequestError,
 	SandboxInitialisationError
 } from './errors.js';
-import { isSafeText } from './process-input.js';
+import { bindRuntimeSettings } from './runtime-settings.js';
+import { checker } from './schemas.js';
+import { hostOptionsSchema } from './service-schemas.js';
+
+const isHostOptions = checker(hostOptionsSchema);
 
 /**
 Bind an embedded Pi runtime to its personal configuration directory. Call once
@@ -19,10 +20,7 @@ export function initialiseSandboxHost(
 	pi: SandboxHost,
 	options: SandboxHostOptions
 ): void {
-	if (
-		!isSafeText(options.agentDirectory) ||
-		!path.isAbsolute(options.agentDirectory)
-	) {
+	if (!isHostOptions(options)) {
 		throw new InvalidSandboxRequestError({ operation: 'configure' });
 	}
 
@@ -30,5 +28,5 @@ export function initialiseSandboxHost(
 		throw new SandboxInitialisationError({ operation: 'configure' });
 	}
 
-	ensureSandboxService(pi, options.agentDirectory);
+	bindRuntimeSettings(pi, options);
 }

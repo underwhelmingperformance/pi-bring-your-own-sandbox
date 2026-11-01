@@ -7,6 +7,10 @@ import type {
 	SandboxHost
 } from './contracts.js';
 import { ensureSandboxService } from './default-broker.js';
+import { isSandboxError, SandboxCleanupError } from './errors.js';
+import { closeApprovals } from './execution-approval.js';
+import { closeOutsideExecution } from './outside-execution.js';
+import { runtimeSettings } from './runtime-settings.js';
 
 /**
 Acquire the selected sandbox from a live Pi event, command or tool context.
@@ -35,5 +39,51 @@ export async function closeSandboxSession(
 ): Promise<SandboxCloseReport> {
 	inspectContext(context, 'dispose');
 
-	return ensureSandboxService(pi).close(context);
+	const closures: readonly (() =>
+		readonly SandboxCloseReport[] | Promise<readonly SandboxCloseReport[]>)[] =
+		[
+			() => {
+				runtimeSettings(pi).close();
+
+				return [];
+			},
+			() => {
+				closeApprovals(pi);
+
+				return [];
+			},
+			async () => [await ensureSandboxService(pi).close(context)],
+			() => closeOutsideExecution(pi, context)
+		];
+	const settlements = await Promise.allSettled(
+		closures.map((close) => Promise.try(close))
+	);
+	const reports = settlements.flatMap(
+		(result): readonly SandboxCloseReport[] => {
+			if (result.status === 'fulfilled') {
+				return result.value;
+			}
+
+			return [
+				{
+					confirmed: false,
+					recoveries: [],
+					failures: [
+						isSandboxError(result.reason)
+							? result.reason
+							: new SandboxCleanupError(
+									{ operation: 'dispose' },
+									{ cause: result.reason }
+								)
+					]
+				}
+			];
+		}
+	);
+
+	return Object.freeze({
+		confirmed: reports.every((report) => report.confirmed),
+		failures: Object.freeze(reports.flatMap((report) => report.failures)),
+		recoveries: Object.freeze(reports.flatMap((report) => report.recoveries))
+	});
 }

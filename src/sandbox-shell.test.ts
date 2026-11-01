@@ -104,7 +104,7 @@ function fixture(
 	};
 	const context: SandboxContext = {
 		cwd: '/work/project',
-		isProjectTrusted: () => false,
+
 		sessionManager: SessionManager.inMemory('/work/project')
 	};
 	const invocation: ShellInvocation = {

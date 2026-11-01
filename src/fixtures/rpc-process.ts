@@ -1,7 +1,10 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 
-import type { RpcCommand } from '@earendil-works/pi-coding-agent';
+import type {
+	RpcCommand,
+	RpcExtensionUIResponse
+} from '@earendil-works/pi-coding-agent';
 
 import { isRecord } from '../validation.js';
 
@@ -14,6 +17,7 @@ export class RpcProcess {
 		readonly isMatch: (event: unknown) => boolean;
 		readonly pending: PromiseWithResolvers<unknown>;
 	}>();
+	readonly #events: unknown[] = [];
 	#nextId = 0;
 	#failure: Error | undefined;
 	#stderr = '';
@@ -91,6 +95,8 @@ export class RpcProcess {
 			message.type !== 'response' ||
 			typeof message.id !== 'string'
 		) {
+			this.#events.push(message);
+
 			for (const listener of this.#listeners) {
 				if (listener.isMatch(message)) {
 					listener.pending.resolve(message);
@@ -101,6 +107,10 @@ export class RpcProcess {
 		}
 
 		this.#requests.get(message.id)?.resolve(message);
+	}
+
+	get events(): readonly unknown[] {
+		return [...this.#events];
 	}
 
 	async waitForEvent(isMatch: (event: unknown) => boolean): Promise<unknown> {
@@ -149,6 +159,14 @@ export class RpcProcess {
 			clearTimeout(timer);
 			this.#requests.delete(id);
 		}
+	}
+
+	respond(response: RpcExtensionUIResponse): void {
+		if (this.#failure !== undefined) {
+			throw this.#failure;
+		}
+
+		this.#child.stdin.write(`${JSON.stringify(response)}\n`);
 	}
 
 	async close(): Promise<void> {

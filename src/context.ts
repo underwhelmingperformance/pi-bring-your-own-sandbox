@@ -5,7 +5,6 @@ import { isNonEmptyString } from './validation.js';
 export interface SessionIdentity {
 	readonly sessionId: string;
 	readonly workspace: string;
-	readonly isProjectTrusted: boolean;
 }
 
 export function inspectContext(
@@ -15,17 +14,12 @@ export function inspectContext(
 	try {
 		const workspace = context.cwd;
 		const sessionId = context.sessionManager.getSessionId();
-		const isProjectTrusted = context.isProjectTrusted();
 
-		if (
-			typeof isProjectTrusted !== 'boolean' ||
-			!isNonEmptyString(workspace) ||
-			!isNonEmptyString(sessionId)
-		) {
+		if (!isNonEmptyString(workspace) || !isNonEmptyString(sessionId)) {
 			throw new StaleSandboxHandleError({ operation });
 		}
 
-		return Object.freeze({ workspace, sessionId, isProjectTrusted });
+		return Object.freeze({ workspace, sessionId });
 	} catch (error) {
 		throw new StaleSandboxHandleError({ operation }, { cause: error });
 	}

@@ -108,7 +108,7 @@ src/
   service.ts                shared service discovery and on-demand creation
   broker.ts                 registry, selection and state machine
   passthrough.ts            built-in host execution and filesystem backend
-  config.ts                 personal/trusted-project configuration
+  config.ts                 personal configuration
   lifecycle.ts              startup, cancellation and shutdown
   extension.ts              broker factory and diagnostic commands
   pi-tools.ts               optional public-hook integration factory
@@ -180,8 +180,8 @@ sandbox selection that cannot be satisfied must never select host execution.
 
 Add focused tests before each behaviour:
 
-- Personal configuration, trusted project override, untrusted project exclusion,
-  absent file, malformed JSON, unknown keys and provider-specific validation.
+- Personal configuration, default selection, unreadable configuration, absent
+  file, malformed JSON, unknown keys and provider-specific validation.
 - No configuration selects built-in `passthrough`; installing an external
   provider alone does not select it. Null/empty provider values are errors.
 - Explicit external selection with a missing provider, startup failure or lost
@@ -380,3 +380,25 @@ publish packages or modify personal Pi settings as part of local validation.
 Exit criterion: all specification acceptance criteria have linked test evidence,
 the tarball loads in a clean Pi setup, and remaining platform/provider limits
 are explicit in release documentation.
+
+## Independent approvals and outside execution
+
+Implement personal-only configuration first. Add independent policy discovery,
+configuration and lifecycle with built-in user, always and never policies. Add
+explicit outside execution to the SDK, then to Pi Bash and PowerShell through
+public operation hooks. Support an optional provider-defined outside destination
+and a normal executor supplied by an embedding host. The normal destination and
+user approval policy are the defaults.
+
+Use the [approval contract][approval-contract] for immutable review inputs,
+per-operation decisions, execution deadlines, cleanup and error behaviour. Keep
+ordinary sandbox execution unchanged and return errors without switching routes.
+
+[approval-contract]: approval-execution.md
+
+Verify with fake policies, a scripted reviewer model in a real Pi runtime,
+independently installed SDK copies and packed-package fixtures. Exercise
+rejection, cancellation, expiry, stale handles, allocation failure and uncertain
+termination. Run all existing gates under the project's strict TypeBox and lint
+conventions. Finish with a context-blind architecture and implementation review
+and fix its findings before recording acceptance evidence.

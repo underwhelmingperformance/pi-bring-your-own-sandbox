@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import type { Static } from 'typebox';
 
+import type { ApprovalSelection } from './approval-contracts.js';
 import type { SandboxPolicy } from './contracts.js';
 import {
 	InvalidSandboxConfigError,
@@ -16,15 +17,15 @@ import { isRecord } from './validation.js';
 
 export interface ConfigSources {
 	readonly agentDirectory: string;
-	readonly workspace: string;
-	readonly isProjectTrusted: boolean;
 }
 
 export interface SandboxConfig {
 	readonly selection: ProviderSelection;
+	readonly approval?: ApprovalSelection;
+	readonly outsideSandbox?: { readonly destination: 'normal' | 'provider' };
 	readonly providerConfig: unknown;
-	readonly providerConfigSource?: 'personal' | 'project';
-	readonly policySource?: 'personal' | 'project';
+	readonly providerConfigSource?: 'personal';
+	readonly policySource?: 'personal';
 }
 
 type ConfigFile = Static<typeof configFileSchema>;
@@ -39,7 +40,7 @@ const defaultPolicy: SandboxPolicy = Object.freeze({
 
 async function readConfigFile(
 	filename: string,
-	source: 'personal' | 'project'
+	source: 'personal'
 ): Promise<ConfigFile> {
 	let hasEntry = false;
 
@@ -76,24 +77,15 @@ async function readConfigFile(
 export async function readConfig(
 	sources: ConfigSources
 ): Promise<SandboxConfig> {
-	const { agentDirectory, workspace, isProjectTrusted } = sources;
 	const personal = await readConfigFile(
-		path.join(agentDirectory, 'byos.json'),
+		path.join(sources.agentDirectory, 'byos.json'),
 		'personal'
 	);
-	const project = isProjectTrusted
-		? await readConfigFile(path.join(workspace, '.pi', 'byos.json'), 'project')
-		: {};
-	const merged = { ...personal, ...project };
-	const providerId = merged.provider ?? 'passthrough';
-	const source =
-		project.provider === undefined
-			? personal.provider === undefined
-				? 'default'
-				: 'personal'
-			: 'project';
+	const providerId = personal.provider ?? 'passthrough';
+	const source = personal.provider === undefined ? 'default' : 'personal';
 	const policy =
-		merged.policy ?? (providerId === 'passthrough' ? defaultPolicy : undefined);
+		personal.policy ??
+		(providerId === 'passthrough' ? defaultPolicy : undefined);
 
 	if (policy === undefined) {
 		throw new InvalidSandboxConfigError({
@@ -103,36 +95,28 @@ export async function readConfig(
 		});
 	}
 
-	const isProviderChanged =
-		project.provider !== undefined &&
-		project.provider !== (personal.provider ?? 'passthrough');
-	const mergedProviderConfig = Object.hasOwn(merged, 'providerConfig')
-		? merged.providerConfig
+	const providerConfig = Object.hasOwn(personal, 'providerConfig')
+		? personal.providerConfig
 		: {};
-	const providerConfig =
-		isProviderChanged && !Object.hasOwn(project, 'providerConfig')
-			? {}
-			: mergedProviderConfig;
 	const selection: ProviderSelection = Object.freeze({
 		providerId,
 		source,
 		policy: Object.freeze({ ...policy }),
-		...(merged.userShell !== undefined && { userShell: merged.userShell })
+		...(personal.userShell !== undefined && { userShell: personal.userShell })
 	});
-	const policySource =
-		project.policy === undefined
-			? personal.policy === undefined
-				? undefined
-				: 'personal'
-			: 'project';
-	const providerConfigSource = Object.hasOwn(project, 'providerConfig')
-		? 'project'
-		: !isProviderChanged && Object.hasOwn(personal, 'providerConfig')
-			? 'personal'
-			: undefined;
+	const policySource = personal.policy === undefined ? undefined : 'personal';
+	const providerConfigSource = Object.hasOwn(personal, 'providerConfig')
+		? 'personal'
+		: undefined;
 
 	return Object.freeze({
 		selection,
+		...(personal.approval !== undefined && {
+			approval: Object.freeze({ ...personal.approval })
+		}),
+		...(personal.outsideSandbox !== undefined && {
+			outsideSandbox: Object.freeze({ ...personal.outsideSandbox })
+		}),
 		providerConfig,
 		...(policySource !== undefined && { policySource }),
 		...(providerConfigSource !== undefined && { providerConfigSource })

@@ -45,46 +45,65 @@ export function registerSandboxProvider<Config>(
 	const { id, label } = provider;
 	const validate = provider.validateConfig.bind(provider);
 	const open = provider.open.bind(provider);
+	const validateConfig = (input: unknown): Config => {
+		try {
+			const config = validate(input);
+
+			if (isRecord(config) && typeof config.then === 'function') {
+				void Promise.allSettled([Promise.resolve(config)]);
+
+				throw new InvalidSandboxConfigError({
+					operation: 'configure',
+					providerId: id
+				});
+			}
+
+			return config;
+		} catch (error) {
+			throw new InvalidSandboxConfigError(
+				{
+					operation: 'configure',
+					providerId: id,
+					...(isSandboxError(error) &&
+						error.configurationSource !== undefined && {
+							configurationSource: error.configurationSource
+						})
+				},
+				{ cause: error }
+			);
+		}
+	};
+
+	const outside = provider.outsideSandbox;
+	const outsideOpen = outside?.open.bind(outside);
 	const service: ProviderServiceV1 = Object.freeze({
 		id,
 		label,
 		capabilities: snapshotCapabilities(provider.capabilities),
 		policies: snapshotPolicies(provider.policies),
-		configure(input: unknown) {
-			let config: Config;
+		...(outside !== undefined &&
+			outsideOpen !== undefined && {
+				outsideSandbox: Object.freeze({
+					label: outside.label,
+					capabilities: snapshotCapabilities(outside.capabilities),
+					policy: Object.freeze({ ...outside.policy }),
+					configure(input: unknown): ConfiguredProviderV1 {
+						const config = validateConfig(input);
 
-			try {
-				config = validate(input);
+						return Object.freeze<ConfiguredProviderV1>({
+							open: (request, context) =>
+								outsideOpen({ ...request, configuration: config }, context)
+						});
+					}
+				})
+			}),
+		configure(input: unknown): ConfiguredProviderV1 {
+			const config = validateConfig(input);
 
-				if (isRecord(config) && typeof config.then === 'function') {
-					// An invalid async validator can reject after this method has thrown.
-					void Promise.allSettled([Promise.resolve(config)]);
-
-					throw new InvalidSandboxConfigError({
-						operation: 'configure',
-						providerId: id
-					});
-				}
-			} catch (error) {
-				throw new InvalidSandboxConfigError(
-					{
-						operation: 'configure',
-						providerId: id,
-						...(isSandboxError(error) &&
-							error.configurationSource !== undefined && {
-								configurationSource: error.configurationSource
-							})
-					},
-					{ cause: error }
-				);
-			}
-
-			const configured: ConfiguredProviderV1 = {
+			return Object.freeze<ConfiguredProviderV1>({
 				open: (request, context) =>
 					open({ ...request, configuration: config }, context)
-			};
-
-			return Object.freeze(configured);
+			});
 		}
 	});
 	const advertisement: ServiceAdvertisementV1 = Object.freeze({

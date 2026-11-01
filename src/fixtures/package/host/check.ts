@@ -82,6 +82,8 @@ await writeFile(
 	path.join(agentDirectory, 'byos.json'),
 	JSON.stringify({
 		provider: 'packed.fixture',
+		approval: { policy: 'packed.review' },
+		outsideSandbox: { destination: 'provider' },
 		policy: {
 			workspaceAccess: 'read-write',
 			filesystemScope: 'provider-default',
@@ -243,16 +245,50 @@ try {
 			omittedBytes: { stdout: 0, stderr: 0 }
 		}))
 	);
+
+	for (const client of [sdk, peer.sdk]) {
+		const outside = await client.getOutsideSandboxExecutor(
+			live.pi,
+			live.context
+		);
+		const result = await outside.exec(
+			{ kind: 'argv', executable: 'pwd', args: [] },
+			{
+				justification: 'Check the packed outside destination.'
+			}
+		);
+
+		assert.deepEqual(
+			{
+				kind: outside.destination.kind,
+				exit: result.exit,
+				stdout: new TextDecoder().decode(result.stdout)
+			},
+			{
+				kind: 'provider',
+				exit: { kind: 'code', code: 0 },
+				stdout: '/packed/project\n'
+			}
+		);
+	}
+
+	assert.equal(sdk.isApprovalError(new peer.sdk.ApprovalDeniedError()), true);
+
 	assert.deepEqual(await sdk.closeSandboxSession(live.pi, live.context), {
 		confirmed: true,
 		failures: [],
 		recoveries: []
 	});
 	assert.deepEqual(peer.state, {
-		opens: 1,
-		disposals: 1,
+		opens: 2,
+		reviews: 2,
+		disposals: 2,
 		isRunning: false,
-		calls: [0, 1].map(() => ({ kind: 'argv', executable: 'pwd', args: [] }))
+		calls: [0, 1, 2, 3].map(() => ({
+			kind: 'argv',
+			executable: 'pwd',
+			args: []
+		}))
 	});
 } finally {
 	await runtime.dispose();

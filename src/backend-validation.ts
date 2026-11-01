@@ -1,15 +1,36 @@
+import { Type } from 'typebox';
 import { Value } from 'typebox/value';
 
 import {
 	providerBackendSchema,
-	requiredPolicySchema
+	requiredPolicySchema,
+	workspaceSchema
 } from './backend-schemas.js';
-import type { SandboxBackend, SandboxPolicy } from './contracts.js';
+import type {
+	SandboxBackend,
+	SandboxCapabilities,
+	SandboxPolicy,
+	SandboxWorkspace
+} from './contracts.js';
 import {
 	InvalidSandboxDeclarationError,
 	UnsupportedSandboxPolicyError
 } from './errors.js';
 import type { ProviderInfo } from './protocol.js';
+
+export function isWorkspace(
+	value: unknown,
+	capabilities: SandboxCapabilities
+): value is SandboxWorkspace {
+	const schema = Type.Refine(
+		workspaceSchema,
+		(workspace) =>
+			workspace.defaultShell === undefined ||
+			capabilities.shells.includes(workspace.defaultShell)
+	);
+
+	return Value.Check(schema, value);
+}
 
 export function isPolicySatisfied(
 	effective: SandboxPolicy,

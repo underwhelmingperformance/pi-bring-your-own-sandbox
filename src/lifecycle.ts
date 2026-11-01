@@ -102,6 +102,12 @@ export class OperationScope {
 		);
 	}
 
+	get remainingMs(): number {
+		this.check();
+
+		return Math.max(1, this.#expiresAt - performance.now());
+	}
+
 	get reason(): CancellationReason | undefined {
 		if (this.#reason === undefined && performance.now() >= this.#expiresAt) {
 			this.abort('deadline');

@@ -41,15 +41,15 @@ workflows and commit-message formatting.
 
 ## Specification acceptance evidence
 
-| Criterion                                                                                                                         | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Independent extensions and SDK copies share one broker, in every factory order. Consumer-only use works without configuration. | The six-order matrix in [broker integration][broker] invokes distinct SDK copies for provider registration and consumer acquisition. It checks one service, one opening and disposal. [Client integration][client] covers consumer-only host execution, concurrent independent SDK copies, unselected providers and separate sessions. [Registration integration][registration] checks failed-factory cleanup and concurrent bootstrap.                                                                         |
-| 2. The same consumer works with different providers, including a real isolated backend.                                           | The [consumer example tests][consumer-tests] run the same tool with passthrough, a direct in-memory provider and a MessageChannel provider with remote paths. The [direct provider tests][memory-contract] and [message provider tests][message-contract] register the same [contract cases][contracts]. [Docker session tests][docker-sessions] run the same helper against the isolated reference backend.                                                                                                    |
-| 3. Configuration, discovery, policy and backend failures produce typed errors without switching to host execution.                | [Configuration tests][config] cover trust, merging, absence, read errors, invalid keys and explicit selection. [Discovery tests][discovery] and [backend validation][backend] cover conflicting declarations, incompatible versions, capabilities and effective policy. [Client integration][client], [Pi shell integration][shell] and [user-shell integration][user-shell] guard selected-provider failure paths. [Error tests][errors] verify concrete classes and structural recognition across SDK copies. |
-| 4. Output, exits, cancellation, deadlines, shared startup and shutdown obey the contract.                                         | [Execution tests][execution] cover byte ownership, capture bounds, draining, exit variants, all abort causes and quarantine. [Lifecycle tests][lifecycle] exercise deadlines and confirmation with controlled promises. [Generation tests][generation] cover independent waiters, shared opening, late completion, shutdown and recovery. The [host contract][host-contract] and [Docker contract scenarios][docker-contract] independently check target termination.                                           |
-| 5. Runtime replacement and disposal reject stale work and release resources.                                                      | [Broker integration][broker] exercises reload, new sessions and raw disposal. [Client integration][client] checks explicit raw-host shutdown and separate sessions. [Generation tests][generation] cover rejected backends, exactly-once cleanup, timeout recovery and stale facades. The provider suite checks repeated and overlapping disposal; [Docker sessions][docker-sessions] check distinct allocations and cleanup through the daemon.                                                                |
-| 6. Optional integration uses public hooks and preserves Pi's own algorithms and approval. Upstream gaps have reproductions.       | [Pi shell integration][shell] covers direct/nested calls, allow/deny decisions, validation, transforms, active tool selection and native full-output files. [RPC tests][rpc] cover CLI user-shell execution and cold-start cancellation. [Boundary reproductions][boundaries] demonstrate unsupported file/search paths through public factories. The [coverage table][coverage] specifies the required upstream hooks.                                                                                         |
-| 7. The packed SDK loads through Pi with usable declarations and without real credentials.                                         | The [package gate][package] checks that a clean build removes obsolete modules, compares the pack preview and archive, checks exports and manifest paths, installs two physical SDK copies, compiles consumers and copied examples, and loads the compiled entries through Pi. Production imports work without Vitest; the provider's own Vitest installation runs the shipped contract suite. [Loader tests][loader] cover source and compiled extension entry points.                                         |
+| Criterion                                                                                                                         | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Independent extensions and SDK copies share one broker, in every factory order. Consumer-only use works without configuration. | The six-order matrix in [broker integration][broker] invokes distinct SDK copies for provider registration and consumer acquisition. It checks one service, one opening and disposal. [Client integration][client] covers consumer-only host execution, concurrent independent SDK copies, unselected providers and separate sessions. [Registration integration][registration] checks failed-factory cleanup and concurrent bootstrap.                                                                             |
+| 2. The same consumer works with different providers, including a real isolated backend.                                           | The [consumer example tests][consumer-tests] run the same tool with passthrough, a direct in-memory provider and a MessageChannel provider with remote paths. The [direct provider tests][memory-contract] and [message provider tests][message-contract] register the same [contract cases][contracts]. [Docker session tests][docker-sessions] run the same helper against the isolated reference backend.                                                                                                        |
+| 3. Configuration, discovery, policy and backend failures produce typed errors without switching to host execution.                | [Configuration tests][config] cover personal selection, absence, read errors, invalid keys and explicit selection. [Discovery tests][discovery] and [backend validation][backend] cover conflicting declarations, incompatible versions, capabilities and effective policy. [Client integration][client], [Pi shell integration][shell] and [user-shell integration][user-shell] guard selected-provider failure paths. [Error tests][errors] verify concrete classes and structural recognition across SDK copies. |
+| 4. Output, exits, cancellation, deadlines, shared startup and shutdown obey the contract.                                         | [Execution tests][execution] cover byte ownership, capture bounds, draining, exit variants, all abort causes and quarantine. [Lifecycle tests][lifecycle] exercise deadlines and confirmation with controlled promises. [Generation tests][generation] cover independent waiters, shared opening, late completion, shutdown and recovery. The [host contract][host-contract] and [Docker contract scenarios][docker-contract] independently check target termination.                                               |
+| 5. Runtime replacement and disposal reject stale work and release resources.                                                      | [Broker integration][broker] exercises reload, new sessions and raw disposal. [Client integration][client] checks explicit raw-host shutdown and separate sessions. [Generation tests][generation] cover rejected backends, exactly-once cleanup, timeout recovery and stale facades. The provider suite checks repeated and overlapping disposal; [Docker sessions][docker-sessions] check distinct allocations and cleanup through the daemon.                                                                    |
+| 6. Optional integration uses public hooks and preserves Pi's own algorithms and approval. Upstream gaps have reproductions.       | [Pi shell integration][shell] covers direct/nested calls, allow/deny decisions, validation, transforms, active tool selection and native full-output files. [RPC tests][rpc] cover CLI user-shell execution and cold-start cancellation. [Boundary reproductions][boundaries] demonstrate unsupported file/search paths through public factories. The [coverage table][coverage] specifies the required upstream hooks.                                                                                             |
+| 7. The packed SDK loads through Pi with usable declarations and without real credentials.                                         | The [package gate][package] checks that a clean build removes obsolete modules, compares the pack preview and archive, checks exports and manifest paths, installs two physical SDK copies, compiles consumers and copied examples, and loads the compiled entries through Pi. Production imports work without Vitest; the provider's own Vitest installation runs the shipped contract suite. [Loader tests][loader] cover source and compiled extension entry points.                                             |
 
 [broker]: ../src/broker-integration.test.ts
 [client]: ../src/client-integration.test.ts
@@ -111,6 +111,68 @@ imports from the installed archive.
 [provider-guide]: provider-testing.md
 [diagnostics]: ../src/diagnostics-integration.test.ts
 [consumer-guide]: ../examples/consumer/README.md
+
+## Independent approvals and outside execution
+
+Local verification on 1 November 2026 used the same Pi, Node and pnpm versions.
+`pnpm check` passed 550 ordinary tests and all build, formatting, dependency,
+lint, Markdown and type checks. The dedicated integration gate passed 112 tests.
+The clean-package gate passed, including two physically separate SDK installs,
+provider-defined outside execution, fresh approval for each operation and
+structural approval-error recognition. All 22 Docker cases passed with the local
+executable and Unix-socket overrides described in the Docker guide.
+
+[Approval integration][outside-tests] covers the built-in policies, independent
+provider and policy extensions, queued prompt expiry, cancellation, immutable
+acquisition requirements, embedded normal execution and SDK shutdown. Standalone
+reviews observe the runtime shutdown signal even if malformed service discovery
+prevents direct service closure. Cleanup attempts every service domain and
+includes failures in its combined report. [Service bootstrap tests][services]
+cover re-entrant creation and retained initialisation failure.
+
+[Outside shell integration][outside-shell] uses separate scripted parent and
+approver models through real Pi Bash and PowerShell tools. It checks normal and
+provider destinations, allow and deny decisions, timeout output preservation and
+configuration loading within the execution deadline. A filesystem marker checks
+that expiry prevents native command dispatch. The independent-copy registration
+matrix covers all six provider, policy and consumer factory orders.
+
+Context-blind adversarial reviews covered architecture, public contracts,
+configuration authority, lifecycle, protocol failures, Pi hooks and packaging.
+The resulting shutdown, cancellation, discovery and deadline regressions pass.
+The final review reported no remaining implementation defects. Native Pi process
+cleanup retains the upstream limitation specified in the [approval
+guide][approval].
+
+[outside-tests]: ../src/outside-execution-integration.test.ts
+[services]: ../src/extension-services.test.ts
+[outside-shell]: ../src/pi-tools-outside-integration.test.ts
+[approval]: approval-execution.md
+
+## User-flow integration audit
+
+Local verification on 1 November 2026 passed the strict check with 583 ordinary
+tests, the integration gate with 147 cases, all 22 Docker cases and the
+clean-package gate. The approval RPC suite contributes 32 cases.
+
+The [user-flow matrix][user-flows] maps supported installation, configuration,
+execution, approval, lifecycle and diagnostic flows to integration tests. The
+[approval RPC suite][approval-rpc] starts Pi's actual offline CLI process and
+exchanges confirmation request/response packets. It does not replace
+`context.ui.confirm`. It verifies allow, deny, dismissal, expiry, queueing, late
+responses, caller/model cancellation, SDK close, process shutdown and session
+replacement. Filesystem effects and backend journals independently check that
+rejected requests do not execute.
+
+The RPC suite also covers built-in and missing policies, invalid policy
+configuration, failing policies/providers, command prefixes, inconsistent tool
+arguments, personal configuration authority and diagnostics without allocation.
+A deterministic SDK regression verifies deadline classification while an
+approval is pending. The headless approval service tests are included in the
+integration gate alongside the other real-Pi suites.
+
+[user-flows]: user-flow-coverage.md
+[approval-rpc]: ../src/approval-rpc-integration.test.ts
 
 ## Platform and integration limits
 

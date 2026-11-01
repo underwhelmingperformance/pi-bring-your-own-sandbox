@@ -1,4 +1,6 @@
-import type { SandboxCloseReport } from './contracts.js';
+import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
+
+import type { SandboxCloseReport, SandboxHost } from './contracts.js';
 
 export function formatCleanupReport(report: SandboxCloseReport): string {
 	const lines = [`Cleanup: ${report.confirmed ? 'confirmed' : 'incomplete'}`];
@@ -22,4 +24,26 @@ export function formatCleanupReport(report: SandboxCloseReport): string {
 	}
 
 	return lines.join('\n');
+}
+
+export function reportCleanup(
+	pi: SandboxHost,
+	context: ExtensionContext,
+	report: SandboxCloseReport
+): void {
+	if (report.confirmed) {
+		return;
+	}
+
+	const content = formatCleanupReport(report);
+
+	if (!context.isIdle()) {
+		pi.appendEntry('byos-cleanup', { content });
+		context.ui.notify(content, 'warning');
+	}
+
+	pi.sendMessage(
+		{ customType: 'byos', content, display: true },
+		{ triggerTurn: false }
+	);
 }

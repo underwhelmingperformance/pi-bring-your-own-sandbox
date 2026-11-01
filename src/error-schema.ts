@@ -47,7 +47,7 @@ const errorContextSchema = Type.Object({
 	sandboxErrorVersion: Type.Literal(1),
 	message: Type.String(),
 	operation: operationSchema,
-	configurationSource: Type.Optional(Type.Enum(['personal', 'project'])),
+	configurationSource: Type.Optional(Type.Literal('personal')),
 	providerId: Type.Optional(nonEmptyStringSchema),
 	backendId: Type.Optional(nonEmptyStringSchema),
 	recovery: Type.Optional(recoverySchema)

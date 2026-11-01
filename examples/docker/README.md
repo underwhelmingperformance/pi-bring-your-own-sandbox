@@ -40,7 +40,7 @@ dependency.
 Pi supplies TypeBox at runtime. Add `typebox` as a development dependency to
 type-check the copied example outside Pi.
 
-Select the provider in a trusted project's `.pi/byos.json`:
+Select the provider in the personal agent directory's `byos.json`:
 
 ```json
 {
@@ -58,10 +58,9 @@ Select the provider in a trusted project's `.pi/byos.json`:
 ```
 
 Use `read-only` for a read-only copy of the workspace. The provider rejects
-unsupported filesystem or network policies before allocation. Project settings
-apply only after Pi trusts the project; personal selection uses the agent
-directory's `byos.json`. `/byos status` reports the selection and effective
-boundary.
+unsupported filesystem or network policies before allocation. Personal settings
+use the agent directory's `byos.json`. `/byos status` reports the selection and
+effective boundary.
 
 SDK consumers use the selected provider automatically. The example supplies `sh`
 for user commands and Bash for the model `bash` tool. PowerShell is unsupported.

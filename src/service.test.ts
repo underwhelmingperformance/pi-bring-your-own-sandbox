@@ -11,7 +11,7 @@ import { ensureBroker } from './service.js';
 function fixtureContext() {
 	return {
 		cwd: '/fixture',
-		isProjectTrusted: () => false,
+
 		sessionManager: SessionManager.inMemory('/fixture')
 	};
 }

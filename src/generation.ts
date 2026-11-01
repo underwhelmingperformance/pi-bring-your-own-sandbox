@@ -84,7 +84,7 @@ export class SandboxGeneration {
 	#state: BrokerState = 'initialising';
 	#providerInfos: readonly ProviderInfo[] = [];
 	#selection: ProviderSelection | undefined;
-	#configurationSource: 'personal' | 'project' | undefined;
+	#configurationSource: 'personal' | undefined;
 	#prepared: Promise<Prepared> | undefined;
 	#opening:
 		| Promise<Exclude<Settlement<SandboxBackend>, { kind: 'abandoned' }>>

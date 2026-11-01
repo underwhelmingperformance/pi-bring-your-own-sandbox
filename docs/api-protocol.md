@@ -38,10 +38,9 @@ closeSandboxSession(pi: SandboxHost,
 ```
 
 `SandboxHost` uses Pi's public event bus, lifecycle registration, custom message
-and custom entry writers. `SandboxContext` uses its live workspace, trust
-decision and session manager. Callers pass a real live Pi context. Structural
-compatibility does not authorise constructing a context that bypasses Pi's
-lifecycle checks.
+and custom entry writers. `SandboxContext` uses its live workspace, decision and
+session manager. Callers pass a real live Pi context. Structural compatibility
+does not authorise constructing a context that bypasses Pi's lifecycle checks.
 
 An embedding host that supplies Pi's `agentDir` calls
 `initialiseSandboxHost(pi, { agentDirectory })` once from its first extension
@@ -279,10 +278,10 @@ retains manual recovery metadata. Cancellation completion alone does not
 acknowledge allocation cleanup.
 
 Status reports the generation state, effective selection and optional backend
-metadata. Selection distinguishes implicit default, personal configuration and
-trusted project configuration. The user-shell dialect is explicit when
-configured. Status never allocates a backend. Provider enumeration validates
-configuration and declarations but does not provision.
+metadata. Selection distinguishes implicit default and personal configuration.
+The user-shell dialect is explicit when configured. Status never allocates a
+backend. Provider enumeration validates configuration and declarations but does
+not provision.
 
 The optional diagnostic command queries loaded shell integration factories on
 `pi-byos:diagnostics:v1:shell-integration`. It emits the same `pi-byos.discover`
@@ -316,7 +315,7 @@ Consumers do not supply message strings or free-form detail fields.
 `SandboxErrorInfo` is the union of the concrete error types. Errors expose the
 version marker `sandboxErrorVersion: 1`, `name`, `message`, `operation` and
 optional provider/backend/recovery context directly. Configuration errors can
-identify the personal or project source through `configurationSource`.
+identify the personal source through `configurationSource`.
 
 Use `isSandboxError(value)` to recognise supported structural errors, or
 `isSandboxError(value, SandboxTimeoutError)` to narrow to a concrete type across
@@ -347,3 +346,53 @@ required fields, operation meanings or error variants require a new service
 version. A future service version must still answer discovery-v1 with its
 supported versions so version 1 clients can report incompatibility. The protocol
 requires neither package deduplication nor a globally shared SDK constructor.
+
+## Approval and outside execution services
+
+The [approval guide][approval-guide] defines the exported contracts and
+execution semantics. The framework package exports these APIs through `/api`;
+policy extensions do not need to install or open a sandbox backend.
+
+[approval-guide]: approval-execution.md
+
+The independent service channels use discovery envelope version 1. Requests use
+`{ kind: "pi-byos.discover", discoveryVersion: 1, reply }`. Replies use this
+envelope:
+
+```ts
+{
+  kind: "pi-byos.service",
+  discoveryVersion: 1,
+  serviceVersions: [1],
+  id,
+  service
+}
+```
+
+Service IDs must match the advertisement. Replies must arrive synchronously;
+late replies are ignored. Duplicate identities, malformed replies and
+unsupported versions are errors. Callbacks, signals and service objects remain
+in-process.
+
+| Channel                                  | Service methods and metadata                                                 |
+| ---------------------------------------- | ---------------------------------------------------------------------------- |
+| `pi-byos:discovery:v1:approval-policies` | `id`, `label`, `configure(input)` returning a bound `decide` method.         |
+| `pi-byos:discovery:v1:approvals`         | `id`, `request(context, request, options?)`, `policies()`, `close()`.        |
+| `pi-byos:settings:v1`                    | `id`, `lifetime`, `close()`, `read()`, optional host-bound `normalExecutor`. |
+| `pi-byos:discovery:v1:outside-execution` | `id`, `lifetime`, `acquire`, `track`, `assertLive`, `close`.                 |
+
+The runtime settings and outside execution services are internal SDK protocols;
+the public APIs acquire their shared instances. Settings are bound before use
+and cached for the runtime. Closing a service preserves its closed tombstone.
+The runtime settings lifetime also prevents creating new services after SDK
+shutdown. Service construction publishes a bootstrap reservation before invoking
+extension callbacks; re-entrant creation fails without allocating another
+service. An approval service is independent of the ordinary sandbox broker and
+its allocation state. SDK copies discover the same services through the live Pi
+bus.
+
+The provider-v1 service accepts optional `outsideSandbox` metadata with `label`,
+`capabilities`, `policy` and `configure(input)`. That configure method returns
+an allocation closure for the outside backend. Existing declarations without
+this optional member retain their behaviour. The framework validates and
+snapshots the optional metadata before use.

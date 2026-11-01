@@ -105,3 +105,19 @@ replacement tool algorithms to implement those paths. The [research][research]
 records the pinned source investigation.
 
 [research]: research.md
+
+## Explicit outside execution
+
+The [approval service][approval] supports explicit outside execution for Bash
+and PowerShell. Omitted execution selection retains the ordinary sandbox route.
+The normal destination delegates to Pi's public native shell operations; a
+provider-defined destination delegates through the SDK backend contract.
+
+[approval]: approval-execution.md
+
+Pi 1.4.0's native shell operations wait for the shell, then stop tracking its
+PID. A background descendant can continue in the original process group after
+that shell exits. Framework shutdown does not confirm termination of those
+descendants. This is an upstream lifecycle limit of the normal Pi route. The SDK
+passthrough and provider routes retain their own process completion and cleanup
+contracts.

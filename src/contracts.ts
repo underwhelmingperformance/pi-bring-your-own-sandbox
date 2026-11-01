@@ -4,6 +4,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import type { Static } from 'typebox';
 
+import type { OutsideSandboxProvider } from './approval-contracts.js';
 import type {
 	operationSchema,
 	ordinaryErrorNameSchema
@@ -31,16 +32,16 @@ export interface SandboxHostOptions {
 	Pass the same directory as Pi's `agentDir` option.
 	*/
 	readonly agentDirectory: string;
+	/**
+	Normal execution environment supplied by an embedded host.
+	*/
+	readonly normalExecutor?: OutsideSandboxProvider<undefined>;
 }
 /**
-Live Pi context required for generation identity, workspace paths and
-project trust. Pass the context supplied by Pi so its runtime validity
-checks remain active.
+Live Pi context required for generation identity and workspace paths. Pass the
+context supplied by Pi so its runtime validity checks remain active.
 */
-export type SandboxContext = Pick<
-	ExtensionContext,
-	'cwd' | 'isProjectTrusted' | 'sessionManager'
->;
+export type SandboxContext = Pick<ExtensionContext, 'cwd' | 'sessionManager'>;
 
 /**
 Command languages that a provider can advertise independently of argv
@@ -771,6 +772,10 @@ export interface SandboxProvider<Config> {
 	Service protocol implemented by this declaration.
 	*/
 	readonly protocolVersion: 1;
+	/**
+	Optional execution destination selected independently through personal settings.
+	*/
+	readonly outsideSandbox?: OutsideSandboxProvider<Config>;
 
 	/**
 	Maximum operation groups and shells that an opened backend may advertise.
@@ -1068,7 +1073,7 @@ export interface SandboxErrorContext {
 	/**
 	The settings file that could not be read or validated.
 	*/
-	readonly configurationSource?: 'personal' | 'project';
+	readonly configurationSource?: 'personal';
 
 	/**
 	The selected provider, if discovery or selection progressed far enough.

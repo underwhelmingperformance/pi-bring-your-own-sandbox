@@ -18,45 +18,13 @@ import {
 	SandboxCancelledError,
 	SandboxTransportError
 } from './api.js';
-import type {
-	BackendProcessContext,
-	ProcessRequest,
-	SandboxBackend
-} from './contracts.js';
-import { MemoryBackend } from './fixtures/memory-backend.js';
+import type { SandboxBackend } from './contracts.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { ScriptedModel } from './fixtures/scripted-model.js';
+import { shellBackend } from './fixtures/shell-backend.js';
 import { createShellOperations } from './pi-shell-operations.js';
 import sandboxTools from './pi-tools.js';
 import { isRecord } from './validation.js';
-
-function shellBackend(output = 'target output') {
-	const template = new MemoryBackend('exec');
-	const requests: ProcessRequest[] = [];
-	const backend: SandboxBackend = {
-		id: template.id,
-		workspace: template.workspace,
-		policy: template.policy,
-		policyDescription: template.policyDescription,
-		recovery: template.recovery,
-		capabilities: { operations: ['exec'], shells: ['bash', 'powershell'] },
-		exec(request: ProcessRequest, context: BackendProcessContext) {
-			requests.push(request);
-			context.onOutput({
-				stream: 'stdout',
-				data: new TextEncoder().encode(output)
-			});
-
-			return Promise.resolve({
-				kind: 'exited',
-				exit: { kind: 'code', code: 0 }
-			});
-		},
-		dispose: () => Promise.resolve()
-	};
-
-	return { backend, requests };
-}
 
 function provider(backend: SandboxBackend): InlineExtension {
 	return {
@@ -739,7 +707,7 @@ it('preserves the current Pi Bash command prefix through sandbox execution', asy
 });
 
 it.each(['bash', 'powershell'])(
-	'describes finite startup and execution defaults for %s',
+	'describes finite sandbox and outside execution defaults for %s',
 	async (name) => {
 		await withPiRuntime(
 			[{ name: 'shell', factory: sandboxTools }],
@@ -752,7 +720,7 @@ it.each(['bash', 'powershell'])(
 					properties: {
 						timeout: {
 							description:
-								'Timeout in seconds for startup and execution. If omitted, startup allows 60 seconds and execution 120 seconds.'
+								'Timeout in seconds for startup and execution. Sandboxed execution allows 60 seconds for startup and 120 seconds for execution by default. Outside execution defaults to 120 seconds including approval; approval allows at most 60 seconds.'
 						}
 					}
 				});

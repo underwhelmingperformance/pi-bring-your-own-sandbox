@@ -1,3 +1,14 @@
+export type * from './approval-contracts.js';
+export {
+	ApprovalDeniedError,
+	ApprovalError,
+	ApprovalPolicyError,
+	ApprovalPolicyNotFoundError,
+	ApprovalUnavailableError,
+	DuplicateApprovalPolicyError,
+	InvalidApprovalRequestError,
+	isApprovalError
+} from './approval-errors.js';
 export { closeSandboxSession, getSandbox } from './client.js';
 export type * from './contracts.js';
 export {
@@ -26,7 +37,20 @@ export {
 	UnsupportedSandboxCapabilityError,
 	UnsupportedSandboxPolicyError
 } from './errors.js';
+export type {
+	ApprovalPolicyServiceV1,
+	ApprovalServiceV1,
+	ConfiguredApprovalPolicyV1
+} from './execution-approval.js';
+export {
+	APPROVAL_POLICY_CHANNEL,
+	APPROVAL_SERVICE_CHANNEL,
+	registerApprovalPolicy,
+	requestExecutionApproval
+} from './execution-approval.js';
 export { initialiseSandboxHost } from './host.js';
+export type { OutsideProviderServiceV1 } from './outside-execution.js';
+export { getOutsideSandboxExecutor } from './outside-execution.js';
 export type {
 	BrokerServiceV1,
 	BrokerState,

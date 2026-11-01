@@ -32,10 +32,10 @@ export abstract class SandboxError<Name extends string = string> extends Error {
 	readonly operation: SandboxOperation;
 
 	/**
-	The personal or project settings file associated with a configuration
+	The personal settings file associated with a configuration
 	error.
 	*/
-	declare readonly configurationSource?: 'personal' | 'project';
+	declare readonly configurationSource?: 'personal';
 
 	/**
 	Provider identity, when known before the failure.
@@ -175,9 +175,7 @@ export class InvalidSandboxConfigError extends SandboxError<'InvalidSandboxConfi
 			InvalidSandboxConfigError.errorName,
 			context.configurationSource === 'personal'
 				? 'Personal sandbox settings are invalid. Check byos.json.'
-				: context.configurationSource === 'project'
-					? 'Project sandbox settings are invalid. Check .pi/byos.json.'
-					: 'Sandbox settings are invalid. Check provider, policy and userShell in byos.json.',
+				: 'Sandbox settings are invalid. Check byos.json.',
 			context,
 			options
 		);

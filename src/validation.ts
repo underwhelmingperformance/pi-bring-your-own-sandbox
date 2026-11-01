@@ -6,6 +6,7 @@ import {
 	capabilitiesSchema,
 	checker,
 	nonEmptyStringSchema,
+	policySchema,
 	providerInfoSchema,
 	recordSchema,
 	recoverySchema,
@@ -16,6 +17,7 @@ export const isRecord = checker(recordSchema);
 export const isNonEmptyString = checker(nonEmptyStringSchema);
 export const isShell = checker(shellSchema);
 export const isCapabilities = checker(capabilitiesSchema);
+export const isPolicy = checker(policySchema);
 export const isProviderInfo = checker(providerInfoSchema);
 export const isRecovery = checker(recoverySchema);
 

@@ -12,6 +12,7 @@ export * as sdk from 'pi-bring-your-own-sandbox/api';
 export const apiUrl = import.meta.resolve('pi-bring-your-own-sandbox/api');
 interface ProviderState {
 	opens: number;
+	reviews: number;
 	calls: ProcessRequest[];
 	disposals: number;
 	isRunning: boolean;
@@ -19,6 +20,7 @@ interface ProviderState {
 
 export const state: ProviderState = {
 	opens: 0,
+	reviews: 0,
 	calls: [],
 	disposals: 0,
 	isRunning: false
@@ -109,9 +111,38 @@ export const provider: SandboxProvider<undefined> = {
 				return Promise.resolve();
 			}
 		});
+	},
+	outsideSandbox: {
+		label: 'Packed outside destination',
+		capabilities: { operations: ['exec'], shells: [] },
+		policy: {
+			workspaceAccess: 'read-write',
+			filesystemScope: 'provider-default',
+			networkAccess: 'provider-default'
+		},
+		open: (request, context) => provider.open(request, context)
 	}
 };
 
 export default function register(pi: SandboxHost): void {
 	sdk.registerSandboxProvider(pi, provider);
+	sdk.registerApprovalPolicy(pi, {
+		id: 'packed.review',
+		label: 'Packed reviewer',
+		protocolVersion: 1,
+		validateConfig(input) {
+			assert.deepEqual(input, {});
+		},
+		decide(request) {
+			assert.equal(request.destination.kind, 'provider');
+			assert.deepEqual(request.process, {
+				kind: 'argv',
+				executable: 'pwd',
+				args: []
+			});
+			state.reviews++;
+
+			return Promise.resolve({ kind: 'allow' });
+		}
+	});
 }

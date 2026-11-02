@@ -78,6 +78,15 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 						].join('\n');
 
 						content += `\n${selection}`;
+
+						if (
+							destination === 'normal' &&
+							settings.normalExecutor === undefined
+						) {
+							content += '\nOutside native Pi shell termination scope: none';
+						} else if (outside?.capabilities !== undefined) {
+							content += `\nOutside shell termination scope: ${outside.capabilities.terminationScope}`;
+						}
 					} catch (error) {
 						if (!isSandboxError(error) && !isApprovalError(error)) {
 							throw error;

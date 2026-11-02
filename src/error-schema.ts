@@ -20,7 +20,12 @@ export const operationSchema = Type.Enum([
 	'dispose'
 ]);
 
-const completionSchema = Type.Enum(['not-started', 'confirmed', 'unknown']);
+const completionSchema = Type.Enum([
+	'not-started',
+	'confirmed',
+	'unknown',
+	'not-guaranteed'
+]);
 const reasonSchema = Type.Enum(['caller', 'deadline', 'shutdown', 'output']);
 
 export const ordinaryErrorNameSchema = Type.Enum([
@@ -80,7 +85,9 @@ const errorVariantsSchema = Type.Union([
 	})
 ]);
 
-export const errorSchema = Type.Intersect([
-	errorContextSchema,
-	errorVariantsSchema
-]);
+export const errorSchema = Type.Refine(
+	Type.Intersect([errorContextSchema, errorVariantsSchema]),
+	(error) =>
+		!('completion' in error && error.completion === 'not-guaranteed') ||
+		error.operation === 'exec'
+);

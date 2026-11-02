@@ -31,6 +31,7 @@ function fixture(
 		},
 		capabilities: {
 			processKinds: ['argv', 'shell'],
+			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: ['exec'],
 			shells: ['sh']

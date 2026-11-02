@@ -16,7 +16,7 @@ import {
 	UnconfirmedSandboxTerminationError
 } from './errors.js';
 import { requestExecutionApproval } from './execution-approval.js';
-import { OperationScope, settleOperation } from './lifecycle.js';
+import { OperationScope } from './lifecycle.js';
 import {
 	getOutsideSandboxExecutor,
 	outsideExecutionLifetime,
@@ -25,6 +25,7 @@ import {
 import { piProcessResult } from './pi-process-result.js';
 import { throwShellOperationError } from './pi-shell-operations.js';
 import { runtimeSettings } from './runtime-settings.js';
+import { settleProcess } from './termination-scope.js';
 
 export function outsideShellOperations(
 	pi: ExtensionAPI,
@@ -101,7 +102,7 @@ export function outsideShellOperations(
 							throw new ApprovalDeniedError();
 						}
 
-						const result = await settleOperation(
+						const result = await settleProcess(
 							scope,
 							normal.exec(command, executor.destination.workspace.root, {
 								...options,
@@ -113,7 +114,8 @@ export function outsideShellOperations(
 								...(environment !== undefined && { env: environment }),
 								signal: scope.context.signal,
 								timeout: scope.remainingMs / 1000
-							})
+							}),
+							'none'
 						);
 
 						if (result.kind === 'abandoned') {
@@ -122,11 +124,11 @@ export function outsideShellOperations(
 							});
 						}
 
-						scope.check('confirmed');
-
 						if (result.kind === 'rejected') {
 							throw result.error;
 						}
+
+						scope.check('not-guaranteed');
 
 						return result.value;
 					}

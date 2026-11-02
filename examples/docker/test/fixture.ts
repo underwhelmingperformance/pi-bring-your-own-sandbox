@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import type {
+	ProcessRequest,
 	SandboxBackend,
 	SandboxOperationContext,
 	SandboxPolicy
@@ -50,6 +51,23 @@ export function operationContext(): SandboxOperationContext {
 		deadline: Date.now() + 30_000
 	};
 }
+
+export const cancellationRequest: ProcessRequest = {
+	kind: 'argv',
+	executable: '/usr/local/bin/node',
+	args: [
+		'-e',
+		`
+const { spawn } = require('node:child_process');
+const child = spawn(process.execPath, ['-e', 'process.stdout.write("ready"); setInterval(() => {}, 1000);'], {
+  detached: true,
+  stdio: ['ignore', 'inherit', 'inherit']
+});
+child.on('error', error => { throw error; });
+child.on('exit', code => { process.exitCode = code ?? 1; });
+`
+	]
+};
 
 export class DockerFixture {
 	static async create(workspace?: string): Promise<DockerFixture> {
@@ -332,11 +350,7 @@ export class DockerFixture {
 				}
 			},
 			cancellation: {
-				request: {
-					kind: 'shell',
-					dialect: 'sh',
-					command: '(printf ready; while :; do sleep 1; done) & wait'
-				},
+				request: cancellationRequest,
 				ready: encode('ready'),
 				verifyStopped: () => this.noJobContainers()
 			},

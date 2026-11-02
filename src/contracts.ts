@@ -11,7 +11,11 @@ import type {
 } from './error-schema.js';
 import type { environmentSchema } from './request-schemas.js';
 import type { processExitSchema } from './result-schemas.js';
-import type { capabilitySchema, shellSchema } from './schemas.js';
+import type {
+	capabilitySchema,
+	shellSchema,
+	terminationScopeSchema
+} from './schemas.js';
 
 /**
 Pi's event bus, lifecycle handlers and diagnostic writers, supplied by a live
@@ -57,6 +61,14 @@ Request forms accepted by a provider. Shell dialects are advertised separately.
 */
 export type ProcessKind = ProcessRequest['kind'];
 /**
+Processes that must have stopped before execution completes or cancellation is
+acknowledged. `none` waits for the command's normal result but promises no
+termination on cancellation. `process-group` covers the direct process and its
+supervised POSIX group. `workload` also covers descendants that change group or
+session. Access restrictions and allocation disposal are independent.
+*/
+export type TerminationScope = Static<typeof terminationScopeSchema>;
+/**
 Operation groups that consumers can require before using a shared backend.
 */
 export type SandboxCapability = Static<typeof capabilitySchema>;
@@ -66,6 +78,11 @@ Implemented operations and shell dialects. An opened
 backend may advertise a subset of its provider declaration.
 */
 export interface SandboxCapabilities {
+	/**
+	Minimum termination scope guaranteed for every invocation. An opened backend
+	may strengthen the provider declaration, but cannot weaken it.
+	*/
+	readonly terminationScope: TerminationScope;
 	/**
 	Accepted request forms. At least one form must be available.
 	*/
@@ -238,6 +255,11 @@ Requirements checked against the selected, shared backend. Requirements do
 not select another provider or reconfigure an existing backend.
 */
 export interface SandboxAcquireOptions extends SandboxOperationOptions {
+	/**
+	Minimum execution termination scope. Omitting this requirement accepts any
+	declared scope and does not change the selected provider.
+	*/
+	readonly terminationScope?: TerminationScope;
 	/**
 	Request forms that must be available on the shared backend.
 	*/
@@ -484,18 +506,19 @@ can derive a shell status without using the host signal table.
 export type ProcessExit = Readonly<Static<typeof processExitSchema>>;
 
 /**
-Provider acknowledgement of a stopped foreground job and its supported
-descendants. Detached jobs are unsupported. Passthrough supervises the original
-POSIX process group; descendants that create another session or process group
-can continue after completion, cancellation or disposal. An exited result or
-confirmed cancellation excludes later effects from supported foreground work.
-Unconfirmed termination makes the backend unhealthy; the operation must not be replayed.
+Provider execution result under its declared termination scope. Normal results
+include the command's exit details. Confirmed cancellation certifies termination
+within `process-group` or `workload`; it never means merely submitting a signal.
+Providers declaring `none` report `not-guaranteed` for cancellation. Descendants
+outside a guaranteed scope may continue changing permitted files after the call
+returns. Unconfirmed termination within a promised scope makes the backend
+unhealthy; the operation must not be replayed.
 */
 export type BackendProcessOutcome =
 	| { readonly kind: 'exited'; readonly exit: ProcessExit }
 	| {
 			readonly kind: 'cancelled';
-			readonly termination: 'confirmed' | 'unconfirmed';
+			readonly termination: 'confirmed' | 'unconfirmed' | 'not-guaranteed';
 	  };
 
 /**
@@ -952,8 +975,9 @@ export interface SandboxBackend {
 	readonly recovery: RecoveryDescriptor;
 
 	/**
-	Run a foreground job. Resolve only after the job and its supported
-	descendants have stopped, or explicitly report unconfirmed termination.
+	Run a command under the advertised termination scope. Normal completion
+	requires the command's result and termination within any promised scope.
+	Cancellation under `none` need not wait for termination acknowledgement.
 	Detached jobs are excluded as specified by `BackendProcessOutcome`.
 	*/
 	readonly exec: (
@@ -1162,13 +1186,15 @@ replace it.
 */
 export type CancellationReason = 'caller' | 'deadline' | 'shutdown' | 'output';
 /**
-Whether provider work began and whether further effects have been ruled out.
-`not-started` excludes provider invocation; `confirmed` excludes later
-effects from supported work. For execution, detached descendants are excluded
-as specified by `BackendProcessOutcome`. `unknown` requires quarantining the
-backend for mutations or execution.
+Whether provider work began and whether completion was acknowledged.
+`not-started` excludes provider invocation. For execution, `confirmed` excludes
+later effects within the backend's declared termination scope. `not-guaranteed`
+is valid only for execution under scope `none` and does not make the backend
+unhealthy. File mutations still require that all effects have stopped.
+`unknown` requires quarantining the backend for mutations or execution.
 */
-export type OperationCompletion = 'not-started' | 'confirmed' | 'unknown';
+export type OperationCompletion =
+	'not-started' | 'confirmed' | 'unknown' | 'not-guaranteed';
 /**
 SDK operations recorded in error context and provider operation identities.
 */
@@ -1267,8 +1293,9 @@ attention.
 */
 export interface SandboxCloseReport {
 	/**
-	True only when generation-owned work and allocation cleanup are both
-	confirmed.
+	True only when broker operations have finished under their declared
+	termination scopes and allocation cleanup is confirmed. This does not
+	guarantee that processes outside those scopes have stopped.
 	*/
 	readonly confirmed: boolean;
 

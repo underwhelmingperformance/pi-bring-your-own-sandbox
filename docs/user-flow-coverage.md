@@ -103,3 +103,15 @@ tests do not claim confinement of arbitrary extension code or Windows host
 process-tree support.
 
 [pi]: pi-integration.md
+
+Termination-scope integration exercises cancellation without a guarantee on the
+ordinary sandbox and both outside destinations. It checks immediate
+cancellation, continued use after a late provider failure, rejected workload
+requirements and independent allocation disposal. Registration integration
+checks scope requirements and structural cancellation errors across independent
+SDK copies. The passthrough tests include a waiting parent whose child starts a
+new session; the child remains outside the declared process-group scope.
+
+The real Docker conformance and SDK session tests use a waiting parent with a
+child in a new POSIX session. They verify workload cancellation for caller
+abort, expiry and output-callback failure through independent container checks.

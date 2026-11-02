@@ -19,6 +19,7 @@ defineSandboxProviderTests({
   capabilities: {
     processKinds: ['argv', 'shell'],
     exitStatus: 'guaranteed',
+    terminationScope: 'workload',
     operations: ['exec', 'files.read', 'files.write', 'files.list'],
     shells: ['sh']
   },
@@ -55,15 +56,15 @@ calls, including when cleanup is already complete.
 | `write`           | A missing directory and file for a writable scenario, plus an independent callback that reads the resulting target file. The suite creates parents, writes binary bytes and overwrites the file with shorter content. A read-only scenario must reject a write with a typed permission error. |
 | `list`            | A seeded directory, its complete metadata and immediate children. Listing order is ignored.                                                                                                                                                                                                   |
 | `find` and `grep` | Queries and complete expected results under the provider's documented search rules. Include exact-limit and truncated results, plus context and matching options where supported.                                                                                                             |
-| `cancellation`    | A long-running job, a stdout readiness marker and an independent `verifyStopped` callback. Emit the marker after foreground descendants have started.                                                                                                                                         |
+| `cancellation`    | A long-running job and a stdout readiness marker. Promised termination scopes also require an independent `verifyStopped` callback. Emit the marker after the processes under test have started.                                                                                              |
 | `verifyPolicy`    | Independent negative tests for all requested restrictions. Required for read-only, workspace-only and denied-network scenarios. The callback receives the backend and a deadline context.                                                                                                     |
 | `verifyDisposed`  | An independent check that generation-owned resources have been released after disposal resolves.                                                                                                                                                                                              |
 | `cleanup`         | Unconditional fixture teardown, including recovery from failed opening or disposal.                                                                                                                                                                                                           |
 
 The suite requires probes for every selected capability. Configuration errors,
 missing methods, inconsistent capabilities, unsupported effective policies,
-incorrect output and unconfirmed cancellation fail the tests. Typed errors are
-recognised across separately installed SDK copies.
+incorrect output and unconfirmed cancellation within a promised scope fail the
+tests. Typed errors are recognised across separately installed SDK copies.
 
 Opening, each test case and fixture cleanup receive separate `timeoutMs`
 deadlines, with a default of ten seconds per stage. The `cleanup` option selects
@@ -71,12 +72,13 @@ deadlines, with a default of ten seconds per stage. The `cleanup` option selects
 five and ten seconds. Each cleanup budget must be an integer from 1 to 300,000
 milliseconds. Cancellation contexts publish the selected grace, and disposal
 contexts use the selected disposal timeout. `timeoutMs` still bounds the whole
-test case, so allow enough time for the cancellation probe to start and stop. If
-a provider ignores cancellation, the stage fails at its deadline. A timeout does
-not establish that a target stopped. Independent fixture cleanup must release
-resources even when opening fails or a transport stops responding. If fixture
-setup fails before returning, the setup callback must clean up its partial
-allocation.
+test case, so allow enough time for the cancellation probe to start and, when
+termination is promised, stop. A promised termination scope must acknowledge
+cancellation within the selected cleanup grace. Scope `none` returns without
+waiting for an acknowledgement. A timeout does not establish that a target
+stopped. Independent fixture cleanup must release resources even when opening
+fails or a transport stops responding. If fixture setup fails before returning,
+the setup callback must clean up its partial allocation.
 
 The suite runs teardown after a failed assertion or metadata check. If teardown
 also fails, an `AggregateError` preserves the original failure and the cleanup
@@ -98,10 +100,16 @@ denied-network policy, attempt a controlled connection and check the connection
 result. For a read-only policy, attempt mutations and verify unchanged target
 contents. Include symlink escapes in runtime-specific tests.
 
-`verifyStopped` must establish that the foreground job and its descendants have
-stopped. A transport promise rejecting, or the backend returning a confirmed
-result, is insufficient evidence. `verifyDisposed` should inspect allocations
-through the runtime's management interface or another independent observer.
+For `process-group` and `workload`, `verifyStopped` must independently establish
+termination within the advertised scope. Include a waiting parent with a child
+that creates another session in runtime-specific tests. A workload provider must
+stop that child; a process-group provider may leave it running with the same
+access restrictions. Fixture cleanup must independently stop surviving children.
+For `none`, omit `verifyStopped`; the suite requests cancellation and verifies
+`not-guaranteed` without waiting for termination. A transport promise rejecting,
+or the backend returning a confirmed result, is insufficient evidence.
+`verifyDisposed` should inspect allocations through the runtime's management
+interface or another independent observer.
 
 The repository runs the common execution, shell and cancellation cases against
 two deterministic providers. One records direct calls and maintains an in-memory

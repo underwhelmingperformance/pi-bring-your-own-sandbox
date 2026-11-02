@@ -19,6 +19,7 @@ function fixture(exitStatus: 'guaranteed' | 'optional' = 'optional') {
 			operations: ['exec'],
 			processKinds: ['shell'],
 			shells: ['bash'],
+			terminationScope: 'workload',
 			exitStatus
 		},
 		exec
@@ -98,6 +99,7 @@ it.each([
 	expect(
 		isCapabilities({
 			operations: ['exec'],
+			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			...capabilities
 		})

@@ -448,6 +448,7 @@ it.each(['normal', 'provider'] as const)(
 				operations: ['exec'],
 				processKinds: ['shell'],
 				shells: ['bash'],
+				terminationScope: 'workload',
 				exitStatus: 'guaranteed'
 			},
 			exec: execute

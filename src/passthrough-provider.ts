@@ -9,6 +9,7 @@ export const passthroughProvider: ProviderServiceV1 =
 		label: 'Host execution without isolation',
 		capabilities: {
 			processKinds: ['argv', 'shell'],
+			terminationScope: 'process-group',
 			exitStatus: 'guaranteed',
 			operations: [
 				'exec',

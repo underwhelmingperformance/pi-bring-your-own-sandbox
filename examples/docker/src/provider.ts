@@ -58,6 +58,7 @@ class DockerBackend implements SandboxBackend {
 	} as const;
 	readonly capabilities = {
 		processKinds: ['argv', 'shell'],
+		terminationScope: 'workload',
 		exitStatus: 'guaranteed',
 		operations: ['exec'],
 		shells: ['sh', 'bash']
@@ -347,6 +348,7 @@ export function createDockerProvider(
 		protocolVersion: 1,
 		capabilities: {
 			processKinds: ['argv', 'shell'],
+			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: ['exec'],
 			shells: ['sh', 'bash']

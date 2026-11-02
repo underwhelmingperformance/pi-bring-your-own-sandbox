@@ -76,11 +76,14 @@ after registration. Arrays contain unique supported literals; capabilities
 always include `exec`. Shell dialects require execution support.
 
 Execution metadata also requires non-empty `processKinds` (`argv`, `shell`, or
-both) and `exitStatus` (`guaranteed` or `optional`). Shell dialects are
-non-empty exactly when `processKinds` includes `shell`. Acquisition can require
-`processKinds`, `shells` and `exitStatus: "guaranteed"`. Unsupported requests
-fail before provider invocation. An optional-status provider may open a backend
-with guaranteed status; a guaranteed provider cannot weaken that guarantee.
+both), `exitStatus` (`guaranteed` or `optional`) and `terminationScope` (`none`,
+`process-group` or `workload`). Shell dialects are non-empty exactly when
+`processKinds` includes `shell`. Acquisition can require `processKinds`,
+`shells`, `exitStatus: "guaranteed"` and a minimum `terminationScope`.
+Termination scopes increase from `none` through `process-group` to `workload`;
+an opened backend cannot weaken its declaration. Unsupported requests fail
+before provider invocation. An optional-status provider may open a backend with
+guaranteed status; a guaranteed provider cannot weaken that guarantee.
 
 An opened backend may advertise fewer capabilities than its provider. It must
 not advertise an undeclared capability, dialect or policy value. Its effective
@@ -173,7 +176,7 @@ Failure to start remains a typed operation error, distinct from a target exit
 status, including code 127.
 
 `ProcessExit` also accepts `{ kind: "unavailable" }` for optional-status
-backends. The foreground completion guarantee is unchanged. Unavailable details
+backends. Completion follows the declared termination scope. Unavailable details
 do not mean success or uncertain termination, and do not quarantine a healthy
 backend. A guaranteed-status backend returning this variant violates its
 declaration. Pi shell adapters convert this variant to `exitCode: null`, which
@@ -384,13 +387,21 @@ automatically.
 
 Cancellation errors include `reason: 'caller' | 'shutdown'` and completion.
 Timeouts set reason `deadline`; output callback errors set reason `output`.
-Transport errors and unconfirmed termination set completion `unknown`, with an
-optional original cancellation reason. Completion `confirmed` means that no
-later effect can occur from supported work; `not-started` means that provider
-invocation never began. Process completion excludes detached jobs. Passthrough
-supervises the original POSIX process group, so descendants that create another
-session or group can continue after completion, cancellation or disposal. An
-unknown mutation or execution outcome makes the backend unhealthy.
+Transport errors and unconfirmed termination within a promised scope set
+completion `unknown`, with an optional original cancellation reason.
+`not-started` excludes provider invocation. For execution, `confirmed` excludes
+later effects within the backend's declared termination scope. `process-group`
+covers the direct process and its supervised POSIX group; `workload` also covers
+descendants that change group or session. Those descendants may continue under
+`process-group`, including when their parent waited for them.
+
+Scope `none` makes no termination promise. Cancellation returns without waiting
+for an acknowledgement and uses completion `not-guaranteed`, which is valid only
+for execution and does not quarantine the backend. Late results are observed
+without output delivery or health changes. A backend with a stronger scope must
+not report `not-guaranteed`. Normal completion still waits for the command's
+result. Unknown mutation or promised execution completion remains unhealthy.
+Allocation disposal remains a separate obligation for every scope.
 
 For example, a provider reports a known missing executable with
 `new SandboxPathNotFoundError({ operation: 'exec', providerId }, { cause })`. A

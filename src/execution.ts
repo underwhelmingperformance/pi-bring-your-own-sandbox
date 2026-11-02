@@ -24,7 +24,7 @@ import type {
 	OperationRegistry,
 	Settlement
 } from './lifecycle.js';
-import { OperationScope, settleOperation } from './lifecycle.js';
+import { OperationScope } from './lifecycle.js';
 import {
 	DEFAULT_EXEC_TIMEOUT_MS,
 	MAX_CAPTURE_BYTES,
@@ -34,6 +34,7 @@ import {
 import type { DiagnosticReporter } from './provider-diagnostics.js';
 import { processOutcomeSchema, processOutputSchema } from './result-schemas.js';
 import { checker } from './schemas.js';
+import { settleProcess } from './termination-scope.js';
 import { isRecord } from './validation.js';
 
 export interface BackendOwner {
@@ -111,6 +112,14 @@ function executionOutcome(
 			throw unknownCompletion(owner, scope, error, SandboxTransportError);
 		}
 
+		if (
+			'completion' in error &&
+			error.completion === 'not-guaranteed' &&
+			owner.backend.capabilities.terminationScope !== 'none'
+		) {
+			throw unknownCompletion(owner, scope, error, SandboxTransportError);
+		}
+
 		if (scope.reason !== undefined) {
 			if ('completion' in error) {
 				throw scope.cancellationError(error.completion);
@@ -140,7 +149,9 @@ function executionOutcome(
 
 	if (
 		result.value.kind === 'cancelled' &&
-		result.value.termination === 'unconfirmed'
+		(result.value.termination === 'unconfirmed' ||
+			(result.value.termination === 'not-guaranteed' &&
+				owner.backend.capabilities.terminationScope !== 'none'))
 	) {
 		throw unknownCompletion(owner, scope);
 	}
@@ -241,11 +252,12 @@ export async function executeProcess(
 		};
 
 		try {
-			const result = await settleOperation(
+			const result = await settleProcess(
 				scope,
 				Promise.try(() =>
 					owner.backend.exec(snapshot, { ...scope.context, onOutput })
-				)
+				),
+				owner.backend.capabilities.terminationScope
 			);
 			const outcome = executionOutcome(owner, scope, result);
 

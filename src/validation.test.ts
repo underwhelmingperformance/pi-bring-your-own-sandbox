@@ -13,6 +13,7 @@ it.each(['operations', 'shells'] as const)(
 
 		const capabilities = {
 			processKinds: ['argv'],
+			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: ['exec', 'search.find'],
 			shells: [],

@@ -63,6 +63,7 @@ function fixture(
 		workspace: { ...memory.workspace, root: '/work' },
 		capabilities: {
 			processKinds: ['argv', 'shell'] as const,
+			terminationScope: 'workload' as const,
 			exitStatus: 'guaranteed' as const,
 			operations: ['exec'] as const,
 			shells: ['bash', 'powershell'] as const

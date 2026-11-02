@@ -387,6 +387,7 @@ it('omits search capabilities when ripgrep is unavailable and never downloads a 
 
 	expect(sandbox.capabilities).toStrictEqual({
 		processKinds: ['argv'],
+		terminationScope: 'process-group',
 		exitStatus: 'guaranteed',
 		operations: ['exec', 'files.read', 'files.write', 'files.list'],
 		shells: []

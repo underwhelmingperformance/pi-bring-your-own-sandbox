@@ -21,6 +21,7 @@ import {
 	shellSchema,
 	targetPathSchema
 } from './schemas.js';
+import { isTerminationScopeSatisfied } from './termination-scope.js';
 
 export function absolutePathSchema(flavor: 'posix' | 'win32') {
 	return Type.Refine(targetPathSchema, (value) =>
@@ -104,6 +105,14 @@ export function providerBackendSchema(provider: ProviderInfo) {
 		networkAccess: Type.Enum([...provider.policies.networkAccess])
 	});
 	const capabilities = Type.Object({
+		terminationScope: Type.Refine(
+			capabilitiesSchema.properties.terminationScope,
+			(scope) =>
+				isTerminationScopeSatisfied(
+					scope,
+					provider.capabilities.terminationScope
+				)
+		),
 		operations: denseArray(operations),
 		shells: denseArray(shells),
 		processKinds: denseArray(

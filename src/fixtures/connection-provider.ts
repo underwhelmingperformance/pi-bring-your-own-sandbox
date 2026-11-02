@@ -10,6 +10,7 @@ export const connectionProvider: SandboxProvider<ConnectionConfig> = {
 	protocolVersion: 1,
 	capabilities: {
 		processKinds: ['argv', 'shell'],
+		terminationScope: 'workload',
 		exitStatus: 'guaranteed',
 		operations: ['exec'],
 		shells: ['sh']
@@ -45,6 +46,7 @@ export const connectionProvider: SandboxProvider<ConnectionConfig> = {
 			},
 			capabilities: {
 				processKinds: ['argv', 'shell'],
+				terminationScope: 'workload',
 				exitStatus: 'guaranteed',
 				operations: ['exec'],
 				shells: ['sh']

@@ -33,6 +33,7 @@ it('accepts an independently authored provider on the actual Pi event bus', () =
 			label: 'Independent protocol fixture',
 			capabilities: {
 				processKinds: ['argv'],
+				terminationScope: 'workload',
 				exitStatus: 'guaranteed',
 				operations: ['exec'],
 				shells: []
@@ -67,6 +68,7 @@ it('snapshots metadata from an independent peer before asynchronous work', () =>
 		{
 			capabilities: {
 				processKinds: ['argv'],
+				terminationScope: 'workload',
 				exitStatus: 'guaranteed',
 				operations: ['exec'],
 				shells: []
@@ -157,6 +159,7 @@ it.each([
 				...providerReply().service,
 				capabilities: {
 					processKinds: ['argv'],
+					terminationScope: 'workload',
 					exitStatus: 'guaranteed',
 					operations: [],
 					shells: []
@@ -173,6 +176,7 @@ it.each([
 				...providerReply().service,
 				capabilities: {
 					processKinds: ['argv'],
+					terminationScope: 'workload',
 					exitStatus: 'guaranteed',
 					operations: ['exec', 'pty'],
 					shells: []

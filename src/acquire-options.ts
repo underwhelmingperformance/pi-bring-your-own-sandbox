@@ -8,6 +8,7 @@ import {
 import { operationOptions } from './file-input.js';
 import { acquireOptionsSchema } from './request-schemas.js';
 import { checker } from './schemas.js';
+import { isTerminationScopeSatisfied } from './termination-scope.js';
 
 const isAcquireOptions = checker(acquireOptionsSchema);
 
@@ -25,6 +26,9 @@ export function acquireOptions(input: unknown): SandboxAcquireOptions {
 
 	return Object.freeze({
 		...options,
+		...(value.terminationScope !== undefined && {
+			terminationScope: value.terminationScope
+		}),
 		...(value.processKinds !== undefined && {
 			processKinds: Object.freeze([...value.processKinds])
 		}),
@@ -62,6 +66,11 @@ export function checkRequirements(
 	};
 
 	if (
+		(options.terminationScope !== undefined &&
+			!isTerminationScopeSatisfied(
+				sandbox.capabilities.terminationScope,
+				options.terminationScope
+			)) ||
 		options.processKinds?.some(
 			(kind) => !sandbox.capabilities.processKinds.includes(kind)
 		) ||

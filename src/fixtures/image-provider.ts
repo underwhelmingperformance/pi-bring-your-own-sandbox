@@ -10,6 +10,7 @@ export const imageProvider: SandboxProvider<ImageConfig> = {
 	protocolVersion: 1,
 	capabilities: {
 		processKinds: ['argv'],
+		terminationScope: 'workload',
 		exitStatus: 'guaranteed',
 		operations: ['exec'],
 		shells: []
@@ -44,6 +45,7 @@ export const imageProvider: SandboxProvider<ImageConfig> = {
 			},
 			capabilities: {
 				processKinds: ['argv'],
+				terminationScope: 'workload',
 				exitStatus: 'guaranteed',
 				operations: ['exec'],
 				shells: []

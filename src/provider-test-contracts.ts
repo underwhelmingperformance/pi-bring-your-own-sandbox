@@ -158,9 +158,10 @@ export interface SandboxProviderTestFixture {
 		*/
 		readonly ready: Uint8Array;
 		/**
-		Independently verify that the job and descendants have stopped.
+		Independently verify termination within the backend's advertised scope.
+		Required for `process-group` and `workload`; unused for `none`.
 		*/
-		readonly verifyStopped: () => Promise<void>;
+		readonly verifyStopped?: () => Promise<void>;
 	};
 	/**
 	Independent negative tests for every requested restrictive policy. Required

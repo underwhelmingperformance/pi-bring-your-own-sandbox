@@ -57,6 +57,11 @@ export const capabilitySchema = Type.Enum([
 ]);
 export const processKindSchema = Type.Enum(['argv', 'shell']);
 export const exitStatusSchema = Type.Enum(['guaranteed', 'optional']);
+export const terminationScopeSchema = Type.Enum([
+	'none',
+	'process-group',
+	'workload'
+]);
 
 const capabilitiesShape = Type.Object({
 	operations: denseArray(capabilitySchema, {
@@ -68,7 +73,8 @@ const capabilitiesShape = Type.Object({
 		minItems: 1,
 		uniqueItems: true
 	}),
-	exitStatus: exitStatusSchema
+	exitStatus: exitStatusSchema,
+	terminationScope: terminationScopeSchema
 });
 
 export const capabilitiesSchema = Type.Refine(

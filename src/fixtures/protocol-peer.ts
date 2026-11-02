@@ -11,6 +11,7 @@ export function providerReply(id = 'independent') {
 			label: 'Independent protocol fixture',
 			capabilities: {
 				processKinds: ['argv'],
+				terminationScope: 'workload',
 				exitStatus: 'guaranteed',
 				operations: ['exec'],
 				shells: []

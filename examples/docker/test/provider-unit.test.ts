@@ -331,6 +331,7 @@ it('uses literal argv, isolated mounts and explicit target environment overrides
 		outcome: { kind: 'exited', exit: { kind: 'code', code: 7 } },
 		capabilities: {
 			processKinds: ['argv', 'shell'],
+			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: ['exec'],
 			shells: ['sh', 'bash']

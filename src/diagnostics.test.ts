@@ -32,6 +32,7 @@ it('shows a configured shell that the ready backend does not support', () => {
 			'Target: /remote/project (remote)',
 			'Effective policy: workspace read-write; filesystem provider-default; network provider-default',
 			'Operations: exec, files.read, files.write, files.list',
+			'Termination scope: workload',
 			'Shells: none',
 			'User shell: powershell (configured; unavailable on this backend)',
 			'Boundary: In-memory test fixture; no OS isolation.'

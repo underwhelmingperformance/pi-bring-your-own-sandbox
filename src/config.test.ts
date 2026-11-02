@@ -223,6 +223,7 @@ function service(id: string): ProviderServiceV1 {
 		label: id,
 		capabilities: {
 			processKinds: ['argv'],
+			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: ['exec'],
 			shells: []

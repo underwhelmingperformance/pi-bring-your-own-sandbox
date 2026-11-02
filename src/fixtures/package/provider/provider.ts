@@ -32,6 +32,7 @@ export const provider: SandboxProvider<undefined> = {
 	protocolVersion: 1,
 	capabilities: {
 		processKinds: ['argv'],
+		terminationScope: 'workload',
 		exitStatus: 'guaranteed',
 		operations: ['exec'],
 		shells: []
@@ -60,6 +61,7 @@ export const provider: SandboxProvider<undefined> = {
 			},
 			capabilities: {
 				processKinds: ['argv'],
+				terminationScope: 'workload',
 				exitStatus: 'guaranteed',
 				operations: ['exec'],
 				shells: []
@@ -126,6 +128,7 @@ export const provider: SandboxProvider<undefined> = {
 		label: 'Packed outside destination',
 		capabilities: {
 			processKinds: ['argv'],
+			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: ['exec'],
 			shells: []

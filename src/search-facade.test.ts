@@ -15,6 +15,7 @@ function fixture(findResult: unknown, grepResult: unknown) {
 	const calls: unknown[] = [];
 	const capabilities: SandboxCapabilities = {
 		processKinds: ['argv'],
+		terminationScope: 'workload',
 		exitStatus: 'guaranteed',
 		operations: ['exec', 'search.find', 'search.grep'],
 		shells: []

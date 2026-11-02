@@ -57,6 +57,7 @@ export default async function approvalRpcFixture(
 	} as const;
 	const capabilities = {
 		processKinds: ['argv', 'shell'],
+		terminationScope: 'workload',
 		exitStatus: 'guaranteed',
 		operations: ['exec'],
 		shells: ['bash', 'powershell']

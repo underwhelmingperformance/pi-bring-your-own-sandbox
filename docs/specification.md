@@ -358,14 +358,14 @@ ordinary consumer call is `getSandbox(pi, ctx, { signal })`; it works with
 default host execution or the user's configured provider. No provider-specific
 branch or separate opt-in to the framework is required in the consumer.
 `SandboxAcquireOptions` contains optional `capabilities`, `processKinds`,
-`shells`, `exitStatus` and `policy` requirements, plus an explicit caller
-`signal` and waiting `timeoutMs`. The waiting deadline defaults to 60 seconds.
-It limits this acquisition only; the broker independently owns the shared
-provisioning deadline. A cancelled waiter rejects immediately without cancelling
-provisioning for other consumers. If all waiters cancel, provisioning continues
-under the broker's deadline and the resulting backend remains available for this
-generation. Shutdown still cancels provisioning. Check abort again before
-returning a facade.
+`shells`, `exitStatus`, `terminationScope` and `policy` requirements, plus an
+explicit caller `signal` and waiting `timeoutMs`. The waiting deadline defaults
+to 60 seconds. It limits this acquisition only; the broker independently owns
+the shared provisioning deadline. A cancelled waiter rejects immediately without
+cancelling provisioning for other consumers. If all waiters cancel, provisioning
+continues under the broker's deadline and the resulting backend remains
+available for this generation. Shutdown still cancels provisioning. Check abort
+again before returning a facade.
 
 The facade exposes immutable identity, workspace, effective policy and
 capabilities, plus methods for supported operations. It does not expose the
@@ -509,28 +509,57 @@ Compose the caller signal, deadline and broker lifetime signal. Provider opening
 uses only the broker's provisioning deadline and lifetime signal. Each waiting
 acquisition has its independent cancellation signal and deadline.
 
+Every provider and backend declares `terminationScope`, independently of access
+restrictions and exit-status availability:
+
+- `none` waits for a normal command result but makes no termination guarantee.
+  Cancellation returns without waiting for a termination acknowledgement and
+  reports completion `not-guaranteed`. The backend remains usable.
+- `process-group` confirms that the direct process and its supervised POSIX
+  process group have stopped. Descendants that change group or session may
+  continue running and modifying permitted files, even when their parent waited
+  for them.
+- `workload` confirms that all processes in the invocation's execution boundary
+  have stopped, including descendants that change group or session.
+
+Acquisition can require a minimum `terminationScope`. The ordering is `none`,
+`process-group`, then `workload`. An opened backend may strengthen its
+provider's scope but cannot weaken it. Omitting a requirement accepts any
+declared scope. The broker never changes providers to satisfy a consumer
+requirement. Passthrough implements `process-group`; the container example
+implements `workload`. Both use the same validation and execution contracts as
+extensions.
+
 For backend process execution, specify an explicit `BackendProcessOutcome`:
 
-- `exited` includes exit details, which may be unavailable for optional-status
-  backends, and certifies that the foreground process and its supported
-  foreground descendants have stopped.
-- `cancelled` includes `termination: "confirmed" | "unconfirmed"`. Confirmed
-  certifies that the supported foreground process tree has stopped; aborting a
-  transport request or merely submitting a kill request cannot produce that
-  acknowledgement.
+- `exited` includes the command's exit details, which may be unavailable for
+  optional-status backends, and confirms termination within any promised scope.
+- `cancelled` reports `confirmed` or `unconfirmed` for a promised scope, or
+  `not-guaranteed` for scope `none`. Submitting a signal or aborting a transport
+  request does not confirm termination.
 
-Caller abort, deadline and broker shutdown all request backend cancellation and
-allow a configurable grace period for confirmation, defaulting to five seconds.
-A confirmed result produces the original cancellation/deadline error for the
-consumer. Unconfirmed termination, an unexpected rejection or failure to respond
-within the grace period marks the backend unhealthy and rejects further work.
-Report the original cancellation cause and uncertainty together; remote work may
-remain. Stop forwarding output when the consumer operation completes, even if a
-broken provider keeps emitting. A promise race alone is not process
-cancellation. Detached background processes are unsupported. Passthrough
-supervises the original POSIX process group. A descendant that creates another
-session or process group is outside that completion guarantee and may continue
-after cancellation or disposal.
+Caller abort, deadline and broker shutdown request cancellation. Providers with
+a promised termination scope have a configurable grace period for confirmation,
+defaulting to five seconds. Late acknowledgements, unconfirmed termination and
+unexpected failures make the backend unhealthy. Confirmed cancellation produces
+the original cancellation or deadline error with completion `confirmed`.
+
+For scope `none`, cancellation produces that error with completion
+`not-guaranteed` as soon as the broker processes cancellation. The broker
+observes late provider results without forwarding output or changing backend
+health. This declared lack of a termination guarantee is distinct from an
+unknown outcome when a provider fails to fulfil its promise. Normal results and
+provider errors before cancellation still require valid protocol values.
+
+Pi's native outside-shell operations provide no BYOS termination acknowledgement
+and use scope `none`. SDK outside execution uses the selected backend's declared
+scope. Status distinguishes the native Pi route from the SDK backend. The
+framework delegates native shell execution to Pi.
+
+Generation disposal remains independently bounded and must release the
+provider's allocations. A confirmed close report does not promise termination
+outside the advertised scope. Detached submission, PTYs and interactive stdin
+remain outside this execution API.
 
 For file mutations, a provider's cancellation error must state whether
 completion is confirmed. Confirmed means that the operation can no longer change

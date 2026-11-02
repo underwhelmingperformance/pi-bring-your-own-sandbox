@@ -56,6 +56,7 @@ export function formatStatus(status: SandboxStatus): string {
 	if (status.capabilities !== undefined) {
 		lines.push(
 			`Operations: ${list(status.capabilities.operations)}`,
+			`Termination scope: ${status.capabilities.terminationScope}`,
 			`Shells: ${list(status.capabilities.shells)}`
 		);
 	}
@@ -118,6 +119,7 @@ export function formatProviders(providers: readonly ProviderInfo[]): string {
 		lines.push(
 			`${provider.id}: ${provider.label}`,
 			`  Operations: ${list(provider.capabilities.operations)}`,
+			`  Termination scope: ${provider.capabilities.terminationScope}`,
 			`  Shells: ${list(provider.capabilities.shells)}`,
 			`  Policies: workspace ${list(provider.policies.workspaceAccess)}; filesystem ${list(provider.policies.filesystemScope)}; network ${list(provider.policies.networkAccess)}`
 		);

@@ -24,6 +24,7 @@ defineSandboxProviderTests({
 			operations: ['exec'],
 			processKinds: ['shell'],
 			shells: ['sh'],
+			terminationScope: 'workload',
 			exitStatus: 'optional'
 		},
 		async open(request, context) {
@@ -36,6 +37,7 @@ defineSandboxProviderTests({
 					operations: ['exec'],
 					processKinds: ['shell'],
 					shells: ['sh'],
+					terminationScope: 'workload',
 					exitStatus: 'optional'
 				},
 				async exec(process, execution) {
@@ -70,6 +72,48 @@ defineSandboxProviderTests({
 				request: { kind: 'shell', dialect: 'sh', command: 'wait' }
 			}
 		};
+	}
+});
+
+const unmanaged = contractScenario();
+const unmanagedOpen = unmanaged.provider.open;
+
+defineSandboxProviderTests({
+	...unmanaged,
+	label: 'provider without a termination guarantee',
+	provider: {
+		...unmanaged.provider,
+		capabilities: {
+			...unmanaged.provider.capabilities,
+			terminationScope: 'none'
+		},
+		async open(request, context) {
+			const backend = await unmanagedOpen(request, context);
+
+			return {
+				...backend,
+				capabilities: { ...backend.capabilities, terminationScope: 'none' },
+				exec(request, execution) {
+					if (request.kind === 'argv' && request.executable === 'wait') {
+						execution.onOutput({
+							stream: 'stdout',
+							data: new TextEncoder().encode('ready')
+						});
+
+						return Promise.withResolvers<never>().promise;
+					}
+
+					return backend.exec(request, execution);
+				}
+			};
+		}
+	},
+	async createFixture() {
+		const fixture = await unmanaged.createFixture();
+		const { verifyStopped: _verifyStopped, ...cancellation } =
+			fixture.cancellation;
+
+		return { ...fixture, cancellation };
 	}
 });
 

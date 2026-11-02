@@ -28,6 +28,10 @@ import type {
 	SandboxProviderTestFixture,
 	SandboxProviderTestOptions
 } from './provider-test-contracts.js';
+import {
+	isTerminationScopeSatisfied,
+	settleProcess
+} from './termination-scope.js';
 import { isProviderInfo, isRecord, isRecovery } from './validation.js';
 
 function compareEntries(left: DirectoryEntry, right: DirectoryEntry): number {
@@ -123,6 +127,13 @@ export async function usingProviderFixture<Config>(
 		validateBackend(backend, options.provider, fixture.policy);
 
 		const capabilities = options.capabilities ?? options.provider.capabilities;
+
+		expect(
+			isTerminationScopeSatisfied(
+				backend.capabilities.terminationScope,
+				capabilities.terminationScope
+			)
+		).toBe(true);
 
 		for (const capability of capabilities.operations) {
 			expect(backend.capabilities.operations).toContain(capability);
@@ -239,7 +250,10 @@ export function providerContractCases<Config>(
 		},
 
 		{
-			label: 'confirmed cancellation',
+			label:
+				capabilities.terminationScope === 'none'
+					? 'cancellation without a termination guarantee'
+					: 'confirmed cancellation',
 			run: async (fixture, backend, context) => {
 				const probe = fixture.cancellation;
 
@@ -258,31 +272,51 @@ export function providerContractCases<Config>(
 				);
 				const stdout: Uint8Array[] = [];
 				let outcome: BackendProcessOutcome;
+				const expectedTermination =
+					backend.capabilities.terminationScope === 'none'
+						? 'not-guaranteed'
+						: 'confirmed';
 
 				try {
-					outcome = await backend.exec(probe.request, {
-						...execution.context,
-						onOutput(output) {
-							if (output.stream !== 'stdout') {
-								return;
-							}
+					const result = await settleProcess(
+						execution,
+						backend.exec(probe.request, {
+							...execution.context,
+							onOutput(output) {
+								if (output.stream !== 'stdout') {
+									return;
+								}
 
-							stdout.push(new Uint8Array(output.data));
+								stdout.push(new Uint8Array(output.data));
 
-							if (Buffer.concat(stdout).includes(Buffer.from(probe.ready))) {
-								controller.abort();
+								if (Buffer.concat(stdout).includes(Buffer.from(probe.ready))) {
+									controller.abort();
+								}
 							}
-						}
-					});
+						}),
+						backend.capabilities.terminationScope
+					);
+
+					if (result.kind === 'rejected') {
+						throw result.error;
+					}
+
+					if (result.kind === 'abandoned') {
+						throw new Error(
+							'The provider did not confirm termination within its cleanup deadline.'
+						);
+					}
+
+					outcome = result.value;
 				} catch (error) {
 					if (
 						!isSandboxError(error, SandboxCancelledError) ||
-						error.completion !== 'confirmed'
+						error.completion !== expectedTermination
 					) {
 						throw error;
 					}
 
-					outcome = { kind: 'cancelled', termination: 'confirmed' };
+					outcome = { kind: 'cancelled', termination: expectedTermination };
 				} finally {
 					execution.dispose();
 				}
@@ -292,9 +326,18 @@ export function providerContractCases<Config>(
 					outcome
 				}).toStrictEqual({
 					hasStarted: true,
-					outcome: { kind: 'cancelled', termination: 'confirmed' }
+					outcome: { kind: 'cancelled', termination: expectedTermination }
 				});
-				await probe.verifyStopped();
+
+				if (backend.capabilities.terminationScope === 'none') {
+					return;
+				}
+
+				expect(
+					probe.verifyStopped,
+					'Supply an independent termination check for the declared scope.'
+				).toBeTypeOf('function');
+				await probe.verifyStopped?.();
 			}
 		},
 		{

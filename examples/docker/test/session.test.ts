@@ -27,7 +27,11 @@ import { snapshotProcessRequest } from '../../../src/process-input.js';
 import { inspectWorkspace } from '../../consumer/src/workspace.js';
 import { createDockerProvider } from '../src/provider.js';
 
-import { DockerFixture, operationContext } from './fixture.js';
+import {
+	cancellationRequest,
+	DockerFixture,
+	operationContext
+} from './fixture.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -331,33 +335,26 @@ describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
 		}, 30_000);
 
 		it.each(['caller', 'deadline', 'output'] as const)(
-			'confirms %s cancellation of descendants and keeps the shared backend usable',
+			'confirms %s cancellation across child sessions and keeps the shared backend usable',
 			async (reason) => {
 				await withDockerSession(async ({ sandbox, fixture }) => {
 					const controller = new AbortController();
 					let hasStarted = false;
-					const running = sandbox.exec(
-						{
-							kind: 'shell',
-							dialect: 'sh',
-							command: '(printf ready; while :; do sleep 1; done) & wait'
-						},
-						{
-							signal: controller.signal,
-							timeoutMs: reason === 'deadline' ? 3000 : 15_000,
-							onOutput() {
-								hasStarted = true;
+					const running = sandbox.exec(cancellationRequest, {
+						signal: controller.signal,
+						timeoutMs: reason === 'deadline' ? 3000 : 15_000,
+						onOutput() {
+							hasStarted = true;
 
-								if (reason === 'output') {
-									throw new Error('The consumer rejected output.');
-								}
+							if (reason === 'output') {
+								throw new Error('The consumer rejected output.');
+							}
 
-								if (reason === 'caller') {
-									controller.abort();
-								}
+							if (reason === 'caller') {
+								controller.abort();
 							}
 						}
-					);
+					});
 
 					await expect(running).rejects.toMatchObject({
 						name:

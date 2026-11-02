@@ -246,9 +246,11 @@ timed-out promise must not be accepted as proof that a process stopped.
 
 Cover output above the capture limit, split UTF-8 sequences, signal termination,
 callback errors, abort before execution, timeout during execution and a provider
-that cannot confirm cancellation. Distinguish process-tree termination from an
-early local transport rejection, and apply the grace period to every abort
-cause. Verify unhealthy-backend rejection, suppressed late output and that no
+that cannot confirm cancellation within its promised termination scope. Scope
+`none` returns `not-guaranteed` completion without waiting or quarantining the
+backend. Distinguish termination acknowledgement from an early local transport
+rejection, and apply the grace period to every abort cause when termination is
+promised. Verify unhealthy-backend rejection, suppressed late output and that no
 mutation is automatically retried.
 
 Implement file/search groups with explicit target path semantics and a shared

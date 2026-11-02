@@ -15,6 +15,7 @@ import {
 	shellSchema,
 	signalSchema,
 	targetPathSchema,
+	terminationScopeSchema,
 	timeoutSchema
 } from './schemas.js';
 
@@ -114,6 +115,7 @@ const partialPolicySchema = Type.Partial(policySchema, {
 
 export const acquireOptionsSchema = Type.Object(
 	{
+		terminationScope: Type.Optional(terminationScopeSchema),
 		...operationOptionsSchema.properties,
 		processKinds: Type.Optional(
 			denseArray(processKindSchema, { uniqueItems: true })

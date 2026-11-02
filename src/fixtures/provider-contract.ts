@@ -18,6 +18,7 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 		protocolVersion: 1,
 		capabilities: {
 			processKinds: ['argv', 'shell'],
+			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: ['exec', 'files.read', 'files.write', 'files.list'],
 			shells: ['sh']

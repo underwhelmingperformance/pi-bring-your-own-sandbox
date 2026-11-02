@@ -64,8 +64,8 @@ files between destinations.
 Acquisition defaults to 60 seconds. Each `exec` defaults to 120 seconds,
 including approval. Approval allows at most 60 seconds or the remaining
 execution budget. Cancellation, shutdown and expiry prevent a pending decision
-from starting execution. SDK streaming, capture limits, termination
-acknowledgement and recovery use the existing process contract.
+from starting execution. SDK streaming, capture limits, declared termination
+scope and recovery use the process contract.
 
 The broker snapshots each request, obtains a decision and executes that same
 request on that same destination. Every call requires a fresh decision. This
@@ -144,13 +144,13 @@ Old handles cannot execute after shutdown or reload. A runtime-wide close
 barrier also prevents new approval or execution services after explicit SDK
 shutdown.
 
-Pi's normal shell operations confirm the shell's completion. They do not confirm
-that all background descendants in its process group have stopped. Native Pi
-shell execution retains that upstream boundary; SDK shutdown does not certify
-termination of those background descendants. Framework cleanup reports cover
-framework-managed resources. SDK and provider execution use the backend process
-contract, including its original-group termination requirements. The framework
-does not add process supervision to Pi's native operations.
+Pi's native outside-shell operations use termination scope `none`. A normal
+result reports the shell's completion, while cancellation returns without a
+termination acknowledgement and reports `not-guaranteed` completion. Processes
+may continue running after cancellation. SDK outside execution and injected
+normal executors use their backend's declared scope, which consumers can require
+during acquisition. Framework allocation disposal remains a separate obligation.
+The framework delegates native shell execution to Pi.
 
 `/byos status` reports the selected approval policy and outside destination;
 `/byos approval-policies` enumerates registered policies. Diagnostics do not

@@ -9,6 +9,7 @@ const provider: ProviderInfo = {
 	label: 'Fixture provider',
 	capabilities: {
 		processKinds: ['argv', 'shell'],
+		terminationScope: 'workload',
 		exitStatus: 'guaranteed',
 		operations: [
 			'exec',
@@ -46,6 +47,7 @@ function backend(): SandboxBackend {
 		},
 		capabilities: {
 			processKinds: ['argv'],
+			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: ['exec'],
 			shells: []
@@ -80,6 +82,7 @@ it.each([
 	{
 		capabilities: {
 			processKinds: ['argv'],
+			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: ['exec', 'exec'],
 			shells: []
@@ -88,6 +91,7 @@ it.each([
 	{
 		capabilities: {
 			processKinds: ['argv'],
+			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: ['exec', 'pty'],
 			shells: []
@@ -96,6 +100,7 @@ it.each([
 	{
 		capabilities: {
 			processKinds: ['argv', 'shell'],
+			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: ['exec'],
 			shells: ['powershell']
@@ -142,6 +147,7 @@ it.each([
 					...backend(),
 					capabilities: {
 						processKinds: ['argv'],
+						terminationScope: 'workload',
 						exitStatus: 'guaranteed',
 						operations: ['exec', capability],
 						shells: []
@@ -255,3 +261,34 @@ it('rejects effective policy that the provider did not advertise', () => {
 		})
 	);
 });
+
+it.each([
+	{ declared: 'none', effective: 'process-group', satisfies: true },
+	{ declared: 'process-group', effective: 'workload', satisfies: true },
+	{ declared: 'workload', effective: 'process-group', satisfies: false },
+	{ declared: 'process-group', effective: 'none', satisfies: false }
+] as const)(
+	'validates $effective termination against declared $declared',
+	({ declared, effective, satisfies }) => {
+		const value = backend();
+		const selected = {
+			...provider,
+			capabilities: { ...provider.capabilities, terminationScope: declared }
+		};
+		const opened = {
+			...value,
+			capabilities: { ...value.capabilities, terminationScope: effective }
+		};
+		const validate = () => validateBackend(opened, selected, policy);
+
+		if (satisfies) {
+			expect(validate()).toStrictEqual(opened);
+
+			return;
+		}
+
+		expect(validate).toThrow(
+			expect.objectContaining({ name: 'InvalidSandboxDeclarationError' })
+		);
+	}
+);

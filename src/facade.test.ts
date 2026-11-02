@@ -270,6 +270,7 @@ function writerFixture(
 		workspace,
 		capabilities: {
 			processKinds: ['argv'],
+			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: ['exec', 'files.write'],
 			shells: []

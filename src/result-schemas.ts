@@ -138,7 +138,7 @@ export const processOutcomeSchema = Type.Union([
 	Type.Object({ kind: Type.Literal('exited'), exit: processExitSchema }),
 	Type.Object({
 		kind: Type.Literal('cancelled'),
-		termination: Type.Enum(['confirmed', 'unconfirmed'])
+		termination: Type.Enum(['confirmed', 'unconfirmed', 'not-guaranteed'])
 	})
 ]);
 export const processOutputSchema = Type.Object({

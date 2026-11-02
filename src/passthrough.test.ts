@@ -25,7 +25,7 @@ import { snapshotProcessRequest } from './process-input.js';
 const releases: (() => Promise<void>)[] = [];
 
 it.each([false, true])(
-	'excludes detached descendants from foreground completion: cancellation %s',
+	'limits completion to the declared process group: cancellation %s',
 	async (isCancelled) => {
 		const { directory, sandbox, dispose } = await fixture();
 		const controller = new AbortController();
@@ -43,7 +43,7 @@ const timer = setInterval(() => {
 const child = require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(childProgram)}], { detached: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
 child.on('message', () => {
   child.disconnect();
-  child.unref();
+  ${isCancelled ? "child.on('exit', () => process.exit(0));" : 'child.unref();'}
   process.stdout.write('ready');
   ${isCancelled ? 'setInterval(() => {}, 1000);' : ''}
 });

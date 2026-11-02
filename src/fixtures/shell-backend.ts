@@ -17,6 +17,7 @@ export function shellBackend(output = 'target output') {
 		recovery: template.recovery,
 		capabilities: {
 			processKinds: ['argv', 'shell'],
+			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: ['exec'],
 			shells: ['bash', 'powershell']

@@ -51,6 +51,7 @@ it('shares shell-only capabilities and unavailable exits across independent SDK 
 							operations: ['exec'],
 							processKinds: ['shell'],
 							shells: ['sh'],
+							terminationScope: 'process-group',
 							exitStatus: 'optional'
 						},
 						validateConfig: () => ({ image: 'fixture' }),
@@ -65,6 +66,7 @@ it('shares shell-only capabilities and unavailable exits across independent SDK 
 									operations: ['exec'],
 									processKinds: ['shell'],
 									shells: ['sh'],
+									terminationScope: 'process-group',
 									exitStatus: 'optional'
 								},
 								exec: (_request, execution) => {
@@ -86,8 +88,26 @@ it('shares shell-only capabilities and unavailable exits across independent SDK 
 						async handler(_arguments, context) {
 							const sandbox = await second.getSandbox(pi, context, {
 								processKinds: ['shell'],
-								shells: ['sh']
+								shells: ['sh'],
+								terminationScope: 'process-group'
 							});
+
+							await expect(
+								second.getSandbox(pi, context, { terminationScope: 'workload' })
+							).rejects.toMatchObject({
+								name: 'UnsupportedSandboxCapabilityError'
+							});
+							expect(
+								second.isSandboxError(
+									new first.SandboxCancelledError({
+										operation: 'exec',
+										reason: 'caller',
+										completion: 'not-guaranteed'
+									}),
+									second.SandboxCancelledError
+								)
+							).toBe(true);
+
 							const result = await sandbox.exec({
 								kind: 'shell',
 								dialect: 'sh',

@@ -78,6 +78,7 @@ it('preserves shell-only provider output when exit details are unavailable', asy
 			operations: ['exec'],
 			processKinds: ['shell'],
 			shells: ['bash'],
+			terminationScope: 'workload',
 			exitStatus: 'optional'
 		},
 		exec(_request, context) {

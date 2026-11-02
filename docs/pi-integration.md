@@ -118,6 +118,6 @@ provider-defined destination delegates through the SDK backend contract.
 Pi 1.4.0's native shell operations wait for the shell, then stop tracking its
 PID. A background descendant can continue in the original process group after
 that shell exits. Framework shutdown does not confirm termination of those
-descendants. This is an upstream lifecycle limit of the normal Pi route. The SDK
-passthrough and provider routes retain their own process completion and cleanup
-contracts.
+descendants. The native Pi route therefore uses termination scope `none`. SDK
+passthrough and provider routes use their declared termination scopes and
+independent allocation-disposal contracts.

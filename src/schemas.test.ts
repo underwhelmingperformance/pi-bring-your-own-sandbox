@@ -22,6 +22,7 @@ it.each([
 		schema: capabilitiesSchema,
 		input: {
 			processKinds: ['argv'],
+			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: ['exec'],
 			shells: []
@@ -32,6 +33,7 @@ it.each([
 		schema: capabilitiesSchema,
 		input: {
 			processKinds: ['argv'],
+			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: sparse,
 			shells: []
@@ -42,6 +44,7 @@ it.each([
 		schema: capabilitiesSchema,
 		input: {
 			processKinds: ['argv'],
+			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: ['files.read'],
 			shells: []
@@ -52,6 +55,7 @@ it.each([
 		schema: capabilitiesSchema,
 		input: {
 			processKinds: ['argv'],
+			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: ['exec', 'exec'],
 			shells: []

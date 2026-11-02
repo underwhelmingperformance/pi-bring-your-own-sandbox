@@ -22,6 +22,7 @@ const provider: SandboxProvider<undefined> = {
 	protocolVersion: 1,
 	capabilities: {
 		processKinds: ['argv', 'shell'],
+		terminationScope: 'process-group',
 		exitStatus: 'guaranteed',
 		operations: [
 			'exec',

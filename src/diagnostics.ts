@@ -76,6 +76,8 @@ export function formatStatus(status: SandboxStatus): string {
 
 	const report = status.closeReport;
 
+	lines.push(...formatProviderDiagnostics(status));
+
 	if (report !== undefined) {
 		lines.push(formatCleanupReport(report));
 	} else if (
@@ -92,6 +94,21 @@ export function formatStatus(status: SandboxStatus): string {
 	}
 
 	return lines.join('\n');
+}
+
+export function formatProviderDiagnostics(
+	status: Pick<SandboxStatus, 'diagnostics' | 'diagnosticsDropped'>
+): readonly string[] {
+	const lines = (status.diagnostics ?? []).map(
+		(diagnostic) =>
+			`Warning (${diagnostic.operation}, ${diagnostic.operationId}): ${diagnostic.message}`
+	);
+
+	if (status.diagnosticsDropped !== undefined) {
+		lines.push(`Diagnostics discarded: ${String(status.diagnosticsDropped)}`);
+	}
+
+	return lines;
 }
 
 export function formatProviders(providers: readonly ProviderInfo[]): string {

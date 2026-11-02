@@ -18,6 +18,9 @@ function command(arguments_: readonly string[]): DockerCommand {
 	return {
 		args: arguments_,
 		context: {
+			reportDiagnostic() {
+				return;
+			},
 			cleanup: { deadline: undefined },
 			operationId: 'fixture',
 			signal: new AbortController().signal,

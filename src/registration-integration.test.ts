@@ -12,7 +12,7 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { expect, it } from 'vitest';
 
-import { discoverProviders } from './discovery.js';
+import { discoverBroker, discoverProviders } from './discovery.js';
 import { imageProvider } from './fixtures/image-provider.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
@@ -67,11 +67,17 @@ it('shares shell-only capabilities and unavailable exits across independent SDK 
 									shells: ['sh'],
 									exitStatus: 'optional'
 								},
-								exec: () =>
-									Promise.resolve({
+								exec: (_request, execution) => {
+									execution.reportDiagnostic({
+										level: 'warning',
+										message: 'Independent provider warning'
+									});
+
+									return Promise.resolve({
 										kind: 'exited',
 										exit: { kind: 'unavailable' }
-									}),
+									});
+								},
 								dispose: () => Promise.resolve()
 							})
 					});
@@ -88,6 +94,19 @@ it('shares shell-only capabilities and unavailable exits across independent SDK 
 								command: 'run'
 							});
 
+							const status = await discoverBroker(pi.events)?.status(context);
+							const operationId: unknown = expect.any(String);
+
+							expect(status?.diagnostics).toStrictEqual([
+								{
+									level: 'warning',
+									message: 'Independent provider warning',
+									operation: 'exec',
+									operationId,
+									providerId: 'fixture',
+									backendId: template.id
+								}
+							]);
 							expect(sandbox.cleanupBudgets).toStrictEqual({
 								cancellationGraceMs: 8000,
 								disposalTimeoutMs: 9000

@@ -2,7 +2,9 @@ import path from 'node:path';
 
 import type {
 	BackendFiles,
+	BackendProcessContext,
 	DirectoryEntry,
+	ProcessRequest,
 	SandboxBackend,
 	SandboxCapabilities,
 	SandboxOperationContext,
@@ -186,11 +188,14 @@ export class MemoryBackend implements SandboxBackend {
 		return this.#contents.get(this.#resolve(filename));
 	}
 
-	exec(): ReturnType<SandboxBackend['exec']> {
+	exec(
+		_request: ProcessRequest,
+		_context: BackendProcessContext
+	): ReturnType<SandboxBackend['exec']> {
 		return Promise.resolve({ kind: 'exited', exit: { kind: 'code', code: 0 } });
 	}
 
-	dispose(): Promise<void> {
+	dispose(_context: SandboxOperationContext): Promise<void> {
 		return Promise.resolve();
 	}
 }

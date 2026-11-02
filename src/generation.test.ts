@@ -24,6 +24,85 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
+it('records bounded provider warnings separately from process output and cleanup results', async () => {
+	let opening: SandboxOpenContext | undefined;
+	const { generation, context, backend } = fixture((received) => {
+		opening = received;
+		received.reportDiagnostic({
+			level: 'warning',
+			message: 'Opening warning'
+		});
+
+		return Promise.resolve(backend);
+	});
+
+	backend.exec = (_request, execution) => {
+		execution.reportDiagnostic({
+			level: 'warning',
+			message: 'Execution warning'
+		});
+		execution.onOutput({ stream: 'stdout', data: new Uint8Array([1]) });
+
+		return Promise.resolve({ kind: 'exited', exit: { kind: 'code', code: 0 } });
+	};
+
+	backend.dispose = (disposal) => {
+		disposal.reportDiagnostic({
+			level: 'warning',
+			message: 'Disposal warning'
+		});
+
+		return Promise.resolve();
+	};
+
+	const sandbox = await generation.acquire(context);
+	const result = await sandbox.exec({
+		kind: 'argv',
+		executable: 'probe',
+		args: []
+	});
+
+	opening?.reportDiagnostic({ level: 'warning', message: 'Late warning' });
+	await generation.close();
+
+	const status = await generation.status();
+	const operationId: unknown = expect.any(String);
+
+	expect({
+		warnings: status.diagnostics,
+		output: result.stdout,
+		dropped: status.diagnosticsDropped
+	}).toStrictEqual({
+		warnings: [
+			{
+				operation: 'open',
+				operationId,
+				providerId: 'fixture',
+				level: 'warning',
+				message: 'Opening warning'
+			},
+			{
+				operation: 'exec',
+				operationId,
+				providerId: 'fixture',
+				backendId: backend.id,
+				level: 'warning',
+				message: 'Execution warning'
+			},
+			{
+				operation: 'dispose',
+				operationId,
+				providerId: 'fixture',
+				backendId: backend.id,
+				level: 'warning',
+				message: 'Disposal warning'
+			}
+		],
+		output: new Uint8Array([1]),
+		dropped: undefined
+	});
+});
+
 it.each(['providerConfig', 'policy'] as const)(
 	'reports personal provenance for invalid %s',
 	async (field) => {

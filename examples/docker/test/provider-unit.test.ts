@@ -181,6 +181,9 @@ function context(
 	signal = new AbortController().signal
 ): SandboxOperationContext {
 	return {
+		reportDiagnostic() {
+			return;
+		},
 		cleanup: { deadline: undefined },
 		operationId: 'fixture',
 		signal,

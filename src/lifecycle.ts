@@ -13,6 +13,7 @@ import type {
 	SandboxOperationOptions
 } from './contracts.js';
 import type { SandboxCleanupBudgets } from './contracts.js';
+import type { SandboxDiagnostic } from './contracts.js';
 import {
 	InvalidSandboxRequestError,
 	SandboxCancelledError,
@@ -20,6 +21,7 @@ import {
 	SandboxOutputCallbackError,
 	SandboxTimeoutError
 } from './errors.js';
+import type { DiagnosticReporter } from './provider-diagnostics.js';
 
 export interface OperationIdentity {
 	readonly operation: SandboxOperation;
@@ -41,6 +43,7 @@ export class OperationScope {
 	#cleanupBudgets: SandboxCleanupBudgets;
 	#cleanupExpiresAt: number | undefined;
 	#cleanupDeadline: number | undefined;
+	#reportDiagnostic: DiagnosticReporter | undefined;
 	readonly context: SandboxOperationContext;
 
 	constructor(
@@ -75,6 +78,14 @@ export class OperationScope {
 			operationId: randomUUID(),
 			signal: this.#controller.signal,
 			deadline,
+			reportDiagnostic: (diagnostic: SandboxDiagnostic) => {
+				if (!this.#isFinished) {
+					this.#reportDiagnostic?.(
+						{ ...identity, operationId: this.context.operationId },
+						diagnostic
+					);
+				}
+			},
 			cleanup: Object.freeze({
 				get deadline() {
 					return cleanupDeadline();
@@ -143,6 +154,10 @@ export class OperationScope {
 	setCleanupBudgets(cleanup: SandboxCleanupBudgets): void {
 		this.check();
 		this.#cleanupBudgets = resolveCleanupBudgets(cleanup);
+	}
+
+	setDiagnosticReporter(reporter: DiagnosticReporter | undefined): void {
+		this.#reportDiagnostic = reporter;
 	}
 
 	get remainingCleanupMs(): number {

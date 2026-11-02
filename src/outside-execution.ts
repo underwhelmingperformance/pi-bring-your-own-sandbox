@@ -48,7 +48,11 @@ import {
 	snapshotProcessOptions,
 	snapshotProcessRequest
 } from './process-input.js';
-import type { BrokerServiceV1, ProviderServiceV1 } from './protocol.js';
+import type {
+	BrokerServiceV1,
+	ProviderServiceV1,
+	SandboxStatus
+} from './protocol.js';
 import { runtimeSettings } from './runtime-settings.js';
 import { checker } from './schemas.js';
 import {
@@ -142,6 +146,9 @@ function normalProvider(
 }
 
 export interface OutsideServiceV1 {
+	readonly status: (
+		context: SandboxContext
+	) => Promise<SandboxStatus | undefined>;
 	readonly close: (context: SandboxContext) => Promise<SandboxCloseReport>;
 	readonly track: <Result>(
 		scope: OperationScope,
@@ -233,6 +240,9 @@ function outsideService(pi: SandboxHost): OutsideServiceV1 {
 
 			return {
 				id,
+				async status(context) {
+					return broker?.status(context);
+				},
 				lifetime: lifetime.signal,
 				assertLive,
 				async track(scope, execute) {
@@ -453,4 +463,21 @@ export async function closeOutsideExecution(
 			isOutsideService
 		).map((service) => service.close(context))
 	);
+}
+
+export async function outsideExecutionStatus(
+	pi: SandboxHost,
+	context: SandboxContext
+): Promise<SandboxStatus | undefined> {
+	const services = discoverServices(
+		pi.events,
+		'pi-byos:discovery:v1:outside-execution',
+		isOutsideService
+	);
+
+	if (services.length > 1) {
+		throw new InvalidSandboxDeclarationError({ operation: 'discover' });
+	}
+
+	return services[0]?.status(context);
 }

@@ -85,6 +85,12 @@ these scenarios with concurrent tests that reuse the same allocation.
 
 ## Verify effects at the target
 
+Provider contexts expose synchronous `reportDiagnostic` for warnings outside
+workload output. Verify that warnings do not enter expected stdout or stderr.
+Use warnings for user-facing runtime information; do not report credentials or
+raw provider configuration. Invalid, oversized and excess diagnostics are
+discarded and counted in status, while reports after completion are ignored.
+
 Do not use the provider's reported policy as evidence that isolation works. For
 a workspace-only policy, attempt an outside-workspace read and write through
 both exec and file methods, then check the sentinel files independently. For a

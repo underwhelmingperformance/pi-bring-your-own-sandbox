@@ -41,6 +41,9 @@ const encode = (text: string) => new TextEncoder().encode(text);
 
 export function operationContext(): SandboxOperationContext {
 	return {
+		reportDiagnostic() {
+			return;
+		},
 		cleanup: { deadline: undefined },
 		operationId: randomUUID(),
 		signal: new AbortController().signal,

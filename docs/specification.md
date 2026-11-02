@@ -417,6 +417,15 @@ permission decisions.
 
 ## Process execution
 
+Provider contexts include a synchronous `reportDiagnostic` callback for
+structured warnings. Warnings are independent of workload output and retain
+broker-supplied operation and resource identities. Each generation retains at
+most 64 warnings of at most 2,048 UTF-16 code units each. Invalid, empty,
+oversized and excess diagnostics increment `diagnosticsDropped`; reports after
+completion are ignored. Status snapshots and `/byos status` expose retained
+ordinary and outside-execution warnings without allocating a backend. A warning
+never weakens capability, policy or confirmed-termination requirements.
+
 Providers declare supported `processKinds`: `argv`, `shell`, or both. At least
 one form is required. Shell-only providers need not implement argv. Shell
 dialects must be non-empty exactly when shell requests are supported. The broker

@@ -141,6 +141,7 @@ export const runtimeSettingsSchema = Type.Object({
 });
 
 export const outsideServiceSchema = Type.Object({
+	status: callable<OutsideServiceV1['status']>(),
 	id: nonEmptyStringSchema,
 	lifetime: signalSchema,
 	close: callable<OutsideServiceV1['close']>(),

@@ -268,6 +268,12 @@ deadline.
 */
 export interface SandboxOperationContext {
 	/**
+	Report a bounded warning outside workload output. Messages must be suitable
+	for user display and must not include credentials. The callback is
+	synchronous; reports after the operation finishes are ignored.
+	*/
+	readonly reportDiagnostic: (diagnostic: SandboxDiagnostic) => void;
+	/**
 	Stable cleanup context. Its deadline becomes available before cancellation
 	listeners run and remains unchanged for that cancellation. Disposal receives
 	its cleanup deadline immediately.
@@ -316,6 +322,43 @@ export interface SandboxCleanupBudgets {
 	Time allowed for backend disposal. Defaults to 10,000.
 	*/
 	readonly disposalTimeoutMs: number;
+}
+
+/**
+A provider warning outside workload stdout and stderr. Each generation retains
+at most 64 warnings; messages contain from 1 to 2,048 UTF-16 code units.
+*/
+export interface SandboxDiagnostic {
+	/**
+	Warning severity. Diagnostics never relax capability or policy checks.
+	*/
+	readonly level: 'warning';
+	/**
+	Human-readable warning suitable for the framework's status display.
+	*/
+	readonly message: string;
+}
+
+/**
+A retained warning with broker-supplied operation and resource identities.
+*/
+export interface SandboxDiagnosticRecord extends SandboxDiagnostic {
+	/**
+	Identity of the operation that emitted the warning.
+	*/
+	readonly operationId: string;
+	/**
+	Provider operation associated with the warning.
+	*/
+	readonly operation: SandboxOperation;
+	/**
+	Selected provider, when known.
+	*/
+	readonly providerId?: string;
+	/**
+	Allocated backend, when known.
+	*/
+	readonly backendId?: string;
 }
 
 /**

@@ -44,6 +44,7 @@ export function cleanupContext(
 	const deadline = () => context.cleanup.deadline ?? fallback;
 
 	return {
+		reportDiagnostic: context.reportDiagnostic,
 		cleanup: Object.freeze({
 			get deadline() {
 				return deadline();

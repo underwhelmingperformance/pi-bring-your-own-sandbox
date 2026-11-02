@@ -36,6 +36,9 @@ async function fixture(prepare?: (directory: string) => void | Promise<void>) {
 	await prepare?.(directory);
 
 	const backend = await openPassthrough(directory, {
+		reportDiagnostic() {
+			return;
+		},
 		cleanup: { deadline: undefined },
 		operationId: 'open',
 		signal: new AbortController().signal,
@@ -50,6 +53,9 @@ async function fixture(prepare?: (directory: string) => void | Promise<void>) {
 
 	releases.push(() =>
 		backend.dispose({
+			reportDiagnostic() {
+				return;
+			},
 			cleanup: { deadline: undefined },
 			operationId: 'dispose',
 			signal: new AbortController().signal,

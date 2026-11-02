@@ -31,11 +31,13 @@ import {
 	snapshotProcessOptions,
 	snapshotProcessRequest
 } from './process-input.js';
+import type { DiagnosticReporter } from './provider-diagnostics.js';
 import { processOutcomeSchema, processOutputSchema } from './result-schemas.js';
 import { checker } from './schemas.js';
 import { isRecord } from './validation.js';
 
 export interface BackendOwner {
+	readonly reportDiagnostic?: DiagnosticReporter;
 	readonly cleanup?: SandboxCleanupBudgets;
 	readonly identity: Omit<OperationIdentity, 'operation'>;
 	readonly backend: SandboxBackend;
@@ -182,6 +184,8 @@ export async function executeProcess(
 		DEFAULT_EXEC_TIMEOUT_MS,
 		owner.cleanup
 	);
+
+	scope.setDiagnosticReporter(owner.reportDiagnostic);
 
 	return owner.operations.run(scope, async () => {
 		scope.check();

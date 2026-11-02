@@ -5,6 +5,7 @@ import type {
 	SandboxCapabilities,
 	SandboxCloseReport,
 	SandboxContext,
+	SandboxDiagnosticRecord,
 	SandboxErrorInfo,
 	SandboxOpenContext,
 	SandboxOpenRequest,
@@ -174,6 +175,14 @@ export interface ProviderSelection {
 Readonly generation snapshot. Status inspection must never open a backend.
 */
 export interface SandboxStatus {
+	/**
+	Bounded provider warnings, in reporting order. Omitted when empty.
+	*/
+	readonly diagnostics?: readonly SandboxDiagnosticRecord[];
+	/**
+	Invalid, oversized or excess diagnostics discarded by the broker.
+	*/
+	readonly diagnosticsDropped?: number;
 	/**
 	Generation whose state and metadata this snapshot reports.
 	*/

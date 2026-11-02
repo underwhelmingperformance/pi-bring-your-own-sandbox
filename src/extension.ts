@@ -2,9 +2,14 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 
 import { isApprovalError } from './approval-errors.js';
 import { ensureSandboxService } from './default-broker.js';
-import { formatProviders, formatStatus } from './diagnostics.js';
+import {
+	formatProviderDiagnostics,
+	formatProviders,
+	formatStatus
+} from './diagnostics.js';
 import { isSandboxError, SandboxInitialisationError } from './errors.js';
 import { approvalService } from './execution-approval.js';
+import { outsideExecutionStatus } from './outside-execution.js';
 import { describeShellIntegration } from './pi-integration-status.js';
 import { runtimeSettings } from './runtime-settings.js';
 
@@ -48,6 +53,14 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 					const status = await service.status(context);
 
 					content = formatStatus(status);
+
+					const outside = await outsideExecutionStatus(pi, context);
+					const warnings =
+						outside === undefined ? [] : formatProviderDiagnostics(outside);
+
+					if (warnings.length > 0) {
+						content += `\nOutside execution diagnostics:\n${warnings.join('\n')}`;
+					}
 
 					try {
 						const settings = runtimeSettings(pi);

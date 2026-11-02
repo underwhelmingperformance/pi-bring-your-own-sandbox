@@ -4,11 +4,11 @@ import path from 'node:path';
 import type {
 	AgentSessionRuntime,
 	ExtensionAPI,
+	ExtensionContext,
 	InlineExtension
 } from '@earendil-works/pi-coding-agent';
 import { afterEach, expect, it, vi } from 'vitest';
 
-import type { SandboxContext } from './api.js';
 import {
 	closeSandboxSession,
 	getSandbox,
@@ -18,6 +18,7 @@ import { discoverBroker } from './discovery.js';
 import sandboxExtension from './extension.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { getOutsideSandboxExecutor } from './outside-execution.js';
 import sandboxTools from './pi-tools.js';
 import { isRecord } from './validation.js';
 
@@ -27,7 +28,7 @@ afterEach(() => {
 
 interface Fixture {
 	readonly pi: ExtensionAPI;
-	readonly context: SandboxContext;
+	readonly context: ExtensionContext;
 	readonly runtime: AgentSessionRuntime;
 	readonly errors: readonly unknown[];
 	readonly backend: MemoryBackend;
@@ -38,6 +39,7 @@ async function fixture(
 	mode:
 		| 'default'
 		| 'configured'
+		| 'outside'
 		| 'startup-failure'
 		| 'cleanup-failure'
 		| 'invalid-config',
@@ -57,7 +59,7 @@ async function fixture(
 			: Promise.resolve();
 	};
 
-	const current: { pi?: ExtensionAPI; context?: SandboxContext } = {};
+	const current: { pi?: ExtensionAPI; context?: ExtensionContext } = {};
 
 	await withPiRuntime(
 		[
@@ -82,6 +84,18 @@ async function fixture(
 
 							return { token: secret };
 						},
+						...(mode === 'outside' && {
+							outsideSandbox: {
+								label: 'Fixture outside destination',
+								capabilities: backend.capabilities,
+								policy: backend.policy,
+								open() {
+									opens++;
+
+									return Promise.resolve(backend);
+								}
+							}
+						}),
 						open() {
 							opens++;
 
@@ -134,7 +148,11 @@ async function fixture(
 						: JSON.stringify({
 								provider: 'fixture',
 								policy: backend.policy,
-								providerConfig: { token: secret }
+								providerConfig: { token: secret },
+								...(mode === 'outside' && {
+									outsideSandbox: { destination: 'provider' },
+									approval: { policy: 'always' }
+								})
 							});
 
 				await writeFile(path.join(agentDirectory, 'byos.json'), config);
@@ -396,4 +414,114 @@ it('enumerates built-in approval policies without allocating a backend', async (
 			}
 		);
 	});
+});
+
+it('shows provider warnings through generic status without adding workload output', async () => {
+	await fixture(
+		'configured',
+		async ({ pi, context, runtime, backend, errors }) => {
+			backend.exec = (_request, execution) => {
+				execution.reportDiagnostic({
+					level: 'warning',
+					message: 'Provider runtime warning'
+				});
+				execution.onOutput({
+					stream: 'stdout',
+					data: new TextEncoder().encode('workload')
+				});
+
+				return Promise.resolve({
+					kind: 'exited',
+					exit: { kind: 'code', code: 0 }
+				});
+			};
+
+			const sandbox = await getSandbox(pi, context);
+			const result = await sandbox.exec({
+				kind: 'argv',
+				executable: 'probe',
+				args: []
+			});
+
+			await runtime.session.prompt('/byos status');
+
+			const content = messages(runtime)
+				.flatMap((message) =>
+					typeof message.content === 'string' ? message.content : []
+				)
+				.join('\n');
+			const status = await discoverBroker(pi.events)?.status(context);
+
+			expect({
+				output: new TextDecoder().decode(result.stdout),
+				errors
+			}).toStrictEqual({ output: 'workload', errors: [] });
+
+			const operationId: unknown = expect.any(String);
+
+			expect(status?.diagnostics).toStrictEqual([
+				{
+					level: 'warning',
+					message: 'Provider runtime warning',
+					operation: 'exec',
+					operationId,
+					providerId: 'fixture',
+					backendId: backend.id
+				}
+			]);
+			expect(content).toContain('Provider runtime warning');
+			expect(content).not.toContain('workload');
+		}
+	);
+});
+
+it('shows outside-provider warnings without opening the ordinary sandbox', async () => {
+	await fixture(
+		'outside',
+		async ({ pi, context, runtime, backend, errors, counts }) => {
+			backend.exec = (_request, execution) => {
+				execution.reportDiagnostic({
+					level: 'warning',
+					message: 'Outside runtime warning'
+				});
+				execution.onOutput({
+					stream: 'stdout',
+					data: new TextEncoder().encode('outside workload')
+				});
+
+				return Promise.resolve({
+					kind: 'exited',
+					exit: { kind: 'code', code: 0 }
+				});
+			};
+
+			const executor = await getOutsideSandboxExecutor(pi, context);
+			const result = await executor.exec(
+				{ kind: 'argv', executable: 'probe', args: [] },
+				{ justification: 'Inspect outside diagnostics.' }
+			);
+
+			await runtime.session.prompt('/byos status');
+
+			const content = messages(runtime)
+				.flatMap((message) =>
+					typeof message.content === 'string' ? message.content : []
+				)
+				.join('\n');
+
+			expect({
+				output: new TextDecoder().decode(result.stdout),
+				errors,
+				...counts()
+			}).toStrictEqual({
+				output: 'outside workload',
+				errors: [],
+				opens: 1,
+				disposals: 0
+			});
+			expect(content).toContain('Outside execution diagnostics:');
+			expect(content).toContain('Outside runtime warning');
+			expect(content).not.toContain('outside workload');
+		}
+	);
 });

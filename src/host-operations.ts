@@ -80,6 +80,7 @@ export class HostOperations {
 				const result = await execute({
 					...scope.context,
 					cleanup: context.cleanup,
+					reportDiagnostic: context.reportDiagnostic,
 					operationId: context.operationId,
 					deadline: context.deadline
 				});

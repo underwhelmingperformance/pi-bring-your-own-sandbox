@@ -53,6 +53,7 @@ import type {
 	ProviderServiceV1,
 	SandboxStatus
 } from './protocol.js';
+import { ProviderDiagnostics } from './provider-diagnostics.js';
 import { callable, checker } from './schemas.js';
 import {
 	isRecord,
@@ -78,6 +79,7 @@ const isDisposable = checker(
 );
 
 export class SandboxGeneration {
+	readonly #diagnostics = new ProviderDiagnostics();
 	#cleanup = DEFAULT_CLEANUP_BUDGETS;
 	readonly #context: SandboxContext;
 	readonly #session: SessionIdentity;
@@ -397,6 +399,18 @@ export class SandboxGeneration {
 			60_000
 		);
 
+		scope.setDiagnosticReporter((identity, diagnostic) => {
+			this.#diagnostics.record(
+				{
+					...identity,
+					...(this.#selection !== undefined && {
+						providerId: this.#selection.providerId
+					})
+				},
+				diagnostic
+			);
+		});
+
 		try {
 			const allocation = Promise.try(() => this.#allocate(scope));
 			const completion = observe(allocation);
@@ -469,6 +483,7 @@ export class SandboxGeneration {
 			},
 			generationId: this.#id,
 			cleanup: this.#cleanup,
+			reportDiagnostic: this.#diagnostics.record.bind(this.#diagnostics),
 			backend,
 			lifetime: this.#lifetime.signal,
 			operations: this.#operations,
@@ -516,6 +531,19 @@ export class SandboxGeneration {
 			this.#cleanup.disposalTimeoutMs,
 			this.#cleanup
 		);
+
+		scope.setDiagnosticReporter((identity, diagnostic) => {
+			this.#diagnostics.record(
+				{
+					...identity,
+					...(this.#selection !== undefined && {
+						providerId: this.#selection.providerId
+					}),
+					...(this.#backend !== undefined && { backendId: this.#backend.id })
+				},
+				diagnostic
+			);
+		});
 
 		try {
 			if (!isDisposable(candidate)) {
@@ -668,8 +696,15 @@ export class SandboxGeneration {
 		}
 
 		const backend = this.#backend;
+		const diagnostics = this.#diagnostics.snapshot();
 
 		return Object.freeze({
+			...(diagnostics.entries.length > 0 && {
+				diagnostics: diagnostics.entries
+			}),
+			...(diagnostics.dropped > 0 && {
+				diagnosticsDropped: diagnostics.dropped
+			}),
 			generationId: this.#id,
 			state: this.#state,
 			...(this.#selection !== undefined && { selection: this.#selection }),

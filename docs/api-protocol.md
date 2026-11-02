@@ -136,6 +136,25 @@ awaiting any work. Caller mutation after invocation cannot change a pending
 operation. Abort signals and synchronous callbacks retain their identity and are
 not cloned.
 
+## Provider diagnostics
+
+Every provider operation context supplies synchronous `reportDiagnostic` for
+`{ level: "warning", message: string }`. Warnings are separate from workload
+stdout and stderr. The broker adds the operation ID, operation kind and known
+provider/backend identities. Provider messages must be suitable for user display
+and must not include credentials or raw configuration.
+
+Each generation retains at most 64 warnings. Messages contain from 1 to 2,048
+UTF-16 code units. Invalid, oversized and excess diagnostics are discarded and
+increment a bounded counter. The status snapshot exposes immutable `diagnostics`
+and `diagnosticsDropped` fields when populated. Reports after an operation
+finishes are ignored. Diagnostics never satisfy missing capabilities, relax
+requested policies or establish termination.
+
+The optional diagnostic extension displays ordinary and outside-execution
+warnings through `/byos status`. Status inspection does not allocate execution
+resources. Providers do not need their own Pi notifications.
+
 ## Process, files and search
 
 `ProcessRequest` discriminates `argv` and `shell`. Argv requires `executable`

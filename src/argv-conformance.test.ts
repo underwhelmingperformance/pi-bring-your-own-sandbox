@@ -42,6 +42,9 @@ async function execute(runner: HostProcessRunner, request: ProcessRequest) {
 	const stdout: Uint8Array[] = [];
 	const stderr: Uint8Array[] = [];
 	const outcome = await runner.run(request, {
+		reportDiagnostic() {
+			return;
+		},
 		cleanup: { deadline: undefined },
 		operationId: 'argv-conformance',
 		signal: AbortSignal.timeout(5000),

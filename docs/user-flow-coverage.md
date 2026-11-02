@@ -29,6 +29,11 @@ runtime, commands and platform limits.
 [package]: ../src/package.test.ts
 [outside]: ../src/outside-execution-integration.test.ts
 
+Registration integration also checks shell-only providers, unavailable exit
+details, required argv or guaranteed status, and effective cleanup budgets
+across independent SDK copies. Pi shell integration verifies that unavailable
+status preserves output and reports a failed command.
+
 ## Execution and approval
 
 | User flow                                                                                | Integration evidence                                                                                                                                                                                                                                          |
@@ -69,6 +74,15 @@ runtime, commands and platform limits.
 [broker]: ../src/broker-integration.test.ts
 [diagnostics]: ../src/diagnostics-integration.test.ts
 [docker]: ../examples/docker/test/session.test.ts
+
+The [cleanup integration suite][cleanup] exercises cancellation and disposal
+under configured budgets on sandboxed, normal outside and provider-defined
+outside destinations. It checks personal precedence and the deadlines visible to
+providers. Diagnostic integration verifies that ordinary and outside provider
+warnings appear through generic status without entering workload output or
+allocating the ordinary sandbox.
+
+[cleanup]: ../src/cleanup-integration.test.ts
 
 ## Transport and platform boundaries
 

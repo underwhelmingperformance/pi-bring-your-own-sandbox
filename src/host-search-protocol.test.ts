@@ -80,6 +80,9 @@ async function fixture(processes: HostProcessRunner) {
 		operations
 	);
 	const context = {
+		reportDiagnostic() {
+			return;
+		},
 		cleanup: { deadline: undefined },
 		operationId: 'search',
 		signal: new AbortController().signal,

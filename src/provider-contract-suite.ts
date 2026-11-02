@@ -3,10 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 import { validateBackend } from './backend-validation.js';
+import { resolveCleanupBudgets } from './cleanup-budgets.js';
 import type {
 	BackendProcessOutcome,
 	DirectoryEntry,
 	SandboxBackend,
+	SandboxOperation,
 	SandboxOperationContext
 } from './contracts.js';
 import {
@@ -20,6 +22,7 @@ import {
 	isFindResult,
 	isGrepResult
 } from './file-result.js';
+import { OperationScope } from './lifecycle.js';
 import type {
 	SandboxProcessProbe,
 	SandboxProviderTestFixture,
@@ -43,29 +46,33 @@ interface ContractCase {
 }
 
 async function bounded<Value>(
-	timeoutMs: number,
-	run: (context: SandboxOperationContext) => Promise<Value>
+	options: Pick<SandboxProviderTestOptions<unknown>, 'timeoutMs' | 'cleanup'>,
+	run: (context: SandboxOperationContext) => Promise<Value>,
+	operation: SandboxOperation = 'exec'
 ): Promise<Value> {
-	const controller = new AbortController();
-	const expired = Promise.withResolvers<never>();
-	const timer = setTimeout(() => {
-		controller.abort();
-		expired.reject(
-			new Error('The provider contract operation exceeded its deadline.')
-		);
-	}, timeoutMs);
+	const cleanup = resolveCleanupBudgets(options.cleanup);
+	const timeoutMs =
+		operation === 'dispose'
+			? cleanup.disposalTimeoutMs
+			: (options.timeoutMs ?? 10_000);
+	const scope = new OperationScope(
+		{ operation },
+		new AbortController().signal,
+		{ timeoutMs },
+		timeoutMs,
+		cleanup
+	);
+
+	async function expired(): Promise<never> {
+		await scope.whenCancelled();
+
+		throw new Error('The provider contract operation exceeded its deadline.');
+	}
 
 	try {
-		return await Promise.race([
-			run({
-				operationId: randomUUID(),
-				signal: controller.signal,
-				deadline: Date.now() + timeoutMs
-			}),
-			expired.promise
-		]);
+		return await Promise.race([run(scope.context), expired()]);
 	} finally {
-		clearTimeout(timer);
+		scope.dispose();
 	}
 }
 
@@ -77,6 +84,10 @@ export async function usingProviderFixture<Config>(
 
 	expect(Number.isFinite(timeoutMs) && timeoutMs > 0).toBe(true);
 
+	const deadlines = {
+		timeoutMs,
+		cleanup: resolveCleanupBudgets(options.cleanup)
+	};
 	const fixture = await options.createFixture();
 	let backend: SandboxBackend | undefined;
 	let isCleanupConfirmed = false;
@@ -88,7 +99,7 @@ export async function usingProviderFixture<Config>(
 
 		const config = options.provider.validateConfig(fixture.configuration);
 
-		backend = await bounded(timeoutMs, (context) =>
+		backend = await bounded(deadlines, (context) =>
 			options.provider.open(
 				{
 					generationId: randomUUID(),
@@ -131,7 +142,7 @@ export async function usingProviderFixture<Config>(
 
 		const opened = backend;
 
-		await bounded(timeoutMs, (context) => run(fixture, opened, context));
+		await bounded(deadlines, (context) => run(fixture, opened, context));
 	} catch (error) {
 		failures.push(error);
 	}
@@ -140,17 +151,21 @@ export async function usingProviderFixture<Config>(
 		if (isRecord(backend) && typeof backend.dispose === 'function') {
 			const closing = backend;
 
-			await bounded(timeoutMs, async (context) => {
-				await closing.dispose(context);
-				await fixture.verifyDisposed();
-			});
+			await bounded(
+				deadlines,
+				async (context) => {
+					await closing.dispose(context);
+					await fixture.verifyDisposed();
+				},
+				'dispose'
+			);
 		}
 	} catch (error) {
 		failures.push(error);
 	}
 
 	try {
-		await bounded(timeoutMs, () => fixture.cleanup());
+		await bounded(deadlines, () => fixture.cleanup());
 	} catch (error) {
 		failures.push(error);
 	}
@@ -202,6 +217,7 @@ export function providerContractCases<Config>(
 	options: SandboxProviderTestOptions<Config>
 ): readonly ContractCase[] {
 	const capabilities = options.capabilities ?? options.provider.capabilities;
+	const cleanup = resolveCleanupBudgets(options.cleanup);
 	const cases: ContractCase[] = [
 		{
 			label: 'metadata and policy',
@@ -230,13 +246,22 @@ export function providerContractCases<Config>(
 				expect(probe.ready.byteLength).toBeGreaterThan(0);
 
 				const controller = new AbortController();
+				const execution = new OperationScope(
+					{ operation: 'exec' },
+					context.signal,
+					{
+						signal: controller.signal,
+						timeoutMs: Math.max(1, context.deadline - Date.now())
+					},
+					10_000,
+					cleanup
+				);
 				const stdout: Uint8Array[] = [];
 				let outcome: BackendProcessOutcome;
 
 				try {
 					outcome = await backend.exec(probe.request, {
-						...context,
-						signal: AbortSignal.any([context.signal, controller.signal]),
+						...execution.context,
 						onOutput(output) {
 							if (output.stream !== 'stdout') {
 								return;
@@ -258,6 +283,8 @@ export function providerContractCases<Config>(
 					}
 
 					outcome = { kind: 'cancelled', termination: 'confirmed' };
+				} finally {
+					execution.dispose();
 				}
 
 				expect({
@@ -272,10 +299,18 @@ export function providerContractCases<Config>(
 		},
 		{
 			label: 'idempotent disposal',
-			run: async (fixture, backend, context) => {
-				await Promise.all([backend.dispose(context), backend.dispose(context)]);
-				await fixture.verifyDisposed();
-			}
+			run: (fixture, backend) =>
+				bounded(
+					options,
+					async (context) => {
+						await Promise.all([
+							backend.dispose(context),
+							backend.dispose(context)
+						]);
+						await fixture.verifyDisposed();
+					},
+					'dispose'
+				)
 		}
 	];
 
@@ -492,7 +527,8 @@ export function defineSandboxProviderTests<Config>(
 			it(
 				entry.label,
 				() => usingProviderFixture(options, entry.run),
-				(options.timeoutMs ?? 10_000) * 5
+				(options.timeoutMs ?? 10_000) * 5 +
+					resolveCleanupBudgets(options.cleanup).disposalTimeoutMs
 			);
 		}
 	});

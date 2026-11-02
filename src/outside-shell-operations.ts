@@ -62,6 +62,9 @@ export function outsideShellOperations(
 						signal: scope.context.signal,
 						timeoutMs: scope.remainingMs
 					});
+
+					scope.setCleanupBudgets(executor.cleanupBudgets);
+
 					const request = {
 						kind: 'shell' as const,
 						dialect,

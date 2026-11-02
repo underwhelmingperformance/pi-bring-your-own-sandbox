@@ -3,7 +3,7 @@ Schedules a callback for an absolute SDK deadline, including waits beyond Node's
 single-timer range.
 */
 export class DeadlineTimer {
-	readonly #expiresAt: number;
+	#expiresAt: number;
 	readonly #onExpire: () => void;
 	#timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -31,6 +31,15 @@ export class DeadlineTimer {
 			},
 			Math.min(Math.max(0, remaining), 2_147_483_647)
 		);
+	}
+
+	/**
+	Replaces the pending wait after the broker publishes a cleanup deadline.
+	*/
+	reset(deadline: number): void {
+		clearTimeout(this.#timer);
+		this.#expiresAt = performance.now() + Math.max(0, deadline - Date.now());
+		this.#schedule();
 	}
 
 	/**

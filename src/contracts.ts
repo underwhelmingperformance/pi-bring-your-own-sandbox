@@ -28,6 +28,10 @@ agent directory. Each runtime requires its own event bus.
 */
 export interface SandboxHostOptions {
 	/**
+	Trusted cleanup defaults. Personal cleanup settings override these values.
+	*/
+	readonly cleanup?: Partial<SandboxCleanupBudgets>;
+	/**
 	Absolute host directory containing the runtime's personal `byos.json`.
 	Pass the same directory as Pi's `agentDir` option.
 	*/
@@ -264,6 +268,12 @@ deadline.
 */
 export interface SandboxOperationContext {
 	/**
+	Stable cleanup context. Its deadline becomes available before cancellation
+	listeners run and remains unchanged for that cancellation. Disposal receives
+	its cleanup deadline immediately.
+	*/
+	readonly cleanup: SandboxCleanupContext;
+	/**
 	Unique identity for correlating this invocation with provider
 	diagnostics.
 	*/
@@ -280,6 +290,32 @@ export interface SandboxOperationContext {
 	observe the signal.
 	*/
 	readonly deadline: number;
+}
+
+/**
+The deadline for stopping and acknowledging provider work after cancellation.
+*/
+export interface SandboxCleanupContext {
+	/**
+	Absolute Unix-epoch deadline in milliseconds. Undefined while execution is
+	active; cancellation publishes this value before aborting the signal.
+	*/
+	readonly deadline: number | undefined;
+}
+
+/**
+Bounded cleanup durations fixed when a generation reads trusted configuration.
+Each value is an integer from 1 to 300,000 milliseconds.
+*/
+export interface SandboxCleanupBudgets {
+	/**
+	Time allowed to confirm termination after cancellation. Defaults to 5,000.
+	*/
+	readonly cancellationGraceMs: number;
+	/**
+	Time allowed for backend disposal. Defaults to 10,000.
+	*/
+	readonly disposalTimeoutMs: number;
 }
 
 /**
@@ -1016,6 +1052,10 @@ call checks liveness. Resource disposal remains the responsibility of the
 broker.
 */
 export interface Sandbox {
+	/**
+	Effective cleanup budgets fixed for this generation.
+	*/
+	readonly cleanupBudgets: SandboxCleanupBudgets;
 	/**
 	Selected provider identity, including `passthrough` for host execution.
 	*/

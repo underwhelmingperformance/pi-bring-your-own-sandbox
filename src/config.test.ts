@@ -39,6 +39,41 @@ async function withSources(
 	}
 }
 
+it('reads cleanup budgets only from personal settings', async () => {
+	await withSources(async (sources) => {
+		await writeFile(
+			path.join(sources.workspace, '.pi', 'byos.json'),
+			JSON.stringify({ cleanup: { cancellationGraceMs: 1 } })
+		);
+		await writeFile(
+			path.join(sources.agentDirectory, 'byos.json'),
+			JSON.stringify({ cleanup: { cancellationGraceMs: 8000 } })
+		);
+
+		const config = await readConfig(sources);
+
+		expect(config.cleanup).toStrictEqual({
+			cancellationGraceMs: 8000
+		});
+	});
+});
+
+it.each([0, -1, 1.5, 300_001, '5000', { value: 5000 }])(
+	'rejects an invalid cleanup budget: %j',
+	async (value) => {
+		await withSources(async (sources) => {
+			await writeFile(
+				path.join(sources.agentDirectory, 'byos.json'),
+				JSON.stringify({ cleanup: { cancellationGraceMs: value } })
+			);
+			await expect(readConfig(sources)).rejects.toMatchObject({
+				name: 'InvalidSandboxConfigError',
+				configurationSource: 'personal'
+			});
+		});
+	}
+);
+
 it('uses the implicit host default without creating any configuration', async () => {
 	await withSources(async (sources) => {
 		expect(await readConfig(sources)).toStrictEqual({

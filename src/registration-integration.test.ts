@@ -40,7 +40,10 @@ it('shares shell-only capabilities and unavailable exits across independent SDK 
 					);
 					const template = new MemoryBackend('exec');
 
-					first.initialiseSandboxHost(pi, { agentDirectory });
+					first.initialiseSandboxHost(pi, {
+						agentDirectory,
+						cleanup: { disposalTimeoutMs: 9000 }
+					});
 					first.registerSandboxProvider(pi, {
 						...imageProvider,
 						id: 'fixture',
@@ -85,6 +88,11 @@ it('shares shell-only capabilities and unavailable exits across independent SDK 
 								command: 'run'
 							});
 
+							expect(sandbox.cleanupBudgets).toStrictEqual({
+								cancellationGraceMs: 8000,
+								disposalTimeoutMs: 9000
+							});
+
 							expect({ ...result, durationMs: 0 }).toStrictEqual({
 								exit: { kind: 'unavailable' },
 								stdout: new Uint8Array(),
@@ -118,6 +126,7 @@ it('shares shell-only capabilities and unavailable exits across independent SDK 
 					path.join(personal, 'byos.json'),
 					JSON.stringify({
 						provider: 'fixture',
+						cleanup: { cancellationGraceMs: 8000 },
 						policy: {
 							workspaceAccess: 'read-write',
 							filesystemScope: 'provider-default',

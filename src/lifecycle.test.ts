@@ -10,6 +10,84 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
+it('publishes a distinct cleanup deadline before abort listeners run', async () => {
+	vi.useFakeTimers();
+	vi.setSystemTime(1000);
+
+	const lifetime = new AbortController();
+	const scope = new OperationScope(
+		identity,
+		lifetime.signal,
+		{ timeoutMs: 20 },
+		120_000,
+		{ cancellationGraceMs: 80, disposalTimeoutMs: 100 }
+	);
+	const forwarded = { ...scope.context };
+	let observed: number | undefined;
+
+	scope.context.signal.addEventListener('abort', () => {
+		observed = forwarded.cleanup.deadline;
+	});
+	await vi.advanceTimersByTimeAsync(20);
+	expect({ execution: forwarded.deadline, cleanup: observed }).toStrictEqual({
+		execution: 1020,
+		cleanup: 1100
+	});
+	scope.dispose();
+});
+
+it('uses the configured grace and never renews it for another settlement', async () => {
+	vi.useFakeTimers();
+	vi.setSystemTime(1000);
+
+	const lifetime = new AbortController();
+	const scope = new OperationScope(identity, lifetime.signal, {}, 120_000, {
+		cancellationGraceMs: 40,
+		disposalTimeoutMs: 100
+	});
+	const operation = Promise.withResolvers<string>();
+	let result: unknown;
+
+	async function recordSettlement() {
+		result = await settleOperation(scope, operation.promise);
+	}
+
+	const pending = recordSettlement();
+
+	try {
+		lifetime.abort();
+		await vi.advanceTimersByTimeAsync(40);
+		expect(result).toStrictEqual({ kind: 'abandoned' });
+
+		const repeated = settleOperation(scope, operation.promise);
+
+		await vi.advanceTimersByTimeAsync(0);
+		expect(await repeated).toStrictEqual({ kind: 'abandoned' });
+	} finally {
+		operation.resolve('stopped');
+		await pending;
+		scope.dispose();
+	}
+});
+
+it('accepts confirmed cleanup that takes longer than the default grace', async () => {
+	vi.useFakeTimers();
+
+	const lifetime = new AbortController();
+	const scope = new OperationScope(identity, lifetime.signal, {}, 120_000, {
+		cancellationGraceMs: 8000,
+		disposalTimeoutMs: 10_000
+	});
+	const operation = Promise.withResolvers<string>();
+	const pending = settleOperation(scope, operation.promise);
+
+	lifetime.abort();
+	await vi.advanceTimersByTimeAsync(6000);
+	operation.resolve('confirmed');
+	expect(await pending).toStrictEqual({ kind: 'resolved', value: 'confirmed' });
+	scope.dispose();
+});
+
 const identity = {
 	operation: 'exec',
 	providerId: 'fixture',
@@ -243,3 +321,45 @@ it('checks elapsed time before the deadline timer can dispatch', () => {
 		clock.mockRestore();
 	}
 });
+
+it.each(['resolved', 'rejected'] as const)(
+	'rejects a %s cleanup acknowledgement after elapsed grace before timers dispatch',
+	async (kind) => {
+		vi.useFakeTimers();
+
+		let now = 0;
+		const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+		const lifetime = new AbortController();
+		const scope = new OperationScope(identity, lifetime.signal, {}, 120_000, {
+			cancellationGraceMs: 50,
+			disposalTimeoutMs: 100
+		});
+		const operation = Promise.withResolvers<string>();
+		const result = settleOperation(scope, operation.promise);
+
+		try {
+			lifetime.abort();
+			await vi.advanceTimersByTimeAsync(0);
+			now = 100;
+
+			switch (kind) {
+				case 'resolved': {
+					operation.resolve('stopped');
+
+					break;
+				}
+
+				case 'rejected': {
+					operation.reject(new Error('Cleanup failed late.'));
+
+					break;
+				}
+			}
+
+			expect(await result).toStrictEqual({ kind: 'abandoned' });
+		} finally {
+			scope.dispose();
+			clock.mockRestore();
+		}
+	}
+);

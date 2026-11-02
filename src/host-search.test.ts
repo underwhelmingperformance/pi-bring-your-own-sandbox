@@ -36,6 +36,7 @@ async function fixture(prepare?: (directory: string) => void | Promise<void>) {
 	await prepare?.(directory);
 
 	const backend = await openPassthrough(directory, {
+		cleanup: { deadline: undefined },
 		operationId: 'open',
 		signal: new AbortController().signal,
 		deadline: Date.now() + 10_000,
@@ -49,6 +50,7 @@ async function fixture(prepare?: (directory: string) => void | Promise<void>) {
 
 	releases.push(() =>
 		backend.dispose({
+			cleanup: { deadline: undefined },
 			operationId: 'dispose',
 			signal: new AbortController().signal,
 			deadline: Date.now() + 10_000

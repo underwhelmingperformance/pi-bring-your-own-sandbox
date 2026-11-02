@@ -1,5 +1,6 @@
 import { Type } from 'typebox';
 
+import { cleanupSelectionSchema } from './cleanup-budgets.js';
 import type { ProcessOptions } from './contracts.js';
 import {
 	callable,
@@ -36,6 +37,7 @@ const outsideSelectionSchema = Type.Object(
 export const configFileSchema = Type.Object(
 	{
 		provider: Type.Optional(nonEmptyStringSchema),
+		cleanup: Type.Optional(cleanupSelectionSchema),
 		approval: Type.Optional(approvalSelectionSchema),
 		outsideSandbox: Type.Optional(outsideSelectionSchema),
 		policy: Type.Optional(

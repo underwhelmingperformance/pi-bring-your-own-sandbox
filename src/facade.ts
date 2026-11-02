@@ -1,5 +1,6 @@
 import path from 'node:path';
 
+import { resolveCleanupBudgets } from './cleanup-budgets.js';
 import type {
 	BackendDirectoryReader,
 	BackendFileReader,
@@ -425,6 +426,7 @@ export function createSandbox(owner: SandboxOwner): Sandbox {
 	const backend = owner.backend;
 
 	return Object.freeze({
+		cleanupBudgets: resolveCleanupBudgets(owner.cleanup),
 		providerId: owner.identity.providerId,
 		backendId: owner.identity.backendId,
 		generationId: owner.generationId,

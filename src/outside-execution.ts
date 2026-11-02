@@ -295,7 +295,10 @@ function outsideService(pi: SandboxHost): OutsideServiceV1 {
 										},
 										providerConfig:
 											kind === 'provider' ? config.providerConfig : {},
-										providerConfigSource: 'personal'
+										providerConfigSource: 'personal',
+										...(config.cleanup !== undefined && {
+											cleanup: config.cleanup
+										})
 									})
 							},
 							'owner'
@@ -358,6 +361,7 @@ export async function getOutsideSandboxExecutor(
 	});
 
 	return Object.freeze<OutsideSandboxExecutor>({
+		cleanupBudgets: sandbox.cleanupBudgets,
 		destination,
 		capabilities: sandbox.capabilities,
 		async exec(request: ProcessRequest, options) {
@@ -387,7 +391,8 @@ export async function getOutsideSandboxExecutor(
 				{ operation: 'exec' },
 				service.lifetime,
 				processOptions,
-				120_000
+				120_000,
+				sandbox.cleanupBudgets
 			);
 
 			try {

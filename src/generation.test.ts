@@ -1109,3 +1109,28 @@ it('returns the expired waiter deadline before a synchronous configuration rejec
 		clock.mockRestore();
 	}
 });
+
+it('rejects disposal acknowledged after elapsed deadline before timers dispatch', async () => {
+	let now = 0;
+	const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+	const { generation, context, backend } = fixture();
+
+	backend.dispose = () => {
+		now += 20_000;
+
+		return Promise.resolve();
+	};
+
+	try {
+		await generation.acquire(context);
+
+		const report = await generation.close();
+
+		expect({
+			confirmed: report.confirmed,
+			failures: report.failures.map((error) => error.name)
+		}).toStrictEqual({ confirmed: false, failures: ['SandboxCleanupError'] });
+	} finally {
+		clock.mockRestore();
+	}
+});

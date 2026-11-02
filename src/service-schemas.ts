@@ -5,6 +5,7 @@ import type {
 	OutsideSandboxProvider
 } from './approval-contracts.js';
 import { absolutePathSchema } from './backend-schemas.js';
+import { cleanupSelectionSchema } from './cleanup-budgets.js';
 import type { SandboxProvider } from './contracts.js';
 import type {
 	ApprovalPolicyServiceV1,
@@ -153,7 +154,8 @@ export const hostOptionsSchema = Type.Object(
 		agentDirectory: absolutePathSchema(
 			process.platform === 'win32' ? 'win32' : 'posix'
 		),
-		normalExecutor: Type.Optional(normalExecutorSchema)
+		normalExecutor: Type.Optional(normalExecutorSchema),
+		cleanup: Type.Optional(cleanupSelectionSchema)
 	},
 	{ additionalProperties: false }
 );

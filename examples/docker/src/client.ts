@@ -111,6 +111,10 @@ export class NodeDockerClient implements DockerClient {
 
 			isFinished = true;
 			timer.dispose();
+			command.context.deadlineChanged?.removeEventListener(
+				'abort',
+				refreshDeadline
+			);
 
 			if (child.pid !== undefined) {
 				try {
@@ -139,6 +143,17 @@ export class NodeDockerClient implements DockerClient {
 		const timer = new DeadlineTimer(command.context.deadline, () => {
 			stop(new Error('The Docker CLI did not finish before its deadline.'));
 		});
+		const refreshDeadline = () => {
+			timer.reset(command.context.deadline);
+		};
+
+		command.context.deadlineChanged?.addEventListener(
+			'abort',
+			refreshDeadline,
+			{
+				once: true
+			}
+		);
 
 		const deliver = (stream: 'stdout' | 'stderr', bytes: Uint8Array) => {
 			if (isFinished) {
@@ -179,6 +194,10 @@ export class NodeDockerClient implements DockerClient {
 
 			isFinished = true;
 			timer.dispose();
+			command.context.deadlineChanged?.removeEventListener(
+				'abort',
+				refreshDeadline
+			);
 
 			if (status === null) {
 				pending.reject(failure(undefined));

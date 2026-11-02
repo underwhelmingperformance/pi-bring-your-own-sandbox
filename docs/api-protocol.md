@@ -181,6 +181,19 @@ are finite and positive. Providers must respond to the signal as well as respect
 the deadline. Public defaults and bounded termination grace periods are
 specified in the process section of the specification.
 
+The operation context includes a stable `cleanup` object. Its readonly
+`deadline: number | undefined` becomes available before the signal aborts and
+remains unchanged afterwards. Disposal supplies this deadline from the start.
+The value uses Unix-epoch milliseconds and is separate from the execution
+deadline. A provider must still acknowledge termination; reaching either
+deadline is insufficient evidence that work stopped.
+
+`SandboxHostOptions.cleanup` and personal `byos.json`'s `cleanup` accept partial
+`SandboxCleanupBudgets`. Personal values override host defaults. Both
+`cancellationGraceMs` and `disposalTimeoutMs` accept integers from 1 to 300,000;
+their defaults are 5,000 and 10,000. Facades and outside executors expose the
+frozen effective `cleanupBudgets` for their generation.
+
 Paths use the advertised target path flavour. Relative paths resolve from the
 target root, including search roots and process working directories. The SDK
 does not translate a host prefix or expand `~`; those are adapter operations.

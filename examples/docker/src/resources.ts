@@ -18,7 +18,8 @@ import { Compile } from 'typebox/compile';
 import type {
 	DockerClient,
 	DockerCommand,
-	DockerCommandResult
+	DockerCommandResult,
+	DockerOperationContext
 } from './contracts.js';
 import { containerStateSchema } from './schemas.js';
 
@@ -31,13 +32,29 @@ function isCancelled(context: SandboxOperationContext): boolean {
 	return context.signal.aborted;
 }
 
-function cleanupContext(
-	context: SandboxOperationContext
-): SandboxOperationContext {
+/**
+Uses the broker's cleanup deadline when cancellation has begun. The independent
+signal permits termination requests after foreground execution is aborted.
+*/
+export function cleanupContext(
+	context: SandboxOperationContext,
+	operationId = `${context.operationId}:cleanup`
+): DockerOperationContext {
+	const fallback = Date.now() + 5000;
+	const deadline = () => context.cleanup.deadline ?? fallback;
+
 	return {
-		operationId: `${context.operationId}:cleanup`,
+		cleanup: Object.freeze({
+			get deadline() {
+				return deadline();
+			}
+		}),
+		operationId,
 		signal: new AbortController().signal,
-		deadline: Date.now() + 5000
+		deadlineChanged: context.signal,
+		get deadline() {
+			return deadline();
+		}
 	};
 }
 
@@ -71,7 +88,7 @@ export class DockerResources {
 
 	async #remove(
 		name: string,
-		context: SandboxOperationContext,
+		context: DockerOperationContext,
 		operation: DockerCommand['operation']
 	): Promise<void> {
 		try {
@@ -150,7 +167,7 @@ export class DockerResources {
 	*/
 	async checked(
 		arguments_: readonly string[],
-		context: SandboxOperationContext,
+		context: DockerOperationContext,
 		operation: DockerCommand['operation']
 	): Promise<DockerCommandResult> {
 		try {

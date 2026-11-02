@@ -7,6 +7,7 @@ import {
 	providerContractCases,
 	usingProviderFixture
 } from './provider-contract-suite.js';
+import type { SandboxProviderTestOptions } from './provider-test-contracts.js';
 import { defineSandboxProviderTests } from './testing.js';
 
 defineSandboxProviderTests(contractScenario());
@@ -331,6 +332,7 @@ it('bounds an opening that ignores its deadline and runs independent cleanup', a
 
 	const options = contractScenario();
 	let isAborted = false;
+	let cleanupMs: number | undefined;
 	let isCleaned = false;
 
 	try {
@@ -338,6 +340,7 @@ it('bounds an opening that ignores its deadline and runs independent cleanup', a
 			{
 				...options,
 				timeoutMs: 10,
+				cleanup: { cancellationGraceMs: 8000 },
 				provider: {
 					...options.provider,
 					open: (_request, context) => {
@@ -345,6 +348,7 @@ it('bounds an opening that ignores its deadline and runs independent cleanup', a
 							'abort',
 							() => {
 								isAborted = true;
+								cleanupMs = (context.cleanup.deadline ?? NaN) - Date.now();
 							},
 							{ once: true }
 						);
@@ -369,11 +373,81 @@ it('bounds an opening that ignores its deadline and runs independent cleanup', a
 
 		await vi.advanceTimersByTimeAsync(11);
 		await rejected;
-		expect({ isAborted, isCleaned }).toStrictEqual({
+		expect({ isAborted, isCleaned, cleanupMs }).toStrictEqual({
 			isAborted: true,
-			isCleaned: true
+			isCleaned: true,
+			cleanupMs: 8000
 		});
 	} finally {
 		vi.useRealTimers();
 	}
 });
+
+it.each(['confirmed cancellation', 'idempotent disposal'])(
+	'configures cleanup budgets independently of stage timeouts for %s',
+	async (caseName) => {
+		vi.useFakeTimers();
+
+		const options = contractScenario();
+		const open = options.provider.open;
+		const observed: { operation: string; budgetMs: number | undefined }[] = [];
+		const scenario = {
+			...options,
+			timeoutMs: 20_000,
+			cleanup: { cancellationGraceMs: 12_000, disposalTimeoutMs: 15_000 },
+			provider: {
+				...options.provider,
+				async open(request, context) {
+					const backend = await open(request, context);
+
+					return {
+						...backend,
+						async exec(request, execution) {
+							try {
+								return await backend.exec(request, execution);
+							} finally {
+								observed.push({
+									operation: 'cancellation',
+									budgetMs: (execution.cleanup.deadline ?? NaN) - Date.now()
+								});
+							}
+						},
+						dispose(disposal) {
+							observed.push({
+								operation: 'disposal',
+								budgetMs: (disposal.cleanup.deadline ?? NaN) - Date.now()
+							});
+
+							return backend.dispose(disposal);
+						}
+					};
+				}
+			}
+		} satisfies SandboxProviderTestOptions<undefined>;
+		const selected = providerContractCases(scenario).find(
+			(entry) => entry.label === caseName
+		);
+
+		try {
+			if (selected === undefined) {
+				throw new Error('The selected contract case is missing.');
+			}
+
+			await usingProviderFixture(scenario, selected.run);
+			expect(observed).toStrictEqual(
+				caseName === 'confirmed cancellation'
+					? [
+							{ operation: 'cancellation', budgetMs: 12_000 },
+							{ operation: 'disposal', budgetMs: 15_000 }
+						]
+					: [
+							{ operation: 'disposal', budgetMs: 15_000 },
+							{ operation: 'disposal', budgetMs: 15_000 },
+							{ operation: 'disposal', budgetMs: 15_000 }
+						]
+			);
+		} finally {
+			vi.useRealTimers();
+		}
+	}
+);

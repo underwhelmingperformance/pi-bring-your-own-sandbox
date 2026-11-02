@@ -1,5 +1,6 @@
 import { getAgentDir } from '@earendil-works/pi-coding-agent';
 
+import { resolveCleanupBudgets } from './cleanup-budgets.js';
 import type { SandboxConfig } from './config.js';
 import { readConfig } from './config.js';
 import type { SandboxHost, SandboxHostOptions } from './contracts.js';
@@ -28,8 +29,18 @@ export function runtimeSettings(
 		isRuntimeSettings,
 		(id) => {
 			const directory = options?.agentDirectory ?? getAgentDir();
+			const defaults = resolveCleanupBudgets(options?.cleanup);
 			let config: Promise<SandboxConfig> | undefined;
 			const lifetime = new AbortController();
+
+			async function configured(): Promise<SandboxConfig> {
+				const value = await readConfig({ agentDirectory: directory });
+
+				return Object.freeze({
+					...value,
+					cleanup: resolveCleanupBudgets({ ...defaults, ...value.cleanup })
+				});
+			}
 
 			pi.on('session_shutdown', () => {
 				lifetime.abort();
@@ -45,7 +56,7 @@ export function runtimeSettings(
 					normalExecutor: options.normalExecutor
 				}),
 				read() {
-					config ??= readConfig({ agentDirectory: directory });
+					config ??= configured();
 
 					return config;
 				}

@@ -5,6 +5,10 @@ import { Type } from 'typebox';
 import { acquireOptions, checkRequirements } from './acquire-options.js';
 import { snapshotBackend, snapshotRecovery } from './backend-snapshot.js';
 import { validateBackend } from './backend-validation.js';
+import {
+	DEFAULT_CLEANUP_BUDGETS,
+	resolveCleanupBudgets
+} from './cleanup-budgets.js';
 import type { SandboxConfig } from './config.js';
 import { selectProvider } from './config.js';
 import type { SessionIdentity } from './context.js';
@@ -74,6 +78,7 @@ const isDisposable = checker(
 );
 
 export class SandboxGeneration {
+	#cleanup = DEFAULT_CLEANUP_BUDGETS;
 	readonly #context: SandboxContext;
 	readonly #session: SessionIdentity;
 	readonly #dependencies: GenerationDependencies;
@@ -219,6 +224,8 @@ export class SandboxGeneration {
 
 			const config = await this.#dependencies.readConfig(this.#session);
 
+			this.#cleanup = resolveCleanupBudgets(config.cleanup);
+
 			if (this.#lifetime.signal.aborted) {
 				throw new SandboxSessionClosingError({ operation: 'configure' });
 			}
@@ -289,6 +296,7 @@ export class SandboxGeneration {
 		const prepared = await this.#prepare();
 
 		scope.check();
+		scope.setCleanupBudgets(this.#cleanup);
 		this.#hasInvokedOpen = true;
 
 		let isOpening = true;
@@ -460,6 +468,7 @@ export class SandboxGeneration {
 				recovery: this.#recovery
 			},
 			generationId: this.#id,
+			cleanup: this.#cleanup,
 			backend,
 			lifetime: this.#lifetime.signal,
 			operations: this.#operations,
@@ -504,7 +513,8 @@ export class SandboxGeneration {
 			{ operation: 'dispose' },
 			new AbortController().signal,
 			{},
-			10_000
+			this.#cleanup.disposalTimeoutMs,
+			this.#cleanup
 		);
 
 		try {
@@ -516,6 +526,8 @@ export class SandboxGeneration {
 				observe(Promise.try(() => candidate.dispose(scope.context))),
 				scope.whenCancelled()
 			]);
+
+			scope.check('unknown');
 
 			if (result.kind !== 'resolved') {
 				throw new SandboxCleanupError(

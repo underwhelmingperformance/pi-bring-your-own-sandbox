@@ -6,6 +6,7 @@ import type {
 	ProcessRequest,
 	ProcessResult,
 	SandboxBackend,
+	SandboxCleanupBudgets,
 	SandboxErrorInfo,
 	SandboxOperation
 } from './contracts.js';
@@ -35,6 +36,7 @@ import { checker } from './schemas.js';
 import { isRecord } from './validation.js';
 
 export interface BackendOwner {
+	readonly cleanup?: SandboxCleanupBudgets;
 	readonly identity: Omit<OperationIdentity, 'operation'>;
 	readonly backend: SandboxBackend;
 	readonly lifetime: AbortSignal;
@@ -177,7 +179,8 @@ export async function executeProcess(
 		{ ...owner.identity, operation: 'exec' },
 		owner.lifetime,
 		options,
-		DEFAULT_EXEC_TIMEOUT_MS
+		DEFAULT_EXEC_TIMEOUT_MS,
+		owner.cleanup
 	);
 
 	return owner.operations.run(scope, async () => {

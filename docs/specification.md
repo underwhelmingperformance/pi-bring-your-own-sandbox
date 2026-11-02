@@ -502,34 +502,63 @@ acquisition has its independent cancellation signal and deadline.
 
 For backend process execution, specify an explicit `BackendProcessOutcome`:
 
-- `exited` includes the exit code or signal and certifies that the foreground
-  process and its supported foreground descendants have stopped.
+- `exited` includes exit details, which may be unavailable for optional-status
+  backends, and certifies that the foreground process and its supported
+  foreground descendants have stopped.
 - `cancelled` includes `termination: "confirmed" | "unconfirmed"`. Confirmed
   certifies that the supported foreground process tree has stopped; aborting a
   transport request or merely submitting a kill request cannot produce that
   acknowledgement.
 
 Caller abort, deadline and broker shutdown all request backend cancellation and
-allow a 5-second grace period for confirmation. A confirmed result produces the
-original cancellation/deadline error for the consumer. Unconfirmed termination,
-an unexpected rejection or failure to respond within the grace period marks the
-backend unhealthy and rejects further work. Report the original cancellation
-cause and uncertainty together; remote work may remain. Stop forwarding output
-when the consumer operation completes, even if a broken provider keeps emitting.
-A promise race alone is not process cancellation. Detached background processes
-are unsupported. Passthrough supervises the original POSIX process group. A
-descendant that creates another session or process group is outside that
-completion guarantee and may continue after cancellation or disposal.
+allow a configurable grace period for confirmation, defaulting to five seconds.
+A confirmed result produces the original cancellation/deadline error for the
+consumer. Unconfirmed termination, an unexpected rejection or failure to respond
+within the grace period marks the backend unhealthy and rejects further work.
+Report the original cancellation cause and uncertainty together; remote work may
+remain. Stop forwarding output when the consumer operation completes, even if a
+broken provider keeps emitting. A promise race alone is not process
+cancellation. Detached background processes are unsupported. Passthrough
+supervises the original POSIX process group. A descendant that creates another
+session or process group is outside that completion guarantee and may continue
+after cancellation or disposal.
 
 For file mutations, a provider's cancellation error must state whether
 completion is confirmed. Confirmed means that the operation can no longer change
 data; unknown completion makes the backend unhealthy before releasing queued
 work. Do not accept an immediate local abort rejection as proof that a remote
 write stopped. Opening has the same bounded cancellation grace and
-partial-allocation cleanup obligation. Backend disposal has a 10-second
-deadline. Cleanup that cannot finish reports recovery metadata and relies on the
-provider's lease or expiry; the broker never reports successful cleanup from
-timeout alone.
+partial-allocation cleanup obligation. Backend disposal has a configurable
+deadline, defaulting to ten seconds. Cleanup that cannot finish reports recovery
+metadata and relies on the provider's lease or expiry; the broker never reports
+successful cleanup from timeout alone.
+
+Personal `byos.json` can specify cleanup budgets:
+
+```json
+{
+  "cleanup": {
+    "cancellationGraceMs": 8000,
+    "disposalTimeoutMs": 15000
+  }
+}
+```
+
+Each value is an integer from 1 to 300,000 milliseconds. Embedding hosts can
+provide defaults through `initialiseSandboxHost`'s `cleanup` option. Personal
+values override host defaults. The effective budgets are copied and frozen for
+the generation and exposed as `sandbox.cleanupBudgets`. Outside execution uses
+the same configuration. Consumers cannot extend a generation's cleanup budgets
+through per-call execution options.
+
+Providers receive a stable `context.cleanup` object. Its `deadline` is undefined
+during execution and becomes an absolute Unix-epoch timestamp before abort
+listeners run. Disposal receives its cleanup deadline immediately. Providers can
+retain this object across an await; spreading the operation context also
+preserves it. The execution deadline remains separate. Repeated cancellation or
+settlement does not extend the cleanup deadline. The broker enforces elapsed
+time with a monotonic clock. Synchronous FFI still requires a worker or process
+if the adapter must keep Pi responsive.
 
 ## Files, search and paths
 

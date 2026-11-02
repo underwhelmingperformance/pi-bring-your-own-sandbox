@@ -136,6 +136,7 @@ it('waits for process-group disappearance after a denied existence probe', async
 			args: ['-e', 'process.stdout.write("finished")']
 		},
 		{
+			cleanup: { deadline: undefined },
 			operationId: 'exec',
 			signal: new AbortController().signal,
 			deadline: Date.now() + 5000,
@@ -173,6 +174,7 @@ async function fixture(
 	await prepare?.(directory);
 
 	const backend = await openPassthrough(directory, {
+		cleanup: { deadline: undefined },
 		operationId: 'open',
 		signal: new AbortController().signal,
 		deadline: Date.now() + 10_000,
@@ -186,6 +188,7 @@ async function fixture(
 	const owner = new TestBackendOwner(backend);
 	const dispose = () =>
 		backend.dispose({
+			cleanup: { deadline: undefined },
 			operationId: 'dispose',
 			signal: new AbortController().signal,
 			deadline: Date.now() + 10_000

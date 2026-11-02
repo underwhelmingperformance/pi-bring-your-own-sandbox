@@ -7,6 +7,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 import { NodeDockerClient } from '../src/client.js';
 import type { DockerCommand } from '../src/contracts.js';
+import { cleanupContext } from '../src/resources.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -17,6 +18,7 @@ function command(arguments_: readonly string[]): DockerCommand {
 	return {
 		args: arguments_,
 		context: {
+			cleanup: { deadline: undefined },
 			operationId: 'fixture',
 			signal: new AbortController().signal,
 			deadline: Date.now() + 5000
@@ -251,4 +253,83 @@ it('allows a short CLI command with a deadline beyond the Node timer range', asy
 		stdout: new TextEncoder().encode('complete'),
 		stderr: new Uint8Array()
 	});
+});
+
+it('reschedules an active cleanup CLI timer when cancellation publishes a new deadline', async () => {
+	const started = Promise.withResolvers<undefined>();
+	const closed = Promise.withResolvers<undefined>();
+	const signals: number[] = [];
+	const client = new NodeDockerClient(
+		{ executable: process.execPath, socketPath: '/fixture/docker.sock' },
+		(executable, arguments_, options) => {
+			const child = spawn(
+				executable,
+				[
+					'-e',
+					'process.stdout.write("ready");setInterval(()=>{},1000)',
+					'--',
+					...arguments_
+				],
+				options
+			);
+
+			child.stdout.once('data', () => {
+				started.resolve(undefined);
+			});
+			child.once('close', () => {
+				closed.resolve(undefined);
+			});
+
+			return child;
+		},
+		{
+			kill(id, signal) {
+				signals.push(id);
+				process.kill(id, signal);
+			}
+		}
+	);
+
+	vi.useFakeTimers();
+
+	const controller = new AbortController();
+	const request = command(['rm', '--force', 'fixture']);
+	const deadline = Date.now() + 12_000;
+	const running = client.command({
+		...request,
+		context: cleanupContext({
+			...request.context,
+			signal: controller.signal,
+			cleanup: {
+				get deadline() {
+					return controller.signal.aborted ? deadline : undefined;
+				}
+			}
+		})
+	});
+	const rejected = expect(running).rejects.toMatchObject({
+		name: 'SandboxTransportError',
+		completion: 'unknown'
+	});
+
+	try {
+		await started.promise;
+		await vi.advanceTimersByTimeAsync(1000);
+		controller.abort();
+		await vi.advanceTimersByTimeAsync(4000);
+		expect(signals).toStrictEqual([]);
+		await vi.advanceTimersByTimeAsync(7000);
+		await rejected;
+		expect({
+			signalCount: signals.length,
+			timers: vi.getTimerCount()
+		}).toStrictEqual({
+			signalCount: 1,
+			timers: 0
+		});
+	} finally {
+		await vi.advanceTimersByTimeAsync(12_000);
+		await rejected;
+		await closed.promise;
+	}
 });

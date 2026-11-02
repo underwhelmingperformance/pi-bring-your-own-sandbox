@@ -9,6 +9,7 @@ import type {
 	ProcessRequest,
 	SandboxBackend,
 	SandboxCapabilities,
+	SandboxCleanupBudgets,
 	SandboxOperationContext,
 	SandboxPolicy,
 	SandboxProvider,
@@ -205,8 +206,13 @@ export interface SandboxProviderTestOptions<Config> {
 	*/
 	readonly createFixture: () => Promise<SandboxProviderTestFixture>;
 	/**
-	Deadline for opening, each test case, disposal and cleanup, in milliseconds.
+	Deadline for opening, each test case and fixture cleanup, in milliseconds.
 	Each stage receives a separate deadline. Defaults to 10,000.
 	*/
 	readonly timeoutMs?: number;
+	/**
+	Cancellation grace and disposal timeout in milliseconds, independent of stage
+	deadlines. Defaults to 5,000 and 10,000; each must be an integer from 1 to 300,000.
+	*/
+	readonly cleanup?: Partial<SandboxCleanupBudgets>;
 }

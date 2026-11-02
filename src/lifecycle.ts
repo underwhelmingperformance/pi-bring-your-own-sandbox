@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
 
+import {
+	DEFAULT_CLEANUP_BUDGETS,
+	resolveCleanupBudgets
+} from './cleanup-budgets.js';
 import type {
 	CancellationReason,
 	OperationCompletion,
@@ -8,6 +12,7 @@ import type {
 	SandboxOperationContext,
 	SandboxOperationOptions
 } from './contracts.js';
+import type { SandboxCleanupBudgets } from './contracts.js';
 import {
 	InvalidSandboxRequestError,
 	SandboxCancelledError,
@@ -33,15 +38,20 @@ export class OperationScope {
 	#reason: CancellationReason | undefined;
 	#cause: unknown;
 	#isFinished = false;
+	#cleanupBudgets: SandboxCleanupBudgets;
+	#cleanupExpiresAt: number | undefined;
+	#cleanupDeadline: number | undefined;
 	readonly context: SandboxOperationContext;
 
 	constructor(
 		identity: OperationIdentity,
 		lifetime: AbortSignal,
 		options: SandboxOperationOptions,
-		defaultMs: number
+		defaultMs: number,
+		cleanup: SandboxCleanupBudgets = DEFAULT_CLEANUP_BUDGETS
 	) {
 		this.#identity = identity;
+		this.#cleanupBudgets = resolveCleanupBudgets(cleanup);
 
 		const timeoutMs = options.timeoutMs ?? defaultMs;
 
@@ -52,10 +62,24 @@ export class OperationScope {
 		}
 
 		this.#expiresAt = performance.now() + timeoutMs;
+
+		const deadline = Date.now() + timeoutMs;
+		const cleanupDeadline = () => this.#cleanupDeadline;
+
+		if (identity.operation === 'dispose') {
+			this.#cleanupDeadline = deadline;
+			this.#cleanupExpiresAt = this.#expiresAt;
+		}
+
 		this.context = Object.freeze({
 			operationId: randomUUID(),
 			signal: this.#controller.signal,
-			deadline: Date.now() + timeoutMs
+			deadline,
+			cleanup: Object.freeze({
+				get deadline() {
+					return cleanupDeadline();
+				}
+			})
 		});
 		this.#listen(lifetime, 'shutdown');
 
@@ -116,6 +140,18 @@ export class OperationScope {
 		return this.#reason;
 	}
 
+	setCleanupBudgets(cleanup: SandboxCleanupBudgets): void {
+		this.check();
+		this.#cleanupBudgets = resolveCleanupBudgets(cleanup);
+	}
+
+	get remainingCleanupMs(): number {
+		return Math.max(
+			0,
+			(this.#cleanupExpiresAt ?? performance.now()) - performance.now()
+		);
+	}
+
 	abort(reason: CancellationReason, cause?: unknown): void {
 		if (this.#reason !== undefined || this.#isFinished) {
 			return;
@@ -123,6 +159,10 @@ export class OperationScope {
 
 		this.#reason = reason;
 		this.#cause = cause;
+		this.#cleanupExpiresAt ??=
+			performance.now() + this.#cleanupBudgets.cancellationGraceMs;
+		this.#cleanupDeadline ??=
+			Date.now() + this.#cleanupBudgets.cancellationGraceMs;
 		this.#controller.abort(reason);
 		this.#cancelled.resolve(reason);
 	}
@@ -234,11 +274,14 @@ export async function observe<Value>(
 
 export async function settleOperation<Value>(
 	scope: OperationScope,
-	promise: Promise<Value>,
-	graceMs = 5000
+	promise: Promise<Value>
 ): Promise<Settlement<Value>> {
 	const completion = observe(promise);
 	const first = await Promise.race([completion, scope.whenCancelled()]);
+
+	if (scope.reason !== undefined && scope.remainingCleanupMs <= 0) {
+		return { kind: 'abandoned' };
+	}
 
 	if (first.kind !== 'cancelled') {
 		return first;
@@ -248,11 +291,13 @@ export async function settleOperation<Value>(
 	const limit = new Promise<{ readonly kind: 'abandoned' }>((resolve) => {
 		timer = setTimeout(() => {
 			resolve({ kind: 'abandoned' });
-		}, graceMs);
+		}, scope.remainingCleanupMs);
 	});
 
 	try {
-		return await Promise.race([completion, limit]);
+		const result = await Promise.race([completion, limit]);
+
+		return scope.remainingCleanupMs <= 0 ? { kind: 'abandoned' } : result;
 	} finally {
 		clearTimeout(timer);
 	}

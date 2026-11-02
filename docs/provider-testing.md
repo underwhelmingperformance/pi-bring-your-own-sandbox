@@ -23,7 +23,8 @@ defineSandboxProviderTests({
     shells: ['sh']
   },
   createFixture,
-  timeoutMs: 30_000
+  timeoutMs: 30_000,
+  cleanup: { cancellationGraceMs: 8000, disposalTimeoutMs: 15_000 }
 });
 ```
 
@@ -64,12 +65,18 @@ missing methods, inconsistent capabilities, unsupported effective policies,
 incorrect output and unconfirmed cancellation fail the tests. Typed errors are
 recognised across separately installed SDK copies.
 
-Opening, each test case, disposal and cleanup receive separate deadlines. The
-default is ten seconds per stage. If a provider ignores cancellation, the stage
-fails at its deadline. A timeout does not establish that a target stopped.
-Independent fixture cleanup must release resources even when opening fails or a
-transport stops responding. If fixture setup fails before returning, the setup
-callback must clean up its partial allocation.
+Opening, each test case and fixture cleanup receive separate `timeoutMs`
+deadlines, with a default of ten seconds per stage. The `cleanup` option selects
+`cancellationGraceMs` and `disposalTimeoutMs` independently, with defaults of
+five and ten seconds. Each cleanup budget must be an integer from 1 to 300,000
+milliseconds. Cancellation contexts publish the selected grace, and disposal
+contexts use the selected disposal timeout. `timeoutMs` still bounds the whole
+test case, so allow enough time for the cancellation probe to start and stop. If
+a provider ignores cancellation, the stage fails at its deadline. A timeout does
+not establish that a target stopped. Independent fixture cleanup must release
+resources even when opening fails or a transport stops responding. If fixture
+setup fails before returning, the setup callback must clean up its partial
+allocation.
 
 The suite runs teardown after a failed assertion or metadata check. If teardown
 also fails, an `AggregateError` preserves the original failure and the cleanup

@@ -80,6 +80,7 @@ async function fixture(processes: HostProcessRunner) {
 		operations
 	);
 	const context = {
+		cleanup: { deadline: undefined },
 		operationId: 'search',
 		signal: new AbortController().signal,
 		deadline: Date.now() + 5000

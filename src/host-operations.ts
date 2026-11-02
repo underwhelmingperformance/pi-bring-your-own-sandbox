@@ -79,6 +79,7 @@ export class HostOperations {
 			try {
 				const result = await execute({
 					...scope.context,
+					cleanup: context.cleanup,
 					operationId: context.operationId,
 					deadline: context.deadline
 				});

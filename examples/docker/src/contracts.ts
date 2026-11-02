@@ -21,6 +21,17 @@ export interface DockerConfig {
 }
 
 /**
+A CLI deadline that can change when foreground cancellation begins.
+*/
+export interface DockerOperationContext extends SandboxOperationContext {
+	/**
+	Refresh the CLI deadline when this signal aborts, without cancelling the
+	management command.
+	*/
+	readonly deadlineChanged?: AbortSignal;
+}
+
+/**
 A management command or attached job, without a host shell.
 */
 export interface DockerCommand {
@@ -31,7 +42,7 @@ export interface DockerCommand {
 	/**
 	Deadline for the local CLI. The provider handles target cancellation.
 	*/
-	readonly context: SandboxOperationContext;
+	readonly context: DockerOperationContext;
 	/**
 	SDK operation associated with a transport failure.
 	*/

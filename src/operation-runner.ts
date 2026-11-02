@@ -94,7 +94,8 @@ export async function runOperation<Value>(
 		{ ...owner.identity, operation },
 		owner.lifetime,
 		options,
-		30_000
+		30_000,
+		owner.cleanup
 	);
 
 	return owner.operations.run(scope, async () => {

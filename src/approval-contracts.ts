@@ -8,6 +8,7 @@ import type {
 	ProcessResult,
 	SandboxBackend,
 	SandboxCapabilities,
+	SandboxCleanupBudgets,
 	SandboxOpenContext,
 	SandboxOpenRequest,
 	SandboxOperationContext,
@@ -146,6 +147,10 @@ Generation-scoped execution destination. Inspect workspace paths before building
 a request. Each exec call obtains a fresh decision from the selected policy.
 */
 export interface OutsideSandboxExecutor {
+	/**
+	Effective cleanup budgets for this execution destination.
+	*/
+	readonly cleanupBudgets: SandboxCleanupBudgets;
 	/**
 	Resolved environment to which this decision or executor applies.
 	*/

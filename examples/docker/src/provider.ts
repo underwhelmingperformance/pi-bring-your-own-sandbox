@@ -30,7 +30,11 @@ import type {
 import { DeadlineTimer } from './deadline.js';
 import { LaunchFrames } from './frames.js';
 import { DOCKER_IMAGE } from './image.js';
-import { ALLOCATION_LABEL, DockerResources } from './resources.js';
+import {
+	ALLOCATION_LABEL,
+	cleanupContext,
+	DockerResources
+} from './resources.js';
 
 function mount(fields: readonly string[]): string {
 	return fields.map((field) => `"${field.replaceAll('"', '""')}"`).join(',');
@@ -254,11 +258,9 @@ class DockerBackend implements SandboxBackend {
 			}
 		} catch (error) {
 			try {
-				await this.#resources.dispose({
-					operationId: `${context.operationId}:failed-open`,
-					signal: new AbortController().signal,
-					deadline: Date.now() + 5000
-				});
+				await this.#resources.dispose(
+					cleanupContext(context, `${context.operationId}:failed-open`)
+				);
 			} catch (error_) {
 				throw new SandboxCleanupError(
 					{

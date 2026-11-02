@@ -180,7 +180,12 @@ class FakeDocker implements DockerClient {
 function context(
 	signal = new AbortController().signal
 ): SandboxOperationContext {
-	return { operationId: 'fixture', signal, deadline: Date.now() + 5000 };
+	return {
+		cleanup: { deadline: undefined },
+		operationId: 'fixture',
+		signal,
+		deadline: Date.now() + 5000
+	};
 }
 
 const request: SandboxOpenRequest<DockerConfig> = {
@@ -431,6 +436,57 @@ it('confirms cancellation through daemon removal before permitting another job',
 	await backend.dispose(context());
 });
 
+it('uses the broker cleanup deadline for cancelled Docker jobs', async () => {
+	const docker = new FakeDocker();
+	const backend = await createDockerProvider(() => docker).open(request, {
+		...context(),
+		confirmCleanup() {
+			return;
+		},
+		reportRecovery() {
+			return;
+		}
+	});
+	const controller = new AbortController();
+	const deadline = Date.now() + 12_000;
+
+	docker.isRunningProbe = true;
+
+	try {
+		const outcome = await backend.exec(
+			{ kind: 'argv', executable: '/bin/sleep', args: ['60'] },
+			{
+				...context(controller.signal),
+				cleanup: {
+					get deadline() {
+						return controller.signal.aborted ? deadline : undefined;
+					}
+				},
+				onOutput() {
+					controller.abort();
+				}
+			}
+		);
+		const cleanup = docker.commands.filter(
+			(command) => command.operation === 'exec' && command.args[0] === 'rm'
+		);
+
+		expect({
+			outcome,
+			deadlines: cleanup.map((command) => ({
+				execution: command.context.deadline,
+				cleanup: command.context.cleanup.deadline
+			}))
+		}).toStrictEqual({
+			outcome: { kind: 'cancelled', termination: 'confirmed' },
+			deadlines: [{ execution: deadline, cleanup: deadline }]
+		});
+	} finally {
+		docker.isRunningProbe = false;
+		await backend.dispose(context());
+	}
+});
+
 it('reports unconfirmed termination when the client finishes but the daemon cannot remove the job', async () => {
 	const docker = new FakeDocker();
 	const backend = await createDockerProvider(() => docker).open(request, {
@@ -569,3 +625,67 @@ it.each(['volume', 'container'] as const)(
 		});
 	}
 );
+
+it('updates an already-running removal when cancellation publishes a longer deadline', async () => {
+	const docker = new FakeDocker();
+	const backend = await createDockerProvider(() => docker).open(request, {
+		...context(),
+		confirmCleanup() {
+			return;
+		},
+		reportRecovery() {
+			return;
+		}
+	});
+	const command = docker.command.bind(docker);
+	const removing = Promise.withResolvers<DockerCommand>();
+	const release = Promise.withResolvers<undefined>();
+
+	docker.command = async (received) => {
+		if (received.args[0] === 'rm' && received.operation === 'exec') {
+			removing.resolve(received);
+			await release.promise;
+		}
+
+		return command(received);
+	};
+
+	const controller = new AbortController();
+	const deadline = Date.now() + 12_000;
+	const running = backend.exec(
+		{ kind: 'argv', executable: '/bin/true', args: [] },
+		{
+			...context(controller.signal),
+			cleanup: {
+				get deadline() {
+					return controller.signal.aborted ? deadline : undefined;
+				}
+			},
+			onOutput() {
+				return;
+			}
+		}
+	);
+
+	try {
+		const removal = await removing.promise;
+
+		controller.abort();
+		release.resolve(undefined);
+		expect({
+			outcome: await running,
+			deadline: removal.context.deadline,
+			cleanupDeadline: removal.context.cleanup.deadline,
+			isAborted: removal.context.signal.aborted
+		}).toStrictEqual({
+			outcome: { kind: 'cancelled', termination: 'confirmed' },
+			deadline,
+			cleanupDeadline: deadline,
+			isAborted: false
+		});
+	} finally {
+		release.resolve(undefined);
+		await running;
+		await backend.dispose(context());
+	}
+});

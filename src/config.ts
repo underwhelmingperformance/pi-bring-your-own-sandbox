@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { Static } from 'typebox';
 
 import type { ApprovalSelection } from './approval-contracts.js';
-import type { SandboxPolicy } from './contracts.js';
+import type { SandboxCleanupBudgets, SandboxPolicy } from './contracts.js';
 import {
 	InvalidSandboxConfigError,
 	ProviderNotFoundError,
@@ -20,6 +20,7 @@ export interface ConfigSources {
 }
 
 export interface SandboxConfig {
+	readonly cleanup?: Partial<SandboxCleanupBudgets>;
 	readonly selection: ProviderSelection;
 	readonly approval?: ApprovalSelection;
 	readonly outsideSandbox?: { readonly destination: 'normal' | 'provider' };
@@ -111,6 +112,9 @@ export async function readConfig(
 
 	return Object.freeze({
 		selection,
+		...(personal.cleanup !== undefined && {
+			cleanup: Object.freeze({ ...personal.cleanup })
+		}),
 		...(personal.approval !== undefined && {
 			approval: Object.freeze({ ...personal.approval })
 		}),

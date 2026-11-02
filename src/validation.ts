@@ -2,6 +2,7 @@ import type {
 	SandboxCapabilities,
 	SupportedSandboxPolicies
 } from './contracts.js';
+import type { ProviderInfo } from './protocol.js';
 import {
 	capabilitiesSchema,
 	checker,
@@ -30,6 +31,22 @@ export function snapshotCapabilities(
 		exitStatus: value.exitStatus,
 		operations: Object.freeze([...value.operations]),
 		shells: Object.freeze([...value.shells])
+	});
+}
+
+export function snapshotProviderInfo(provider: ProviderInfo): ProviderInfo {
+	return Object.freeze({
+		id: provider.id,
+		label: provider.label,
+		capabilities: snapshotCapabilities(provider.capabilities),
+		policies: snapshotPolicies(provider.policies),
+		...(provider.defaultPolicy !== undefined && {
+			defaultPolicy: Object.freeze({
+				workspaceAccess: provider.defaultPolicy.workspaceAccess,
+				filesystemScope: provider.defaultPolicy.filesystemScope,
+				networkAccess: provider.defaultPolicy.networkAccess
+			})
+		})
 	});
 }
 

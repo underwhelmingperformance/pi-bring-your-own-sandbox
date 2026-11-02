@@ -107,12 +107,26 @@ const supportedPoliciesSchema = Type.Object({
 	})
 });
 
-export const providerInfoSchema = Type.Object({
-	id: nonEmptyStringSchema,
-	label: nonEmptyStringSchema,
-	capabilities: capabilitiesSchema,
-	policies: supportedPoliciesSchema
-});
+export const providerInfoSchema = Type.Refine(
+	Type.Object({
+		id: nonEmptyStringSchema,
+		label: nonEmptyStringSchema,
+		capabilities: capabilitiesSchema,
+		policies: supportedPoliciesSchema,
+		defaultPolicy: Type.Optional(policySchema)
+	}),
+	(provider) =>
+		provider.defaultPolicy === undefined ||
+		(provider.policies.workspaceAccess.includes(
+			provider.defaultPolicy.workspaceAccess
+		) &&
+			provider.policies.filesystemScope.includes(
+				provider.defaultPolicy.filesystemScope
+			) &&
+			provider.policies.networkAccess.includes(
+				provider.defaultPolicy.networkAccess
+			))
+);
 
 const expirySchema = Type.Refine(Type.String(), (value) =>
 	Number.isFinite(Date.parse(value))

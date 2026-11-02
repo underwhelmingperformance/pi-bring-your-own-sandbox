@@ -52,8 +52,19 @@ uses `getAgentDir()`. Each runtime requires a separate event bus.
 
 Registration is synchronous, validates the declaration and installs a discovery
 responder. It does not validate configuration, create a backend or allocate an
-external resource. The framework reserves provider ID `passthrough`. Other IDs
-are non-empty strings; duplicate IDs are errors even when unselected.
+external resource. The built-in registry supplies its default provider and
+reserves the IDs of its registered implementations. External IDs are non-empty
+strings; duplicate IDs are errors even when unselected. The initial registry
+uses passthrough as its default implementation.
+
+Provider metadata may include a complete `defaultPolicy`. Its values must appear
+in the provider's supported policies. Personal settings may omit `policy` when
+the selected provider declares a default. An explicit complete personal policy
+replaces that default; partial policies remain invalid. The broker snapshots and
+freezes defaults during registration, discovery and enumeration. Status retains
+the selected declaration's `providerLabel`, including after closure. Formatting
+that label uses the captured metadata without additional discovery or
+configuration.
 
 Acquisition requirements filter the shared backend. They do not select another
 provider or alter the backend's effective policy. Every requested capability

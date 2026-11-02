@@ -7,6 +7,11 @@ export const passthroughProvider: ProviderServiceV1 =
 	Object.freeze<ProviderServiceV1>({
 		id: 'passthrough',
 		label: 'Host execution without isolation',
+		defaultPolicy: Object.freeze({
+			workspaceAccess: 'read-write',
+			filesystemScope: 'provider-default',
+			networkAccess: 'provider-default'
+		}),
 		capabilities: {
 			processKinds: ['argv', 'shell'],
 			terminationScope: 'process-group',

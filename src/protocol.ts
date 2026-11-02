@@ -103,6 +103,10 @@ Discovery and configuration allocate no backend.
 */
 export interface ProviderServiceV1 {
 	/**
+	Policy used when personal settings omit a policy. Must use supported values.
+	*/
+	readonly defaultPolicy?: SandboxPolicy;
+	/**
 	Optional provider-defined execution destination, independent of approval selection.
 	*/
 	readonly outsideSandbox?: OutsideProviderServiceV1;
@@ -151,7 +155,7 @@ Personal selection with its source and complete protection policy.
 */
 export interface ProviderSelection {
 	/**
-	Provider chosen by personal configuration, defaulting to `passthrough`.
+	Provider chosen by personal configuration or the registered built-in default.
 	*/
 	readonly providerId: string;
 
@@ -175,6 +179,10 @@ export interface ProviderSelection {
 Readonly generation snapshot. Status inspection must never open a backend.
 */
 export interface SandboxStatus {
+	/**
+	Selected provider's declaration label, retained after failure or closure.
+	*/
+	readonly providerLabel?: string;
 	/**
 	Bounded provider warnings, in reporting order. Omitted when empty.
 	*/
@@ -241,6 +249,10 @@ Provider metadata safe to enumerate without provisioning resources or
 exposing configuration.
 */
 export interface ProviderInfo {
+	/**
+	Declared policy default, available without configuration or allocation.
+	*/
+	readonly defaultPolicy?: SandboxPolicy;
 	/**
 	Discovery identity without provider configuration.
 	*/

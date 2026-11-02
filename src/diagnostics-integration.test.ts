@@ -209,7 +209,7 @@ it('reports default status in a headless Pi session without opening a backend or
 				{
 					display: true,
 					content:
-						'Provider: passthrough (default)\nState: idle\nGeneration: <generation>\nTarget: not opened\nRequested policy: workspace read-write; filesystem provider-default; network provider-default\nUser shell: provider default (not opened)\nHost execution without isolation.\nApproval policy: user\nOutside execution destination: normal\nOutside native Pi shell termination scope: none\nPi shell integration: not requested; routing unverified.'
+						'Provider: passthrough (default)\nState: idle\nGeneration: <generation>\nTarget: not opened\nRequested policy: workspace read-write; filesystem provider-default; network provider-default\nUser shell: provider default (not opened)\nProvider description: Host execution without isolation\nApproval policy: user\nOutside execution destination: normal\nOutside native Pi shell termination scope: none\nPi shell integration: not requested; routing unverified.'
 				}
 			]
 		});
@@ -260,7 +260,7 @@ it('reports the target and effective policy after acquisition', async () => {
 					{
 						display: true,
 						content:
-							'Provider: fixture (personal)\nState: ready\nGeneration: <generation>\nBackend: memory\nTarget: /remote/project (remote)\nEffective policy: workspace read-write; filesystem provider-default; network provider-default\nOperations: exec, files.read, files.write, files.list\nTermination scope: workload\nShells: none\nUser shell: unavailable\nBoundary: In-memory test fixture; no OS isolation.\nApproval policy: user\nOutside execution destination: normal\nOutside native Pi shell termination scope: none\nPi shell integration: not requested; routing unverified.'
+							'Provider: fixture (personal)\nState: ready\nGeneration: <generation>\nBackend: memory\nTarget: /remote/project (remote)\nEffective policy: workspace read-write; filesystem provider-default; network provider-default\nOperations: exec, files.read, files.write, files.list\nTermination scope: workload\nShells: none\nUser shell: unavailable\nProvider description: In-memory fixture; no OS isolation.\nBoundary: In-memory test fixture; no OS isolation.\nApproval policy: user\nOutside execution destination: normal\nOutside native Pi shell termination scope: none\nPi shell integration: not requested; routing unverified.'
 					}
 				]
 			});

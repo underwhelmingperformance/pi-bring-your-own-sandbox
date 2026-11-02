@@ -277,3 +277,74 @@ it.each([
 		).toThrow(expect.objectContaining({ name }));
 	}
 );
+
+it.each([false, true])(
+	'uses declared provider defaults for personal selection %s',
+	async (isPersonal) => {
+		await withSources(async (sources) => {
+			const provider = {
+				...service('custom-default'),
+				defaultPolicy: isolatedPolicy,
+				policies: {
+					workspaceAccess: ['read-write'],
+					filesystemScope: ['workspace-only'],
+					networkAccess: ['denied']
+				}
+			} satisfies ProviderServiceV1;
+
+			if (isPersonal) {
+				await writeFile(
+					path.join(sources.agentDirectory, 'byos.json'),
+					JSON.stringify({ provider: provider.id })
+				);
+			}
+
+			expect(
+				await readConfig({
+					...sources,
+					providers: [provider],
+					...(!isPersonal && { defaultProvider: provider })
+				})
+			).toStrictEqual({
+				selection: {
+					providerId: provider.id,
+					source: isPersonal ? 'personal' : 'default',
+					policy: isolatedPolicy
+				},
+				providerConfig: {}
+			});
+		});
+	}
+);
+
+it('keeps a complete personal policy when the provider declares another default', async () => {
+	await withSources(async (sources) => {
+		const provider = {
+			...service('custom-default'),
+			defaultPolicy: isolatedPolicy,
+			policies: {
+				workspaceAccess: ['read-write'],
+				filesystemScope: ['workspace-only', 'provider-default'],
+				networkAccess: ['denied', 'provider-default']
+			}
+		} satisfies ProviderServiceV1;
+
+		await writeFile(
+			path.join(sources.agentDirectory, 'byos.json'),
+			JSON.stringify({ provider: provider.id, policy: defaultPolicy })
+		);
+
+		const config = await readConfig({ ...sources, providers: [provider] });
+
+		expect(config).toStrictEqual({
+			selection: {
+				providerId: provider.id,
+				source: 'personal',
+				policy: defaultPolicy
+			},
+			providerConfig: {},
+			policySource: 'personal'
+		});
+		expect(selectProvider(config, [provider])).toBe(provider);
+	});
+});

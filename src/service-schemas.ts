@@ -5,6 +5,7 @@ import type {
 	OutsideSandboxProvider
 } from './approval-contracts.js';
 import { absolutePathSchema } from './backend-schemas.js';
+import { builtinProviders } from './builtin-providers.js';
 import { cleanupSelectionSchema } from './cleanup-budgets.js';
 import type { SandboxProvider } from './contracts.js';
 import type {
@@ -63,11 +64,13 @@ const outsideDeclarationSchema = Type.Object({
 	open: callable<OutsideSandboxProvider<unknown>['open']>()
 });
 
-export const providerServiceSchema = Type.Object({
-	...providerInfoSchema.properties,
-	configure: callable<ProviderServiceV1['configure']>(),
-	outsideSandbox: Type.Optional(outsideProviderSchema)
-});
+export const providerServiceSchema = Type.Intersect([
+	providerInfoSchema,
+	Type.Object({
+		configure: callable<ProviderServiceV1['configure']>(),
+		outsideSandbox: Type.Optional(outsideProviderSchema)
+	})
+]);
 
 export const brokerServiceSchema = Type.Object({
 	id: nonEmptyStringSchema,
@@ -77,14 +80,19 @@ export const brokerServiceSchema = Type.Object({
 	providers: callable<BrokerServiceV1['providers']>()
 });
 
-export const providerDeclarationSchema = Type.Object({
-	...providerInfoSchema.properties,
-	id: Type.Refine(nonEmptyStringSchema, (value) => value !== 'passthrough'),
-	protocolVersion: Type.Literal(1),
-	validateConfig: callable<SandboxProvider<unknown>['validateConfig']>(),
-	open: callable<SandboxProvider<unknown>['open']>(),
-	outsideSandbox: Type.Optional(outsideDeclarationSchema)
-});
+export const providerDeclarationSchema = Type.Intersect([
+	providerInfoSchema,
+	Type.Object({
+		id: Type.Refine(
+			nonEmptyStringSchema,
+			(value) => !builtinProviders.has(value)
+		),
+		protocolVersion: Type.Literal(1),
+		validateConfig: callable<SandboxProvider<unknown>['validateConfig']>(),
+		open: callable<SandboxProvider<unknown>['open']>(),
+		outsideSandbox: Type.Optional(outsideDeclarationSchema)
+	})
+]);
 
 export const approvalPolicyDeclarationSchema = Type.Object({
 	id: Type.Refine(

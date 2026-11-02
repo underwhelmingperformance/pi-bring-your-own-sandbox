@@ -16,7 +16,7 @@ import { providerDeclarationSchema } from './service-schemas.js';
 import {
 	isRecord,
 	snapshotCapabilities,
-	snapshotPolicies
+	snapshotProviderInfo
 } from './validation.js';
 
 const isProviderDeclaration = checker(providerDeclarationSchema);
@@ -42,7 +42,7 @@ export function registerSandboxProvider<Config>(
 		});
 	}
 
-	const { id, label } = provider;
+	const { id } = provider;
 	const validate = provider.validateConfig.bind(provider);
 	const open = provider.open.bind(provider);
 	const validateConfig = (input: unknown): Config => {
@@ -77,10 +77,7 @@ export function registerSandboxProvider<Config>(
 	const outside = provider.outsideSandbox;
 	const outsideOpen = outside?.open.bind(outside);
 	const service: ProviderServiceV1 = Object.freeze({
-		id,
-		label,
-		capabilities: snapshotCapabilities(provider.capabilities),
-		policies: snapshotPolicies(provider.policies),
+		...snapshotProviderInfo(provider),
 		...(outside !== undefined &&
 			outsideOpen !== undefined && {
 				outsideSandbox: Object.freeze({

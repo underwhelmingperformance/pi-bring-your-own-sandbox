@@ -4,19 +4,26 @@ import path from 'node:path';
 import type { Static } from 'typebox';
 
 import type { ApprovalSelection } from './approval-contracts.js';
-import type { SandboxCleanupBudgets, SandboxPolicy } from './contracts.js';
+import { builtinProviders } from './builtin-providers.js';
+import type { SandboxCleanupBudgets } from './contracts.js';
 import {
 	InvalidSandboxConfigError,
 	ProviderNotFoundError,
 	UnsupportedSandboxPolicyError
 } from './errors.js';
-import type { ProviderSelection, ProviderServiceV1 } from './protocol.js';
+import type {
+	ProviderInfo,
+	ProviderSelection,
+	ProviderServiceV1
+} from './protocol.js';
 import { configFileSchema } from './request-schemas.js';
 import { checker } from './schemas.js';
 import { isRecord } from './validation.js';
 
 export interface ConfigSources {
 	readonly agentDirectory: string;
+	readonly defaultProvider?: ProviderInfo;
+	readonly providers?: readonly ProviderInfo[];
 }
 
 export interface SandboxConfig {
@@ -32,12 +39,6 @@ export interface SandboxConfig {
 type ConfigFile = Static<typeof configFileSchema>;
 
 const isConfigFile = checker(configFileSchema);
-
-const defaultPolicy: SandboxPolicy = Object.freeze({
-	workspaceAccess: 'read-write',
-	filesystemScope: 'provider-default',
-	networkAccess: 'provider-default'
-});
 
 async function readConfigFile(
 	filename: string,
@@ -82,11 +83,15 @@ export async function readConfig(
 		path.join(sources.agentDirectory, 'byos.json'),
 		'personal'
 	);
-	const providerId = personal.provider ?? 'passthrough';
+	const defaultProvider =
+		sources.defaultProvider ?? builtinProviders.defaultProvider;
+	const providers = sources.providers ?? builtinProviders.providers;
+	const providerId = personal.provider ?? defaultProvider.id;
 	const source = personal.provider === undefined ? 'default' : 'personal';
-	const policy =
-		personal.policy ??
-		(providerId === 'passthrough' ? defaultPolicy : undefined);
+	const declared = [defaultProvider, ...providers].find(
+		(provider) => provider.id === providerId
+	);
+	const policy = personal.policy ?? declared?.defaultPolicy;
 
 	if (policy === undefined) {
 		throw new InvalidSandboxConfigError({

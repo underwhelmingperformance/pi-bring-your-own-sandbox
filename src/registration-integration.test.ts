@@ -47,6 +47,7 @@ it('shares shell-only capabilities and unavailable exits across independent SDK 
 					first.registerSandboxProvider(pi, {
 						...imageProvider,
 						id: 'fixture',
+						defaultPolicy: template.policy,
 						capabilities: {
 							operations: ['exec'],
 							processKinds: ['shell'],
@@ -165,12 +166,7 @@ it('shares shell-only capabilities and unavailable exits across independent SDK 
 					path.join(personal, 'byos.json'),
 					JSON.stringify({
 						provider: 'fixture',
-						cleanup: { cancellationGraceMs: 8000 },
-						policy: {
-							workspaceAccess: 'read-write',
-							filesystemScope: 'provider-default',
-							networkAccess: 'provider-default'
-						}
+						cleanup: { cancellationGraceMs: 8000 }
 					})
 				);
 			}

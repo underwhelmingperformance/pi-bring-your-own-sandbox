@@ -1,5 +1,6 @@
 import type { EventBus } from '@earendil-works/pi-coding-agent';
 
+import { builtinProviders } from './builtin-providers.js';
 import {
 	DuplicateBrokerError,
 	DuplicateProviderError,
@@ -24,7 +25,7 @@ import {
 	discoveryRequestSchema,
 	providerServiceSchema
 } from './service-schemas.js';
-import { snapshotCapabilities, snapshotPolicies } from './validation.js';
+import { snapshotCapabilities, snapshotProviderInfo } from './validation.js';
 
 export const isDiscoveryRequest = checker(discoveryRequestSchema);
 
@@ -80,7 +81,9 @@ function collect(
 export function discoverProviders(
 	events: EventBus
 ): readonly ProviderServiceV1[] {
-	const ids = new Set<string>();
+	const ids = new Set(
+		builtinProviders.providers.map((provider) => provider.id)
+	);
 
 	return collect(events, PROVIDER_DISCOVERY_CHANNEL, 'pi-byos.provider').map(
 		({ id, service }) => {
@@ -91,7 +94,7 @@ export function discoverProviders(
 				});
 			}
 
-			if (id === 'passthrough' || ids.has(id)) {
+			if (ids.has(id)) {
 				throw new DuplicateProviderError({
 					operation: 'discover',
 					providerId: id
@@ -101,10 +104,7 @@ export function discoverProviders(
 			ids.add(id);
 
 			return Object.freeze({
-				id,
-				label: service.label,
-				capabilities: snapshotCapabilities(service.capabilities),
-				policies: snapshotPolicies(service.policies),
+				...snapshotProviderInfo(service),
 				...(service.outsideSandbox !== undefined && {
 					outsideSandbox: Object.freeze({
 						label: service.outsideSandbox.label,

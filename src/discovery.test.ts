@@ -357,3 +357,36 @@ it.each([
 		);
 	}
 );
+
+it('snapshots provider default policies and rejects unsupported defaults', () => {
+	const events = createEventBus();
+	const defaultPolicy = {
+		workspaceAccess: 'read-write',
+		filesystemScope: 'provider-default',
+		networkAccess: 'provider-default'
+	} as const;
+	const reply = providerReply();
+
+	respond(events, 'pi-byos:discovery:v1:providers', {
+		...reply,
+		service: { ...reply.service, defaultPolicy }
+	});
+
+	const provider = discoverProviders(events)[0];
+
+	expect(provider?.defaultPolicy).toStrictEqual(defaultPolicy);
+	expect(Object.isFrozen(provider?.defaultPolicy)).toBe(true);
+
+	const invalid = createEventBus();
+
+	respond(invalid, 'pi-byos:discovery:v1:providers', {
+		...reply,
+		service: {
+			...reply.service,
+			defaultPolicy: { ...defaultPolicy, networkAccess: 'denied' }
+		}
+	});
+	expect(() => discoverProviders(invalid)).toThrow(
+		expect.objectContaining({ name: 'InvalidSandboxDeclarationError' })
+	);
+});

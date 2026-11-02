@@ -63,8 +63,8 @@ export function formatStatus(status: SandboxStatus): string {
 
 	lines.push(`User shell: ${userShell(status)}`);
 
-	if (selection?.providerId === 'passthrough') {
-		lines.push('Host execution without isolation.');
+	if (status.providerLabel !== undefined) {
+		lines.push(`Provider description: ${status.providerLabel}`);
 	}
 
 	if (status.policyDescription !== undefined) {

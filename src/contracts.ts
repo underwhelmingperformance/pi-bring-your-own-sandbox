@@ -890,8 +890,13 @@ and received by opening.
 */
 export interface SandboxProvider<Config> {
 	/**
-	Non-empty discovery identity. The framework reserves `passthrough`;
-	duplicate IDs fail discovery.
+	Complete policy to use when personal settings select this provider without
+	specifying a policy. Every value must be supported by `policies`.
+	*/
+	readonly defaultPolicy?: SandboxPolicy;
+	/**
+	Non-empty discovery identity. IDs of registered built-in providers are
+	reserved; duplicate IDs fail discovery.
 	*/
 	readonly id: string;
 

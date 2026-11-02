@@ -55,12 +55,7 @@ import type {
 } from './protocol.js';
 import { ProviderDiagnostics } from './provider-diagnostics.js';
 import { callable, checker } from './schemas.js';
-import {
-	isRecord,
-	isRecovery,
-	snapshotCapabilities,
-	snapshotPolicies
-} from './validation.js';
+import { isRecord, isRecovery, snapshotProviderInfo } from './validation.js';
 
 export interface GenerationDependencies {
 	readonly providers: () => readonly ProviderServiceV1[];
@@ -199,29 +194,16 @@ export class SandboxGeneration {
 	async #load(pending: PromiseWithResolvers<Prepared>): Promise<void> {
 		try {
 			const providers = Object.freeze(
-				this.#dependencies.providers().map((provider) => {
-					const capabilities = snapshotCapabilities(provider.capabilities);
-					const policies = snapshotPolicies(provider.policies);
-
-					return Object.freeze({
-						id: provider.id,
-						label: provider.label,
-						capabilities,
-						policies,
+				this.#dependencies.providers().map((provider) =>
+					Object.freeze({
+						...snapshotProviderInfo(provider),
 						configure: provider.configure.bind(provider)
-					});
-				})
+					})
+				)
 			);
 
 			this.#providerInfos = Object.freeze(
-				providers.map((provider) =>
-					Object.freeze({
-						id: provider.id,
-						label: provider.label,
-						capabilities: snapshotCapabilities(provider.capabilities),
-						policies: snapshotPolicies(provider.policies)
-					})
-				)
+				providers.map((provider) => snapshotProviderInfo(provider))
 			);
 
 			const config = await this.#dependencies.readConfig(this.#session);
@@ -697,8 +679,12 @@ export class SandboxGeneration {
 
 		const backend = this.#backend;
 		const diagnostics = this.#diagnostics.snapshot();
+		const provider = this.#providerInfos.find(
+			(entry) => entry.id === this.#selection?.providerId
+		);
 
 		return Object.freeze({
+			...(provider !== undefined && { providerLabel: provider.label }),
 			...(diagnostics.entries.length > 0 && {
 				diagnostics: diagnostics.entries
 			}),

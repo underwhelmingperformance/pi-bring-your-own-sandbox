@@ -238,8 +238,9 @@ the service's returned promise, not through the event bus. There is no polling
 loop or factory-time wait for another extension to load. Configuration is read
 and validated before selecting or opening any backend, including `passthrough`.
 
-On initialisation, the broker includes the built-in `passthrough` provider and
-collects the live provider declarations. That provider ID is reserved. All
+On initialisation, the broker includes all providers in the built-in registry
+and collects the live provider declarations. IDs in that registry are reserved.
+The registry selects `passthrough` as its initial default implementation. All
 factories have completed by this point, regardless of lifecycle-handler order. A
 declaration from a failed factory has no live responder because Pi removes that
 factory's subscriptions. This avoids retaining a registration that the provider
@@ -324,12 +325,18 @@ The shared policy vocabulary is deliberately small:
   network access from sandboxed operations, including access through host
   services.
 
-Require all policy fields for an explicitly selected external provider.
-`passthrough` needs no policy configuration; its defaults are `read-write`,
-`provider-default` filesystem scope and `provider-default` network access. It
-reports host permissions and no isolation. Its workspace root is `ctx.cwd`, and
-it supports ordinary host execution and filesystem operations through the same
-cancellation, result and mutation contracts. Search and shell dialect
+A provider may declare a complete `defaultPolicy`. Each value must be among its
+supported policy values. When personal settings omit `policy`, use the selected
+provider's declared default. If the provider declares no default, require a
+complete personal policy. An explicit policy replaces the complete default and
+must still be supported; partial policies remain invalid. Installing an
+extension never selects it or changes the configured provider.
+
+Passthrough declares `read-write`, `provider-default` filesystem scope and
+`provider-default` network access through the same metadata as other providers.
+It reports host permissions and no isolation. Its workspace root is `ctx.cwd`,
+and it supports ordinary host execution and filesystem operations through the
+same cancellation, result and mutation contracts. Search and shell dialect
 capabilities reflect the available implementation on that host.
 
 `passthrough` does not claim to enforce read-only access, workspace containment
@@ -803,11 +810,12 @@ status indicator may summarise ready/failed state in the TUI.
 
 The framework does not write executable handles, credentials, raw provider
 configuration or backend clients into Pi session entries. Diagnostic output must
-make provider-default policy and incomplete cleanup visible. Failed-startup
-status includes outstanding recovery instructions. Shutdown displays incomplete
-cleanup before runtime invalidation. During an active turn, Pi defers custom
-messages, so the broker also writes a non-secret `byos-cleanup` entry and sends
-a UI warning.
+describe the selected provider through its declaration label, and make
+provider-default policy and incomplete cleanup visible. Failed-startup status
+includes outstanding recovery instructions. Shutdown displays incomplete cleanup
+before runtime invalidation. During an active turn, Pi defers custom messages,
+so the broker also writes a non-secret `byos-cleanup` entry and sends a UI
+warning.
 
 ## Acceptance criteria
 

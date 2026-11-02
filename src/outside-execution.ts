@@ -13,6 +13,7 @@ import {
 } from './approval-errors.js';
 import { outsideProcessOptionsSchema } from './approval-schemas.js';
 import { SandboxBroker } from './broker.js';
+import { builtinProviders } from './builtin-providers.js';
 import { reportCleanup } from './cleanup-report.js';
 import type { SandboxConfig } from './config.js';
 import { inspectContext } from './context.js';
@@ -43,7 +44,6 @@ import {
 	ensureExtensionService
 } from './extension-services.js';
 import { OperationRegistry, OperationScope } from './lifecycle.js';
-import { passthroughProvider } from './passthrough-provider.js';
 import {
 	snapshotProcessOptions,
 	snapshotProcessRequest
@@ -93,9 +93,10 @@ function outsideProvider(
 	pi: SandboxHost,
 	config: SandboxConfig
 ): ProviderServiceV1 {
-	const provider = [passthroughProvider, ...discoverProviders(pi.events)].find(
-		(provider) => provider.id === config.selection.providerId
-	);
+	const provider = [
+		...builtinProviders.providers,
+		...discoverProviders(pi.events)
+	].find((provider) => provider.id === config.selection.providerId);
 
 	if (provider === undefined) {
 		throw new ProviderNotFoundError({
@@ -280,7 +281,7 @@ function outsideService(pi: SandboxHost): OutsideServiceV1 {
 							kind === 'provider'
 								? outsideProvider(pi, config)
 								: settings.normalExecutor === undefined
-									? passthroughProvider
+									? builtinProviders.defaultProvider
 									: normalProvider(settings.normalExecutor);
 
 						const provider = selected;

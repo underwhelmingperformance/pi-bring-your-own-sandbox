@@ -1,9 +1,11 @@
 import { getAgentDir } from '@earendil-works/pi-coding-agent';
 
+import { builtinProviders } from './builtin-providers.js';
 import { resolveCleanupBudgets } from './cleanup-budgets.js';
 import type { SandboxConfig } from './config.js';
 import { readConfig } from './config.js';
 import type { SandboxHost, SandboxHostOptions } from './contracts.js';
+import { discoverProviders } from './discovery.js';
 import { InvalidSandboxRequestError } from './errors.js';
 import { ensureExtensionService } from './extension-services.js';
 import { checker } from './schemas.js';
@@ -34,7 +36,13 @@ export function runtimeSettings(
 			const lifetime = new AbortController();
 
 			async function configured(): Promise<SandboxConfig> {
-				const value = await readConfig({ agentDirectory: directory });
+				const value = await readConfig({
+					agentDirectory: directory,
+					providers: [
+						...builtinProviders.providers,
+						...discoverProviders(pi.events)
+					]
+				});
 
 				return Object.freeze({
 					...value,

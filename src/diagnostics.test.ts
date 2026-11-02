@@ -3,6 +3,7 @@ import { expect, it } from 'vitest';
 import { formatStatus } from './diagnostics.js';
 import { SandboxStartupError } from './errors.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
+import type { ProviderInfo } from './protocol.js';
 
 it('shows a configured shell that the ready backend does not support', () => {
 	const backend = new MemoryBackend();
@@ -108,6 +109,43 @@ it('shows recovery from an opening that failed before returning a backend', () =
 			'Cleanup: incomplete',
 			'Recovery: orphan-volume-123 (lease manual cleanup)',
 			'Remove orphan-volume-123.'
+		].join('\n')
+	);
+});
+
+it('describes arbitrary providers through declaration metadata', () => {
+	const backend = new MemoryBackend('exec');
+	const provider = {
+		id: 'custom',
+		label: 'Custom execution boundary',
+		capabilities: backend.capabilities,
+		policies: {
+			workspaceAccess: ['read-write'],
+			filesystemScope: ['provider-default'],
+			networkAccess: ['provider-default']
+		}
+	} satisfies ProviderInfo;
+
+	expect(
+		formatStatus({
+			generationId: 'generation',
+			state: 'idle',
+			providerLabel: provider.label,
+			selection: {
+				providerId: provider.id,
+				source: 'default',
+				policy: backend.policy
+			}
+		})
+	).toBe(
+		[
+			'Provider: custom (default)',
+			'State: idle',
+			'Generation: generation',
+			'Target: not opened',
+			'Requested policy: workspace read-write; filesystem provider-default; network provider-default',
+			'User shell: provider default (not opened)',
+			'Provider description: Custom execution boundary'
 		].join('\n')
 	);
 });

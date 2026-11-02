@@ -223,7 +223,7 @@ export class ProviderNotFoundError extends SandboxError<'ProviderNotFoundError'>
 }
 
 /**
-Provider discovery found a repeated ID or the reserved passthrough ID.
+Provider discovery found a repeated ID or an ID reserved by the built-in registry.
 Selection cannot proceed.
 */
 export class DuplicateProviderError extends SandboxError<'DuplicateProviderError'> {

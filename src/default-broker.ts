@@ -1,7 +1,7 @@
 import { SandboxBroker } from './broker.js';
+import { builtinProviders } from './builtin-providers.js';
 import type { SandboxHost } from './contracts.js';
 import { discoverProviders } from './discovery.js';
-import { passthroughProvider } from './passthrough-provider.js';
 import { runtimeSettings } from './runtime-settings.js';
 import { ensureBroker } from './service.js';
 
@@ -10,7 +10,10 @@ export function ensureSandboxService(pi: SandboxHost, agentDirectory?: string) {
 		pi.events,
 		(id) =>
 			new SandboxBroker(id, pi, {
-				providers: () => [passthroughProvider, ...discoverProviders(pi.events)],
+				providers: () => [
+					...builtinProviders.providers,
+					...discoverProviders(pi.events)
+				],
 				readConfig: () =>
 					runtimeSettings(
 						pi,

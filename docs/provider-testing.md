@@ -42,7 +42,7 @@ calls, including when cleanup is already complete.
 
 | Fixture member    | What to supply                                                                                                                                                                                                                                                                                |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `processes`       | At least one argv invocation with complete expected stdout, stderr and exit status. Include non-zero exits, literal shell metacharacters in arguments, cwd changes and environment overrides.                                                                                                 |
+| `processes`       | At least one argv invocation with complete expected stdout, stderr and exit status. Include non-zero exits, empty arguments, quotes, whitespace, newlines, Unicode, shell metacharacters, target executable lookup, cwd changes and environment overrides, including variable deletion.       |
 | `shells`          | One invocation for every selected shell dialect, with complete expected output and exit status.                                                                                                                                                                                               |
 | `read`            | A seeded regular file, its complete bytes and a path that does not exist.                                                                                                                                                                                                                     |
 | `write`           | A missing directory and file for a writable scenario, plus an independent callback that reads the resulting target file. The suite creates parents, writes binary bytes and overwrites the file with shorter content. A read-only scenario must reject a write with a typed permission error. |
@@ -95,3 +95,19 @@ The host scenario uses real processes, files, fd and ripgrep, and loads the
 compiled `/testing` entry. The host scenario does not establish sandbox
 isolation. An isolating provider also needs tests for its runtime-specific
 boundaries, environment inheritance, allocation identity and recovery behaviour.
+
+For an internal shell transport, run the argv probes through the actual runtime
+transport. Verify that shell builtins and assignment-like executable names use
+ordinary target executable lookup. Supply hostile startup variables, such as
+`BASH_ENV` or `ENV` for POSIX shells, and a `PATH` containing a substitute
+shell. Check independently that startup code did not execute, that overrides
+reached only the target, and that stdout and stderr contain only target output.
+Include runtime-specific loader and startup hooks in these checks.
+
+Add negative execution cases alongside the common suite. A missing executable
+and a missing working directory must produce typed operation errors. A target
+that starts and exits with code 127 must return an ordinary exit result. The
+repository's `src/argv-conformance.test.ts` compares direct execution with a
+small real shell transport fixture. That fixture tests encoding and bootstrap
+separation; it does not establish any external runtime's cancellation or
+isolation guarantees.

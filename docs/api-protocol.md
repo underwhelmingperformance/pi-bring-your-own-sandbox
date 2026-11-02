@@ -137,6 +137,17 @@ accepts fields from the other. An empty executable is invalid. Empty arguments
 and an empty shell command are valid. NUL bytes in executable, arguments,
 command, paths or environment keys/values are invalid.
 
+Argv execution preserves literal argument values and boundaries. Providers may
+use a fixed, trusted transport shell with a validated, lossless encoding, as
+specified in [Process execution][process-execution]. Caller data must not become
+shell syntax. Executable lookup, target working directory and environment
+semantics remain unchanged. Caller overrides must not affect bootstrap
+execution, and transport diagnostics must not enter target stdout or stderr.
+Failure to start remains a typed operation error, distinct from a target exit
+status, including code 127.
+
+[process-execution]: specification.md#process-execution
+
 `env` replaces individual target environment entries. A string sets a value;
 `null` removes the variable. An omitted key preserves the provider's runtime
 default. Environment keys are non-empty and cannot contain `=`. External

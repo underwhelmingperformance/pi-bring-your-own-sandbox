@@ -425,8 +425,33 @@ permission decisions.
 Both variants accept a target working directory and explicit environment
 overrides. The default directory is the target workspace root. Relative paths
 resolve in the target environment. Executable lookup uses the target's `PATH`.
-The broker never joins an argument array into a shell command. A provider that
-needs an internal transport shell must preserve argument boundaries.
+The broker never joins an argument array into a shell command. A provider may
+use a fixed, trusted internal transport shell with a validated, lossless
+encoding. The target must receive the requested executable and argument values
+with their original boundaries, including empty arguments, quotes, whitespace,
+newlines, Unicode and shell metacharacters. Transport encoding must not perform
+variable expansion, command substitution, globbing or interpretation of caller
+data as shell syntax. Executable lookup must use the target environment and
+working directory; the transport must not substitute a shell builtin, function
+or assignment for the requested executable. Concatenating unencoded caller
+values into shell text is invalid.
+
+Using a transport shell does not advertise that dialect for `shell` requests.
+
+Bootstrap execution uses provider-controlled executables and environment. Caller
+environment overrides apply to the target program, including `PATH` changes and
+variable deletion. They must not select or configure the transport shell,
+trigger bootstrap startup hooks or affect other bootstrap programs. A fixed
+shell path alone does not protect against startup hooks or loader variables.
+Providers must separate bootstrap execution from application of target
+overrides.
+
+Internal transport must preserve the distinction between failure to start and
+the target's exit status. A missing executable produces
+`SandboxPathNotFoundError`; a target that starts and exits with code 127 returns
+that exit result. Transport diagnostics must not enter target stdout or stderr.
+These requirements do not change foreground completion or cancellation
+guarantees.
 
 The environment contains provider-owned runtime defaults and explicit caller
 overrides. `passthrough` uses the normal host environment, including inherited

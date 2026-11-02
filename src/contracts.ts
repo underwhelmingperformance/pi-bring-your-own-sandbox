@@ -298,10 +298,14 @@ interface ProcessLocation {
 }
 
 /**
-Execute an argument vector directly or interpret a command in an explicit
-shell dialect. Paths and working directories use target semantics; relative
-paths resolve from the target root. Argument vectors must never be joined
-into shell command text.
+Run an executable with literal argument values, or interpret a command in an
+explicit shell dialect. Paths and working directories use target semantics;
+relative paths resolve from the workspace root. For argv requests, providers
+may use a fixed, trusted transport shell with a validated, lossless encoding.
+Transport must preserve executable lookup, argument values and boundaries,
+working directory and target environment semantics. Caller data must not become
+transport shell syntax or control bootstrap execution. See the process
+execution contract for details.
 */
 export type ProcessRequest = ProcessLocation &
 	(

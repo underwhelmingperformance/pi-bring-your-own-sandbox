@@ -269,6 +269,8 @@ function writerFixture(
 		id: 'writer',
 		workspace,
 		capabilities: {
+			processKinds: ['argv'],
+			exitStatus: 'guaranteed',
 			operations: ['exec', 'files.write'],
 			shells: []
 		},

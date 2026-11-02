@@ -17,6 +17,8 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 		label: 'Contract test double without OS isolation',
 		protocolVersion: 1,
 		capabilities: {
+			processKinds: ['argv', 'shell'],
+			exitStatus: 'guaranteed',
 			operations: ['exec', 'files.read', 'files.write', 'files.list'],
 			shells: ['sh']
 		},

@@ -79,6 +79,9 @@ export async function openPassthrough(
 			operations
 		).methods();
 		const capabilities: SandboxCapabilities = {
+			processKinds:
+				shells.keys().toArray().length === 0 ? ['argv'] : ['argv', 'shell'],
+			exitStatus: 'guaranteed',
 			operations: [
 				'exec',
 				'files.read',

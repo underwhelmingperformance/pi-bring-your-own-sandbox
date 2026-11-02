@@ -11,6 +11,67 @@ import { defineSandboxProviderTests } from './testing.js';
 
 defineSandboxProviderTests(contractScenario());
 
+const shellOnly = contractScenario();
+const openShellOnly = shellOnly.provider.open;
+
+defineSandboxProviderTests({
+	...shellOnly,
+	label: 'shell-only provider with unavailable exit details',
+	provider: {
+		...shellOnly.provider,
+		capabilities: {
+			operations: ['exec'],
+			processKinds: ['shell'],
+			shells: ['sh'],
+			exitStatus: 'optional'
+		},
+		async open(request, context) {
+			const backend = await openShellOnly(request, context);
+			const { files: _files, ...executionOnly } = backend;
+
+			return {
+				...executionOnly,
+				capabilities: {
+					operations: ['exec'],
+					processKinds: ['shell'],
+					shells: ['sh'],
+					exitStatus: 'optional'
+				},
+				async exec(process, execution) {
+					if (process.kind === 'shell' && process.command === 'wait') {
+						return backend.exec(
+							{ kind: 'argv', executable: 'wait', args: [] },
+							execution
+						);
+					}
+
+					await backend.exec(process, execution);
+
+					return { kind: 'exited', exit: { kind: 'unavailable' } };
+				}
+			};
+		}
+	},
+	async createFixture() {
+		const { processes: _processes, ...fixture } =
+			await shellOnly.createFixture();
+		const sh = fixture.shells?.sh;
+
+		if (sh === undefined) {
+			throw new Error('The shell probe is missing.');
+		}
+
+		return {
+			...fixture,
+			shells: { sh: { ...sh, exit: { kind: 'unavailable' } } },
+			cancellation: {
+				...fixture.cancellation,
+				request: { kind: 'shell', dialect: 'sh', command: 'wait' }
+			}
+		};
+	}
+});
+
 it.each([
 	{
 		label: 'a missing advertised file group',

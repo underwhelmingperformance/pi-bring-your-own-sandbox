@@ -25,6 +25,13 @@ export function acquireOptions(input: unknown): SandboxAcquireOptions {
 
 	return Object.freeze({
 		...options,
+		...(value.processKinds !== undefined && {
+			processKinds: Object.freeze([...value.processKinds])
+		}),
+		...(value.shells !== undefined && {
+			shells: Object.freeze([...value.shells])
+		}),
+		...(value.exitStatus !== undefined && { exitStatus: value.exitStatus }),
 		...(value.capabilities !== undefined && {
 			capabilities: Object.freeze([...value.capabilities])
 		}),
@@ -55,6 +62,14 @@ export function checkRequirements(
 	};
 
 	if (
+		options.processKinds?.some(
+			(kind) => !sandbox.capabilities.processKinds.includes(kind)
+		) ||
+		options.shells?.some(
+			(shell) => !sandbox.capabilities.shells.includes(shell)
+		) ||
+		(options.exitStatus === 'guaranteed' &&
+			sandbox.capabilities.exitStatus !== 'guaranteed') ||
 		options.capabilities?.some(
 			(capability) => !sandbox.capabilities.operations.includes(capability)
 		)

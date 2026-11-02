@@ -30,6 +30,8 @@ function fixture(
 			description: 'Test fixture.'
 		},
 		capabilities: {
+			processKinds: ['argv', 'shell'],
+			exitStatus: 'guaranteed',
 			operations: ['exec'],
 			shells: ['sh']
 		},

@@ -9,7 +9,12 @@ export function providerReply(id = 'independent') {
 		service: {
 			id,
 			label: 'Independent protocol fixture',
-			capabilities: { operations: ['exec'], shells: [] },
+			capabilities: {
+				processKinds: ['argv'],
+				exitStatus: 'guaranteed',
+				operations: ['exec'],
+				shells: []
+			},
 			policies: {
 				workspaceAccess: ['read-write'],
 				filesystemScope: ['provider-default'],

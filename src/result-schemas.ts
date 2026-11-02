@@ -126,6 +126,7 @@ export function grepResultSchema(
 }
 
 export const processExitSchema = Type.Union([
+	Type.Object({ kind: Type.Literal('unavailable') }),
 	Type.Object({ kind: Type.Literal('code'), code: safeIntegerSchema }),
 	Type.Object({
 		kind: Type.Literal('signal'),

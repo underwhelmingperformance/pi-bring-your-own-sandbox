@@ -121,6 +121,14 @@ export async function usingProviderFixture<Config>(
 			expect(backend.capabilities.shells).toContain(shell);
 		}
 
+		for (const kind of capabilities.processKinds) {
+			expect(backend.capabilities.processKinds).toContain(kind);
+		}
+
+		if (capabilities.exitStatus === 'guaranteed') {
+			expect(backend.capabilities.exitStatus).toBe('guaranteed');
+		}
+
 		const opened = backend;
 
 		await bounded(timeoutMs, (context) => run(fixture, opened, context));
@@ -175,6 +183,10 @@ async function checkProcess(
 		}
 	});
 
+	if (backend.capabilities.exitStatus === 'guaranteed') {
+		expect(probe.exit.kind).not.toBe('unavailable');
+	}
+
 	expect({
 		outcome,
 		stdout: new Uint8Array(Buffer.concat(stdout)),
@@ -209,17 +221,7 @@ export function providerContractCases<Config>(
 				await fixture.verifyPolicy?.(backend, context);
 			}
 		},
-		{
-			label: 'argv execution',
-			run: async (fixture, backend, context) => {
-				expect(fixture.processes.length).toBeGreaterThan(0);
 
-				for (const probe of fixture.processes) {
-					expect(probe.request.kind).toBe('argv');
-					await checkProcess(backend, probe, context);
-				}
-			}
-		},
 		{
 			label: 'confirmed cancellation',
 			run: async (fixture, backend, context) => {
@@ -276,6 +278,22 @@ export function providerContractCases<Config>(
 			}
 		}
 	];
+
+	if (capabilities.processKinds.includes('argv')) {
+		cases.push({
+			label: 'argv execution',
+			run: async (fixture, backend, context) => {
+				const processes = fixture.processes ?? [];
+
+				expect(processes.length).toBeGreaterThan(0);
+
+				for (const probe of processes) {
+					expect(probe.request.kind).toBe('argv');
+					await checkProcess(backend, probe, context);
+				}
+			}
+		});
+	}
 
 	for (const dialect of capabilities.shells) {
 		cases.push({

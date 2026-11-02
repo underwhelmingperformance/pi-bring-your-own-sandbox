@@ -12,6 +12,8 @@ it.each(['operations', 'shells'] as const)(
 		sparse.length++;
 
 		const capabilities = {
+			processKinds: ['argv'],
+			exitStatus: 'guaranteed',
 			operations: ['exec', 'search.find'],
 			shells: [],
 			[field]: sparse

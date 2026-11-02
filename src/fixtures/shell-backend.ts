@@ -15,7 +15,12 @@ export function shellBackend(output = 'target output') {
 		policy: template.policy,
 		policyDescription: template.policyDescription,
 		recovery: template.recovery,
-		capabilities: { operations: ['exec'], shells: ['bash', 'powershell'] },
+		capabilities: {
+			processKinds: ['argv', 'shell'],
+			exitStatus: 'guaranteed',
+			operations: ['exec'],
+			shells: ['bash', 'powershell']
+		},
 		exec(request: ProcessRequest, context: BackendProcessContext) {
 			requests.push(request);
 			context.onOutput({

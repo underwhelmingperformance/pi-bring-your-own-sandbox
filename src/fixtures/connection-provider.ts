@@ -8,7 +8,12 @@ export const connectionProvider: SandboxProvider<ConnectionConfig> = {
 	id: 'fixture.connection',
 	label: 'Connection protocol fixture',
 	protocolVersion: 1,
-	capabilities: { operations: ['exec'], shells: ['sh'] },
+	capabilities: {
+		processKinds: ['argv', 'shell'],
+		exitStatus: 'guaranteed',
+		operations: ['exec'],
+		shells: ['sh']
+	},
 	policies: {
 		workspaceAccess: ['read-only', 'read-write'],
 		filesystemScope: ['workspace-only'],
@@ -39,6 +44,8 @@ export const connectionProvider: SandboxProvider<ConnectionConfig> = {
 				defaultShell: 'sh'
 			},
 			capabilities: {
+				processKinds: ['argv', 'shell'],
+				exitStatus: 'guaranteed',
 				operations: ['exec'],
 				shells: ['sh']
 			},

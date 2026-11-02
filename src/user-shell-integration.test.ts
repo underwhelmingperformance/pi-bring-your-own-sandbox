@@ -57,6 +57,8 @@ function fixture(
 			})
 		},
 		capabilities: {
+			processKinds: config.shells.length === 0 ? ['argv'] : ['argv', 'shell'],
+			exitStatus: 'guaranteed',
 			operations: ['exec'],
 			shells: config.shells
 		},

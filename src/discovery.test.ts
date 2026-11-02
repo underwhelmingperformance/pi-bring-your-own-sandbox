@@ -31,7 +31,12 @@ it('accepts an independently authored provider on the actual Pi event bus', () =
 		{
 			id: reply.id,
 			label: 'Independent protocol fixture',
-			capabilities: { operations: ['exec'], shells: [] },
+			capabilities: {
+				processKinds: ['argv'],
+				exitStatus: 'guaranteed',
+				operations: ['exec'],
+				shells: []
+			},
 			policies: {
 				workspaceAccess: ['read-write'],
 				filesystemScope: ['provider-default'],
@@ -60,7 +65,12 @@ it('snapshots metadata from an independent peer before asynchronous work', () =>
 		}))
 	).toStrictEqual([
 		{
-			capabilities: { operations: ['exec'], shells: [] },
+			capabilities: {
+				processKinds: ['argv'],
+				exitStatus: 'guaranteed',
+				operations: ['exec'],
+				shells: []
+			},
 			frozen: true
 		}
 	]);
@@ -145,7 +155,12 @@ it.each([
 			...providerReply(),
 			service: {
 				...providerReply().service,
-				capabilities: { operations: [], shells: [] }
+				capabilities: {
+					processKinds: ['argv'],
+					exitStatus: 'guaranteed',
+					operations: [],
+					shells: []
+				}
 			}
 		},
 		'InvalidSandboxDeclarationError'
@@ -157,6 +172,8 @@ it.each([
 			service: {
 				...providerReply().service,
 				capabilities: {
+					processKinds: ['argv'],
+					exitStatus: 'guaranteed',
 					operations: ['exec', 'pty'],
 					shells: []
 				}

@@ -36,7 +36,12 @@ class MessageBackend implements SandboxBackend {
 		relationship: 'remote',
 		description: 'Message-channel test double without OS isolation.'
 	} as const;
-	readonly capabilities = { operations: ['exec'], shells: ['sh'] } as const;
+	readonly capabilities = {
+		processKinds: ['argv', 'shell'],
+		exitStatus: 'guaranteed',
+		operations: ['exec'],
+		shells: ['sh']
+	} as const;
 	readonly policy: SandboxPolicy;
 	readonly policyDescription = 'Test double without OS isolation.';
 	readonly recovery = { kind: 'none' } as const;
@@ -271,7 +276,12 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 		id: 'fixture.message',
 		label: 'Message-channel provider without OS isolation',
 		protocolVersion: 1,
-		capabilities: { operations: ['exec'], shells: ['sh'] },
+		capabilities: {
+			processKinds: ['argv', 'shell'],
+			exitStatus: 'guaranteed',
+			operations: ['exec'],
+			shells: ['sh']
+		},
 		policies: {
 			workspaceAccess: ['read-write'],
 			filesystemScope: ['provider-default'],

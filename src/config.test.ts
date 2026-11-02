@@ -186,7 +186,12 @@ function service(id: string): ProviderServiceV1 {
 	return {
 		id,
 		label: id,
-		capabilities: { operations: ['exec'], shells: [] },
+		capabilities: {
+			processKinds: ['argv'],
+			exitStatus: 'guaranteed',
+			operations: ['exec'],
+			shells: []
+		},
 		policies: {
 			workspaceAccess: ['read-write'],
 			filesystemScope: ['provider-default'],

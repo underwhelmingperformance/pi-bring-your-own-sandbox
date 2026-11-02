@@ -17,6 +17,8 @@ defineSandboxProviderTests({
   label: 'remote provider with a writable workspace and denied network',
   provider,
   capabilities: {
+    processKinds: ['argv', 'shell'],
+    exitStatus: 'guaranteed',
     operations: ['exec', 'files.read', 'files.write', 'files.list'],
     shells: ['sh']
   },
@@ -30,6 +32,10 @@ default is the provider declaration. Opening must return every selected
 capability. Backend metadata is validated against the full declaration even when
 the scenario selects fewer capabilities. Register separate scenarios for
 different policies and backend capability subsets.
+
+Shell-only scenarios omit `processes` and supply a probe for each advertised
+dialect. Optional-status scenarios can expect `{ kind: "unavailable" }` in a
+process probe. Termination and disposal still require independent verification.
 
 Each test calls `createFixture`, validates its unknown configuration through the
 provider, opens a fresh backend, runs its checks and disposes the backend. The

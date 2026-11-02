@@ -49,6 +49,10 @@ execution.
 */
 export type ShellDialect = Static<typeof shellSchema>;
 /**
+Request forms accepted by a provider. Shell dialects are advertised separately.
+*/
+export type ProcessKind = ProcessRequest['kind'];
+/**
 Operation groups that consumers can require before using a shared backend.
 */
 export type SandboxCapability = Static<typeof capabilitySchema>;
@@ -59,13 +63,22 @@ backend may advertise a subset of its provider declaration.
 */
 export interface SandboxCapabilities {
 	/**
+	Accepted request forms. At least one form must be available.
+	*/
+	readonly processKinds: readonly ProcessKind[];
+	/**
+	Whether every completed invocation includes an exit code or signal.
+	Optional status permits a completed result with unavailable exit details.
+	*/
+	readonly exitStatus: 'guaranteed' | 'optional';
+	/**
 	Contains unique operation literals and always includes `exec`.
 	*/
 	readonly operations: readonly SandboxCapability[];
 
 	/**
-	Shell dialects accepted by execution; an empty list permits argv
-	execution only.
+	Shell dialects accepted by execution. Non-empty exactly when shell
+	requests are supported.
 	*/
 	readonly shells: readonly ShellDialect[];
 }
@@ -222,6 +235,18 @@ not select another provider or reconfigure an existing backend.
 */
 export interface SandboxAcquireOptions extends SandboxOperationOptions {
 	/**
+	Request forms that must be available on the shared backend.
+	*/
+	readonly processKinds?: readonly ProcessKind[];
+	/**
+	Shell dialects that must be available on the shared backend.
+	*/
+	readonly shells?: readonly ShellDialect[];
+	/**
+	Require an exit code or signal for every completed invocation.
+	*/
+	readonly exitStatus?: 'guaranteed';
+	/**
 	Every requested operation group must be available.
 	*/
 	readonly capabilities?: readonly SandboxCapability[];
@@ -372,7 +397,8 @@ export interface BackendProcessContext extends SandboxOperationContext {
 }
 
 /**
-A completed process exit. A non-zero code is a process result, not an SDK
+Exit details after confirmed foreground completion. Optional-status providers
+may report unavailable details. A non-zero code is a process result, not an SDK
 error. Signal termination includes the target OS signal number so consumers
 can derive a shell status without using the host signal table.
 */
@@ -399,8 +425,8 @@ confirmed.
 */
 export interface ProcessResult {
 	/**
-	Confirmed exit code or signal; non-zero codes remain successful SDK
-	results.
+Exit code, signal or explicitly unavailable details after confirmed
+completion. Non-zero codes remain successful SDK results.
 	*/
 	readonly exit: ProcessExit;
 

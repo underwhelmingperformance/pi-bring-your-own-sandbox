@@ -8,6 +8,8 @@ export const passthroughProvider: ProviderServiceV1 =
 		id: 'passthrough',
 		label: 'Host execution without isolation',
 		capabilities: {
+			processKinds: ['argv', 'shell'],
+			exitStatus: 'guaranteed',
 			operations: [
 				'exec',
 				'files.read',

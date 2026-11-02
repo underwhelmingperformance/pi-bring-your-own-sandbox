@@ -70,6 +70,57 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
+it('preserves shell-only provider output when exit details are unavailable', async () => {
+	const { backend } = shellBackend();
+	const unavailable: SandboxBackend = {
+		...backend,
+		capabilities: {
+			operations: ['exec'],
+			processKinds: ['shell'],
+			shells: ['bash'],
+			exitStatus: 'optional'
+		},
+		exec(_request, context) {
+			context.onOutput({
+				stream: 'stdout',
+				data: new TextEncoder().encode('completed output')
+			});
+
+			return Promise.resolve({ kind: 'exited', exit: { kind: 'unavailable' } });
+		}
+	};
+
+	await withPiRuntime(
+		[
+			provider(unavailable),
+			{
+				name: 'consumer',
+				factory(pi) {
+					pi.registerCommand('unavailable-test', {
+						description: 'Exercise unavailable exit details through Pi.',
+						async handler(_arguments, context) {
+							const tool = createBashTool(context.cwd, {
+								operations: createShellOperations(pi, context, 'bash')
+							});
+
+							await expect(
+								tool.execute('unavailable', { command: 'run' })
+							).rejects.toThrow(
+								'completed output\n\nCommand terminated without an exit code'
+							);
+						}
+					});
+				}
+			}
+		],
+		async (runtime, errors) => {
+			await runtime.session.prompt('/unavailable-test');
+			expect(errors).toStrictEqual([]);
+		},
+		{ prepare }
+	);
+});
+
 it.each(['confirmed', 'unconfirmed'] as const)(
 	'preserves timeout output and termination status: %s',
 	async (termination) => {

@@ -75,6 +75,13 @@ before publishing a facade or status. Providers must not mutate declarations
 after registration. Arrays contain unique supported literals; capabilities
 always include `exec`. Shell dialects require execution support.
 
+Execution metadata also requires non-empty `processKinds` (`argv`, `shell`, or
+both) and `exitStatus` (`guaranteed` or `optional`). Shell dialects are
+non-empty exactly when `processKinds` includes `shell`. Acquisition can require
+`processKinds`, `shells` and `exitStatus: "guaranteed"`. Unsupported requests
+fail before provider invocation. An optional-status provider may open a backend
+with guaranteed status; a guaranteed provider cannot weaken that guarantee.
+
 An opened backend may advertise fewer capabilities than its provider. It must
 not advertise an undeclared capability, dialect or policy value. Its effective
 policy must satisfy the opening request. The broker validates the backend before
@@ -145,6 +152,13 @@ semantics remain unchanged. Caller overrides must not affect bootstrap
 execution, and transport diagnostics must not enter target stdout or stderr.
 Failure to start remains a typed operation error, distinct from a target exit
 status, including code 127.
+
+`ProcessExit` also accepts `{ kind: "unavailable" }` for optional-status
+backends. The foreground completion guarantee is unchanged. Unavailable details
+do not mean success or uncertain termination, and do not quarantine a healthy
+backend. A guaranteed-status backend returning this variant violates its
+declaration. Pi shell adapters convert this variant to `exitCode: null`, which
+Pi reports as a failed command while preserving captured output.
 
 [process-execution]: specification.md#process-execution
 

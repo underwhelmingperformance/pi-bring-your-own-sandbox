@@ -30,7 +30,12 @@ export const provider: SandboxProvider<undefined> = {
 	id: 'packed.fixture',
 	label: 'Packed provider fixture without OS isolation',
 	protocolVersion: 1,
-	capabilities: { operations: ['exec'], shells: [] },
+	capabilities: {
+		processKinds: ['argv'],
+		exitStatus: 'guaranteed',
+		operations: ['exec'],
+		shells: []
+	},
 	policies: {
 		workspaceAccess: ['read-write'],
 		filesystemScope: ['provider-default'],
@@ -53,7 +58,12 @@ export const provider: SandboxProvider<undefined> = {
 				relationship: 'remote',
 				description: 'In-memory fixture without OS isolation.'
 			},
-			capabilities: { operations: ['exec'], shells: [] },
+			capabilities: {
+				processKinds: ['argv'],
+				exitStatus: 'guaranteed',
+				operations: ['exec'],
+				shells: []
+			},
 			policy: request.policy,
 			policyDescription: 'In-memory fixture without OS isolation.',
 			recovery: { kind: 'none' },
@@ -114,7 +124,12 @@ export const provider: SandboxProvider<undefined> = {
 	},
 	outsideSandbox: {
 		label: 'Packed outside destination',
-		capabilities: { operations: ['exec'], shells: [] },
+		capabilities: {
+			processKinds: ['argv'],
+			exitStatus: 'guaranteed',
+			operations: ['exec'],
+			shells: []
+		},
 		policy: {
 			workspaceAccess: 'read-write',
 			filesystemScope: 'provider-default',

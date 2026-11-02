@@ -24,6 +24,112 @@ interface BootstrapModule {
 	readonly ensureBroker: typeof ensureBroker;
 }
 
+it('shares shell-only capabilities and unavailable exits across independent SDK copies', async () => {
+	let agentDirectory = '';
+
+	await withPiRuntime(
+		[
+			{
+				name: 'provider-and-consumer-copies',
+				async factory(pi) {
+					const first = await loadSdkCopy(
+						path.join(agentDirectory, 'provider-copy')
+					);
+					const second = await loadSdkCopy(
+						path.join(agentDirectory, 'consumer-copy')
+					);
+					const template = new MemoryBackend('exec');
+
+					first.initialiseSandboxHost(pi, { agentDirectory });
+					first.registerSandboxProvider(pi, {
+						...imageProvider,
+						id: 'fixture',
+						capabilities: {
+							operations: ['exec'],
+							processKinds: ['shell'],
+							shells: ['sh'],
+							exitStatus: 'optional'
+						},
+						validateConfig: () => ({ image: 'fixture' }),
+						open: () =>
+							Promise.resolve({
+								id: template.id,
+								workspace: template.workspace,
+								policy: template.policy,
+								policyDescription: template.policyDescription,
+								recovery: template.recovery,
+								capabilities: {
+									operations: ['exec'],
+									processKinds: ['shell'],
+									shells: ['sh'],
+									exitStatus: 'optional'
+								},
+								exec: () =>
+									Promise.resolve({
+										kind: 'exited',
+										exit: { kind: 'unavailable' }
+									}),
+								dispose: () => Promise.resolve()
+							})
+					});
+					pi.registerCommand('capabilities-test', {
+						description: 'Check independently installed execution contracts.',
+						async handler(_arguments, context) {
+							const sandbox = await second.getSandbox(pi, context, {
+								processKinds: ['shell'],
+								shells: ['sh']
+							});
+							const result = await sandbox.exec({
+								kind: 'shell',
+								dialect: 'sh',
+								command: 'run'
+							});
+
+							expect({ ...result, durationMs: 0 }).toStrictEqual({
+								exit: { kind: 'unavailable' },
+								stdout: new Uint8Array(),
+								stderr: new Uint8Array(),
+								omittedBytes: { stdout: 0, stderr: 0 },
+								durationMs: 0
+							});
+							await expect(
+								second.getSandbox(pi, context, { processKinds: ['argv'] })
+							).rejects.toMatchObject({
+								name: 'UnsupportedSandboxCapabilityError'
+							});
+							await expect(
+								second.getSandbox(pi, context, { exitStatus: 'guaranteed' })
+							).rejects.toMatchObject({
+								name: 'UnsupportedSandboxCapabilityError'
+							});
+						}
+					});
+				}
+			}
+		],
+		async (runtime, errors) => {
+			await runtime.session.prompt('/capabilities-test');
+			expect(errors).toStrictEqual([]);
+		},
+		{
+			async prepare(_directory, personal) {
+				agentDirectory = personal;
+				await writeFile(
+					path.join(personal, 'byos.json'),
+					JSON.stringify({
+						provider: 'fixture',
+						policy: {
+							workspaceAccess: 'read-write',
+							filesystemScope: 'provider-default',
+							networkAccess: 'provider-default'
+						}
+					})
+				);
+			}
+		}
+	);
+});
+
 function isBootstrapModule(value: unknown): value is BootstrapModule {
 	return (
 		typeof value === 'object' &&

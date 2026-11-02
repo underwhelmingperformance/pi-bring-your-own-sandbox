@@ -8,6 +8,8 @@ const provider: ProviderInfo = {
 	id: 'fixture',
 	label: 'Fixture provider',
 	capabilities: {
+		processKinds: ['argv', 'shell'],
+		exitStatus: 'guaranteed',
 		operations: [
 			'exec',
 			'files.read',
@@ -42,7 +44,12 @@ function backend(): SandboxBackend {
 			relationship: 'remote',
 			description: 'Protocol fixture.'
 		},
-		capabilities: { operations: ['exec'], shells: [] },
+		capabilities: {
+			processKinds: ['argv'],
+			exitStatus: 'guaranteed',
+			operations: ['exec'],
+			shells: []
+		},
 		policy,
 		policyDescription: 'Protocol fixture only.',
 		recovery: { kind: 'none' },
@@ -72,18 +79,24 @@ it.each([
 	},
 	{
 		capabilities: {
+			processKinds: ['argv'],
+			exitStatus: 'guaranteed',
 			operations: ['exec', 'exec'],
 			shells: []
 		}
 	},
 	{
 		capabilities: {
+			processKinds: ['argv'],
+			exitStatus: 'guaranteed',
 			operations: ['exec', 'pty'],
 			shells: []
 		}
 	},
 	{
 		capabilities: {
+			processKinds: ['argv', 'shell'],
+			exitStatus: 'guaranteed',
 			operations: ['exec'],
 			shells: ['powershell']
 		}
@@ -128,6 +141,8 @@ it.each([
 				{
 					...backend(),
 					capabilities: {
+						processKinds: ['argv'],
+						exitStatus: 'guaranteed',
 						operations: ['exec', capability],
 						shells: []
 					}

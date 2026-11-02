@@ -15,7 +15,8 @@ import type {
 } from './approval-contracts.js';
 import { ApprovalDeniedError } from './approval-errors.js';
 import { closeSandboxSession, getSandbox } from './client.js';
-import type { SandboxProvider } from './contracts.js';
+import type { SandboxBackend, SandboxProvider } from './contracts.js';
+import { UnsupportedSandboxCapabilityError } from './errors.js';
 import { UnconfirmedSandboxTerminationError } from './errors.js';
 import {
 	APPROVAL_SERVICE_CHANNEL,
@@ -25,6 +26,7 @@ import {
 import { publishService } from './extension-services.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { shellBackend } from './fixtures/shell-backend.js';
 import { initialiseSandboxHost } from './host.js';
 import { OperationScope } from './lifecycle.js';
 import {
@@ -433,6 +435,88 @@ it('snapshots acquisition requirements before awaiting configuration', async () 
 		}
 	});
 });
+
+it.each(['normal', 'provider'] as const)(
+	'rejects unsupported outside argv before approval on %s',
+	async (destination) => {
+		const template = shellBackend().backend;
+		const execute = vi.fn(template.exec);
+		const review = vi.fn(() => Promise.resolve({ kind: 'allow' as const }));
+		const backend: SandboxBackend = {
+			...template,
+			capabilities: {
+				operations: ['exec'],
+				processKinds: ['shell'],
+				shells: ['bash'],
+				exitStatus: 'guaranteed'
+			},
+			exec: execute
+		};
+		const outside = {
+			label: 'Shell-only outside fixture',
+			capabilities: backend.capabilities,
+			policy: backend.policy,
+			open: () => Promise.resolve(backend)
+		};
+
+		await scenario({
+			config: {
+				provider: 'fixture',
+				policy: backend.policy,
+				approval: { policy: 'review' },
+				outsideSandbox: { destination }
+			},
+			normalExecutor: outside,
+			extensions: [
+				{
+					name: 'policy',
+					factory(pi) {
+						registerApprovalPolicy(pi, {
+							id: 'review',
+							label: 'Review fixture',
+							protocolVersion: 1,
+							validateConfig: () => ({}),
+							decide: review
+						});
+					}
+				},
+				{
+					name: 'provider',
+					factory(pi) {
+						registerSandboxProvider(pi, {
+							id: 'fixture',
+							label: 'Fixture',
+							protocolVersion: 1,
+							capabilities: backend.capabilities,
+							policies: {
+								workspaceAccess: ['read-write'],
+								filesystemScope: ['provider-default'],
+								networkAccess: ['provider-default']
+							},
+							validateConfig: () => ({}),
+							open: () => Promise.resolve(backend),
+							outsideSandbox: outside
+						});
+					}
+				}
+			],
+			async run(pi, context) {
+				const executor = await getOutsideSandboxExecutor(pi, context);
+
+				await expect(
+					executor.exec(
+						{ kind: 'argv', executable: 'probe', args: [] },
+						{ justification: 'Check request support.' }
+					)
+				).rejects.toBeInstanceOf(UnsupportedSandboxCapabilityError);
+				expect({
+					reviews: review.mock.calls,
+					executions: execute.mock.calls
+				}).toStrictEqual({ reviews: [], executions: [] });
+			}
+		});
+	}
+);
 
 it('expires a queued user request without opening another confirmation', async () => {
 	await scenario({

@@ -21,6 +21,8 @@ const provider: SandboxProvider<undefined> = {
 	label: 'Host provider contract scenario without isolation',
 	protocolVersion: 1,
 	capabilities: {
+		processKinds: ['argv', 'shell'],
+		exitStatus: 'guaranteed',
 		operations: [
 			'exec',
 			'files.read',

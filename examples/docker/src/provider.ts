@@ -53,6 +53,8 @@ class DockerBackend implements SandboxBackend {
 			'The host workspace is copied on opening. Changes remain in a generation-owned Docker volume until disposal.'
 	} as const;
 	readonly capabilities = {
+		processKinds: ['argv', 'shell'],
+		exitStatus: 'guaranteed',
 		operations: ['exec'],
 		shells: ['sh', 'bash']
 	} as const;
@@ -341,7 +343,12 @@ export function createDockerProvider(
 		id: 'example.docker',
 		label: 'Docker reference provider',
 		protocolVersion: 1,
-		capabilities: { operations: ['exec'], shells: ['sh', 'bash'] },
+		capabilities: {
+			processKinds: ['argv', 'shell'],
+			exitStatus: 'guaranteed',
+			operations: ['exec'],
+			shells: ['sh', 'bash']
+		},
 		policies: {
 			workspaceAccess: ['read-only', 'read-write'],
 			filesystemScope: ['workspace-only'],

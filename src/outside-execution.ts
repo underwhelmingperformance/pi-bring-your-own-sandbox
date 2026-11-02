@@ -372,8 +372,9 @@ export async function getOutsideSandboxExecutor(
 			const process = snapshotProcessRequest(request);
 
 			if (
-				process.kind === 'shell' &&
-				!sandbox.capabilities.shells.includes(process.dialect)
+				!sandbox.capabilities.processKinds.includes(process.kind) ||
+				(process.kind === 'shell' &&
+					!sandbox.capabilities.shells.includes(process.dialect))
 			) {
 				throw new UnsupportedSandboxCapabilityError({
 					operation: 'exec',

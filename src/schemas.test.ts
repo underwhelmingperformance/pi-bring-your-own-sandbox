@@ -20,22 +20,42 @@ sparse.length++;
 it.each([
 	{
 		schema: capabilitiesSchema,
-		input: { operations: ['exec'], shells: [] },
+		input: {
+			processKinds: ['argv'],
+			exitStatus: 'guaranteed',
+			operations: ['exec'],
+			shells: []
+		},
 		expected: true
 	},
 	{
 		schema: capabilitiesSchema,
-		input: { operations: sparse, shells: [] },
+		input: {
+			processKinds: ['argv'],
+			exitStatus: 'guaranteed',
+			operations: sparse,
+			shells: []
+		},
 		expected: false
 	},
 	{
 		schema: capabilitiesSchema,
-		input: { operations: ['files.read'], shells: [] },
+		input: {
+			processKinds: ['argv'],
+			exitStatus: 'guaranteed',
+			operations: ['files.read'],
+			shells: []
+		},
 		expected: false
 	},
 	{
 		schema: capabilitiesSchema,
-		input: { operations: ['exec', 'exec'], shells: [] },
+		input: {
+			processKinds: ['argv'],
+			exitStatus: 'guaranteed',
+			operations: ['exec', 'exec'],
+			shells: []
+		},
 		expected: false
 	},
 	{ schema: safeIntegerSchema, input: Number.MAX_SAFE_INTEGER, expected: true },

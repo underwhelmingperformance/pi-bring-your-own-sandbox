@@ -6,6 +6,7 @@ import {
 	SandboxCancelledError,
 	SandboxTimeoutError
 } from './errors.js';
+import { piProcessResult } from './pi-process-result.js';
 import { DEFAULT_EXEC_TIMEOUT_MS } from './process-input.js';
 import type { ShellInvocation } from './sandbox-shell.js';
 import { SandboxShell } from './sandbox-shell.js';
@@ -36,12 +37,7 @@ export function createShellOperations(
 					}
 				});
 
-				return {
-					exitCode:
-						result.exit.kind === 'code'
-							? result.exit.code
-							: 128 + result.exit.signalNumber
-				};
+				return piProcessResult(result.exit);
 			} catch (error) {
 				throwShellOperationError(error, options.timeout);
 			}

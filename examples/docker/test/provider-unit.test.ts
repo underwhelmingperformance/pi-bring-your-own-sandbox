@@ -321,7 +321,12 @@ it('uses literal argv, isolated mounts and explicit target environment overrides
 		recoveries
 	}).toStrictEqual({
 		outcome: { kind: 'exited', exit: { kind: 'code', code: 7 } },
-		capabilities: { operations: ['exec'], shells: ['sh', 'bash'] },
+		capabilities: {
+			processKinds: ['argv', 'shell'],
+			exitStatus: 'guaranteed',
+			operations: ['exec'],
+			shells: ['sh', 'bash']
+		},
 		workspace: {
 			root: '/workspace',
 			pathFlavor: 'posix',

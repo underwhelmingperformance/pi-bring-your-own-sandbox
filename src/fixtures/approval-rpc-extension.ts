@@ -56,6 +56,8 @@ export default async function approvalRpcFixture(
 		networkAccess: 'provider-default'
 	} as const;
 	const capabilities = {
+		processKinds: ['argv', 'shell'],
+		exitStatus: 'guaranteed',
 		operations: ['exec'],
 		shells: ['bash', 'powershell']
 	} as const;

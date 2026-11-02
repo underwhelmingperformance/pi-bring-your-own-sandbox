@@ -357,14 +357,15 @@ through a command argument or request a different provider in the first release.
 ordinary consumer call is `getSandbox(pi, ctx, { signal })`; it works with
 default host execution or the user's configured provider. No provider-specific
 branch or separate opt-in to the framework is required in the consumer.
-`SandboxAcquireOptions` contains optional `capabilities` and `policy`
-requirements, plus an explicit caller `signal` and waiting `timeoutMs`. The
-waiting deadline defaults to 60 seconds. It limits this acquisition only; the
-broker independently owns the shared provisioning deadline. A cancelled waiter
-rejects immediately without cancelling provisioning for other consumers. If all
-waiters cancel, provisioning continues under the broker's deadline and the
-resulting backend remains available for this generation. Shutdown still cancels
-provisioning. Check abort again before returning a facade.
+`SandboxAcquireOptions` contains optional `capabilities`, `processKinds`,
+`shells`, `exitStatus` and `policy` requirements, plus an explicit caller
+`signal` and waiting `timeoutMs`. The waiting deadline defaults to 60 seconds.
+It limits this acquisition only; the broker independently owns the shared
+provisioning deadline. A cancelled waiter rejects immediately without cancelling
+provisioning for other consumers. If all waiters cancel, provisioning continues
+under the broker's deadline and the resulting backend remains available for this
+generation. Shutdown still cancels provisioning. Check abort again before
+returning a facade.
 
 The facade exposes immutable identity, workspace, effective policy and
 capabilities, plus methods for supported operations. It does not expose the
@@ -415,6 +416,20 @@ the appropriate path, and must not assume that an SDK call inherits Pi tool
 permission decisions.
 
 ## Process execution
+
+Providers declare supported `processKinds`: `argv`, `shell`, or both. At least
+one form is required. Shell-only providers need not implement argv. Shell
+dialects must be non-empty exactly when shell requests are supported. The broker
+rejects unsupported forms or dialects before provider invocation.
+
+Providers also declare `exitStatus: "guaranteed" | "optional"`. Guaranteed
+status promises an exit code or signal for every completed invocation. Optional
+status permits `{ kind: "unavailable" }` after the supported foreground work has
+stopped. This result does not establish command success and does not make the
+backend unhealthy. Unknown termination retains its existing quarantine
+behaviour. Consumers can require guaranteed status during acquisition. A backend
+may strengthen an optional provider's guarantee but cannot weaken a guaranteed
+declaration.
 
 `ProcessRequest` is a discriminated union:
 

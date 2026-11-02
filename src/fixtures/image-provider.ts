@@ -8,7 +8,12 @@ export const imageProvider: SandboxProvider<ImageConfig> = {
 	id: 'fixture.image',
 	label: 'Image protocol fixture',
 	protocolVersion: 1,
-	capabilities: { operations: ['exec'], shells: [] },
+	capabilities: {
+		processKinds: ['argv'],
+		exitStatus: 'guaranteed',
+		operations: ['exec'],
+		shells: []
+	},
 	policies: {
 		workspaceAccess: ['read-write'],
 		filesystemScope: ['provider-default'],
@@ -37,7 +42,12 @@ export const imageProvider: SandboxProvider<ImageConfig> = {
 				relationship: 'copied',
 				description: 'In-memory protocol fixture; no image is started.'
 			},
-			capabilities: { operations: ['exec'], shells: [] },
+			capabilities: {
+				processKinds: ['argv'],
+				exitStatus: 'guaranteed',
+				operations: ['exec'],
+				shells: []
+			},
 			policy: request.policy,
 			policyDescription: 'Protocol fixture only; no isolation.',
 			recovery: { kind: 'none' },

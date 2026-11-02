@@ -105,7 +105,14 @@ export function providerBackendSchema(provider: ProviderInfo) {
 	});
 	const capabilities = Type.Object({
 		operations: denseArray(operations),
-		shells: denseArray(shells)
+		shells: denseArray(shells),
+		processKinds: denseArray(
+			Type.Enum([...provider.capabilities.processKinds])
+		),
+		exitStatus:
+			provider.capabilities.exitStatus === 'guaranteed'
+				? Type.Literal('guaranteed')
+				: Type.Enum(['guaranteed', 'optional'])
 	});
 
 	return Type.Intersect([backendSchema, Type.Object({ capabilities, policy })]);

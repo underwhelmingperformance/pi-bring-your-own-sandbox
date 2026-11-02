@@ -25,6 +25,8 @@ export function snapshotCapabilities(
 	value: SandboxCapabilities
 ): SandboxCapabilities {
 	return Object.freeze({
+		processKinds: Object.freeze([...value.processKinds]),
+		exitStatus: value.exitStatus,
 		operations: Object.freeze([...value.operations]),
 		shells: Object.freeze([...value.shells])
 	});

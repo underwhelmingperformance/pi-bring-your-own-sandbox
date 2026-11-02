@@ -56,9 +56,10 @@ export interface SandboxProviderTestFixture {
 	*/
 	readonly policy: SandboxPolicy;
 	/**
-	At least one argv probe; add cases for cwd, environment and non-zero exits.
+	Required when argv is supported. Include cwd, environment and non-zero
+	exits. Optional-status providers can include unavailable exit details.
 	*/
-	readonly processes: readonly SandboxProcessProbe[];
+	readonly processes?: readonly SandboxProcessProbe[];
 	/**
 	A probe for each shell dialect selected in the suite's capabilities.
 	*/

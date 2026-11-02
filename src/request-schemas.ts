@@ -9,6 +9,7 @@ import {
 	nonNegativeIntegerSchema,
 	policySchema,
 	positiveIntegerSchema,
+	processKindSchema,
 	safeTextSchema,
 	shellSchema,
 	signalSchema,
@@ -112,6 +113,11 @@ const partialPolicySchema = Type.Partial(policySchema, {
 export const acquireOptionsSchema = Type.Object(
 	{
 		...operationOptionsSchema.properties,
+		processKinds: Type.Optional(
+			denseArray(processKindSchema, { uniqueItems: true })
+		),
+		shells: Type.Optional(denseArray(shellSchema, { uniqueItems: true })),
+		exitStatus: Type.Optional(Type.Literal('guaranteed')),
 		capabilities: Type.Optional(
 			denseArray(capabilitySchema, { uniqueItems: true })
 		),

@@ -55,13 +55,26 @@ export const capabilitySchema = Type.Enum([
 	'search.find',
 	'search.grep'
 ]);
-export const capabilitiesSchema = Type.Object({
+export const processKindSchema = Type.Enum(['argv', 'shell']);
+export const exitStatusSchema = Type.Enum(['guaranteed', 'optional']);
+
+const capabilitiesShape = Type.Object({
 	operations: denseArray(capabilitySchema, {
 		uniqueItems: true,
 		contains: Type.Literal('exec')
 	}),
-	shells: denseArray(shellSchema, { uniqueItems: true })
+	shells: denseArray(shellSchema, { uniqueItems: true }),
+	processKinds: denseArray(processKindSchema, {
+		minItems: 1,
+		uniqueItems: true
+	}),
+	exitStatus: exitStatusSchema
 });
+
+export const capabilitiesSchema = Type.Refine(
+	capabilitiesShape,
+	(value) => value.processKinds.includes('shell') === value.shells.length > 0
+);
 
 const workspaceAccessSchema = Type.Enum(['read-only', 'read-write']);
 const filesystemScopeSchema = Type.Enum(['workspace-only', 'provider-default']);

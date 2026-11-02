@@ -127,6 +127,14 @@ function executionOutcome(
 	}
 
 	if (
+		result.value.kind === 'exited' &&
+		result.value.exit.kind === 'unavailable' &&
+		owner.backend.capabilities.exitStatus === 'guaranteed'
+	) {
+		throw unknownCompletion(owner, scope, undefined, SandboxTransportError);
+	}
+
+	if (
 		result.value.kind === 'cancelled' &&
 		result.value.termination === 'unconfirmed'
 	) {
@@ -154,8 +162,9 @@ export async function executeProcess(
 	const snapshot = snapshotProcessRequest(request);
 
 	if (
-		snapshot.kind === 'shell' &&
-		!owner.backend.capabilities.shells.includes(snapshot.dialect)
+		!owner.backend.capabilities.processKinds.includes(snapshot.kind) ||
+		(snapshot.kind === 'shell' &&
+			!owner.backend.capabilities.shells.includes(snapshot.dialect))
 	) {
 		throw new UnsupportedSandboxCapabilityError({
 			...owner.identity,
@@ -247,6 +256,10 @@ export async function executeProcess(
 }
 
 function snapshotExit(exit: ProcessExit): ProcessExit {
+	if (exit.kind === 'unavailable') {
+		return Object.freeze({ kind: 'unavailable' });
+	}
+
 	return Object.freeze(
 		exit.kind === 'code'
 			? { kind: 'code', code: exit.code }

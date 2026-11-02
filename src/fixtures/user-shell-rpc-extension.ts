@@ -23,6 +23,8 @@ export default function rpcFixture(pi: ExtensionAPI): void {
 	});
 
 	const capabilities: SandboxCapabilities = {
+		processKinds: ['argv', 'shell'],
+		exitStatus: 'guaranteed',
 		operations: ['exec'],
 		shells: ['sh']
 	};

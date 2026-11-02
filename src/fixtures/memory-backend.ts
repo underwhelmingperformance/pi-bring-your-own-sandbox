@@ -44,6 +44,8 @@ export class MemoryBackend implements SandboxBackend {
 
 	constructor(mode: 'files' | 'exec' = 'files') {
 		this.capabilities = {
+			processKinds: ['argv'],
+			exitStatus: 'guaranteed',
 			operations:
 				mode === 'files'
 					? ['exec', 'files.read', 'files.write', 'files.list']

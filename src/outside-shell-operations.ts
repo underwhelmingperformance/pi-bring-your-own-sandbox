@@ -22,6 +22,7 @@ import {
 	outsideExecutionLifetime,
 	trackOutsideExecution
 } from './outside-execution.js';
+import { piProcessResult } from './pi-process-result.js';
 import { throwShellOperationError } from './pi-shell-operations.js';
 import { runtimeSettings } from './runtime-settings.js';
 
@@ -137,12 +138,7 @@ export function outsideShellOperations(
 						}
 					});
 
-					return {
-						exitCode:
-							result.exit.kind === 'code'
-								? result.exit.code
-								: 128 + result.exit.signalNumber
-					};
+					return piProcessResult(result.exit);
 				} catch (error) {
 					if (
 						scope.reason !== undefined &&

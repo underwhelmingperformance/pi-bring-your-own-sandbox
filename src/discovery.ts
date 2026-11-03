@@ -138,6 +138,7 @@ export function discoverBroker(events: EventBus): BrokerServiceV1 | undefined {
 		return Object.freeze({
 			id,
 			acquire: service.acquire.bind(service),
+			negotiate: service.negotiate.bind(service),
 			close: service.close.bind(service),
 			status: service.status.bind(service),
 			providers: service.providers.bind(service)

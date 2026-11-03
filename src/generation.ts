@@ -58,6 +58,7 @@ import type {
 	ProviderSelection,
 	ProviderServiceV1,
 	SandboxBackendStatus,
+	SandboxNegotiation,
 	SandboxStatus
 } from './protocol.js';
 import { ProviderDiagnostics } from './provider-diagnostics.js';
@@ -765,6 +766,31 @@ export class SandboxGeneration {
 			return sandbox;
 		} finally {
 			scope.dispose();
+		}
+	}
+
+	async negotiate(
+		context: SandboxContext,
+		input?: SandboxAcquireOptions
+	): Promise<SandboxNegotiation> {
+		this.#assertContext(context, 'acquire');
+		this.#assertOpen('acquire');
+
+		const options = acquireOptions(input);
+
+		try {
+			const prepared = await this.#prepare();
+
+			return Object.freeze({
+				ok: true,
+				policy: this.#negotiate(prepared.provider, options)
+			});
+		} catch (error) {
+			if (!isSandboxError(error)) {
+				throw error;
+			}
+
+			return Object.freeze({ ok: false, error });
 		}
 	}
 

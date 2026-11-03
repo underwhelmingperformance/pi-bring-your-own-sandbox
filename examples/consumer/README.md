@@ -88,7 +88,18 @@ Require additional capabilities or policy only when the extension needs them. A
 stricter policy request, such as `read-only` or `denied` network access, gets a
 backend opened with that policy from the selected provider, provided that the
 provider supports it. A request cannot loosen the user's policy. For example, a
-denied-network requirement rejects acquisition from passthrough.
+denied-network requirement rejects acquisition from passthrough. Use
+`negotiateSandbox` with the same options to find out without opening a backend:
+
+```typescript
+const negotiation = await negotiateSandbox(pi, context, {
+  policy: { workspaceAccess: 'read-only', networkAccess: 'denied' }
+});
+
+if (!negotiation.ok) {
+  // Disable the feature that needs the restricted sandbox.
+}
+```
 
 Unsupported operations return typed capability errors.
 

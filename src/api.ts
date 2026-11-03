@@ -9,7 +9,7 @@ export {
 	InvalidApprovalRequestError,
 	isApprovalError
 } from './approval-errors.js';
-export { closeSandboxSession, getSandbox } from './client.js';
+export { closeSandboxSession, getSandbox, negotiateSandbox } from './client.js';
 export type * from './contracts.js';
 export {
 	DuplicateBrokerError,
@@ -60,6 +60,7 @@ export type {
 	ProviderSelection,
 	ProviderServiceV1,
 	SandboxBackendStatus,
+	SandboxNegotiation,
 	SandboxStatus,
 	ServiceAdvertisementV1
 } from './protocol.js';

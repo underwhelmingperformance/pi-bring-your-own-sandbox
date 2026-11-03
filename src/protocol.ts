@@ -276,6 +276,15 @@ export interface SandboxBackendStatus {
 }
 
 /**
+Result of negotiating acquisition requirements without provisioning: the
+policy that a matching acquisition would open, or the typed error that it
+would throw.
+*/
+export type SandboxNegotiation =
+	| { readonly ok: true; readonly policy: SandboxPolicy }
+	| { readonly ok: false; readonly error: SandboxErrorInfo };
+
+/**
 Provider metadata safe to enumerate without provisioning resources or
 exposing configuration.
 */
@@ -325,6 +334,15 @@ export interface BrokerServiceV1 {
 		context: SandboxContext,
 		options?: SandboxAcquireOptions
 	) => Promise<Sandbox>;
+
+	/**
+	Check requirements against the personal policy and the selected provider's
+	declaration without provisioning a backend.
+	*/
+	readonly negotiate: (
+		context: SandboxContext,
+		options?: SandboxAcquireOptions
+	) => Promise<SandboxNegotiation>;
 
 	/**
 	Begin the shutdown barrier and return the generation cleanup report.

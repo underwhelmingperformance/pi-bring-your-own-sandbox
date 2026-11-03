@@ -80,9 +80,12 @@ checked after opening, because a backend may strengthen its declaration. Every
 requested capability must then be present in the opened backend. Negotiation
 never selects another provider.
 
-Status lists every started backend under `backends`, with its negotiated policy,
-state and backend ID; the top-level backend fields describe the backend for the
-personal policy.
+`negotiate(context, options)` on the broker, exposed as `negotiateSandbox`,
+performs the same checks without opening a backend. It resolves to
+`{ ok: true, policy }` or `{ ok: false, error }`, where `error` is the typed
+error that acquisition would throw. Status lists every started backend under
+`backends`, with its negotiated policy, state and backend ID; the top-level
+backend fields describe the backend for the personal policy.
 
 Facade methods always exist, including `files` and `search`. Unsupported methods
 reject with `UnsupportedSandboxCapabilityError` before provider invocation. This

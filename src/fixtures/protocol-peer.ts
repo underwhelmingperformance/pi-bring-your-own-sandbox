@@ -41,6 +41,10 @@ class IndependentBroker {
 		return Promise.reject(new Error('Fixture only.'));
 	}
 
+	negotiate() {
+		return Promise.reject(new Error('Fixture only.'));
+	}
+
 	close() {
 		return Promise.resolve({
 			confirmed: this.id === this.#identity,

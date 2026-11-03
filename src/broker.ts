@@ -62,6 +62,10 @@ export class SandboxBroker implements BrokerServiceV1 {
 		return this.#resolve(context).acquire(context, options);
 	}
 
+	negotiate(context: SandboxContext, options?: SandboxAcquireOptions) {
+		return this.#resolve(context).negotiate(context, options);
+	}
+
 	close(context: SandboxContext): Promise<SandboxCloseReport> {
 		this.#isClosing = true;
 

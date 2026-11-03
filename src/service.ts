@@ -55,6 +55,8 @@ export function ensureBroker(
 		id,
 		acquire: (context, options) =>
 			invoke((broker) => broker.acquire(context, options)),
+		negotiate: (context, options) =>
+			invoke((broker) => broker.negotiate(context, options)),
 		close: (context) => invoke((broker) => broker.close(context)),
 		status: (context) => invoke((broker) => broker.status(context)),
 		providers: (context) => invoke((broker) => broker.providers(context))

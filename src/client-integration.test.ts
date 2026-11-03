@@ -14,6 +14,7 @@ import {
 	getSandbox,
 	initialiseSandboxHost,
 	InvalidSandboxRequestError,
+	negotiateSandbox,
 	registerSandboxProvider,
 	SandboxInitialisationError,
 	SandboxStartupError
@@ -219,6 +220,35 @@ it('provides a shared host backend with only a consumer and no configuration', a
 			exit: { kind: 'code', code: 0 },
 			output: 'host content',
 			host: 'host content'
+		});
+	});
+});
+
+it('negotiates requirements against the host backend without provisioning it', async () => {
+	await fixture(async ({ pi, context, errors }) => {
+		const denied = await negotiateSandbox(pi, context, {
+			policy: { networkAccess: 'denied' }
+		});
+		const unrestricted = await negotiateSandbox(pi, context);
+		const status = await discoverBroker(pi.events)?.status(context);
+
+		expect({
+			errors,
+			denied: denied.ok ? denied : denied.error.name,
+			unrestricted,
+			backends: status?.backends
+		}).toStrictEqual({
+			errors: [],
+			denied: 'UnsupportedSandboxPolicyError',
+			unrestricted: {
+				ok: true,
+				policy: {
+					workspaceAccess: 'read-write',
+					filesystemScope: 'provider-default',
+					networkAccess: 'provider-default'
+				}
+			},
+			backends: undefined
 		});
 	});
 });

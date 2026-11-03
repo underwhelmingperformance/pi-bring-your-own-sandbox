@@ -387,6 +387,10 @@ continues under the broker's deadline and the resulting backend remains
 available for this generation. Shutdown still cancels provisioning. Check abort
 again before returning a facade.
 
+`negotiateSandbox(pi, ctx, options?)` applies the same negotiation without
+opening a backend. It returns either the policy that acquisition would open or
+the typed error that it would throw.
+
 The facade exposes immutable identity, workspace, effective policy and
 capabilities, plus methods for supported operations. It does not expose the
 backend object, raw transport client or a consumer-callable backend disposer.

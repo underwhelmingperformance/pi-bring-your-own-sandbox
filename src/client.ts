@@ -10,6 +10,7 @@ import { ensureSandboxService } from './default-broker.js';
 import { isSandboxError, SandboxCleanupError } from './errors.js';
 import { closeApprovals } from './execution-approval.js';
 import { closeOutsideExecution } from './outside-execution.js';
+import type { SandboxNegotiation } from './protocol.js';
 import { runtimeSettings } from './runtime-settings.js';
 
 /**
@@ -28,6 +29,22 @@ export async function getSandbox(
 	inspectContext(context, 'acquire');
 
 	return ensureSandboxService(pi).acquire(context, options);
+}
+
+/**
+Check whether `getSandbox` with the same options could succeed, without
+provisioning a backend. Returns the policy that acquisition would open, or the
+typed error that it would throw. An opened backend can still advertise fewer
+capabilities than its provider declares, so acquisition validates it again.
+*/
+export async function negotiateSandbox(
+	pi: SandboxHost,
+	context: SandboxContext,
+	options?: SandboxAcquireOptions
+): Promise<SandboxNegotiation> {
+	inspectContext(context, 'acquire');
+
+	return ensureSandboxService(pi).negotiate(context, options);
 }
 
 /**

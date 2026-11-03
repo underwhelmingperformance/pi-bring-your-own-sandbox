@@ -75,6 +75,7 @@ export const providerServiceSchema = Type.Intersect([
 export const brokerServiceSchema = Type.Object({
 	id: nonEmptyStringSchema,
 	acquire: callable<BrokerServiceV1['acquire']>(),
+	negotiate: callable<BrokerServiceV1['negotiate']>(),
 	close: callable<BrokerServiceV1['close']>(),
 	status: callable<BrokerServiceV1['status']>(),
 	providers: callable<BrokerServiceV1['providers']>()

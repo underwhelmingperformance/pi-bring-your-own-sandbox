@@ -263,3 +263,40 @@ it('lists every open backend in status', async () => {
 	]);
 	await generation.close();
 });
+
+it('negotiates a configuration without opening a backend', async () => {
+	const { generation, context, opened } = fixture({
+		policies: { ...ALL_POLICIES, networkAccess: ['provider-default'] }
+	});
+	const satisfiable = await generation.negotiate(context, {
+		policy: { workspaceAccess: 'read-only' }
+	});
+	const unsatisfiable = await generation.negotiate(context, {
+		policy: RESTRICTED
+	});
+
+	expect({
+		satisfiable,
+		unsatisfiable: {
+			ok: unsatisfiable.ok,
+			error: unsatisfiable.ok ? undefined : unsatisfiable.error.name
+		},
+		opened
+	}).toStrictEqual({
+		satisfiable: {
+			ok: true,
+			policy: { ...PERSONAL, workspaceAccess: 'read-only' }
+		},
+		unsatisfiable: { ok: false, error: 'UnsupportedSandboxPolicyError' },
+		opened: []
+	});
+
+	const sandbox = await generation.acquire(context, {
+		policy: { workspaceAccess: 'read-only' }
+	});
+
+	expect(sandbox.policy).toStrictEqual(
+		satisfiable.ok ? satisfiable.policy : undefined
+	);
+	await generation.close();
+});

@@ -151,7 +151,9 @@ export type BrokerState =
 	| 'closed';
 
 /**
-Personal selection with its source and complete protection policy.
+Personal selection with its source and complete protection policy. The policy
+is the default for acquisitions that omit a field and the limit that no
+acquisition can loosen.
 */
 export interface ProviderSelection {
 	/**
@@ -207,7 +209,16 @@ export interface SandboxStatus {
 	readonly selection?: ProviderSelection;
 
 	/**
-	Available after allocation establishes an identity.
+	Every backend that an acquisition has started, one for each negotiated
+	policy, in the order they were requested. Omitted before the first
+	acquisition.
+	*/
+	readonly backends?: readonly SandboxBackendStatus[];
+
+	/**
+	Available after allocation of the backend for the personal policy
+	establishes an identity. The fields from here to `failure` describe that
+	backend.
 	*/
 	readonly backendId?: string;
 
@@ -245,6 +256,26 @@ export interface SandboxStatus {
 }
 
 /**
+Lifecycle of one backend within a generation.
+*/
+export interface SandboxBackendStatus {
+	/**
+	Negotiated policy that the backend was opened to satisfy.
+	*/
+	readonly policy: SandboxPolicy;
+
+	/**
+	Whether the backend is starting, usable or persistently failed.
+	*/
+	readonly state: 'opening' | 'ready' | 'failed';
+
+	/**
+	Available after allocation establishes an identity.
+	*/
+	readonly backendId?: string;
+}
+
+/**
 Provider metadata safe to enumerate without provisioning resources or
 exposing configuration.
 */
@@ -276,7 +307,7 @@ export interface ProviderInfo {
 
 /**
 Version 1 broker service discovered through Pi. A runtime has one service;
-session generations allocate their own backend lazily.
+session generations allocate a backend for each negotiated policy lazily.
 */
 export interface BrokerServiceV1 {
 	/**
@@ -286,8 +317,9 @@ export interface BrokerServiceV1 {
 	readonly id: string;
 
 	/**
-	Acquire the generation backend and validate requirements. Concurrent
-	callers share startup with independent waiter cancellation.
+	Negotiate the requested policy, then acquire the generation's backend for
+	that policy and validate the remaining requirements. Concurrent callers for
+	one policy share startup with independent waiter cancellation.
 	*/
 	readonly acquire: (
 		context: SandboxContext,

@@ -51,8 +51,9 @@ The framework has three roles:
 1. The SDK defines structural contracts, provider registration and consumer
    discovery. Multiple installed copies of the SDK must interoperate.
 2. A shared broker service discovers providers, validates configuration, selects
-   one provider and manages one backend per Pi runtime generation. The SDK
-   creates this service on first use if a compatible service is not present.
+   one provider and manages that provider's backends for each Pi runtime
+   generation, one for each negotiated policy. The SDK creates this service on
+   first use if a compatible service is not present.
 3. Provider extensions implement backend operations. Consumer extensions obtain
    broker-managed handles and execute operations through them.
 
@@ -354,9 +355,21 @@ control-plane traffic needed to operate a remote provider is separate from
 sandbox egress.
 
 Consumers can require capabilities and stricter common policy values when
-acquiring a handle. Those checks do not reconfigure or broaden the shared
-sandbox. A mismatch fails before execution. A consumer must not change policy
-through a command argument or request a different provider in the first release.
+acquiring a handle. The broker negotiates each request against the personal
+policy and the selected provider's declaration. Omitted fields, and fields that
+request `provider-default`, keep the personal value. A request can tighten a
+field (`read-only` instead of `read-write`, `workspace-only` or `denied` instead
+of `provider-default`) but cannot loosen one, so the personal policy is both the
+default and the limit. The broker opens one backend from the selected provider
+for each distinct negotiated policy, and consumers that negotiate the same
+policy share it. A request that the declaration cannot satisfy fails before any
+backend is opened. A consumer must not change policy through a command argument
+or request a different provider in the first release.
+
+Every backend of a generation is opened for the same host workspace. A provider
+that copies the workspace gives each backend its own copy, so changes made
+through one backend are not visible through another. Consumers that need to see
+another consumer's changes can check the `workspace` relationship.
 
 ## Consumer API
 
@@ -669,15 +682,18 @@ path with incomplete routing is reported as unsupported by the integration.
 ## Lifecycle and concurrency
 
 The broker uses explicit states: initialising, idle, opening, ready, failed,
-closing and closed. It stores an opening promise and creates at most one backend
-for a generation. Both `session_start` and acquisition can initialise session
+closing and closed. Each backend has its own opening, ready or failed state and
+opening promise, and the broker creates at most one backend for each negotiated
+policy in a generation. The generation's reported state follows the backend for
+the personal policy. Both `session_start` and acquisition can initialise session
 metadata, so a consumer's earlier start handler cannot deadlock while waiting
 for the broker's later start handler.
 
 Opening is lazy by default. Diagnostics can validate selection and capabilities
-without allocating a VM or container. Concurrent consumers share the successful
-backend. A failed opening remains failed until reload; arbitrary operations do
-not trigger repeated provisioning attempts.
+without allocating a VM or container. Concurrent consumers that negotiate the
+same policy share the successful backend. A failed opening remains failed until
+reload; arbitrary operations do not trigger repeated provisioning attempts. A
+failure affects only the backend for that policy.
 
 One failed command does not invalidate the backend. A transport failure with
 unknown operation outcome or an unconfirmed cancellation does. The broker never

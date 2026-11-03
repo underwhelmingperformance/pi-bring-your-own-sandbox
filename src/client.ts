@@ -15,8 +15,10 @@ import { runtimeSettings } from './runtime-settings.js';
 /**
 Acquire the selected sandbox from a live Pi event, command or tool context.
 Call after extension loading. All consumers share the user's provider selection;
-an unconfigured user gets the host backend. Configured failures never select
-host execution. Cancelling an acquisition leaves shared startup running.
+an unconfigured user gets the host backend. A requested policy can tighten the
+user's policy but not loosen it, and consumers that request the same policy
+share one backend. Configured failures never select host execution. Cancelling
+an acquisition leaves shared startup running.
 */
 export async function getSandbox(
 	pi: SandboxHost,

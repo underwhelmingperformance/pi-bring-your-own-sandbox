@@ -66,13 +66,23 @@ the selected declaration's `providerLabel`, including after closure. Formatting
 that label uses the captured metadata without additional discovery or
 configuration.
 
-Acquisition requirements filter the shared backend. They do not select another
-provider or alter the backend's effective policy. Every requested capability
-must be present. Each supplied policy field must equal the effective field,
-except that a restriction also satisfies `provider-default`: `workspace-only`
-satisfies filesystem delegation and `denied` satisfies network delegation.
-`read-only` and `read-write` express different workspace requirements and must
-match exactly.
+Acquisition negotiates a complete policy from the request and the personal
+policy, then uses the generation's backend for that policy, opening it if
+necessary. Omitted fields and `provider-default` requests keep the personal
+value. `read-only` tightens `read-write`, `workspace-only` tightens filesystem
+delegation and `denied` tightens network delegation. Requesting `read-write`
+when the personal policy is `read-only` loosens it and fails with
+`UnsupportedSandboxPolicyError`. A negotiated value that the provider does not
+declare fails the same way, and a requested operation, process kind or shell
+that the declaration lacks fails with `UnsupportedSandboxCapabilityError`; both
+happen before any backend is opened. Exit status and termination scope are
+checked after opening, because a backend may strengthen its declaration. Every
+requested capability must then be present in the opened backend. Negotiation
+never selects another provider.
+
+Status lists every started backend under `backends`, with its negotiated policy,
+state and backend ID; the top-level backend fields describe the backend for the
+personal policy.
 
 Facade methods always exist, including `files` and `search`. Unsupported methods
 reject with `UnsupportedSandboxCapabilityError` before provider invocation. This

@@ -59,6 +59,7 @@ export type {
 	ProviderInfo,
 	ProviderSelection,
 	ProviderServiceV1,
+	SandboxBackendStatus,
 	SandboxStatus,
 	ServiceAdvertisementV1
 } from './protocol.js';

@@ -79,14 +79,17 @@ metadata describes whether its workspace is shared, copied or remote. Use the
 SDK file and search facades for target files. A target path is not necessarily
 accessible through the host's filesystem APIs.
 
-The broker shares a backend across consumers in the generation. The returned
-facade exposes immutable metadata and operations. The broker owns allocation and
-disposal. Consumer code does not choose another provider for individual
-requests.
+Consumers that request the same policy share one backend in the generation. The
+returned facade exposes immutable metadata and operations. The broker owns
+allocation and disposal. Consumer code does not choose another provider for
+individual requests.
 
-Require additional capabilities or policy only when the extension needs them.
-For example, a denied-network requirement rejects acquisition from passthrough.
-Requirements check the selected backend and do not change the user's selection.
+Require additional capabilities or policy only when the extension needs them. A
+stricter policy request, such as `read-only` or `denied` network access, gets a
+backend opened with that policy from the selected provider, provided that the
+provider supports it. A request cannot loosen the user's policy. For example, a
+denied-network requirement rejects acquisition from passthrough.
+
 Unsupported operations return typed capability errors.
 
 ## Tool results, approval and errors

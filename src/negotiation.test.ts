@@ -1,0 +1,265 @@
+import { SessionManager } from '@earendil-works/pi-coding-agent';
+import { expect, it } from 'vitest';
+
+import type {
+	SandboxBackend,
+	SandboxContext,
+	SandboxOpenContext,
+	SandboxPolicy,
+	SupportedSandboxPolicies
+} from './contracts.js';
+import { MemoryBackend } from './fixtures/memory-backend.js';
+import { SandboxGeneration } from './generation.js';
+import type { ProviderServiceV1 } from './protocol.js';
+
+const PERSONAL: SandboxPolicy = {
+	workspaceAccess: 'read-write',
+	filesystemScope: 'provider-default',
+	networkAccess: 'provider-default'
+};
+
+const RESTRICTED: SandboxPolicy = {
+	workspaceAccess: 'read-only',
+	filesystemScope: 'workspace-only',
+	networkAccess: 'denied'
+};
+
+const ALL_POLICIES: SupportedSandboxPolicies = {
+	workspaceAccess: ['read-only', 'read-write'],
+	filesystemScope: ['workspace-only', 'provider-default'],
+	networkAccess: ['denied', 'provider-default']
+};
+
+class PolicyBackend extends MemoryBackend {
+	override readonly id: string;
+	override readonly policy: SandboxPolicy;
+
+	constructor(policy: SandboxPolicy) {
+		super();
+		this.policy = policy;
+		this.id = `memory:${policy.workspaceAccess}:${policy.networkAccess}`;
+	}
+}
+
+interface FixtureOptions {
+	readonly personal?: SandboxPolicy;
+	readonly policies?: SupportedSandboxPolicies;
+	readonly open?: (
+		policy: SandboxPolicy,
+		opening: SandboxOpenContext
+	) => Promise<SandboxBackend>;
+}
+
+function fixture(options: FixtureOptions = {}) {
+	const opened: SandboxPolicy[] = [];
+	const disposed: string[] = [];
+	const context: SandboxContext = {
+		cwd: '/host/workspace',
+		sessionManager: SessionManager.inMemory('/host/workspace')
+	};
+	const capabilities = new MemoryBackend().capabilities;
+	const provider: ProviderServiceV1 = {
+		id: 'fixture',
+		label: 'Fixture',
+		capabilities,
+		policies: options.policies ?? ALL_POLICIES,
+		configure: () => ({
+			open: (request, opening) => {
+				opened.push(request.policy);
+
+				if (options.open !== undefined) {
+					return options.open(request.policy, opening);
+				}
+
+				const backend = new PolicyBackend(request.policy);
+
+				backend.dispose = () => {
+					disposed.push(backend.id);
+
+					return Promise.resolve();
+				};
+
+				return Promise.resolve(backend);
+			}
+		})
+	};
+	const generation = new SandboxGeneration(context, {
+		providers: () => [provider],
+		readConfig: () =>
+			Promise.resolve({
+				selection: {
+					providerId: 'fixture',
+					source: 'personal',
+					policy: options.personal ?? PERSONAL
+				},
+				providerConfig: {}
+			})
+	});
+
+	return { generation, context, opened, disposed };
+}
+
+it('opens a backend for each distinct configuration and reuses it', async () => {
+	const { generation, context, opened } = fixture();
+	const unrestricted = await generation.acquire(context);
+	const restricted = await generation.acquire(context, {
+		policy: RESTRICTED
+	});
+	const again = await generation.acquire(context, { policy: RESTRICTED });
+
+	expect({
+		backends: [unrestricted.backendId, restricted.backendId, again.backendId],
+		policies: [unrestricted.policy, restricted.policy],
+		opened
+	}).toStrictEqual({
+		backends: [
+			'memory:read-write:provider-default',
+			'memory:read-only:denied',
+			'memory:read-only:denied'
+		],
+		policies: [PERSONAL, RESTRICTED],
+		opened: [PERSONAL, RESTRICTED]
+	});
+	await generation.close();
+});
+
+it('keeps a personal restriction when a request delegates that field', async () => {
+	const personal: SandboxPolicy = { ...PERSONAL, networkAccess: 'denied' };
+	const { generation, context, opened } = fixture({ personal });
+	const sandbox = await generation.acquire(context, {
+		policy: { networkAccess: 'provider-default' }
+	});
+
+	expect({ policy: sandbox.policy, opened }).toStrictEqual({
+		policy: personal,
+		opened: [personal]
+	});
+	await generation.close();
+});
+
+it.each([
+	{
+		name: 'a value that the provider does not declare',
+		personal: PERSONAL,
+		policies: { ...ALL_POLICIES, workspaceAccess: ['read-write'] },
+		requested: { workspaceAccess: 'read-only' }
+	},
+	{
+		name: 'a request that loosens the personal policy',
+		personal: { ...PERSONAL, workspaceAccess: 'read-only' },
+		policies: ALL_POLICIES,
+		requested: { workspaceAccess: 'read-write' }
+	}
+] as const)(
+	'rejects $name without opening a backend',
+	async ({ personal, policies, requested }) => {
+		const { generation, context, opened } = fixture({ personal, policies });
+
+		await expect(
+			generation.acquire(context, { policy: requested })
+		).rejects.toMatchObject({ name: 'UnsupportedSandboxPolicyError' });
+		expect(opened).toStrictEqual([]);
+		await generation.close();
+	}
+);
+
+it('rejects operations that the declaration lacks without opening a backend', async () => {
+	const { generation, context, opened } = fixture();
+
+	await expect(
+		generation.acquire(context, { capabilities: ['search.grep'] })
+	).rejects.toMatchObject({ name: 'UnsupportedSandboxCapabilityError' });
+	expect(opened).toStrictEqual([]);
+	await generation.close();
+});
+
+it('shares one startup between concurrent requests for a configuration', async () => {
+	const gate = Promise.withResolvers<SandboxBackend>();
+	const { generation, context, opened } = fixture({
+		open: () => gate.promise
+	});
+	const caller = new AbortController();
+	const cancelled = generation.acquire(context, {
+		policy: RESTRICTED,
+		signal: caller.signal
+	});
+	const waiting = generation.acquire(context, { policy: RESTRICTED });
+	const rejected = expect(cancelled).rejects.toMatchObject({
+		name: 'SandboxCancelledError',
+		completion: 'not-started'
+	});
+
+	caller.abort();
+	await rejected;
+	gate.resolve(new PolicyBackend(RESTRICTED));
+
+	const sandbox = await waiting;
+
+	expect({ backendId: sandbox.backendId, opened }).toStrictEqual({
+		backendId: 'memory:read-only:denied',
+		opened: [RESTRICTED]
+	});
+	await generation.close();
+});
+
+it('disposes every backend when the generation closes', async () => {
+	const { generation, context, disposed } = fixture();
+
+	await generation.acquire(context);
+	await generation.acquire(context, { policy: RESTRICTED });
+
+	expect({
+		report: await generation.close(),
+		disposed: disposed.toSorted((left, right) => left.localeCompare(right))
+	}).toStrictEqual({
+		report: { confirmed: true, recoveries: [], failures: [] },
+		disposed: ['memory:read-only:denied', 'memory:read-write:provider-default']
+	});
+});
+
+it('keeps other backends usable after one fails to open', async () => {
+	const { generation, context, opened } = fixture({
+		open: (policy) =>
+			policy.networkAccess === 'denied'
+				? Promise.reject(new Error('provider failed'))
+				: Promise.resolve(new PolicyBackend(policy))
+	});
+
+	await expect(
+		generation.acquire(context, { policy: RESTRICTED })
+	).rejects.toMatchObject({ name: 'SandboxStartupError' });
+
+	const sandbox = await generation.acquire(context);
+
+	await expect(
+		generation.acquire(context, { policy: RESTRICTED })
+	).rejects.toMatchObject({ name: 'SandboxStartupError' });
+	expect({ backendId: sandbox.backendId, opened }).toStrictEqual({
+		backendId: 'memory:read-write:provider-default',
+		opened: [RESTRICTED, PERSONAL]
+	});
+	await generation.close();
+});
+
+it('lists every open backend in status', async () => {
+	const { generation, context } = fixture();
+
+	await generation.acquire(context);
+	await generation.acquire(context, { policy: RESTRICTED });
+
+	const status = await generation.status();
+
+	expect(status.backends).toStrictEqual([
+		{
+			policy: PERSONAL,
+			state: 'ready',
+			backendId: 'memory:read-write:provider-default'
+		},
+		{
+			policy: RESTRICTED,
+			state: 'ready',
+			backendId: 'memory:read-only:denied'
+		}
+	]);
+	await generation.close();
+});

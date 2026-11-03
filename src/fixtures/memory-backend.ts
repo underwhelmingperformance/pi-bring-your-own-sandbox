@@ -16,7 +16,7 @@ import { SandboxCancelledError, SandboxPathNotFoundError } from '../errors.js';
 export class MemoryBackend implements SandboxBackend {
 	readonly #contents = new Map<string, Uint8Array>();
 	readonly #directories = new Set(['/remote/project']);
-	readonly id = 'memory';
+	readonly id: string = 'memory';
 	readonly workspace: SandboxWorkspace = {
 		root: '/remote/project',
 		pathFlavor: 'posix',

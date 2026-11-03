@@ -22,7 +22,8 @@ import type {
 	SandboxContext,
 	SandboxErrorInfo,
 	SandboxOperation,
-	SandboxOperationContext
+	SandboxOperationContext,
+	SandboxPolicy
 } from './contracts.js';
 import {
 	InvalidSandboxDeclarationError,
@@ -45,12 +46,18 @@ import {
 	settleOperation
 } from './lifecycle.js';
 import { MutationQueue } from './mutation-queue.js';
+import {
+	checkDeclaredCapabilities,
+	policyKey,
+	resolvePolicy
+} from './negotiation.js';
 import type {
 	BrokerState,
 	ConfiguredProviderV1,
 	ProviderInfo,
 	ProviderSelection,
 	ProviderServiceV1,
+	SandboxBackendStatus,
 	SandboxStatus
 } from './protocol.js';
 import { ProviderDiagnostics } from './provider-diagnostics.js';
@@ -67,6 +74,23 @@ interface Prepared {
 }
 interface Disposable {
 	readonly dispose: (context: SandboxOperationContext) => Promise<void>;
+}
+interface BackendSlot {
+	readonly policy: SandboxPolicy;
+	state: SandboxBackendStatus['state'];
+	opening:
+		| Promise<Exclude<Settlement<SandboxBackend>, { kind: 'abandoned' }>>
+		| undefined;
+	backend: SandboxBackend | undefined;
+	candidate: unknown;
+	recovery: RecoveryDescriptor;
+	candidateRecovery: RecoveryDescriptor | undefined;
+	hasRecovery: boolean;
+	hasInvokedOpen: boolean;
+	isOpenCleanupConfirmed: boolean;
+	failure: SandboxErrorInfo | undefined;
+	isUncertain: boolean;
+	disposing: Promise<boolean> | undefined;
 }
 
 const isDisposable = checker(
@@ -88,19 +112,8 @@ export class SandboxGeneration {
 	#selection: ProviderSelection | undefined;
 	#configurationSource: 'personal' | undefined;
 	#prepared: Promise<Prepared> | undefined;
-	#opening:
-		| Promise<Exclude<Settlement<SandboxBackend>, { kind: 'abandoned' }>>
-		| undefined;
-	#backend: SandboxBackend | undefined;
-	#candidate: unknown;
-	#recovery: RecoveryDescriptor = { kind: 'none' };
-	#candidateRecovery: RecoveryDescriptor | undefined;
-	#hasRecovery = false;
-	#hasInvokedOpen = false;
-	#isOpenCleanupConfirmed = false;
+	readonly #slots = new Map<string, BackendSlot>();
 	#failure: SandboxErrorInfo | undefined;
-	#isUncertain = false;
-	#disposing: Promise<boolean> | undefined;
 	#closing: Promise<SandboxCloseReport> | undefined;
 	readonly #cleanupFailures: SandboxErrorInfo[] = [];
 
@@ -124,21 +137,29 @@ export class SandboxGeneration {
 		}
 	}
 
-	#assertOpen(operation: SandboxOperation): void {
+	#assertOpen(operation: SandboxOperation, slot?: BackendSlot): void {
 		if (this.#state === 'closing' || this.#state === 'closed') {
 			throw new SandboxSessionClosingError({ operation });
 		}
 
-		if (this.#failure !== undefined) {
-			throw this.#failure;
+		const failure = this.#failure ?? slot?.failure;
+
+		if (failure !== undefined) {
+			throw failure;
 		}
 	}
 
-	#normalise(cause: unknown, operation: SandboxOperation): SandboxErrorInfo {
-		const recovery =
-			this.#recovery.kind === 'none'
-				? (this.#candidateRecovery ?? this.#recovery)
-				: this.#recovery;
+	#normalise(
+		cause: unknown,
+		operation: SandboxOperation,
+		slot?: BackendSlot
+	): SandboxErrorInfo {
+		const recovery: RecoveryDescriptor =
+			slot === undefined
+				? { kind: 'none' }
+				: slot.recovery.kind === 'none'
+					? (slot.candidateRecovery ?? slot.recovery)
+					: slot.recovery;
 		const context = {
 			operation,
 			...(this.#selection !== undefined &&
@@ -155,8 +176,8 @@ export class SandboxGeneration {
 			...(this.#selection !== undefined && {
 				providerId: this.#selection.providerId
 			}),
-			...(this.#backend !== undefined && { backendId: this.#backend.id }),
-			...(!this.#isOpenCleanupConfirmed &&
+			...(slot?.backend !== undefined && { backendId: slot.backend.id }),
+			...(slot?.isOpenCleanupConfirmed !== true &&
 				recovery.kind !== 'none' && { recovery })
 		};
 
@@ -175,6 +196,11 @@ export class SandboxGeneration {
 		if (this.#state !== 'closing' && this.#state !== 'closed') {
 			this.#state = 'failed';
 		}
+	}
+
+	#failSlot(slot: BackendSlot, error: SandboxErrorInfo): void {
+		slot.failure ??= error;
+		slot.state = 'failed';
 	}
 
 	#prepare(): Promise<Prepared> {
@@ -244,44 +270,71 @@ export class SandboxGeneration {
 		}
 	}
 
-	#start(): Promise<
-		Exclude<Settlement<SandboxBackend>, { kind: 'abandoned' }>
-	> {
-		if (this.#opening !== undefined) {
-			return this.#opening;
+	#slot(policy: SandboxPolicy): BackendSlot {
+		const key = policyKey(policy);
+		const existing = this.#slots.get(key);
+
+		if (existing !== undefined) {
+			return existing;
+		}
+
+		const slot: BackendSlot = {
+			policy,
+			state: 'opening',
+			opening: undefined,
+			backend: undefined,
+			candidate: undefined,
+			recovery: { kind: 'none' },
+			candidateRecovery: undefined,
+			hasRecovery: false,
+			hasInvokedOpen: false,
+			isOpenCleanupConfirmed: false,
+			failure: undefined,
+			isUncertain: false,
+			disposing: undefined
+		};
+
+		this.#slots.set(key, slot);
+
+		return slot;
+	}
+
+	#start(
+		slot: BackendSlot
+	): Promise<Exclude<Settlement<SandboxBackend>, { kind: 'abandoned' }>> {
+		if (slot.opening !== undefined) {
+			return slot.opening;
 		}
 
 		const pending = Promise.withResolvers<SandboxBackend>();
 
-		this.#opening = observe(pending.promise);
-		this.#state = 'opening';
-		void this.#open(pending);
+		slot.opening = observe(pending.promise);
+		void this.#open(pending, slot);
 
-		return this.#opening;
+		return slot.opening;
 	}
 
-	#reportRecovery(value: unknown): void {
+	#reportRecovery(slot: BackendSlot, value: unknown): void {
 		if (
 			!isRecovery(value) ||
-			(this.#recovery.kind === 'allocation' && value.kind === 'none')
+			(slot.recovery.kind === 'allocation' && value.kind === 'none')
 		) {
 			throw new InvalidSandboxDeclarationError({ operation: 'open' });
 		}
 
-		this.#recordRecovery(value);
-		this.#hasRecovery = true;
+		slot.recovery = snapshotRecovery(value);
+		slot.hasRecovery = true;
 	}
 
-	#recordRecovery(recovery: RecoveryDescriptor): void {
-		this.#recovery = snapshotRecovery(recovery);
-	}
-
-	async #allocate(scope: OperationScope): Promise<SandboxBackend> {
+	async #allocate(
+		scope: OperationScope,
+		slot: BackendSlot
+	): Promise<SandboxBackend> {
 		const prepared = await this.#prepare();
 
 		scope.check();
 		scope.setCleanupBudgets(this.#cleanup);
-		this.#hasInvokedOpen = true;
+		slot.hasInvokedOpen = true;
 
 		let isOpening = true;
 		let candidate: unknown;
@@ -292,23 +345,23 @@ export class SandboxGeneration {
 					generationId: this.#id,
 					sessionId: this.#session.sessionId,
 					hostWorkspace: this.#session.workspace,
-					policy: this.#selectionPolicy()
+					policy: slot.policy
 				},
 				{
 					...scope.context,
 					reportRecovery: (recovery) => {
-						if (!isOpening || this.#isOpenCleanupConfirmed) {
+						if (!isOpening || slot.isOpenCleanupConfirmed) {
 							throw new InvalidSandboxDeclarationError({ operation: 'open' });
 						}
 
-						this.#reportRecovery(recovery);
+						this.#reportRecovery(slot, recovery);
 					},
 					confirmCleanup: () => {
 						if (!isOpening) {
 							throw new InvalidSandboxDeclarationError({ operation: 'open' });
 						}
 
-						this.#isOpenCleanupConfirmed = true;
+						slot.isOpenCleanupConfirmed = true;
 					}
 				}
 			);
@@ -316,18 +369,18 @@ export class SandboxGeneration {
 			isOpening = false;
 		}
 
-		this.#candidate = candidate;
+		slot.candidate = candidate;
 
 		if (isRecord(candidate) && isRecovery(candidate.recovery)) {
-			this.#candidateRecovery = snapshotRecovery(candidate.recovery);
+			slot.candidateRecovery = snapshotRecovery(candidate.recovery);
 
-			if (!this.#hasRecovery) {
-				this.#recordRecovery(candidate.recovery);
+			if (!slot.hasRecovery) {
+				slot.recovery = snapshotRecovery(candidate.recovery);
 			}
 		}
 
-		if (this.#isOpenCleanupConfirmed) {
-			this.#isOpenCleanupConfirmed = false;
+		if (slot.isOpenCleanupConfirmed) {
+			slot.isOpenCleanupConfirmed = false;
 
 			throw new InvalidSandboxDeclarationError({ operation: 'open' });
 		}
@@ -337,18 +390,18 @@ export class SandboxGeneration {
 			this.#state === 'closing' ||
 			this.#state === 'closed'
 		) {
-			const isDisposed = await this.#dispose();
+			const isDisposed = await this.#dispose(slot);
 
 			throw scope.cancellationError(isDisposed ? 'confirmed' : 'unknown');
 		}
 
 		const backend = snapshotBackend(
-			validateBackend(candidate, prepared.provider, this.#selectionPolicy())
+			validateBackend(candidate, prepared.provider, slot.policy)
 		);
 
 		if (
-			(backend.recovery.kind === 'allocation' && !this.#hasRecovery) ||
-			!isSameRecovery(this.#recovery, backend.recovery)
+			(backend.recovery.kind === 'allocation' && !slot.hasRecovery) ||
+			!isSameRecovery(slot.recovery, backend.recovery)
 		) {
 			throw new InvalidSandboxDeclarationError({
 				operation: 'open',
@@ -356,24 +409,18 @@ export class SandboxGeneration {
 			});
 		}
 
-		this.#recordRecovery(backend.recovery);
-
-		this.#candidate = backend;
-		this.#backend = backend;
-		this.#state = 'ready';
+		slot.recovery = snapshotRecovery(backend.recovery);
+		slot.candidate = backend;
+		slot.backend = backend;
+		slot.state = 'ready';
 
 		return backend;
 	}
 
-	#selectionPolicy() {
-		if (this.#selection === undefined) {
-			throw new SandboxInitialisationError({ operation: 'open' });
-		}
-
-		return this.#selection.policy;
-	}
-
-	async #open(pending: PromiseWithResolvers<SandboxBackend>): Promise<void> {
+	async #open(
+		pending: PromiseWithResolvers<SandboxBackend>,
+		slot: BackendSlot
+	): Promise<void> {
 		const scope = new OperationScope(
 			{ operation: 'open' },
 			this.#lifetime.signal,
@@ -394,11 +441,11 @@ export class SandboxGeneration {
 		});
 
 		try {
-			const allocation = Promise.try(() => this.#allocate(scope));
+			const allocation = Promise.try(() => this.#allocate(scope, slot));
 			const completion = observe(allocation);
 			const first = await Promise.race([completion, scope.whenCancelled()]);
 
-			if (!this.#hasInvokedOpen && first.kind === 'cancelled') {
+			if (!slot.hasInvokedOpen && first.kind === 'cancelled') {
 				throw scope.cancellationError('not-started');
 			}
 
@@ -408,21 +455,21 @@ export class SandboxGeneration {
 					: first;
 
 			if (result.kind === 'abandoned') {
-				this.#isUncertain = true;
+				slot.isUncertain = true;
 
 				throw new UnconfirmedSandboxTerminationError({
 					operation: 'open',
 					...(scope.reason !== undefined && { reason: scope.reason }),
-					...(this.#recovery.kind !== 'none' && { recovery: this.#recovery })
+					...(slot.recovery.kind !== 'none' && { recovery: slot.recovery })
 				});
 			}
 
 			if (result.kind === 'rejected') {
 				if (
-					this.#candidate === undefined &&
-					this.#recovery.kind === 'allocation'
+					slot.candidate === undefined &&
+					slot.recovery.kind === 'allocation'
 				) {
-					this.#isUncertain = !this.#isOpenCleanupConfirmed;
+					slot.isUncertain = !slot.isOpenCleanupConfirmed;
 				}
 
 				throw result.error;
@@ -430,17 +477,17 @@ export class SandboxGeneration {
 
 			pending.resolve(result.value);
 		} catch (error_) {
-			let error = this.#normalise(error_, 'open');
+			let error = this.#normalise(error_, 'open', slot);
 
-			this.#fail(error);
+			this.#failSlot(slot, error);
 
-			if (this.#candidate !== undefined) {
-				const isDisposed = await this.#dispose();
+			if (slot.candidate !== undefined) {
+				const isDisposed = await this.#dispose(slot);
 
-				if (isDisposed && !this.#isUncertain) {
-					this.#isOpenCleanupConfirmed = true;
-					error = this.#normalise(error_, 'open');
-					this.#failure = error;
+				if (isDisposed && !slot.isUncertain) {
+					slot.isOpenCleanupConfirmed = true;
+					error = this.#normalise(error_, 'open', slot);
+					slot.failure = error;
 				}
 			}
 
@@ -450,7 +497,11 @@ export class SandboxGeneration {
 		}
 	}
 
-	#owner(context: SandboxContext, backend: SandboxBackend): SandboxOwner {
+	#owner(
+		context: SandboxContext,
+		slot: BackendSlot,
+		backend: SandboxBackend
+	): SandboxOwner {
 		const selection = this.#selection;
 
 		if (selection === undefined) {
@@ -461,7 +512,7 @@ export class SandboxGeneration {
 			identity: {
 				providerId: selection.providerId,
 				backendId: backend.id,
-				recovery: this.#recovery
+				recovery: slot.recovery
 			},
 			generationId: this.#id,
 			cleanup: this.#cleanup,
@@ -472,39 +523,40 @@ export class SandboxGeneration {
 			mutations: this.#mutations,
 			assertLive: (operation) => {
 				this.#assertContext(context, operation);
-				this.#assertOpen(operation);
+				this.#assertOpen(operation, slot);
 			},
 			markUnhealthy: (failure) => {
-				this.#fail(failure);
+				this.#failSlot(slot, failure);
 			}
 		};
 	}
 
-	#dispose(): Promise<boolean> {
-		if (this.#disposing !== undefined) {
-			return this.#disposing;
+	#dispose(slot: BackendSlot): Promise<boolean> {
+		if (slot.disposing !== undefined) {
+			return slot.disposing;
 		}
 
-		const candidate = this.#candidate;
+		const candidate = slot.candidate;
 
 		if (candidate === undefined) {
 			return Promise.resolve(
-				!this.#isUncertain &&
-					(this.#isOpenCleanupConfirmed || this.#recovery.kind === 'none')
+				!slot.isUncertain &&
+					(slot.isOpenCleanupConfirmed || slot.recovery.kind === 'none')
 			);
 		}
 
 		const pending = Promise.withResolvers<boolean>();
 
-		this.#disposing = pending.promise;
-		void this.#release(candidate, pending);
+		slot.disposing = pending.promise;
+		void this.#release(candidate, pending, slot);
 
 		return pending.promise;
 	}
 
 	async #release(
 		candidate: unknown,
-		pending: PromiseWithResolvers<boolean>
+		pending: PromiseWithResolvers<boolean>,
+		slot: BackendSlot
 	): Promise<void> {
 		const scope = new OperationScope(
 			{ operation: 'dispose' },
@@ -521,7 +573,7 @@ export class SandboxGeneration {
 					...(this.#selection !== undefined && {
 						providerId: this.#selection.providerId
 					}),
-					...(this.#backend !== undefined && { backendId: this.#backend.id })
+					...(slot.backend !== undefined && { backendId: slot.backend.id })
 				},
 				diagnostic
 			);
@@ -543,7 +595,7 @@ export class SandboxGeneration {
 				throw new SandboxCleanupError(
 					{
 						operation: 'dispose',
-						...(this.#recovery.kind !== 'none' && { recovery: this.#recovery })
+						...(slot.recovery.kind !== 'none' && { recovery: slot.recovery })
 					},
 					{
 						cause:
@@ -560,7 +612,7 @@ export class SandboxGeneration {
 				new SandboxCleanupError(
 					{
 						operation: 'dispose',
-						...(this.#recovery.kind !== 'none' && { recovery: this.#recovery })
+						...(slot.recovery.kind !== 'none' && { recovery: slot.recovery })
 					},
 					{ cause: error }
 				)
@@ -572,23 +624,21 @@ export class SandboxGeneration {
 	}
 
 	#closeReport(
-		isConfirmed: boolean,
+		unconfirmed: readonly BackendSlot[],
 		failures: readonly SandboxErrorInfo[]
 	): SandboxCloseReport {
 		const recoveries = Object.freeze(
-			isConfirmed
-				? []
-				: [
-						...(this.#recovery.kind === 'allocation' ? [this.#recovery] : []),
-						...(this.#candidateRecovery?.kind === 'allocation' &&
-						!isSameRecovery(this.#recovery, this.#candidateRecovery)
-							? [this.#candidateRecovery]
-							: [])
-					]
+			unconfirmed.flatMap((slot) => [
+				...(slot.recovery.kind === 'allocation' ? [slot.recovery] : []),
+				...(slot.candidateRecovery?.kind === 'allocation' &&
+				!isSameRecovery(slot.recovery, slot.candidateRecovery)
+					? [slot.candidateRecovery]
+					: [])
+			])
 		);
 
 		return Object.freeze({
-			confirmed: isConfirmed,
+			confirmed: unconfirmed.length === 0 && failures.length === 0,
 			recoveries,
 			failures: Object.freeze([...failures])
 		});
@@ -597,31 +647,56 @@ export class SandboxGeneration {
 	async #finishClose(
 		pending: PromiseWithResolvers<SandboxCloseReport>
 	): Promise<void> {
-		try {
-			if (this.#opening !== undefined) {
-				await this.#opening;
-			}
+		const slots = this.#slots.values().toArray();
 
+		try {
+			await Promise.all(
+				slots.flatMap((slot) =>
+					slot.opening === undefined ? [] : [slot.opening]
+				)
+			);
 			await this.#operations.drain();
 
-			const isDisposed = await this.#dispose();
-			const isConfirmed = isDisposed && !this.#isUncertain;
-			const failures = [...this.#cleanupFailures];
-
-			if (this.#isUncertain && this.#failure !== undefined) {
-				failures.unshift(this.#failure);
-			}
+			const disposals = await Promise.all(
+				slots.map((slot) => this.#dispose(slot))
+			);
+			const unconfirmed = slots.filter(
+				(slot, index) => disposals[index] !== true || slot.isUncertain
+			);
+			const failures = [
+				...slots.flatMap((slot) =>
+					slot.isUncertain && slot.failure !== undefined ? [slot.failure] : []
+				),
+				...this.#cleanupFailures
+			];
 
 			this.#state = 'closed';
-			pending.resolve(this.#closeReport(isConfirmed, failures));
+			pending.resolve(this.#closeReport(unconfirmed, failures));
 		} catch (error) {
 			this.#state = 'closed';
 			pending.resolve(
-				this.#closeReport(false, [
+				this.#closeReport(slots, [
 					new SandboxCleanupError({ operation: 'dispose' }, { cause: error })
 				])
 			);
 		}
+	}
+
+	#negotiate(provider: ProviderInfo, options: SandboxAcquireOptions) {
+		const selection = this.#selection;
+
+		if (selection === undefined) {
+			throw new SandboxInitialisationError({ operation: 'acquire' });
+		}
+
+		const identity = {
+			operation: 'acquire' as const,
+			providerId: selection.providerId
+		};
+
+		checkDeclaredCapabilities(provider.capabilities, options, identity);
+
+		return resolvePolicy(selection.policy, provider, options.policy, identity);
 	}
 
 	async initialize(): Promise<void> {
@@ -647,7 +722,28 @@ export class SandboxGeneration {
 		try {
 			scope.check();
 
-			const result = await Promise.race([this.#start(), scope.whenCancelled()]);
+			const prepared = await Promise.race([
+				observe(this.#prepare()),
+				scope.whenCancelled()
+			]);
+
+			if (prepared.kind === 'cancelled') {
+				throw scope.cancellationError('not-started');
+			}
+
+			scope.check();
+
+			if (prepared.kind === 'rejected') {
+				throw prepared.error;
+			}
+
+			const slot = this.#slot(
+				this.#negotiate(prepared.value.provider, options)
+			);
+			const result = await Promise.race([
+				this.#start(slot),
+				scope.whenCancelled()
+			]);
 
 			if (result.kind === 'cancelled') {
 				throw scope.cancellationError('not-started');
@@ -660,9 +756,9 @@ export class SandboxGeneration {
 			}
 
 			this.#assertContext(context, 'acquire');
-			this.#assertOpen('acquire');
+			this.#assertOpen('acquire', slot);
 
-			const sandbox = createSandbox(this.#owner(context, result.value));
+			const sandbox = createSandbox(this.#owner(context, slot, result.value));
 
 			checkRequirements(sandbox, options);
 
@@ -677,7 +773,22 @@ export class SandboxGeneration {
 			await observe(this.#prepare());
 		}
 
-		const backend = this.#backend;
+		const personal =
+			this.#selection === undefined
+				? undefined
+				: this.#slots.get(policyKey(this.#selection.policy));
+		const backend = personal?.backend;
+		const failure = this.#failure ?? personal?.failure;
+		const backends = this.#slots
+			.values()
+			.map((slot): SandboxBackendStatus =>
+				Object.freeze({
+					policy: slot.policy,
+					state: slot.state,
+					...(slot.backend !== undefined && { backendId: slot.backend.id })
+				})
+			)
+			.toArray();
 		const diagnostics = this.#diagnostics.snapshot();
 		const provider = this.#providerInfos.find(
 			(entry) => entry.id === this.#selection?.providerId
@@ -692,8 +803,12 @@ export class SandboxGeneration {
 				diagnosticsDropped: diagnostics.dropped
 			}),
 			generationId: this.#id,
-			state: this.#state,
+			state:
+				personal !== undefined && this.#state === 'idle'
+					? personal.state
+					: this.#state,
 			...(this.#selection !== undefined && { selection: this.#selection }),
+			...(backends.length > 0 && { backends: Object.freeze(backends) }),
 			...(backend !== undefined && {
 				backendId: backend.id,
 				workspace: backend.workspace,
@@ -701,7 +816,7 @@ export class SandboxGeneration {
 				policy: backend.policy,
 				policyDescription: backend.policyDescription
 			}),
-			...(this.#failure !== undefined && { failure: this.#failure }),
+			...(failure !== undefined && { failure }),
 			...(this.#closing !== undefined &&
 				this.#state === 'closed' && { closeReport: await this.#closing })
 		});

@@ -10,7 +10,8 @@ import type {
 	Sandbox,
 	SandboxBackend,
 	SandboxContext,
-	SandboxHost
+	SandboxHost,
+	SandboxPolicy
 } from 'pi-bring-your-own-sandbox/api';
 import * as sandboxClient from 'pi-bring-your-own-sandbox/api';
 import {
@@ -47,7 +48,8 @@ interface DockerSession {
 
 async function withDockerSession(
 	run: (session: DockerSession) => Promise<void>,
-	extensions: readonly InlineExtension[] = []
+	extensions: readonly InlineExtension[] = [],
+	filesystemScope: SandboxPolicy['filesystemScope'] = 'workspace-only'
 ): Promise<void> {
 	let fixture: DockerFixture | undefined;
 	const current: { pi?: SandboxHost; context?: SandboxContext } = {};
@@ -113,7 +115,7 @@ async function withDockerSession(
 							providerConfig: fixture.config,
 							policy: {
 								workspaceAccess: 'read-write',
-								filesystemScope: 'workspace-only',
+								filesystemScope,
 								networkAccess: 'denied'
 							}
 						})
@@ -129,6 +131,43 @@ async function withDockerSession(
 describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
 	'Docker SDK integration (pnpm test:provider requires a local daemon and the pinned image)',
 	() => {
+		it('satisfies the intermediate filesystem request with Docker workspace isolation', async () => {
+			await withDockerSession(
+				async ({ sandbox, fixture }) => {
+					const result = await sandbox.exec({
+						kind: 'argv',
+						executable: '/bin/sh',
+						args: [
+							'-c',
+							'test ! -e "$1" && test ! -e /source',
+							'fixture',
+							fixture.outside
+						]
+					});
+
+					expect({
+						policy: sandbox.policy,
+						result: { ...result, durationMs: 0 }
+					}).toStrictEqual({
+						policy: {
+							workspaceAccess: 'read-write',
+							filesystemScope: 'workspace-only',
+							networkAccess: 'denied'
+						},
+						result: {
+							exit: { kind: 'code', code: 0 },
+							stdout: new Uint8Array(),
+							stderr: new Uint8Array(),
+							omittedBytes: { stdout: 0, stderr: 0 },
+							durationMs: 0
+						}
+					});
+				},
+				[],
+				'system-read-only'
+			);
+		}, 30_000);
+
 		it('routes an approved model Bash call through the isolated Docker target', async () => {
 			const model = new ScriptedModel([
 				{

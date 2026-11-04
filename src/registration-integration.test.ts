@@ -26,151 +26,164 @@ interface BootstrapModule {
 	readonly ensureBroker: typeof ensureBroker;
 }
 
-it('shares shell-only capabilities and unavailable exits across independent SDK copies', async () => {
-	let agentDirectory = '';
+it.each(['provider-default', 'system-read-only'] as const)(
+	'shares execution contracts across independent SDK instances under %s',
+	async (filesystemScope) => {
+		let agentDirectory = '';
 
-	await withPiRuntime(
-		[
-			{
-				name: 'provider-and-consumer-copies',
-				async factory(pi) {
-					const first = await loadSdkInstance();
-					const second = await loadSdkInstance();
-					const template = new MemoryBackend('exec');
+		await withPiRuntime(
+			[
+				{
+					name: 'provider-and-consumer-copies',
+					async factory(pi) {
+						const first = await loadSdkInstance();
+						const second = await loadSdkInstance();
+						const template = new MemoryBackend('exec');
+						const policy = { ...template.policy, filesystemScope };
 
-					first.initialiseSandboxHost(pi, {
-						agentDirectory,
-						cleanup: { disposalTimeoutMs: 9000 }
-					});
-					first.registerSandboxProvider(pi, {
-						...imageProvider,
-						id: 'fixture',
-						defaultPolicy: template.policy,
-						capabilities: {
-							operations: ['exec'],
-							processKinds: ['shell'],
-							shells: ['sh'],
-							terminationScope: 'process-group',
-							exitStatus: 'optional'
-						},
-						validateConfig: () => ({ image: 'fixture' }),
-						open: () =>
-							Promise.resolve({
-								id: template.id,
-								workspace: template.workspace,
-								policy: template.policy,
-								policyDescription: template.policyDescription,
-								recovery: template.recovery,
-								capabilities: {
-									operations: ['exec'],
-									processKinds: ['shell'],
-									shells: ['sh'],
-									terminationScope: 'process-group',
-									exitStatus: 'optional'
-								},
-								exec: (_request, execution) => {
-									execution.reportDiagnostic({
-										level: 'warning',
-										message: 'Independent provider warning'
-									});
-
-									return Promise.resolve({
-										kind: 'exited',
-										exit: { kind: 'unavailable' }
-									});
-								},
-								dispose: () => Promise.resolve()
-							})
-					});
-					pi.registerCommand('capabilities-test', {
-						description: 'Check independently installed execution contracts.',
-						async handler(_arguments, context) {
-							const sandbox = await second.getSandbox(pi, context, {
+						first.initialiseSandboxHost(pi, {
+							agentDirectory,
+							cleanup: { disposalTimeoutMs: 9000 }
+						});
+						first.registerSandboxProvider(pi, {
+							...imageProvider,
+							id: 'fixture',
+							defaultPolicy: policy,
+							policies: {
+								...imageProvider.policies,
+								filesystemScope: [filesystemScope]
+							},
+							capabilities: {
+								operations: ['exec'],
 								processKinds: ['shell'],
 								shells: ['sh'],
-								terminationScope: 'process-group'
-							});
+								terminationScope: 'process-group',
+								exitStatus: 'optional'
+							},
+							validateConfig: () => ({ image: 'fixture' }),
+							open: () =>
+								Promise.resolve({
+									id: template.id,
+									workspace: template.workspace,
+									policy,
+									policyDescription: template.policyDescription,
+									recovery: template.recovery,
+									capabilities: {
+										operations: ['exec'],
+										processKinds: ['shell'],
+										shells: ['sh'],
+										terminationScope: 'process-group',
+										exitStatus: 'optional'
+									},
+									exec: (_request, execution) => {
+										execution.reportDiagnostic({
+											level: 'warning',
+											message: 'Independent provider warning'
+										});
 
-							await expect(
-								second.getSandbox(pi, context, { terminationScope: 'workload' })
-							).rejects.toMatchObject({
-								name: 'UnsupportedSandboxCapabilityError'
-							});
-							expect(
-								second.isSandboxError(
-									new first.SandboxCancelledError({
+										return Promise.resolve({
+											kind: 'exited',
+											exit: { kind: 'unavailable' }
+										});
+									},
+									dispose: () => Promise.resolve()
+								})
+						});
+						pi.registerCommand('capabilities-test', {
+							description: 'Check independently installed execution contracts.',
+							async handler(_arguments, context) {
+								const sandbox = await second.getSandbox(pi, context, {
+									policy: { filesystemScope },
+									processKinds: ['shell'],
+									shells: ['sh'],
+									terminationScope: 'process-group'
+								});
+
+								expect(sandbox.policy).toStrictEqual(policy);
+
+								await expect(
+									second.getSandbox(pi, context, {
+										terminationScope: 'workload'
+									})
+								).rejects.toMatchObject({
+									name: 'UnsupportedSandboxCapabilityError'
+								});
+								expect(
+									second.isSandboxError(
+										new first.SandboxCancelledError({
+											operation: 'exec',
+											reason: 'caller',
+											completion: 'not-guaranteed'
+										}),
+										second.SandboxCancelledError
+									)
+								).toBe(true);
+
+								const result = await sandbox.exec({
+									kind: 'shell',
+									dialect: 'sh',
+									command: 'run'
+								});
+
+								const status = await discoverBroker(pi.events)?.status(context);
+								const operationId: unknown = expect.any(String);
+
+								expect(status?.diagnostics).toStrictEqual([
+									{
+										level: 'warning',
+										message: 'Independent provider warning',
 										operation: 'exec',
-										reason: 'caller',
-										completion: 'not-guaranteed'
-									}),
-									second.SandboxCancelledError
-								)
-							).toBe(true);
+										operationId,
+										providerId: 'fixture',
+										backendId: template.id
+									}
+								]);
+								expect(sandbox.cleanupBudgets).toStrictEqual({
+									cancellationGraceMs: 8000,
+									disposalTimeoutMs: 9000
+								});
 
-							const result = await sandbox.exec({
-								kind: 'shell',
-								dialect: 'sh',
-								command: 'run'
-							});
-
-							const status = await discoverBroker(pi.events)?.status(context);
-							const operationId: unknown = expect.any(String);
-
-							expect(status?.diagnostics).toStrictEqual([
-								{
-									level: 'warning',
-									message: 'Independent provider warning',
-									operation: 'exec',
-									operationId,
-									providerId: 'fixture',
-									backendId: template.id
-								}
-							]);
-							expect(sandbox.cleanupBudgets).toStrictEqual({
-								cancellationGraceMs: 8000,
-								disposalTimeoutMs: 9000
-							});
-
-							expect({ ...result, durationMs: 0 }).toStrictEqual({
-								exit: { kind: 'unavailable' },
-								stdout: new Uint8Array(),
-								stderr: new Uint8Array(),
-								omittedBytes: { stdout: 0, stderr: 0 },
-								durationMs: 0
-							});
-							await expect(
-								second.getSandbox(pi, context, { processKinds: ['argv'] })
-							).rejects.toMatchObject({
-								name: 'UnsupportedSandboxCapabilityError'
-							});
-							await expect(
-								second.getSandbox(pi, context, { exitStatus: 'guaranteed' })
-							).rejects.toMatchObject({
-								name: 'UnsupportedSandboxCapabilityError'
-							});
-						}
-					});
+								expect({ ...result, durationMs: 0 }).toStrictEqual({
+									exit: { kind: 'unavailable' },
+									stdout: new Uint8Array(),
+									stderr: new Uint8Array(),
+									omittedBytes: { stdout: 0, stderr: 0 },
+									durationMs: 0
+								});
+								await expect(
+									second.getSandbox(pi, context, { processKinds: ['argv'] })
+								).rejects.toMatchObject({
+									name: 'UnsupportedSandboxCapabilityError'
+								});
+								await expect(
+									second.getSandbox(pi, context, { exitStatus: 'guaranteed' })
+								).rejects.toMatchObject({
+									name: 'UnsupportedSandboxCapabilityError'
+								});
+							}
+						});
+					}
+				}
+			],
+			async (runtime, errors) => {
+				await runtime.session.prompt('/capabilities-test');
+				expect(errors).toStrictEqual([]);
+			},
+			{
+				async prepare(_directory, personal) {
+					agentDirectory = personal;
+					await writeFile(
+						path.join(personal, 'byos.json'),
+						JSON.stringify({
+							provider: 'fixture',
+							cleanup: { cancellationGraceMs: 8000 }
+						})
+					);
 				}
 			}
-		],
-		async (runtime, errors) => {
-			await runtime.session.prompt('/capabilities-test');
-			expect(errors).toStrictEqual([]);
-		},
-		{
-			async prepare(_directory, personal) {
-				agentDirectory = personal;
-				await writeFile(
-					path.join(personal, 'byos.json'),
-					JSON.stringify({
-						provider: 'fixture',
-						cleanup: { cancellationGraceMs: 8000 }
-					})
-				);
-			}
-		}
-	);
-});
+		);
+	}
+);
 
 function isBootstrapModule(value: unknown): value is BootstrapModule {
 	return (

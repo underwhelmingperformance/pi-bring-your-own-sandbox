@@ -7,6 +7,7 @@ import {
 	UnsupportedSandboxCapabilityError,
 	UnsupportedSandboxPolicyError
 } from './errors.js';
+import { selectFilesystemScope } from './filesystem-scope.js';
 import type { ProviderInfo } from './protocol.js';
 
 interface NegotiationIdentity {
@@ -27,12 +28,19 @@ export function resolvePolicy(
 		throw new UnsupportedSandboxPolicyError(identity);
 	}
 
+	const filesystemScope = selectFilesystemScope(
+		personal.filesystemScope,
+		requested?.filesystemScope,
+		provider.policies.filesystemScope
+	);
+
+	if (filesystemScope === undefined) {
+		throw new UnsupportedSandboxPolicyError(identity);
+	}
+
 	const policy: SandboxPolicy = Object.freeze({
 		workspaceAccess: requested?.workspaceAccess ?? personal.workspaceAccess,
-		filesystemScope:
-			requested?.filesystemScope === 'workspace-only'
-				? 'workspace-only'
-				: personal.filesystemScope,
+		filesystemScope,
 		networkAccess:
 			requested?.networkAccess === 'denied' ? 'denied' : personal.networkAccess
 	});

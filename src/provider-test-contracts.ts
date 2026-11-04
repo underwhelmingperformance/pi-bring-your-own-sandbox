@@ -165,7 +165,7 @@ export interface SandboxProviderTestFixture {
 	};
 	/**
 	Independent negative tests for every requested restrictive policy. Required
-	for read-only, workspace-only or denied-network scenarios. Assert denied
+	for read-only, workspace-only, system-read-only or denied-network scenarios. Assert denied
 	effects, including through exec; checking backend metadata is insufficient.
 	*/
 	readonly verifyPolicy?: (

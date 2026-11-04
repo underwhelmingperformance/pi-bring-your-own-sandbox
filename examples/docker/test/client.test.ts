@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { afterEach, expect, it, vi } from 'vitest';
 
@@ -147,15 +148,15 @@ it('bounds a CLI that never completes without claiming target termination', asyn
 it.each(['deadline', 'output-limit'] as const)(
 	'bounds %s failures when a subprocess inherits CLI pipes',
 	async (mode) => {
-		const directory = await mkdtemp(path.join(tmpdir(), 'byos-docker-pipes-'));
+		const directory = await mkdtemp(
+			path.join(tmpdir(), 'byos-docker-pipes-\'"-')
+		);
 		const release = path.join(directory, 'release');
 		const flood = path.join(directory, 'flood');
 		const started = Promise.withResolvers<undefined>();
 		const stopped = Promise.withResolvers<undefined>();
 		const closed = Promise.withResolvers<undefined>();
 		const failures: unknown[] = [];
-		const grandchild = `const fs=require('node:fs'); process.stdout.write('ready'); setInterval(()=>{ if(fs.existsSync(${JSON.stringify(release)})) process.exit(0); if(fs.existsSync(${JSON.stringify(flood)})) process.stdout.write(Buffer.alloc(2*1024*1024)); },10);`;
-		const wrapper = `require('node:child_process').spawn(process.execPath, ['-e',${JSON.stringify(grandchild)}], {stdio:'inherit'}); setInterval(()=>{},1000);`;
 
 		vi.useFakeTimers();
 
@@ -164,7 +165,15 @@ it.each(['deadline', 'output-limit'] as const)(
 			(executable, arguments_, options) => {
 				const child = spawn(
 					executable,
-					['-e', wrapper, '--', ...arguments_],
+					[
+						fileURLToPath(
+							new URL('fixtures/inherited-pipes-parent.ts', import.meta.url)
+						),
+						release,
+						flood,
+						'--',
+						...arguments_
+					],
 					options
 				);
 

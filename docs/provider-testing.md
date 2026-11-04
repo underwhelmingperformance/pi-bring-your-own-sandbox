@@ -96,14 +96,14 @@ discarded and counted in status, while reports after completion are ignored.
 Do not use the provider's reported policy as evidence that isolation works. For
 a workspace-only policy, attempt an outside-workspace read and write through
 both exec and file methods, then check the sentinel files independently. For a
-denied-network policy, attempt a controlled connection and check the connection
-result. For a read-only policy, attempt mutations and verify unchanged target
-contents. Include symlink escapes in runtime-specific tests. Probe pathname Unix
-sockets through read-only mounts, grants and aliases, abstract sockets and host
-resolver services. The [network investigation][network-boundaries] includes
-native MXC and independent namespace probes.
-
-[network-boundaries]: network-boundaries.md
+denied-network policy, attempt controlled connections and use an independent
+listener to check whether traffic arrived. For a read-only policy, attempt
+mutations and verify unchanged target contents. Include symlink escapes in
+runtime-specific tests. Probe pathname Unix sockets through read-only mounts,
+grants and aliases, abstract sockets and host resolver services. Denied
+networking includes relays through host services. Network namespaces and
+read-only mounts alone do not establish socket denial. A provider must reject
+restrictions that it cannot enforce.
 
 For `process-group` and `workload`, `verifyStopped` must independently establish
 termination within the advertised scope. Include a waiting parent with a child
@@ -116,17 +116,10 @@ or the backend returning a confirmed result, is insufficient evidence.
 `verifyDisposed` should inspect allocations through the runtime's management
 interface or another independent observer.
 
-The repository runs the common execution, shell and cancellation cases against
-two deterministic providers. One records direct calls and maintains an in-memory
-workspace. The other sends requests, byte output, cancellation and disposal
-acknowledgements through a `MessageChannel` and uses separate target paths. Its
-execution-only backend also checks that file groups remain optional. Both are
-test doubles without OS isolation.
-
-The host scenario uses real processes, files, fd and ripgrep, and loads the
-compiled `/testing` entry. The host scenario does not establish sandbox
-isolation. An isolating provider also needs tests for its runtime-specific
-boundaries, environment inheritance, allocation identity and recovery behaviour.
+In-memory and message-based test doubles verify protocol behaviour, not OS
+isolation. Real host execution also does not establish sandbox isolation. An
+isolating provider needs tests for its runtime-specific boundaries, environment
+inheritance, allocation identity and recovery behaviour.
 
 For an internal shell transport, run the argv probes through the actual runtime
 transport. Verify that shell builtins and assignment-like executable names use

@@ -1,13 +1,11 @@
 # Pi file and search adapter prerequisites
 
 Pi 1.5.0's public tool factories do not provide a complete target-filesystem
-boundary. The [seven reproductions][reproductions] establish host path
-resolution, host mutation identities, an edit-preview read before execution, and
-host grep execution. List and find delegate their operations, but host path
-conventions can still corrupt target paths. The [integration table][integration]
-describes these behaviours and the runnable cases.
+boundary. Host path resolution, mutation identities, edit previews and grep
+execution need additional public hooks. The [Pi integration guide][integration]
+lists the current limits. Until those hooks exist, `/pi-tools` routes shell
+tools only.
 
-[reproductions]: ../src/pi-boundaries.test.ts
 [integration]: pi-integration.md#upstream-extension-point-gaps
 
 Complete adapters require changes in Pi. BYOS must preserve Pi's editing,
@@ -15,7 +13,7 @@ search, image and presentation algorithms. Private imports, duplicated edit
 logic and host reads hidden behind an SDK filename check do not establish the
 required boundary.
 
-## Proposed upstream seams
+## Required public hooks
 
 These are requirements for upstream APIs, not APIs available in Pi 1.5.0:
 
@@ -44,11 +42,10 @@ reports host paths according to Pi's public behaviour.
 
 ## Adapter acceptance after upstream support
 
-First rerun the boundary reproductions against the candidate Pi version and turn
-each resolved gap into a regression for the supported boundary. Then add one
-operation adapter per public file/search factory, preserve Pi's tool selection
-and modifiers, and acquire the user's provider through the SDK. Capability
-failures must be typed and happen without host fallback.
+Adapters must pass target-boundary regressions against the supported Pi version.
+Use one operation adapter per public file/search factory, preserve Pi's tool
+selection and modifiers, and acquire the user's provider through the SDK.
+Capability failures must be typed and happen without host fallback.
 
 Integration cases must distinguish host-only and target-only marker contents,
 remote POSIX and Windows paths, images, edit previews before approval, mutation
@@ -57,15 +54,6 @@ and explicit tool allowlists. Exercise the real Pi runtime with scripted model
 and approval decisions. Provider conformance must independently inspect actual
 target reads and mutations.
 
-MXC currently requires separate file/search capability work. The framework's
-interfaces do not implement a provider's access, stat, directory or search
-operations. A provider must verify its runtime operations and policy before
-advertising those capabilities. The work does not require a BYOS copy of Pi's
-edit or grep implementation.
-
-Until the public seams exist, `/pi-tools` routes shell tools only. File/search
-adapters remain dependent on upstream Pi work. Use an [outer runtime][outer] if
-the requirement is to restrict all host access by Pi, its extensions and local
-MCP processes.
-
-[outer]: outer-runtime.md
+Providers implement and verify their own file/search operations and access
+restrictions. Complete Pi hooks would allow adapters to use those capabilities;
+the framework's interfaces alone do not implement them.

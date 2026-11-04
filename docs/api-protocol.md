@@ -10,14 +10,12 @@ documents and declarations must change together.
 [protocol]: ../src/protocol.ts
 [spec]: specification.md
 
-The [validation record][validation] links the implementation and its tests to
-this contract. It includes independent protocol messages, physical SDK copies,
-real Pi dispatch with fake approval, clean tarball installs and a Docker-backed
-provider. Host foreground execution currently supports POSIX process groups;
-Windows host process-tree cancellation is unsupported. The record also specifies
-the upstream Pi hooks required for additional integration paths.
+The [development guide][validation] describes test commands and platform limits.
+The [Pi integration guide][pi] specifies supported tool routing and upstream
+extension-point gaps.
 
 [validation]: validation.md
+[pi]: pi-integration.md
 
 ## Public API
 

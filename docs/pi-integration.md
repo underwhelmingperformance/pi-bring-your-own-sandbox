@@ -53,6 +53,10 @@ does not provide universal interception or isolate arbitrary extension code. See
 the [outer-runtime investigation][outer-runtime] for real extension/MCP marker
 probes and a separate launcher design.
 
+[outer-runtime]: outer-runtime.md See the [outer-runtime
+investigation][outer-runtime] for real extension/MCP marker probes and a
+separate launcher design.
+
 [outer-runtime]: outer-runtime.md
 
 ## Upstream extension-point gaps

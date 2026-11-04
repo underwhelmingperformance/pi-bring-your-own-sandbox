@@ -1,14 +1,14 @@
 # Integration coverage of user flows
 
-This audit covers the framework's supported entry points and user-visible
-outcomes on Pi 1.5.0. Each row identifies integration evidence. Unit and
-provider contract tests add checks for individual operations and malformed
-protocol values; they do not replace the integration cases below.
+This guide maps the framework's supported entry points and user-visible outcomes
+on Pi 1.5.0 to integration tests. Unit and provider contract tests add checks
+for individual operations and malformed protocol values; they do not replace the
+integration cases below.
 
 Run the framework and CLI/RPC cases with `pnpm test:integration`. Run the
 archive installation and real Docker cases separately with `pnpm test:package`
-and `pnpm test:provider`. The [validation record][validation] describes the
-runtime, commands and platform limits.
+and `pnpm test:provider`. The [development guide][validation] describes the
+prerequisites, commands and platform limits.
 
 [validation]: validation.md
 

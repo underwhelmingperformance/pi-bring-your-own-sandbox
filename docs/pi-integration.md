@@ -1,4 +1,4 @@
-# Pi integration coverage
+# Pi integration
 
 The optional `/pi-tools` entry connects public Pi operation hooks to the shared
 sandbox. Pi 1.5.0 supplies tool execution, schemas, rendering, output
@@ -16,15 +16,19 @@ preserves the active tool selection, including explicit allowlists and default
 tool modifiers. Bash uses the `bash` target dialect and PowerShell uses
 `powershell`; user shell commands use configured `userShell` or the provider's
 advertised default. Unsupported target dialects and selected-provider failures
-return errors. No configuration uses the built-in host passthrough provider.
+return errors. Without configuration, the SDK uses the built-in host passthrough
+provider.
 
-## Covered paths
+## Supported execution paths
 
-| Path                          | Public hook                                | Delegated operation                                                        | Evidence and limitations                                                                                                                                                           |
-| ----------------------------- | ------------------------------------------ | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Model `bash` and `powershell` | Definition factories with `BashOperations` | Shared acquisition, target shell execution, streamed bytes and exit status | Real Pi tests cover allow/deny decisions, nested dispatch, result transforms and tool selection. Pi owns output formatting and temporary files.                                    |
-| User shell                    | `user_bash` returning `BashOperations`     | Shared acquisition and the configured/default target shell                 | Real Pi and offline CLI/RPC tests cover context exclusion, cold-start cancellation and provider failures. Literal interactive `!`/`!!` parsing needs separate coverage.            |
-| Direct SDK consumers          | `/api` facade                              | Provider operations advertised in capabilities                             | Independent-copy and real Pi tests cover registration, selection, shared lifecycle and fake approval around consumer tools. Direct SDK calls do not invoke Pi tool approval hooks. |
+| Path                      | Integration                                                |
+| ------------------------- | ---------------------------------------------------------- |
+| Model Bash and PowerShell | Pi definition factories use SDK-backed `BashOperations`.   |
+| User shell                | `user_bash` supplies SDK-backed `BashOperations`.          |
+| Direct SDK consumers      | `/api` exposes the provider's advertised operation groups. |
+
+Pi owns tool validation, approval hooks, rendering and output storage. Direct
+SDK calls do not invoke Pi tool approval hooks.
 
 Bash preserves Pi's configured `shellCommandPrefix` through the public settings
 and definition APIs. The prefix executes in the target shell. An explicit tool
@@ -48,14 +52,9 @@ interception. An unrecognised diagnostic reply reports request status as
 unavailable.
 
 Other extensions can replace the shell definitions or consume `user_bash` before
-this integration. Pi controls that registration and event ordering. This entry
-does not provide universal interception or isolate arbitrary extension code. See
-the [outer-runtime investigation][outer-runtime] for real extension/MCP marker
-probes and a separate launcher design.
-
-[outer-runtime]: outer-runtime.md See the [outer-runtime
-investigation][outer-runtime] for real extension/MCP marker probes and a
-separate launcher design.
+this integration. Pi controls registration and event ordering. Restricting Pi,
+its extensions and local MCP servers requires an [outer sandbox][outer-runtime].
+Remote MCP servers run under their own host's security policy.
 
 [outer-runtime]: outer-runtime.md
 
@@ -74,48 +73,13 @@ framework can claim general target-filesystem routing:
 | Grep         | Pi starts host ripgrep even when `GrepOperations` is supplied.                     | A complete search operation hook must replace process execution and context reads.               |
 | Shell output | Pi stores full output in host temporary files and publishes those paths.           | An output-storage hook is needed for target-readable full-output references.                     |
 
-### Run the reproductions
-
-The [boundary tests][boundary-tests] call Pi 1.5.0's public factories directly
-with recording operations and temporary host files. Run them without model
-credentials or a sandbox provider:
-
-```sh
-pnpm exec vitest run src/pi-boundaries.test.ts
-```
-
-The grep case requires an installed ripgrep. The mutation cases create symlinks.
-The local verification used macOS. The Linux CI job includes the same cases.
-These tests assert the current upstream limitations, so a future Pi upgrade may
-require changes to both the tests and the support table.
-
-| Case         | Reproduction and observed result                                                                                                                                                               |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Read         | Read an ASCII-apostrophe path through custom operations, then create a host file with the curly-apostrophe variant. The identical request now reads a different target path.                   |
-| Write/edit   | Create a host symlink loop at a path that the target treats as a regular file. Both tools fail with host `ELOOP` before calling any custom operation.                                          |
-| List/find    | Supply a target path with the other platform's syntax. The custom operation receives a path resolved with host semantics, including the host drive or workspace prefix.                        |
-| Edit preview | Call the edit renderer with complete arguments and `executionStarted: false`. Its preview contains a host sentinel; the supplied target read operation has not run.                            |
-| Grep         | Supply target content that differs from a host file. The host-only pattern matches and the target-only pattern does not, despite supplying custom directory and read operations.               |
-| Shell output | The [full-output test][shell-tests] emits more than Pi's display limit through custom shell operations. Pi publishes a host temporary-file path, and the test reads the original output there. |
-
-Run the shell-output case through the real Pi runtime:
-
-```sh
-pnpm build
-pnpm exec vitest run src/pi-tools-integration.test.ts -t 'keeps Pi full-output'
-```
-
-[boundary-tests]: ../src/pi-boundaries.test.ts
-[shell-tests]: ../src/pi-tools-integration.test.ts
-
-These gaps are upstream work. The framework does not use private Pi imports or
-replacement tool algorithms to implement those paths. The [research][research]
-records the pinned source investigation. The [adapter
-prerequisites][file-adapters] specify the required public seams and acceptance
-cases.
+These gaps require upstream public hooks. BYOS does not use private Pi imports
+or replace Pi's tool algorithms. The [adapter prerequisites][file-adapters]
+describe the required hooks. The [boundary tests][boundary-tests] check the
+unsupported paths against the installed Pi version.
 
 [file-adapters]: pi-file-adapters.md
-[research]: research.md
+[boundary-tests]: ../src/pi-boundaries.test.ts
 
 ## Explicit outside execution
 

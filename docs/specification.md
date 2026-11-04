@@ -1,41 +1,16 @@
 # Bring-your-own-sandbox specification
 
-Implemented baseline: Pi 1.5.0, 4 November 2026. The [research][research]
-records the verified APIs and implementation constraints. The [implementation
-plan][plan] defines delivery and acceptance tests.
+This specification defines the shared execution contract for Pi 1.5.0. The [API
+and protocol appendix][api] specifies exact layouts, ownership rules and
+discovery envelopes alongside the exported TypeScript declarations. Contract
+changes must update both documents and the declarations.
 
-[research]: research.md
-[plan]: implementation-plan.md
-
-## Contract status
-
-The sections below define behaviour and principal API operations. The [API and
-protocol appendix][api] specifies exact layouts, ownership rules and discovery
-envelopes alongside the exported structural declarations. The [validation
-record][validation] links compile-time, independent-copy, real-Pi and provider
-evidence to the acceptance criteria and specifies the supported platform and
-integration boundaries.
+The [development guide][validation] describes checks and platform limits. The
+[Pi integration guide][pi] defines supported tool routing and upstream gaps.
 
 [api]: api-protocol.md
 [validation]: validation.md
-
-The contract-first stage covers:
-
-- Every public function signature, provider/backend method and consumer facade
-  operation, including typed configuration validation and capability checks.
-- The exact discovery request/reply envelopes, identity/version fields, service
-  methods, synchronous collection rules and on-demand service publication.
-- Process requests, streamed bytes, captured results, exit/cancellation
-  outcomes, recovery descriptors and the closed set of structural error
-  variants.
-- File/search inputs and results, capability metadata, path descriptors,
-  mutation completion and cancellation semantics.
-- Required versus optional fields, unknown-field handling, version
-  compatibility, immutable snapshots, byte ownership and callback lifetime.
-
-Compile-time fixtures exercise consumers and independently implemented
-providers. Protocol fixtures use independent messages, and real-Pi tests cover
-bootstrap, factory ordering, dispatch and cleanup across physical SDK copies.
+[pi]: pi-integration.md
 
 ## Purpose and scope
 
@@ -65,17 +40,16 @@ gaps. The optional broker extension provides diagnostics and early service
 registration; it is not a prerequisite for SDK consumers. Neither SDK use nor
 loading that extension replaces Pi tools.
 
-The first release includes foreground execution with streamed output,
-cancellation and deadlines; optional filesystem and search capabilities; session
-cleanup; zero-configuration host execution; user-selected sandbox providers;
-diagnostics; provider/consumer examples; and tests of the real Pi loader and
-dispatch path. The framework does not require a particular production sandbox
-runtime.
+The framework supports foreground execution with streamed output, cancellation
+and deadlines; optional filesystem and search capabilities; session cleanup;
+zero-configuration host execution; user-selected sandbox providers; diagnostics;
+provider/consumer examples; and tests of the real Pi loader and dispatch path.
+The framework does not require a particular production sandbox runtime.
 
 PTYs, interactive stdin, detached jobs, port forwarding, snapshots, automatic
 file synchronisation, provider hot-switching and cross-process discovery are
-outside the first release. The API must reject requirements for those features.
-Additional capabilities can be specified in later protocol versions.
+unsupported. The API must reject requirements for those features. Additional
+capabilities can be specified in later protocol versions.
 
 ## Execution boundary
 
@@ -384,7 +358,7 @@ default and the limit. The broker opens one backend from the selected provider
 for each distinct negotiated policy, and consumers that negotiate the same
 policy share it. A request that the declaration cannot satisfy fails before any
 backend is opened. A consumer must not change policy through a command argument
-or request a different provider in the first release.
+or request a different provider.
 
 Every backend of a generation is opened for the same host workspace. A provider
 that copies the workspace gives each backend its own copy, so changes made
@@ -696,9 +670,9 @@ path ordering before limits, with numeric line ordering for grep. Find excludes
 `.git` and `node_modules`. These are host-provider behaviours, not requirements
 for every sandbox provider or changes to Pi's built-in search tools.
 
-The byte-returning file API buffers a complete file. The first release does not
-promise bounded memory for arbitrary file reads. Process-output capture has a
-separate bound; Pi's model-output truncation does not limit file-read memory.
+The byte-returning file API buffers a complete file. The API does not promise
+bounded memory for arbitrary file reads. Process-output capture has a separate
+bound; Pi's model-output truncation does not limit file-read memory.
 
 The public SDK uses target-native paths. It does not expand host `~`,
 reinterpret host absolute paths or apply host filesystem existence checks. An
@@ -770,7 +744,7 @@ Cross-process children initialise their own service and use default host
 execution unless their own configuration selects a provider. A future explicit
 sharing protocol would need independent lifetime and policy rules. An SDK host
 that deliberately shares an event bus across unrelated sessions is outside the
-first release's supported embedding configuration.
+supported embedding configuration.
 
 ## Optional Pi integration
 
@@ -866,9 +840,9 @@ before runtime invalidation. During an active turn, Pi defers custom messages,
 so the broker also writes a non-secret `byos-cleanup` entry and sends a UI
 warning.
 
-## Acceptance criteria
+## Verification requirements
 
-The first release is complete when:
+Automated tests must verify:
 
 1. Independently loaded provider and consumer extensions, with separate SDK
    module copies, exchange operations through one broker in every factory order.
@@ -876,7 +850,7 @@ The first release is complete when:
    service and supports host execution without configuration or prompts.
 2. The same consumer works with two implementations of the provider contract
    without provider imports or conditionals. At least one example uses an actual
-   isolated process backend before the release claims sandbox integration.
+   isolated process backend.
 3. An installed but unselected provider does not change default host execution.
    Missing explicitly selected providers, policy/capability mismatches, invalid
    configuration, duplicate IDs and backend failures produce typed errors with
@@ -889,8 +863,5 @@ The first release is complete when:
    the covered execution paths, retain Pi approval/result hooks and verify
    selected-provider failures. Missing Pi extension points are documented as
    upstream blockers; the framework does not replace Pi tool algorithms.
-7. The published tarball loads with Pi 1.5.0, importable SDK subpaths have
-   usable declarations, and automated tests require no real model credentials.
-
-These are implementation targets. The exploratory probes in the research
-document establish only the underlying Pi primitives.
+7. The packed archive loads with Pi 1.5.0, importable SDK subpaths have usable
+   declarations, and automated tests require no real model credentials.

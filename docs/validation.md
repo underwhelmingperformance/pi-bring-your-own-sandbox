@@ -1,6 +1,6 @@
 # Validation and supported boundaries
 
-The implementation targets Pi 1.4.0 and Node 24.22.2. The package remains a
+The implementation targets Pi 1.5.0 and Node 24.22.2. The package remains a
 private `0.0.0` development build. The [specification][spec] and [implementation
 plan][plan] define the contract and delivery criteria.
 

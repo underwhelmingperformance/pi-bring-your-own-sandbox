@@ -1,6 +1,6 @@
 # Bring-your-own-sandbox specification
 
-Implemented baseline: Pi 1.4.0, 31 October 2026. The [research][research]
+Implemented baseline: Pi 1.5.0, 4 November 2026. The [research][research]
 records the verified APIs and implementation constraints. The [implementation
 plan][plan] defines delivery and acceptance tests.
 
@@ -129,7 +129,7 @@ backend-specific clients into the framework to support external providers.
 The release manifest follows Pi's guidance for host peer ranges, with `"*"` for
 host-provided Pi packages. The supported/tested Pi baseline remains explicit in
 documentation and CI; a permissive peer range does not establish compatibility.
-The current private scaffold pins its development and peer entries to Pi 1.4.0.
+The current private scaffold pins its development and peer entries to Pi 1.5.0.
 Vitest's optional peer range must match the versions covered by contract tests.
 
 Publish JavaScript and declarations for importable subpaths. Include the broker
@@ -780,7 +780,7 @@ a broker failure would permit local execution. A selected provider failure never
 switches to host execution. With no provider selected, supported hooks use the
 same default `passthrough` service as SDK consumers.
 
-Pi 1.4.0 returns a cancelled user-shell result when its abort signal is set,
+Pi 1.5.0 returns a cancelled user-shell result when its abort signal is set,
 even if custom operations report an unconfirmed stop. That result does not
 confirm SDK termination. The broker quarantines the backend and diagnostics
 report the unknown outcome. Pi exposes no public way to enumerate or reorder
@@ -820,7 +820,7 @@ unconfirmed termination and cleanup failure.
 Provide `/byos status` and `/byos providers`. Status reports provider,
 generation, lifecycle state, target root, workspace relationship, effective
 policy, capabilities and whether Pi tool routing was requested and verified. The
-optional shell factory advertises its loaded state for diagnostics. Pi 1.4.0
+optional shell factory advertises its loaded state for diagnostics. Pi 1.5.0
 cannot establish complete handler ownership through its public API, so routing
 must remain unverified even when the factory is loaded. Status identifies
 `passthrough` as host execution without isolation and states whether selection
@@ -860,7 +860,7 @@ The first release is complete when:
    the covered execution paths, retain Pi approval/result hooks and verify
    selected-provider failures. Missing Pi extension points are documented as
    upstream blockers; the framework does not replace Pi tool algorithms.
-7. The published tarball loads with Pi 1.4.0, importable SDK subpaths have
+7. The published tarball loads with Pi 1.5.0, importable SDK subpaths have
    usable declarations, and automated tests require no real model credentials.
 
 These are implementation targets. The exploratory probes in the research

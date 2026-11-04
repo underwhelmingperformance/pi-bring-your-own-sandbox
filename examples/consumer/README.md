@@ -2,7 +2,7 @@
 
 Add `pi-bring-your-own-sandbox` as a normal dependency of the extension project.
 Import the SDK from `pi-bring-your-own-sandbox/api`. Pi supplies the extension
-context and event bus. The supported host baseline is Pi 1.4.0.
+context and event bus. The supported host baseline is Pi 1.5.0.
 
 The user chooses a sandbox provider separately from installing a consumer.
 Without configuration, `getSandbox` returns the built-in host passthrough

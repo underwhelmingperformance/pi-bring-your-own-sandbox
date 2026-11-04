@@ -163,8 +163,8 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 			await project(provider);
 			await add(host, [
 				tarball,
-				'@earendil-works/pi-coding-agent@1.4.0',
-				'@earendil-works/pi-ai@1.4.0'
+				'@earendil-works/pi-coding-agent@1.5.0',
+				'@earendil-works/pi-ai@1.5.0'
 			]);
 			await add(provider, [tarball]);
 
@@ -191,7 +191,7 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 			}).toStrictEqual({
 				dependencies: undefined,
 				peers: {
-					'@earendil-works/pi-coding-agent': '1.4.0',
+					'@earendil-works/pi-coding-agent': '1.5.0',
 					typebox: '1.3.27',
 					vitest: '5.0.5'
 				},

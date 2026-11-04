@@ -1,7 +1,7 @@
 # Pi integration coverage
 
 The optional `/pi-tools` entry connects public Pi operation hooks to the shared
-sandbox. Pi 1.4.0 supplies tool execution, schemas, rendering, output
+sandbox. Pi 1.5.0 supplies tool execution, schemas, rendering, output
 accumulation and transcript files. The framework supplies command execution
 through `BashOperations` and the `user_bash` event.
 
@@ -57,7 +57,7 @@ File and search tools retain Pi's own execution paths. They are not routed by
 this entry. The following boundaries need upstream Pi support before the
 framework can claim general target-filesystem routing:
 
-| Path         | Pi 1.4.0 behaviour                                                                 | Required extension point                                                                         |
+| Path         | Pi 1.5.0 behaviour                                                                 | Required extension point                                                                         |
 | ------------ | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | Read         | Read-path resolution can check host file existence before custom `ReadOperations`. | Target path resolution must be delegated alongside file operations.                              |
 | Write/edit   | The mutation queue resolves host real paths outside custom operations.             | Providers need control over mutation identity and the complete read/transform/write transaction. |
@@ -68,7 +68,7 @@ framework can claim general target-filesystem routing:
 
 ### Run the reproductions
 
-The [boundary tests][boundary-tests] call Pi 1.4.0's public factories directly
+The [boundary tests][boundary-tests] call Pi 1.5.0's public factories directly
 with recording operations and temporary host files. Run them without model
 credentials or a sandbox provider:
 
@@ -115,7 +115,7 @@ provider-defined destination delegates through the SDK backend contract.
 
 [approval]: approval-execution.md
 
-Pi 1.4.0's native shell operations wait for the shell, then stop tracking its
+Pi 1.5.0's native shell operations wait for the shell, then stop tracking its
 PID. A background descendant can continue in the original process group after
 that shell exits. Framework shutdown does not confirm termination of those
 descendants. The native Pi route therefore uses termination scope `none`. SDK

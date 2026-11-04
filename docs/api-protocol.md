@@ -222,17 +222,21 @@ non-negative duration measured with a monotonic clock. Exit codes are integers;
 signal exits use a non-empty target signal identifier.
 
 Every provider operation receives a unique operation ID, a composed abort signal
-and an absolute Unix-epoch deadline in milliseconds. Public `timeoutMs` values
-are finite and positive. Providers must respond to the signal as well as respect
-the deadline. Public defaults and bounded termination grace periods are
-specified in the process section of the specification.
+and a live `remainingMs()` function based on monotonic time. The absolute
+Unix-epoch `deadline` is diagnostic metadata. Public `timeoutMs` values are
+finite and positive. Providers must respond to the signal as well as respect the
+deadline. Public defaults and bounded termination grace periods are specified in
+the process section of the specification.
 
-The operation context includes a stable `cleanup` object. Its readonly
-`deadline: number | undefined` becomes available before the signal aborts and
-remains unchanged afterwards. Disposal supplies this deadline from the start.
-The value uses Unix-epoch milliseconds and is separate from the execution
-deadline. A provider must still acknowledge termination; reaching either
-deadline is insufficient evidence that work stopped.
+The operation context includes a stable `cleanup` object. Its
+`remainingMs(): number | undefined` reports the current monotonic cleanup
+allowance. Cancellation publishes this allowance before abort listeners run;
+disposal supplies it from the start. The separate `cleanup.deadline` is a
+Unix-epoch timestamp for diagnostics. Retaining or spreading the context must
+preserve the live budget function. Sequential cleanup commands consume the same
+allowance. Remote transports must account for transit and queue time without
+assuming a shared monotonic origin. Expiry does not establish termination;
+providers must still acknowledge that work stopped.
 
 `SandboxHostOptions.cleanup` and personal `byos.json`'s `cleanup` accept partial
 `SandboxCleanupBudgets`. Personal values override host defaults. Both

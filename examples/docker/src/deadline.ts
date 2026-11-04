@@ -1,27 +1,27 @@
 /**
-Schedules a callback for an absolute SDK deadline, including waits beyond Node's
-single-timer range.
+Schedules expiration from the broker's current remaining budget. Long waits use
+multiple native timers and every callback rechecks the same allowance.
 */
 export class DeadlineTimer {
-	#expiresAt: number;
+	readonly #remainingMs: () => number;
 	readonly #onExpire: () => void;
 	#timer: ReturnType<typeof setTimeout> | undefined;
 
 	/**
-	Converts a Unix-epoch deadline to a monotonic wait.
+	The callback must calculate the remaining allowance from monotonic time.
 	*/
-	constructor(deadline: number, onExpire: () => void) {
-		this.#expiresAt = performance.now() + Math.max(0, deadline - Date.now());
+	constructor(remainingMs: () => number, onExpire: () => void) {
+		this.#remainingMs = remainingMs;
 		this.#onExpire = onExpire;
 		this.#schedule();
 	}
 
 	#schedule(): void {
-		const remaining = this.#expiresAt - performance.now();
+		const remaining = this.#remainingMs();
 
 		this.#timer = setTimeout(
 			() => {
-				if (performance.now() < this.#expiresAt) {
+				if (this.#remainingMs() > 0) {
 					this.#schedule();
 
 					return;
@@ -34,11 +34,10 @@ export class DeadlineTimer {
 	}
 
 	/**
-	Replaces the pending wait after the broker publishes a cleanup deadline.
+	Reschedules against the cleanup budget published before cancellation.
 	*/
-	reset(deadline: number): void {
+	reset(): void {
 		clearTimeout(this.#timer);
-		this.#expiresAt = performance.now() + Math.max(0, deadline - Date.now());
 		this.#schedule();
 	}
 

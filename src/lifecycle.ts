@@ -4,6 +4,8 @@ import {
 	DEFAULT_CLEANUP_BUDGETS,
 	resolveCleanupBudgets
 } from './cleanup-budgets.js';
+import type { Clock } from './clock.js';
+import { systemClock } from './clock.js';
 import type {
 	CancellationReason,
 	OperationCompletion,
@@ -32,11 +34,12 @@ export interface OperationIdentity {
 
 export class OperationScope {
 	readonly #identity: OperationIdentity;
+	readonly #clock: Clock;
 	readonly #expiresAt: number;
 	readonly #controller = new AbortController();
 	readonly #cancelled = Promise.withResolvers<CancellationReason>();
 	readonly #listeners: (() => void)[] = [];
-	#timer: ReturnType<typeof setTimeout> | undefined;
+	#cancelTimer: (() => void) | undefined;
 	#reason: CancellationReason | undefined;
 	#cause: unknown;
 	#isFinished = false;
@@ -51,9 +54,11 @@ export class OperationScope {
 		lifetime: AbortSignal,
 		options: SandboxOperationOptions,
 		defaultMs: number,
-		cleanup: SandboxCleanupBudgets = DEFAULT_CLEANUP_BUDGETS
+		cleanup: SandboxCleanupBudgets = DEFAULT_CLEANUP_BUDGETS,
+		clock: Clock = systemClock
 	) {
 		this.#identity = identity;
+		this.#clock = clock;
 		this.#cleanupBudgets = resolveCleanupBudgets(cleanup);
 
 		const timeoutMs = options.timeoutMs ?? defaultMs;
@@ -64,9 +69,9 @@ export class OperationScope {
 			});
 		}
 
-		this.#expiresAt = performance.now() + timeoutMs;
+		this.#expiresAt = this.#clock.monotonicNow() + timeoutMs;
 
-		const deadline = Date.now() + timeoutMs;
+		const deadline = this.#clock.wallNow() + timeoutMs;
 		const cleanupDeadline = () => this.#cleanupDeadline;
 
 		if (identity.operation === 'dispose') {
@@ -78,6 +83,8 @@ export class OperationScope {
 			operationId: randomUUID(),
 			signal: this.#controller.signal,
 			deadline,
+			remainingMs: () =>
+				Math.max(0, this.#expiresAt - this.#clock.monotonicNow()),
 			reportDiagnostic: (diagnostic: SandboxDiagnostic) => {
 				if (!this.#isFinished) {
 					this.#reportDiagnostic?.(
@@ -87,6 +94,10 @@ export class OperationScope {
 				}
 			},
 			cleanup: Object.freeze({
+				remainingMs: () =>
+					this.#cleanupExpiresAt === undefined
+						? undefined
+						: this.remainingCleanupMs,
 				get deadline() {
 					return cleanupDeadline();
 				}
@@ -121,7 +132,7 @@ export class OperationScope {
 	}
 
 	#scheduleDeadline(): void {
-		const remaining = this.#expiresAt - performance.now();
+		const remaining = this.#expiresAt - this.#clock.monotonicNow();
 
 		if (remaining <= 0) {
 			this.abort('deadline');
@@ -129,22 +140,25 @@ export class OperationScope {
 			return;
 		}
 
-		this.#timer = setTimeout(
+		this.#cancelTimer = this.#clock.schedule(
+			Math.min(remaining, 2_147_483_647),
 			() => {
 				this.#scheduleDeadline();
-			},
-			Math.min(remaining, 2_147_483_647)
+			}
 		);
 	}
 
 	get remainingMs(): number {
 		this.check();
 
-		return Math.max(1, this.#expiresAt - performance.now());
+		return Math.max(1, this.#expiresAt - this.#clock.monotonicNow());
 	}
 
 	get reason(): CancellationReason | undefined {
-		if (this.#reason === undefined && performance.now() >= this.#expiresAt) {
+		if (
+			this.#reason === undefined &&
+			this.#clock.monotonicNow() >= this.#expiresAt
+		) {
 			this.abort('deadline');
 		}
 
@@ -160,10 +174,15 @@ export class OperationScope {
 		this.#reportDiagnostic = reporter;
 	}
 
+	scheduleCleanup(callback: () => void): () => void {
+		return this.#clock.schedule(this.remainingCleanupMs, callback);
+	}
+
 	get remainingCleanupMs(): number {
 		return Math.max(
 			0,
-			(this.#cleanupExpiresAt ?? performance.now()) - performance.now()
+			(this.#cleanupExpiresAt ?? this.#clock.monotonicNow()) -
+				this.#clock.monotonicNow()
 		);
 	}
 
@@ -175,9 +194,9 @@ export class OperationScope {
 		this.#reason = reason;
 		this.#cause = cause;
 		this.#cleanupExpiresAt ??=
-			performance.now() + this.#cleanupBudgets.cancellationGraceMs;
+			this.#clock.monotonicNow() + this.#cleanupBudgets.cancellationGraceMs;
 		this.#cleanupDeadline ??=
-			Date.now() + this.#cleanupBudgets.cancellationGraceMs;
+			this.#clock.wallNow() + this.#cleanupBudgets.cancellationGraceMs;
 		this.#controller.abort(reason);
 		this.#cancelled.resolve(reason);
 	}
@@ -237,7 +256,7 @@ export class OperationScope {
 		}
 
 		this.#isFinished = true;
-		clearTimeout(this.#timer);
+		this.#cancelTimer?.();
 
 		for (const remove of this.#listeners) {
 			remove();
@@ -302,11 +321,11 @@ export async function settleOperation<Value>(
 		return first;
 	}
 
-	let timer: ReturnType<typeof setTimeout> | undefined;
+	let cancelTimer: (() => void) | undefined;
 	const limit = new Promise<{ readonly kind: 'abandoned' }>((resolve) => {
-		timer = setTimeout(() => {
+		cancelTimer = scope.scheduleCleanup(() => {
 			resolve({ kind: 'abandoned' });
-		}, scope.remainingCleanupMs);
+		});
 	});
 
 	try {
@@ -314,6 +333,6 @@ export async function settleOperation<Value>(
 
 		return scope.remainingCleanupMs <= 0 ? { kind: 'abandoned' } : result;
 	} finally {
-		clearTimeout(timer);
+		cancelTimer?.();
 	}
 }

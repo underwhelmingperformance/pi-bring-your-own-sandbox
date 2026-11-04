@@ -12,7 +12,10 @@ import {
 } from 'pi-bring-your-own-sandbox/api';
 import { expect, it } from 'vitest';
 
+import { FakeClock } from '../../../src/fixtures/clock.js';
 import { withPiRuntime } from '../../../src/fixtures/pi-runtime.js';
+import { remainingBudget } from '../../../src/fixtures/remaining-budget.js';
+import { OperationScope } from '../../../src/lifecycle.js';
 import type {
 	DockerClient,
 	DockerCommand,
@@ -21,6 +24,7 @@ import type {
 } from '../src/contracts.js';
 import { DOCKER_IMAGE } from '../src/image.js';
 import { createDockerProvider } from '../src/provider.js';
+import { cleanupContext } from '../src/resources.js';
 
 class FakeDocker implements DockerClient {
 	readonly commands: DockerCommand[] = [];
@@ -184,10 +188,16 @@ function context(
 		reportDiagnostic() {
 			return;
 		},
-		cleanup: { deadline: undefined },
+		cleanup: {
+			deadline: undefined,
+			remainingMs: (): undefined => {
+				return;
+			}
+		},
 		operationId: 'fixture',
 		signal,
-		deadline: Date.now() + 5000
+		deadline: Date.now() + 5000,
+		remainingMs: remainingBudget(5000)
 	};
 }
 
@@ -453,6 +463,7 @@ it('uses the broker cleanup deadline for cancelled Docker jobs', async () => {
 	});
 	const controller = new AbortController();
 	const deadline = Date.now() + 12_000;
+	const cleanupRemaining = remainingBudget(12_000);
 
 	docker.isRunningProbe = true;
 
@@ -462,6 +473,8 @@ it('uses the broker cleanup deadline for cancelled Docker jobs', async () => {
 			{
 				...context(controller.signal),
 				cleanup: {
+					remainingMs: () =>
+						controller.signal.aborted ? cleanupRemaining() : undefined,
 					get deadline() {
 						return controller.signal.aborted ? deadline : undefined;
 					}
@@ -656,11 +669,14 @@ it('updates an already-running removal when cancellation publishes a longer dead
 
 	const controller = new AbortController();
 	const deadline = Date.now() + 12_000;
+	const cleanupRemaining = remainingBudget(12_000);
 	const running = backend.exec(
 		{ kind: 'argv', executable: '/bin/true', args: [] },
 		{
 			...context(controller.signal),
 			cleanup: {
+				remainingMs: () =>
+					controller.signal.aborted ? cleanupRemaining() : undefined,
 				get deadline() {
 					return controller.signal.aborted ? deadline : undefined;
 				}
@@ -693,3 +709,51 @@ it('updates an already-running removal when cancellation publishes a longer dead
 		await backend.dispose(context());
 	}
 });
+
+it.each([-1_000_000, 1_000_000])(
+	'keeps one cleanup budget across sequential commands at wall time %s',
+	(wallTime) => {
+		const clock = new FakeClock();
+		const caller = new AbortController();
+		const scope = new OperationScope(
+			{ operation: 'exec' },
+			caller.signal,
+			{},
+			30_000,
+			{ cancellationGraceMs: 8000, disposalTimeoutMs: 10_000 },
+			clock
+		);
+
+		try {
+			const first = cleanupContext(scope.context, 'first', clock.monotonicNow);
+
+			clock.advance(1000);
+			clock.wallTime = wallTime;
+			caller.abort();
+			clock.advance(2500);
+
+			const second = cleanupContext(
+				scope.context,
+				'second',
+				clock.monotonicNow
+			);
+
+			expect({
+				first: first.remainingMs(),
+				second: second.remainingMs(),
+				cleanup: first.cleanup.remainingMs(),
+				isAborted: first.signal.aborted
+			}).toStrictEqual({
+				first: 5500,
+				second: 5500,
+				cleanup: 5500,
+				isAborted: false
+			});
+
+			clock.advance(6000);
+			expect([first.remainingMs(), second.remainingMs()]).toStrictEqual([0, 0]);
+		} finally {
+			scope.dispose();
+		}
+	}
+);

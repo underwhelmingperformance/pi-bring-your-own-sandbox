@@ -1,3 +1,5 @@
+import type { Clock } from './clock.js';
+import { systemClock } from './clock.js';
 import type { SandboxOperation, SandboxOperationContext } from './contracts.js';
 import {
 	isSandboxError,
@@ -9,16 +11,23 @@ import { observe, OperationRegistry, OperationScope } from './lifecycle.js';
 import { isRecord } from './validation.js';
 
 export class HostOperations {
+	readonly #clock: Clock;
 	readonly #lifetime = new AbortController();
 	readonly #operations = new OperationRegistry();
 	#closing: Promise<void> | undefined;
+
+	constructor(clock: Clock = systemClock) {
+		this.#clock = clock;
+	}
 
 	async #dispose(context: SandboxOperationContext): Promise<void> {
 		const scope = new OperationScope(
 			{ operation: 'dispose', providerId: 'passthrough' },
 			new AbortController().signal,
 			{ signal: context.signal },
-			Math.max(1, context.deadline - Date.now())
+			Math.max(1, context.remainingMs()),
+			undefined,
+			this.#clock
 		);
 
 		try {
@@ -27,7 +36,11 @@ export class HostOperations {
 				scope.whenCancelled()
 			]);
 
-			if (result.kind !== 'resolved') {
+			if (
+				result.kind !== 'resolved' ||
+				context.remainingMs() <= 0 ||
+				scope.reason !== undefined
+			) {
 				throw new SandboxCleanupError({
 					operation: 'dispose',
 					providerId: 'passthrough'
@@ -66,10 +79,12 @@ export class HostOperations {
 			{ operation, providerId: 'passthrough' },
 			this.#lifetime.signal,
 			{ signal: context.signal },
-			Math.max(1, context.deadline - Date.now())
+			Math.max(1, context.remainingMs()),
+			undefined,
+			this.#clock
 		);
 
-		if (context.deadline <= Date.now()) {
+		if (context.remainingMs() <= 0) {
 			scope.abort('deadline');
 		}
 
@@ -82,7 +97,8 @@ export class HostOperations {
 					cleanup: context.cleanup,
 					reportDiagnostic: context.reportDiagnostic,
 					operationId: context.operationId,
-					deadline: context.deadline
+					deadline: context.deadline,
+					remainingMs: context.remainingMs
 				});
 
 				if (

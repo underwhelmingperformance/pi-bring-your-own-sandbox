@@ -13,6 +13,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 import { createSandbox } from './facade.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
+import { remainingBudget } from './fixtures/remaining-budget.js';
 import { openPassthrough } from './passthrough.js';
 
 const releases: (() => Promise<void>)[] = [];
@@ -39,10 +40,16 @@ async function fixture(prepare?: (directory: string) => void | Promise<void>) {
 		reportDiagnostic() {
 			return;
 		},
-		cleanup: { deadline: undefined },
+		cleanup: {
+			deadline: undefined,
+			remainingMs: (): undefined => {
+				return;
+			}
+		},
 		operationId: 'open',
 		signal: new AbortController().signal,
 		deadline: Date.now() + 10_000,
+		remainingMs: remainingBudget(10_000),
 		confirmCleanup() {
 			return;
 		},
@@ -56,10 +63,16 @@ async function fixture(prepare?: (directory: string) => void | Promise<void>) {
 			reportDiagnostic() {
 				return;
 			},
-			cleanup: { deadline: undefined },
+			cleanup: {
+				deadline: undefined,
+				remainingMs: (): undefined => {
+					return;
+				}
+			},
 			operationId: 'dispose',
 			signal: new AbortController().signal,
-			deadline: Date.now() + 10_000
+			deadline: Date.now() + 10_000,
+			remainingMs: remainingBudget(10_000)
 		})
 	);
 

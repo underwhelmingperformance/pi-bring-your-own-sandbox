@@ -9,6 +9,7 @@ import type {
 	BackendProcessOutcome,
 	ProcessRequest
 } from './contracts.js';
+import { remainingBudget } from './fixtures/remaining-budget.js';
 import { HostOperations } from './host-operations.js';
 import type { HostProcessRunner } from './host-process.js';
 import type { SearchTools } from './host-search.js';
@@ -83,10 +84,16 @@ async function fixture(processes: HostProcessRunner) {
 		reportDiagnostic() {
 			return;
 		},
-		cleanup: { deadline: undefined },
+		cleanup: {
+			deadline: undefined,
+			remainingMs: (): undefined => {
+				return;
+			}
+		},
 		operationId: 'search',
 		signal: new AbortController().signal,
-		deadline: Date.now() + 5000
+		deadline: Date.now() + 5000,
+		remainingMs: remainingBudget(5000)
 	};
 
 	return { directory, search, context };

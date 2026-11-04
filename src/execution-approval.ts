@@ -233,7 +233,7 @@ class ApprovalService implements ApprovalServiceV1 {
 		const prompt = (async () => {
 			await preceding;
 
-			if (context.signal.aborted) {
+			if (context.signal.aborted || context.remainingMs() <= 0) {
 				return { kind: 'deny' as const };
 			}
 
@@ -252,7 +252,7 @@ class ApprovalService implements ApprovalServiceV1 {
 				message,
 				{
 					signal: context.signal,
-					timeout: Math.max(1, context.deadline - Date.now())
+					timeout: Math.max(1, context.remainingMs())
 				}
 			);
 

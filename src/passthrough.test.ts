@@ -18,6 +18,7 @@ import type { OperationCompletion, ProcessExit, Sandbox } from './contracts.js';
 import { isSandboxError, SandboxCancelledError } from './errors.js';
 import { createSandbox } from './facade.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
+import { remainingBudget } from './fixtures/remaining-budget.js';
 import { PosixProcessRunner } from './host-process.js';
 import { openPassthrough } from './passthrough.js';
 import { snapshotProcessRequest } from './process-input.js';
@@ -139,10 +140,16 @@ it('waits for process-group disappearance after a denied existence probe', async
 			reportDiagnostic() {
 				return;
 			},
-			cleanup: { deadline: undefined },
+			cleanup: {
+				deadline: undefined,
+				remainingMs: (): undefined => {
+					return;
+				}
+			},
 			operationId: 'exec',
 			signal: new AbortController().signal,
 			deadline: Date.now() + 5000,
+			remainingMs: remainingBudget(5000),
 			onOutput(chunk) {
 				output.push(new TextDecoder().decode(chunk.data));
 			}
@@ -180,10 +187,16 @@ async function fixture(
 		reportDiagnostic() {
 			return;
 		},
-		cleanup: { deadline: undefined },
+		cleanup: {
+			deadline: undefined,
+			remainingMs: (): undefined => {
+				return;
+			}
+		},
 		operationId: 'open',
 		signal: new AbortController().signal,
 		deadline: Date.now() + 10_000,
+		remainingMs: remainingBudget(10_000),
 		confirmCleanup() {
 			return;
 		},
@@ -197,10 +210,16 @@ async function fixture(
 			reportDiagnostic() {
 				return;
 			},
-			cleanup: { deadline: undefined },
+			cleanup: {
+				deadline: undefined,
+				remainingMs: (): undefined => {
+					return;
+				}
+			},
 			operationId: 'dispose',
 			signal: new AbortController().signal,
-			deadline: Date.now() + 10_000
+			deadline: Date.now() + 10_000,
+			remainingMs: remainingBudget(10_000)
 		});
 
 	releases.push(dispose);

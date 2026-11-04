@@ -285,10 +285,17 @@ export interface SandboxAcquireOptions extends SandboxOperationOptions {
 }
 
 /**
-Broker-supplied operation identity, composed cancellation and absolute
-deadline.
+Broker-supplied operation identity, composed cancellation and remaining
+monotonic budget. Unix-epoch deadlines are diagnostic metadata.
 */
 export interface SandboxOperationContext {
+	/**
+	Remaining execution allowance in milliseconds, calculated from monotonic time
+	at each call and clamped to zero. Use this allowance to enforce deadlines.
+	Remote transports must subtract elapsed transit and queue time without
+	assuming a shared monotonic origin.
+	*/
+	readonly remainingMs: () => number;
 	/**
 	Report a bounded warning outside workload output. Messages must be suitable
 	for user display and must not include credentials. The callback is
@@ -314,8 +321,8 @@ export interface SandboxOperationContext {
 	readonly signal: AbortSignal;
 
 	/**
-	Absolute Unix-epoch deadline in milliseconds; providers must also
-	observe the signal.
+	Absolute Unix-epoch deadline in milliseconds for diagnostics. Enforce the
+	remaining monotonic allowance and observe the signal.
 	*/
 	readonly deadline: number;
 }
@@ -324,6 +331,12 @@ export interface SandboxOperationContext {
 The deadline for stopping and acknowledging provider work after cancellation.
 */
 export interface SandboxCleanupContext {
+	/**
+	Remaining cleanup allowance from monotonic time. Undefined while execution is
+	active; cancellation publishes the budget before abort listeners run.
+	Repeated calls consume the same allowance, including sequential cleanup work.
+	*/
+	readonly remainingMs: () => number | undefined;
 	/**
 	Absolute Unix-epoch deadline in milliseconds. Undefined while execution is
 	active; cancellation publishes this value before aborting the signal.

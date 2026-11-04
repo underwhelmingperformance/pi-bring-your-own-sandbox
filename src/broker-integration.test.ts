@@ -1,6 +1,4 @@
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
+import { readdir } from 'node:fs/promises';
 
 import type { InlineExtension } from '@earendil-works/pi-coding-agent';
 import { createReadTool } from '@earendil-works/pi-coding-agent';
@@ -19,7 +17,7 @@ import { InvalidSandboxConfigError } from './errors.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { ScriptedModel } from './fixtures/scripted-model.js';
-import { loadSdkCopy } from './fixtures/sdk-copy.js';
+import { loadSdkInstance } from './fixtures/sdk-instance.js';
 import type { BrokerServiceV1 } from './protocol.js';
 import { registerSandboxProvider } from './provider-registration.js';
 import { ensureBroker } from './service.js';
@@ -305,94 +303,88 @@ it.each([
 ] as const)(
 	'supports factory order %s, %s, %s across SDK copies in Pi',
 	async (...order) => {
-		const directory = await mkdtemp(path.join(tmpdir(), 'pi-byos-order-'));
-
-		try {
-			const [provider, consumer] = await Promise.all([
-				loadSdkCopy(path.join(directory, 'provider')),
-				loadSdkCopy(path.join(directory, 'consumer'))
-			]);
-			let registrations = 0;
-			let acquisitions = 0;
-			const clients: FixtureClients = {
-				provider: {
-					...provider,
-					registerSandboxProvider(pi, declaration) {
-						registrations++;
-						provider.registerSandboxProvider(pi, declaration);
-					}
-				},
-				consumer: {
-					...consumer,
-					getSandbox(pi, context, options) {
-						acquisitions++;
-
-						return consumer.getSandbox(pi, context, options);
-					}
+		const [provider, consumer] = await Promise.all([
+			loadSdkInstance(),
+			loadSdkInstance()
+		]);
+		let registrations = 0;
+		let acquisitions = 0;
+		const clients: FixtureClients = {
+			provider: {
+				...provider,
+				registerSandboxProvider(pi, declaration) {
+					registrations++;
+					provider.registerSandboxProvider(pi, declaration);
 				}
-			};
-			const { extensions, sandboxes, contexts, services, counts } = fixture(
-				order,
-				clients
-			);
+			},
+			consumer: {
+				...consumer,
+				getSandbox(pi, context, options) {
+					acquisitions++;
 
-			await withPiRuntime(extensions, async (runtime, errors) => {
-				const sandbox = sandboxes[0];
-				const context = contexts[0];
-				const service = services[0];
-
-				if (
-					sandbox === undefined ||
-					context === undefined ||
-					service === undefined
-				) {
-					throw new Error(
-						'The Pi start handlers did not publish the expected sandbox.'
-					);
+					return consumer.getSandbox(pi, context, options);
 				}
+			}
+		};
+		const { extensions, sandboxes, contexts, services, counts } = fixture(
+			order,
+			clients
+		);
 
-				expect({
-					errors,
-					separateCopies: provider.getSandbox !== consumer.getSandbox,
-					registrations,
-					acquisitions,
-					sandboxIds: sandboxes.map((value) => value.backendId),
-					services: services.length,
-					...counts()
-				}).toStrictEqual({
-					errors: [],
-					separateCopies: true,
-					registrations: 1,
-					acquisitions: 1,
-					sandboxIds: ['memory:1'],
-					services: 1,
-					opens: 1,
-					disposals: 0,
-					configurations: 1
-				});
-				expect(await sandbox.files.readFile('file')).toStrictEqual(
-					new TextEncoder().encode('remote content')
+		await withPiRuntime(extensions, async (runtime, errors) => {
+			const sandbox = sandboxes[0];
+			const context = contexts[0];
+			const service = services[0];
+
+			if (
+				sandbox === undefined ||
+				context === undefined ||
+				service === undefined
+			) {
+				throw new Error(
+					'The Pi start handlers did not publish the expected sandbox.'
 				);
-				await runtime.session.extensionRunner.emit({
-					type: 'session_shutdown',
-					reason: 'quit'
-				});
-				await expect(service.acquire(context)).rejects.toMatchObject({
-					name: 'SandboxSessionClosingError'
-				});
+			}
 
-				const status = await service.status(context);
-
-				expect({ state: status.state, ...counts() }).toStrictEqual({
-					state: 'closed',
-					opens: 1,
-					disposals: 1,
-					configurations: 1
-				});
+			expect({
+				errors,
+				separateCopies: provider.getSandbox !== consumer.getSandbox,
+				registrations,
+				acquisitions,
+				sandboxIds: sandboxes.map((value) => value.backendId),
+				services: services.length,
+				...counts()
+			}).toStrictEqual({
+				errors: [],
+				separateCopies: true,
+				registrations: 1,
+				acquisitions: 1,
+				sandboxIds: ['memory:1'],
+				services: 1,
+				opens: 1,
+				disposals: 0,
+				configurations: 1
 			});
-		} finally {
-			await rm(directory, { recursive: true, force: true });
-		}
+			expect(await sandbox.files.readFile('file')).toStrictEqual(
+				new TextEncoder().encode('remote content')
+			);
+			await runtime.session.extensionRunner.emit({
+				type: 'session_shutdown',
+				reason: 'quit'
+			});
+			await expect(service.acquire(context)).rejects.toMatchObject({
+				name: 'SandboxSessionClosingError'
+			});
+
+			const status = await service.status(context);
+
+			expect({ state: status.state, ...counts() }).toStrictEqual({
+				state: 'closed',
+				opens: 1,
+				disposals: 1,
+				configurations: 1
+			});
+		});
 	}
 );
 

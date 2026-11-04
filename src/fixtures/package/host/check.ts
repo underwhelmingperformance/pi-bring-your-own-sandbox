@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { cp, mkdir, realpath, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -92,19 +92,14 @@ await writeFile(
 	})
 );
 
-const consumer = path.join(workspace, '.pi/extensions/consumer');
-const docker = path.join(workspace, '.pi/extensions/docker');
+const consumer = path.join(sdkRoot, 'examples/consumer/src');
+const docker = path.join(sdkRoot, 'examples/docker/src');
 
-await cp(path.join(sdkRoot, 'examples/consumer/src'), consumer, {
-	recursive: true
-});
-await cp(path.join(sdkRoot, 'examples/docker/src'), docker, {
-	recursive: true
-});
+const helperPath = path.join(root, 'workspace-helper.ts');
 
-const helper: unknown = await import(
-	pathToFileURL(path.join(consumer, 'workspace.ts')).href
-);
+await copyFile(path.join(consumer, 'workspace.ts'), helperPath);
+
+const helper: unknown = await import(pathToFileURL(helperPath).href);
 
 assert.ok(isConsumer(helper));
 

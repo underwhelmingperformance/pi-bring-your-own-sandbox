@@ -23,7 +23,7 @@ import { discoverBroker } from './discovery.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { ScriptedModel } from './fixtures/scripted-model.js';
-import { loadSdkCopy } from './fixtures/sdk-copy.js';
+import { loadSdkInstance } from './fixtures/sdk-instance.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -69,9 +69,7 @@ it('binds independent runtime directories across SDK copies without changing the
 						throw new Error('Pi did not initialise the host fixture.');
 					}
 
-					const copy = await loadSdkCopy(
-						path.join(liveContext.cwd, 'sdk-copy')
-					);
+					const copy = await loadSdkInstance();
 
 					await expect(
 						copy.getSandbox(host, liveContext)
@@ -393,11 +391,11 @@ it('closes explicitly before raw disposal and keeps a closed service until inval
 	});
 });
 
-it('shares consumer-only startup across physical SDK copies', async () => {
+it('shares consumer-only startup across independent SDK instances', async () => {
 	await fixture(async ({ pi, context }) => {
 		const [first, second] = await Promise.all([
-			loadSdkCopy(path.join(context.cwd, 'first-sdk')),
-			loadSdkCopy(path.join(context.cwd, 'second-sdk'))
+			loadSdkInstance(),
+			loadSdkInstance()
 		]);
 		const [left, right] = await Promise.all([
 			first.getSandbox(pi, context),

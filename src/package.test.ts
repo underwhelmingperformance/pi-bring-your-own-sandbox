@@ -1,6 +1,13 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+	copyFile,
+	mkdir,
+	mkdtemp,
+	readFile,
+	rm,
+	writeFile
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -214,11 +221,11 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 			expect(declarations).toContain(
 				'Cancellation and deadline settings for one consumer call.'
 			);
-			await cp(
+			await copyFile(
 				new URL('fixtures/package/host/check.ts', import.meta.url),
 				path.join(host, 'check.ts')
 			);
-			await cp(
+			await copyFile(
 				new URL('fixtures/package/provider/provider.ts', import.meta.url),
 				path.join(provider, 'provider.ts')
 			);
@@ -235,7 +242,7 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 				['vitest@5.0.5', 'typescript@6.0.3', '@types/node@24.12.2'],
 				true
 			);
-			await cp(
+			await copyFile(
 				new URL('fixtures/package/provider/contract.ts', import.meta.url),
 				path.join(provider, 'contract.test.ts')
 			);

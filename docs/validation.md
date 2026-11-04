@@ -7,8 +7,12 @@ plan][plan] define the contract and delivery criteria.
 Local verification on 31 October 2026 used macOS on Apple Silicon, pnpm 12.15.0,
 fd 10.5.0, ripgrep 15.2.0 and Docker 29.8.2 through a local Unix socket. Docker
 jobs ran the digest-pinned Linux image specified by the reference provider. The
-Linux CI jobs are configured in the [workflow][workflow]; hosted results have
-not been observed as part of this local validation.
+CI jobs are configured in the [workflow][workflow]. Unit and Pi integration
+tests run on Linux and macOS. Linux jobs also run the static checks,
+clean-package installation and real Docker provider suite. The required `check`
+job succeeds only when every job in that workflow succeeds. Separate workflows
+check Actions security, commit messages and CodeQL results for TypeScript and
+Actions.
 
 [spec]: specification.md
 [plan]: implementation-plan.md

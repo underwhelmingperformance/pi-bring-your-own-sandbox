@@ -12,6 +12,15 @@ This is a cooperative framework: only operations sent through its API use the
 selected sandbox. The package is currently a private development build for Pi
 1.5.0.
 
+Install the development version from Git:
+
+```sh
+pi install git:github.com/underwhelmingperformance/pi-bring-your-own-sandbox
+```
+
+Pi loads the TypeScript source directly. A build is not required for this
+installation.
+
 ## Use the SDK in an extension
 
 Follow the [consumer guide][consumer] to build, install and try the package from

@@ -10,24 +10,27 @@
 	},
 	"exports": {
 		"./api": {
-			"types": "./dist/api.d.ts",
-			"import": "./dist/api.js"
+			"types": "./src/api.ts",
+			"import": "./src/api.ts"
 		},
 		"./extension": {
-			"types": "./dist/extension.d.ts",
-			"import": "./dist/extension.js"
+			"types": "./src/extension.ts",
+			"import": "./src/extension.ts"
 		},
 		"./pi-tools": {
-			"types": "./dist/pi-tools.d.ts",
-			"import": "./dist/pi-tools.js"
+			"types": "./src/pi-tools.ts",
+			"import": "./src/pi-tools.ts"
 		},
 		"./testing": {
-			"types": "./dist/testing.d.ts",
-			"import": "./dist/testing.js"
+			"types": "./src/testing.ts",
+			"import": "./src/testing.ts"
 		}
 	},
 	"files": [
 		"dist",
+		"src",
+		"!src/**/*.test.ts",
+		"!src/fixtures/**",
 		"docs",
 		"examples/docker/README.md",
 		"examples/docker/src",
@@ -37,7 +40,7 @@
 	],
 	"pi": {
 		"extensions": [
-			"./dist/extension.js"
+			"./src/extension.ts"
 		]
 	},
 	"scripts": {
@@ -87,5 +90,25 @@
 			"optional": true
 		}
 	},
-	"license": "MIT"
+	"license": "MIT",
+	"publishConfig": {
+		"exports": {
+			"./api": {
+				"types": "./dist/api.d.ts",
+				"import": "./dist/api.js"
+			},
+			"./extension": {
+				"types": "./dist/extension.d.ts",
+				"import": "./dist/extension.js"
+			},
+			"./pi-tools": {
+				"types": "./dist/pi-tools.d.ts",
+				"import": "./dist/pi-tools.js"
+			},
+			"./testing": {
+				"types": "./dist/testing.d.ts",
+				"import": "./dist/testing.js"
+			}
+		}
+	}
 }

@@ -145,7 +145,7 @@ const create: CreateAgentSessionRuntimeFactory = async (options) => {
 			noPromptTemplates: true,
 			noContextFiles: true,
 			additionalExtensionPaths: [
-				path.join(sdkRoot, 'dist/extension.js'),
+				sdkRoot,
 				path.join(sdkRoot, 'dist/pi-tools.js'),
 				path.join(consumer, 'index.ts'),
 				path.join(docker, 'index.ts')

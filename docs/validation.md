@@ -1,8 +1,9 @@
 # Validation and supported boundaries
 
-The implementation targets Pi 1.5.0 and Node 24.22.2. The package remains a
-private `0.0.0` development build. The [specification][spec] and [implementation
-plan][plan] define the contract and delivery criteria.
+The implementation targets Pi 1.5.0 and Node 24 or later. Development uses the
+pinned Node version in `.node-version`. The package remains a private `0.0.0`
+development build. The [specification][spec] and [implementation plan][plan]
+define the contract and delivery criteria.
 
 Local verification on 31 October 2026 used macOS on Apple Silicon, pnpm 12.15.0,
 fd 10.5.0, ripgrep 15.2.0 and Docker 29.8.2 through a local Unix socket. Docker
@@ -58,10 +59,10 @@ pi --no-extensions -e ./src/extension.ts
 ```
 
 Run `/byos status`, `/byos providers` or `/byos approval-policies`. These
-commands produce displayable Pi messages in TUI and headless sessions.
-`pnpm build` produces the compiled extension selected by the package manifest.
-The loader tests exercise both source and compiled entries without model
-credentials.
+commands produce displayable Pi messages in TUI and headless sessions. The Git
+manifest loads the source extension. `pnpm build` produces the compiled SDK
+selected by the packed archive's export map. The loader tests exercise both
+source and compiled entries without model credentials.
 
 ## Specification acceptance evidence
 

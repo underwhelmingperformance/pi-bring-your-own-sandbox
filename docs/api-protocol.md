@@ -69,8 +69,9 @@ configuration.
 Acquisition negotiates a complete policy from the request and the personal
 policy, then uses the generation's backend for that policy, opening it if
 necessary. Omitted fields and `provider-default` requests keep the personal
-value. `read-only` tightens `read-write`, `workspace-only` tightens filesystem
-delegation and `denied` tightens network delegation. Requesting `read-write`
+value. `read-only` tightens `read-write`; filesystem scopes progress from
+`provider-default` through `system-read-only` to `workspace-only`.
+`networkAccess: 'denied'` tightens network delegation. Requesting `read-write`
 when the personal policy is `read-only` loosens it and fails with
 `UnsupportedSandboxPolicyError`. A negotiated value that the provider does not
 declare fails the same way, and a requested operation, process kind or shell

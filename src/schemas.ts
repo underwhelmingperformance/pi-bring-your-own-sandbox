@@ -83,7 +83,11 @@ export const capabilitiesSchema = Type.Refine(
 );
 
 const workspaceAccessSchema = Type.Enum(['read-only', 'read-write']);
-const filesystemScopeSchema = Type.Enum(['workspace-only', 'provider-default']);
+const filesystemScopeSchema = Type.Enum([
+	'workspace-only',
+	'system-read-only',
+	'provider-default'
+]);
 const networkAccessSchema = Type.Enum(['denied', 'provider-default']);
 
 export const policySchema = Type.Object({

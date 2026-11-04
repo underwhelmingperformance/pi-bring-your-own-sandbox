@@ -318,13 +318,29 @@ Illustrative configuration:
 The shared policy vocabulary is deliberately small:
 
 - `workspaceAccess`: `read-only` or `read-write` for the project workspace.
-- `filesystemScope`: `workspace-only` or `provider-default`. Workspace-only
-  forbids access to host files outside exposed workspace mounts. A provider may
-  expose its isolated runtime image, home and scratch directories; it must
-  describe these separately.
+- `filesystemScope`: `workspace-only`, `system-read-only` or `provider-default`.
+  Workspace-only forbids access to host files outside exposed workspace mounts.
+  A provider may expose its isolated runtime image, home and scratch
+  directories; it must describe these separately. System-read-only additionally
+  permits read-only host operating-system files and installed runtime
+  dependencies. It excludes other host user data outside the workspace.
+  Providers must describe the exposed system/runtime roots in
+  `policyDescription`, canonicalise their paths and reject grants that expose
+  unrelated host files. Read-only does not make credentials safe to expose. A
+  workspace inside a home directory remains accessible under workspace policy;
+  selecting the home directory as the workspace exposes that directory.
+  Arbitrary additional data grants require a different provider policy.
 - `networkAccess`: `denied` or `provider-default`. Denied blocks outbound
   network access from sandboxed operations, including access through host
   services.
+
+Filesystem scope requirements have this ordering, from weakest to strongest:
+`provider-default`, `system-read-only`, `workspace-only`. Negotiation chooses
+the least restrictive supported value that satisfies both personal and consumer
+requirements. A backend must satisfy the same ordering after opening. A provider
+cannot advertise a restrictive value until independent probes verify normal
+access, denied host-home files, runtime symlink targets and conflicting grants.
+The provider test kit requires `verifyPolicy` for either restrictive value.
 
 A provider may declare a complete `defaultPolicy`. Each value must be among its
 supported policy values. When personal settings omit `policy`, use the selected

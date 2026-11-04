@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 
-import type { SandboxBackend } from './contracts.js';
+import type { SandboxBackend, SandboxPolicy } from './contracts.js';
 import { SandboxCleanupError } from './errors.js';
 import { contractScenario } from './fixtures/provider-contract.js';
 import {
@@ -250,26 +250,34 @@ it.each([
 	await expect(usingProviderFixture(broken, selected.run)).rejects.toThrow();
 });
 
-it.each(['missing', 'failing'] as const)(
-	'rejects a restrictive policy with %s independent checks',
-	async (verification) => {
+it.each([
+	['network', 'missing'],
+	['network', 'failing'],
+	['filesystem', 'missing'],
+	['filesystem', 'failing']
+] as const)(
+	'rejects a restrictive %s policy with %s independent checks',
+	async (restriction, verification) => {
 		const options = contractScenario();
 		const open = options.provider.open;
+		const policy: SandboxPolicy = {
+			workspaceAccess: 'read-write',
+			filesystemScope:
+				restriction === 'filesystem' ? 'system-read-only' : 'provider-default',
+			networkAccess: restriction === 'network' ? 'denied' : 'provider-default'
+		};
 		const scenario = {
 			...options,
 			provider: {
 				...options.provider,
 				policies: {
 					...options.provider.policies,
-					networkAccess: ['denied'] as const
+					networkAccess: ['denied', 'provider-default'] as const,
+					filesystemScope: ['system-read-only', 'provider-default'] as const
 				},
 				open: async (...arguments_: Parameters<typeof open>) => ({
 					...(await open(...arguments_)),
-					policy: {
-						workspaceAccess: 'read-write',
-						filesystemScope: 'provider-default',
-						networkAccess: 'denied'
-					} as const
+					policy
 				})
 			},
 			createFixture: async () => {
@@ -277,11 +285,11 @@ it.each(['missing', 'failing'] as const)(
 
 				return {
 					...fixture,
-					policy: { ...fixture.policy, networkAccess: 'denied' as const },
+					policy,
 					...(verification === 'failing' && {
 						verifyPolicy: () => {
-							expect({ hasNetworkAccess: true }).toStrictEqual({
-								hasNetworkAccess: false
+							expect({ forbiddenAccess: true }).toStrictEqual({
+								forbiddenAccess: false
 							});
 
 							return Promise.resolve();

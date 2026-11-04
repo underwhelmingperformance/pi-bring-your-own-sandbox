@@ -26,7 +26,7 @@ const RESTRICTED: SandboxPolicy = {
 
 const ALL_POLICIES: SupportedSandboxPolicies = {
 	workspaceAccess: ['read-only', 'read-write'],
-	filesystemScope: ['workspace-only', 'provider-default'],
+	filesystemScope: ['workspace-only', 'system-read-only', 'provider-default'],
 	networkAccess: ['denied', 'provider-default']
 };
 
@@ -299,4 +299,74 @@ it('negotiates a configuration without opening a backend', async () => {
 		satisfiable.ok ? satisfiable.policy : undefined
 	);
 	await generation.close();
+});
+
+it.each([
+	['provider-default', 'provider-default', 'provider-default'],
+	['provider-default', 'system-read-only', 'system-read-only'],
+	['provider-default', 'workspace-only', 'workspace-only'],
+	['system-read-only', 'provider-default', 'system-read-only'],
+	['system-read-only', 'system-read-only', 'system-read-only'],
+	['system-read-only', 'workspace-only', 'workspace-only'],
+	['workspace-only', 'provider-default', 'workspace-only'],
+	['workspace-only', 'system-read-only', 'workspace-only'],
+	['workspace-only', 'workspace-only', 'workspace-only']
+] as const)(
+	'negotiates personal scope %s with consumer scope %s',
+	async (personal, requested, expected) => {
+		const { generation, context, opened } = fixture({
+			personal: { ...PERSONAL, filesystemScope: personal }
+		});
+
+		try {
+			const sandbox = await generation.acquire(context, {
+				policy: { filesystemScope: requested }
+			});
+			const expectedPolicy = { ...PERSONAL, filesystemScope: expected };
+
+			expect({ policy: sandbox.policy, opened }).toStrictEqual({
+				policy: expectedPolicy,
+				opened: [expectedPolicy]
+			});
+		} finally {
+			await generation.close();
+		}
+	}
+);
+
+it('rejects a system-read-only request before opening an unsupported provider', async () => {
+	const { generation, context, opened } = fixture({
+		policies: { ...ALL_POLICIES, filesystemScope: ['provider-default'] }
+	});
+
+	try {
+		await expect(
+			generation.acquire(context, {
+				policy: { filesystemScope: 'system-read-only' }
+			})
+		).rejects.toMatchObject({ name: 'UnsupportedSandboxPolicyError' });
+		expect(opened).toStrictEqual([]);
+	} finally {
+		await generation.close();
+	}
+});
+
+it('uses a stronger supported scope when the provider has no intermediate mode', async () => {
+	const { generation, context, opened } = fixture({
+		policies: { ...ALL_POLICIES, filesystemScope: ['workspace-only'] }
+	});
+
+	try {
+		const sandbox = await generation.acquire(context, {
+			policy: { filesystemScope: 'system-read-only' }
+		});
+		const expected = { ...PERSONAL, filesystemScope: 'workspace-only' };
+
+		expect({ policy: sandbox.policy, opened }).toStrictEqual({
+			policy: expected,
+			opened: [expected]
+		});
+	} finally {
+		await generation.close();
+	}
 });

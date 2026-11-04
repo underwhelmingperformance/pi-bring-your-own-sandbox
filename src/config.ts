@@ -11,6 +11,7 @@ import {
 	ProviderNotFoundError,
 	UnsupportedSandboxPolicyError
 } from './errors.js';
+import { isFilesystemScopeSatisfied } from './filesystem-scope.js';
 import type {
 	ProviderInfo,
 	ProviderSelection,
@@ -148,7 +149,9 @@ export function selectProvider(
 
 	if (
 		!provider.policies.workspaceAccess.includes(policy.workspaceAccess) ||
-		!provider.policies.filesystemScope.includes(policy.filesystemScope) ||
+		provider.policies.filesystemScope.every(
+			(scope) => !isFilesystemScopeSatisfied(scope, policy.filesystemScope)
+		) ||
 		!provider.policies.networkAccess.includes(policy.networkAccess)
 	) {
 		throw new UnsupportedSandboxPolicyError({

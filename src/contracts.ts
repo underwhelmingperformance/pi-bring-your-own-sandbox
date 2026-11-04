@@ -117,10 +117,12 @@ export interface SandboxPolicy {
 	readonly workspaceAccess: 'read-only' | 'read-write';
 
 	/**
-	Whether access is limited to the workspace or uses the provider
-	boundary.
+	The filesystem boundary. `system-read-only` permits read-only host system
+	and runtime paths outside the workspace, but excludes other host user data.
+	`workspace-only` also excludes those host system paths.
 	*/
-	readonly filesystemScope: 'workspace-only' | 'provider-default';
+	readonly filesystemScope:
+		'workspace-only' | 'system-read-only' | 'provider-default';
 
 	/**
 	Whether the provider must deny network access or apply its default

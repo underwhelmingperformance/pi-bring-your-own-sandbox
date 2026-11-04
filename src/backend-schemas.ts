@@ -10,6 +10,7 @@ import type {
 	SandboxBackend,
 	SandboxPolicy
 } from './contracts.js';
+import { isFilesystemScopeSatisfied } from './filesystem-scope.js';
 import type { ProviderInfo } from './protocol.js';
 import {
 	callable,
@@ -133,10 +134,12 @@ export function requiredPolicySchema(required: Partial<SandboxPolicy>) {
 			required.workspaceAccess === undefined
 				? policySchema.properties.workspaceAccess
 				: Type.Literal(required.workspaceAccess),
-		filesystemScope:
-			required.filesystemScope === 'workspace-only'
-				? Type.Literal('workspace-only')
-				: policySchema.properties.filesystemScope,
+		filesystemScope: Type.Refine(
+			policySchema.properties.filesystemScope,
+			(scope) =>
+				required.filesystemScope === undefined ||
+				isFilesystemScopeSatisfied(scope, required.filesystemScope)
+		),
 		networkAccess:
 			required.networkAccess === 'denied'
 				? Type.Literal('denied')

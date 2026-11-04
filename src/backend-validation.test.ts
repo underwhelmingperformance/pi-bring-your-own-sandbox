@@ -292,3 +292,25 @@ it.each([
 		);
 	}
 );
+
+it.each([
+	['workspace-only', 'workspace-only', true],
+	['workspace-only', 'system-read-only', true],
+	['workspace-only', 'provider-default', true],
+	['system-read-only', 'workspace-only', false],
+	['system-read-only', 'system-read-only', true],
+	['system-read-only', 'provider-default', true],
+	['provider-default', 'workspace-only', false],
+	['provider-default', 'system-read-only', false],
+	['provider-default', 'provider-default', true]
+] as const)(
+	'checks filesystem scope %s against %s',
+	(effective, required, expected) => {
+		expect(
+			isPolicySatisfied(
+				{ ...policy, filesystemScope: effective },
+				{ filesystemScope: required }
+			)
+		).toBe(expected);
+	}
+);

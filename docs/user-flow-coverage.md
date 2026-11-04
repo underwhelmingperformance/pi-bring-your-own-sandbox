@@ -1,7 +1,7 @@
 # Integration coverage of user flows
 
 This audit covers the framework's supported entry points and user-visible
-outcomes on Pi 1.4.0. Each row identifies integration evidence. Unit and
+outcomes on Pi 1.5.0. Each row identifies integration evidence. Unit and
 provider contract tests add checks for individual operations and malformed
 protocol values; they do not replace the integration cases below.
 

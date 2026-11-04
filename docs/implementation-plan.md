@@ -75,7 +75,7 @@ Use the scaffold's pnpm lockfile, Node 24, strict TypeScript, Vitest, typed
 ESLint with Unicorn/import sorting, Prettier and Markdownlint. Pre-commit runs
 the checks, and Wrapscallion validates commit messages. These conventions come
 from the sibling repositories. Add/change dependencies with pnpm commands. Pi
-1.4.0 is pinned in the private scaffold; prepare host-provided peers for
+1.5.0 is pinned in the private scaffold; prepare host-provided peers for
 distribution according to Pi's package guidance. Keep Pi as a host-provided
 peer, not a bundled runtime dependency.
 
@@ -367,7 +367,7 @@ through the supported host setup; production `/api` use does not require Vitest;
 and `/testing` uses the provider author's supported Vitest installation. None of
 these cases may require a separate SDK or broker package installation.
 
-Test Pi 1.4.0 as the supported baseline. Add another Pi version to the support
+Test Pi 1.5.0 as the supported baseline. Add another Pi version to the support
 matrix only after running the same integration cases. Treat upstream tool-schema
 or lifecycle changes as compatibility work, especially grep/path resolution and
 output spooling. A permissive host peer declaration is not evidence of support

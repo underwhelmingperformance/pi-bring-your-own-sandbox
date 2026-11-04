@@ -257,6 +257,12 @@ it('reads host content for an edit preview before execution', async () => {
 					edits: [{ oldText: 'old', newText: 'new' }]
 				},
 				toolCallId: 'preview',
+				keyText() {
+					return 'ctrl+o';
+				},
+				keyHint(_keybinding, description) {
+					return `ctrl+o ${description}`;
+				},
 				invalidate: () => {
 					updated.resolve(undefined);
 				},
@@ -271,7 +277,7 @@ it('reads host content for an edit preview before execution', async () => {
 				isError: false,
 				durationMs: undefined,
 				outputPad: 0
-			};
+			} satisfies Parameters<typeof render>[2];
 			const theme = runtime.session.extensionRunner.getUIContext().theme;
 			const component = render(context.args, theme, context);
 

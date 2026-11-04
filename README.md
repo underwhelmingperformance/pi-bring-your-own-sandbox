@@ -10,7 +10,7 @@ consumers use it automatically. A configured provider failure returns an error.
 
 This is a cooperative framework: only operations sent through its API use the
 selected sandbox. The package is currently a private development build for Pi
-1.4.0.
+1.5.0.
 
 ## Use the SDK in an extension
 

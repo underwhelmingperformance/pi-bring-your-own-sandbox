@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { afterEach, expect, it, vi } from 'vitest';
 
+import { remainingBudget } from '../../../src/fixtures/remaining-budget.js';
 import { NodeDockerClient } from '../src/client.js';
 import type { DockerCommand } from '../src/contracts.js';
 import { cleanupContext } from '../src/resources.js';
@@ -22,10 +23,16 @@ function command(arguments_: readonly string[]): DockerCommand {
 			reportDiagnostic() {
 				return;
 			},
-			cleanup: { deadline: undefined },
+			cleanup: {
+				deadline: undefined,
+				remainingMs: (): undefined => {
+					return;
+				}
+			},
 			operationId: 'fixture',
 			signal: new AbortController().signal,
-			deadline: Date.now() + 5000
+			deadline: Date.now() + 5000,
+			remainingMs: remainingBudget(5000)
 		},
 		operation: 'exec',
 		recovery: { kind: 'none' }
@@ -137,7 +144,11 @@ it('bounds a CLI that never completes without claiming target termination', asyn
 	await expect(
 		client.command({
 			...request,
-			context: { ...request.context, deadline: Date.now() + 100 }
+			context: {
+				...request.context,
+				deadline: Date.now() + 100,
+				remainingMs: remainingBudget(100)
+			}
 		})
 	).rejects.toMatchObject({
 		name: 'SandboxTransportError',
@@ -207,7 +218,11 @@ it.each(['deadline', 'output-limit'] as const)(
 			try {
 				await client.command({
 					...request,
-					context: { ...request.context, deadline: Date.now() + 100 }
+					context: {
+						...request.context,
+						deadline: Date.now() + 100,
+						remainingMs: remainingBudget(100)
+					}
 				});
 			} catch (error) {
 				failures.push(error);
@@ -258,7 +273,11 @@ it('allows a short CLI command with a deadline beyond the Node timer range', asy
 	expect(
 		await client.command({
 			...request,
-			context: { ...request.context, deadline: Date.now() + 3_000_000_000 }
+			context: {
+				...request.context,
+				deadline: Date.now() + 3_000_000_000,
+				remainingMs: remainingBudget(3_000_000_000)
+			}
 		})
 	).toStrictEqual({
 		status: 0,
@@ -307,12 +326,15 @@ it('reschedules an active cleanup CLI timer when cancellation publishes a new de
 	const controller = new AbortController();
 	const request = command(['rm', '--force', 'fixture']);
 	const deadline = Date.now() + 12_000;
+	const cleanupRemaining = remainingBudget(12_000);
 	const running = client.command({
 		...request,
 		context: cleanupContext({
 			...request.context,
 			signal: controller.signal,
 			cleanup: {
+				remainingMs: () =>
+					controller.signal.aborted ? cleanupRemaining() : undefined,
 				get deadline() {
 					return controller.signal.aborted ? deadline : undefined;
 				}

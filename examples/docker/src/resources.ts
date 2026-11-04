@@ -38,14 +38,20 @@ signal permits termination requests after foreground execution is aborted.
 */
 export function cleanupContext(
 	context: SandboxOperationContext,
-	operationId = `${context.operationId}:cleanup`
+	operationId = `${context.operationId}:cleanup`,
+	monotonicNow: () => number = () => performance.now()
 ): DockerOperationContext {
 	const fallback = Date.now() + 5000;
+	const expiresAt = monotonicNow() + 5000;
+	const remainingMs = () =>
+		context.cleanup.remainingMs() ?? Math.max(0, expiresAt - monotonicNow());
 	const deadline = () => context.cleanup.deadline ?? fallback;
 
 	return {
+		remainingMs,
 		reportDiagnostic: context.reportDiagnostic,
 		cleanup: Object.freeze({
+			remainingMs,
 			get deadline() {
 				return deadline();
 			}

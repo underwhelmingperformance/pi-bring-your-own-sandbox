@@ -533,6 +533,14 @@ Compose the caller signal, deadline and broker lifetime signal. Provider opening
 uses only the broker's provisioning deadline and lifetime signal. Each waiting
 acquisition has its independent cancellation signal and deadline.
 
+Provider contexts expose `remainingMs()`, which calculates the remaining
+allowance from monotonic time and returns zero after expiry. Nested operations,
+queued prompts and sequential management commands must consume this same
+allowance. `deadline` is a Unix-epoch timestamp for diagnostics; wall-clock
+changes must not affect enforcement. Providers must observe both the allowance
+and the cancellation signal. Remote transports must subtract elapsed queue and
+transit time and must not assume that two processes share a monotonic origin.
+
 Every provider and backend declares `terminationScope`, independently of access
 restrictions and exit-status availability:
 
@@ -613,14 +621,15 @@ the generation and exposed as `sandbox.cleanupBudgets`. Outside execution uses
 the same configuration. Consumers cannot extend a generation's cleanup budgets
 through per-call execution options.
 
-Providers receive a stable `context.cleanup` object. Its `deadline` is undefined
-during execution and becomes an absolute Unix-epoch timestamp before abort
-listeners run. Disposal receives its cleanup deadline immediately. Providers can
-retain this object across an await; spreading the operation context also
-preserves it. The execution deadline remains separate. Repeated cancellation or
-settlement does not extend the cleanup deadline. The broker enforces elapsed
-time with a monotonic clock. Synchronous FFI still requires a worker or process
-if the adapter must keep Pi responsive.
+Providers receive a stable `context.cleanup` object. Its `remainingMs()` and
+`deadline` are undefined during execution. Cancellation publishes the monotonic
+cleanup allowance and diagnostic Unix-epoch timestamp before abort listeners
+run. Disposal receives both values immediately. Providers can retain this object
+across an await; spreading the operation context also preserves it. The
+execution deadline remains separate. Repeated cancellation or settlement does
+not extend the cleanup deadline. The broker enforces elapsed time with a
+monotonic clock. Synchronous FFI still requires a worker or process if the
+adapter must keep Pi responsive.
 
 ## Files, search and paths
 

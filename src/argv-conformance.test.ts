@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import type { ProcessRequest } from './contracts.js';
 import { isSandboxError, SandboxPathNotFoundError } from './errors.js';
+import { remainingBudget } from './fixtures/remaining-budget.js';
 import { ShellTransportRunner } from './fixtures/shell-transport.js';
 import type { HostProcessRunner } from './host-process.js';
 import { PosixProcessRunner } from './host-process.js';
@@ -45,10 +46,16 @@ async function execute(runner: HostProcessRunner, request: ProcessRequest) {
 		reportDiagnostic() {
 			return;
 		},
-		cleanup: { deadline: undefined },
+		cleanup: {
+			deadline: undefined,
+			remainingMs: (): undefined => {
+				return;
+			}
+		},
 		operationId: 'argv-conformance',
 		signal: AbortSignal.timeout(5000),
 		deadline: Date.now() + 5000,
+		remainingMs: remainingBudget(5000),
 		onOutput(output) {
 			(output.stream === 'stdout' ? stdout : stderr).push(
 				new Uint8Array(output.data)

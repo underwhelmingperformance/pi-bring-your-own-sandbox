@@ -74,7 +74,11 @@ async function bounded<Value>(
 	}
 
 	try {
-		return await Promise.race([run(scope.context), expired()]);
+		const result = await Promise.race([run(scope.context), expired()]);
+
+		scope.check('unknown');
+
+		return result;
 	} finally {
 		scope.dispose();
 	}
@@ -265,7 +269,7 @@ export function providerContractCases<Config>(
 					context.signal,
 					{
 						signal: controller.signal,
-						timeoutMs: Math.max(1, context.deadline - Date.now())
+						timeoutMs: Math.max(1, context.remainingMs())
 					},
 					10_000,
 					cleanup

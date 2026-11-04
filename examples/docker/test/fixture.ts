@@ -20,6 +20,7 @@ import type {
 import type { SandboxProviderTestFixture } from 'pi-bring-your-own-sandbox/testing';
 import { expect } from 'vitest';
 
+import { remainingBudget } from '../../../src/fixtures/remaining-budget.js';
 import { NodeDockerClient } from '../src/client.js';
 import type { DockerClient, DockerConfig } from '../src/contracts.js';
 import { DOCKER_IMAGE } from '../src/image.js';
@@ -45,10 +46,16 @@ export function operationContext(): SandboxOperationContext {
 		reportDiagnostic() {
 			return;
 		},
-		cleanup: { deadline: undefined },
+		cleanup: {
+			deadline: undefined,
+			remainingMs: (): undefined => {
+				return;
+			}
+		},
 		operationId: randomUUID(),
 		signal: new AbortController().signal,
-		deadline: Date.now() + 30_000
+		deadline: Date.now() + 30_000,
+		remainingMs: remainingBudget(30_000)
 	};
 }
 

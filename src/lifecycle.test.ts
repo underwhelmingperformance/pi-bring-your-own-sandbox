@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 
+import { FakeClock } from './fixtures/clock.js';
 import {
 	OperationRegistry,
 	OperationScope,
@@ -363,3 +364,106 @@ it.each(['resolved', 'rejected'] as const)(
 		}
 	}
 );
+
+it.each([-1_000_000, 1_000_000])(
+	'publishes live monotonic budgets while wall time is %s',
+	(wallTime) => {
+		const clock = new FakeClock();
+		const caller = new AbortController();
+		const scope = new OperationScope(
+			identity,
+			caller.signal,
+			{},
+			1000,
+			{
+				cancellationGraceMs: 80,
+				disposalTimeoutMs: 100
+			},
+			clock
+		);
+		const forwarded = { ...scope.context };
+
+		try {
+			clock.advance(100);
+			clock.wallTime = wallTime;
+			caller.abort();
+			clock.advance(30);
+
+			expect({
+				execution: forwarded.remainingMs(),
+				cleanup: forwarded.cleanup.remainingMs(),
+				deadline: forwarded.deadline,
+				cleanupDeadline: forwarded.cleanup.deadline,
+				isAborted: forwarded.signal.aborted
+			}).toStrictEqual({
+				execution: 870,
+				cleanup: 50,
+				deadline: 2000,
+				cleanupDeadline: wallTime + 80,
+				isAborted: true
+			});
+		} finally {
+			scope.dispose();
+		}
+
+		expect(clock.pendingTimers).toBe(0);
+	}
+);
+
+it('rejects cleanup after monotonic expiry without dispatching fake timers', async () => {
+	const clock = new FakeClock();
+	const caller = new AbortController();
+	const scope = new OperationScope(
+		identity,
+		caller.signal,
+		{},
+		1000,
+		{
+			cancellationGraceMs: 50,
+			disposalTimeoutMs: 100
+		},
+		clock
+	);
+	const operation = Promise.withResolvers<string>();
+	const pending = settleOperation(scope, operation.promise);
+
+	try {
+		caller.abort();
+		await Promise.resolve();
+		clock.advance(100);
+		operation.resolve('late acknowledgement');
+		expect(await pending).toStrictEqual({ kind: 'abandoned' });
+	} finally {
+		scope.dispose();
+	}
+
+	expect(clock.pendingTimers).toBe(0);
+});
+
+it('dispatches deadline cancellation through the injected timer scheduler', () => {
+	const clock = new FakeClock();
+	const scope = new OperationScope(
+		identity,
+		new AbortController().signal,
+		{},
+		50,
+		undefined,
+		clock
+	);
+
+	try {
+		clock.advance(50);
+		clock.dispatch();
+		expect({
+			reason: scope.reason,
+			remainingMs: scope.context.remainingMs(),
+			timers: clock.pendingTimers
+		}).toStrictEqual({
+			reason: 'deadline',
+			remainingMs: 0,
+			timers: 0
+		});
+	} finally {
+		scope.dispose();
+	}
+});

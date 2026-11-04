@@ -1,5 +1,6 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 
+import type { ExecutionApprovalRequest } from './approval-contracts.js';
 import {
 	approvalService,
 	registerApprovalPolicy,
@@ -87,3 +88,101 @@ it('rejects duplicate custom policies with the approval-specific error', async (
 		}
 	);
 });
+
+it.each([-1_000_000, 1_000_000])(
+	'consumes the queued prompt budget across a wall-clock jump to %s',
+	async (wallTime) => {
+		await withPiRuntime(
+			[
+				{
+					name: 'queued-approval',
+					factory(pi) {
+						pi.registerCommand('queued', {
+							description: 'Check queued approval deadlines.',
+							async handler(_arguments, context) {
+								vi.useFakeTimers();
+								vi.setSystemTime(1000);
+
+								const shown = Promise.withResolvers<undefined>();
+								const release = Promise.withResolvers<boolean>();
+								const timeouts: (number | undefined)[] = [];
+								const uiContext = {
+									...context,
+									hasUI: true,
+									ui: {
+										...context.ui,
+										confirm(
+											_title: string,
+											_message: string,
+											options?: { timeout?: number }
+										) {
+											timeouts.push(options?.timeout);
+											shown.resolve(undefined);
+
+											return timeouts.length === 1
+												? release.promise
+												: Promise.resolve(true);
+										}
+									}
+								};
+								const request: ExecutionApprovalRequest = {
+									process: { kind: 'argv', executable: 'probe', args: [] },
+									justification: 'Check the queued prompt allowance.',
+									destination: {
+										kind: 'normal',
+										id: 'normal',
+										label: 'Fixture',
+										workspace: {
+											root: context.cwd,
+											pathFlavor: 'posix',
+											relationship: 'shared',
+											description: 'Fixture workspace.'
+										},
+										policyDescription: 'Fixture policy.'
+									}
+								};
+
+								try {
+									const first = requestExecutionApproval(
+										pi,
+										uiContext,
+										request,
+										{ timeoutMs: 1000 }
+									);
+
+									await shown.promise;
+
+									const second = requestExecutionApproval(
+										pi,
+										uiContext,
+										request,
+										{ timeoutMs: 1000 }
+									);
+
+									await vi.advanceTimersByTimeAsync(100);
+									vi.setSystemTime(wallTime);
+									release.resolve(true);
+
+									expect({
+										decisions: await Promise.all([first, second]),
+										timeouts
+									}).toStrictEqual({
+										decisions: [{ kind: 'allow' }, { kind: 'allow' }],
+										timeouts: [1000, 900]
+									});
+								} finally {
+									release.resolve(false);
+									vi.useRealTimers();
+								}
+							}
+						});
+					}
+				}
+			],
+			async (runtime, errors) => {
+				await runtime.session.prompt('/queued');
+				expect(errors).toStrictEqual([]);
+			}
+		);
+	}
+);

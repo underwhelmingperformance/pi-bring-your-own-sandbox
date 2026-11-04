@@ -161,7 +161,7 @@ class DockerBackend implements SandboxBackend {
 			);
 		};
 
-		const timer = new DeadlineTimer(context.deadline, fail);
+		const timer = new DeadlineTimer(context.remainingMs, fail);
 
 		context.signal.addEventListener('abort', fail, { once: true });
 
@@ -174,6 +174,11 @@ class DockerBackend implements SandboxBackend {
 		} finally {
 			timer.dispose();
 			context.signal.removeEventListener('abort', fail);
+		}
+
+		if (context.remainingMs() <= 0) {
+			fail();
+			await expired.promise;
 		}
 
 		await this.#resources.dispose(context);

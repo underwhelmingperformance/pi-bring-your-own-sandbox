@@ -78,7 +78,7 @@ export class NodeDockerClient implements DockerClient {
 		const failure = (cause: unknown) =>
 			new SandboxTransportError(identity, { cause });
 
-		if (command.context.deadline <= Date.now()) {
+		if (command.context.remainingMs() <= 0) {
 			return Promise.reject(
 				failure(new Error('The Docker CLI deadline has expired.'))
 			);
@@ -140,11 +140,11 @@ export class NodeDockerClient implements DockerClient {
 			pending.reject(failure(cause));
 		};
 
-		const timer = new DeadlineTimer(command.context.deadline, () => {
+		const timer = new DeadlineTimer(command.context.remainingMs, () => {
 			stop(new Error('The Docker CLI did not finish before its deadline.'));
 		});
 		const refreshDeadline = () => {
-			timer.reset(command.context.deadline);
+			timer.reset();
 		};
 
 		command.context.deadlineChanged?.addEventListener(
@@ -199,7 +199,7 @@ export class NodeDockerClient implements DockerClient {
 				refreshDeadline
 			);
 
-			if (status === null) {
+			if (status === null || command.context.remainingMs() <= 0) {
 				pending.reject(failure(undefined));
 
 				return;

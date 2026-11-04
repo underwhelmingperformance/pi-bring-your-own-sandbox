@@ -98,7 +98,12 @@ a workspace-only policy, attempt an outside-workspace read and write through
 both exec and file methods, then check the sentinel files independently. For a
 denied-network policy, attempt a controlled connection and check the connection
 result. For a read-only policy, attempt mutations and verify unchanged target
-contents. Include symlink escapes in runtime-specific tests.
+contents. Include symlink escapes in runtime-specific tests. Probe pathname Unix
+sockets through read-only mounts, grants and aliases, abstract sockets and host
+resolver services. The [network investigation][network-boundaries] includes
+native MXC and independent namespace probes.
+
+[network-boundaries]: network-boundaries.md
 
 For `process-group` and `workload`, `verifyStopped` must independently establish
 termination within the advertised scope. Include a waiting parent with a child

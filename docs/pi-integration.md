@@ -49,7 +49,11 @@ unavailable.
 
 Other extensions can replace the shell definitions or consume `user_bash` before
 this integration. Pi controls that registration and event ordering. This entry
-does not provide universal interception or isolate arbitrary extension code.
+does not provide universal interception or isolate arbitrary extension code. See
+the [outer-runtime investigation][outer-runtime] for real extension/MCP marker
+probes and a separate launcher design.
+
+[outer-runtime]: outer-runtime.md
 
 ## Upstream extension-point gaps
 
@@ -102,8 +106,11 @@ pnpm exec vitest run src/pi-tools-integration.test.ts -t 'keeps Pi full-output'
 
 These gaps are upstream work. The framework does not use private Pi imports or
 replacement tool algorithms to implement those paths. The [research][research]
-records the pinned source investigation.
+records the pinned source investigation. The [adapter
+prerequisites][file-adapters] specify the required public seams and acceptance
+cases.
 
+[file-adapters]: pi-file-adapters.md
 [research]: research.md
 
 ## Explicit outside execution

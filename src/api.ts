@@ -69,3 +69,4 @@ export {
 	PROVIDER_DISCOVERY_CHANNEL
 } from './protocol.js';
 export { registerSandboxProvider } from './provider-registration.js';
+export { HOST_CONFIGURATION_PROTECTION } from './workspace-protection.js';

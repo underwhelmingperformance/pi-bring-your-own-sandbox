@@ -44,7 +44,11 @@ import {
 } from './file-result.js';
 import type { MutationQueue } from './mutation-queue.js';
 import { runOperation } from './operation-runner.js';
-import { isRecord, snapshotCapabilities } from './validation.js';
+import {
+	isRecord,
+	snapshotCapabilities,
+	snapshotPolicy
+} from './validation.js';
 
 export interface SandboxOwner extends BackendOwner {
 	readonly identity: {
@@ -432,7 +436,7 @@ export function createSandbox(owner: SandboxOwner): Sandbox {
 		generationId: owner.generationId,
 		workspace: Object.freeze({ ...backend.workspace }),
 		capabilities: snapshotCapabilities(backend.capabilities),
-		policy: Object.freeze({ ...backend.policy }),
+		policy: snapshotPolicy(backend.policy),
 		policyDescription: backend.policyDescription,
 		exec: (request, options) => executeProcess(owner, request, options),
 		files: Object.freeze(new Files(owner)),

@@ -3,7 +3,7 @@ import type {
 	RecoveryDescriptor,
 	SandboxBackend
 } from './contracts.js';
-import { snapshotCapabilities } from './validation.js';
+import { snapshotCapabilities, snapshotPolicy } from './validation.js';
 
 export function snapshotRecovery(
 	recovery: RecoveryDescriptor
@@ -63,11 +63,7 @@ export function snapshotBackend(backend: SandboxBackend): SandboxBackend {
 			})
 		}),
 		capabilities: snapshotCapabilities(backend.capabilities),
-		policy: Object.freeze({
-			workspaceAccess: backend.policy.workspaceAccess,
-			filesystemScope: backend.policy.filesystemScope,
-			networkAccess: backend.policy.networkAccess
-		}),
+		policy: snapshotPolicy(backend.policy),
 		policyDescription: backend.policyDescription,
 		recovery: snapshotRecovery(backend.recovery),
 		exec: backend.exec.bind(backend),

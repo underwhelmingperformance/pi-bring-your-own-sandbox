@@ -19,7 +19,12 @@ import type {
 } from './protocol.js';
 import { configFileSchema } from './request-schemas.js';
 import { checker } from './schemas.js';
-import { isRecord } from './validation.js';
+import { isPolicy, isRecord, snapshotPolicy } from './validation.js';
+import {
+	canProtectWorkspace,
+	HOST_CONFIGURATION_PROTECTION,
+	snapshotWorkspaceProtection
+} from './workspace-protection.js';
 
 export interface ConfigSources {
 	readonly agentDirectory: string;
@@ -92,13 +97,40 @@ export async function readConfig(
 	const declared = [defaultProvider, ...providers].find(
 		(provider) => provider.id === providerId
 	);
-	const policy = personal.policy ?? declared?.defaultPolicy;
+	const configuredPolicy = personal.policy ?? declared?.defaultPolicy;
 
-	if (policy === undefined) {
+	if (configuredPolicy === undefined) {
 		throw new InvalidSandboxConfigError({
 			operation: 'configure',
 			providerId,
 			...(source !== 'default' && { configurationSource: source })
+		});
+	}
+
+	const protection = configuredPolicy.workspaceProtection;
+	const resources =
+		protection !== undefined && 'preset' in protection
+			? [
+					...HOST_CONFIGURATION_PROTECTION,
+					...(protection.additionalPaths ?? []).map((path) => ({
+						kind: 'path' as const,
+						path
+					}))
+				]
+			: protection;
+	const policy = {
+		workspaceAccess: configuredPolicy.workspaceAccess,
+		filesystemScope: configuredPolicy.filesystemScope,
+		networkAccess: configuredPolicy.networkAccess,
+		...(resources !== undefined && {
+			workspaceProtection: snapshotWorkspaceProtection(resources)
+		})
+	};
+
+	if (!isPolicy(policy)) {
+		throw new InvalidSandboxConfigError({
+			operation: 'configure',
+			configurationSource: 'personal'
 		});
 	}
 
@@ -108,7 +140,7 @@ export async function readConfig(
 	const selection: ProviderSelection = Object.freeze({
 		providerId,
 		source,
-		policy: Object.freeze({ ...policy }),
+		policy: snapshotPolicy(policy),
 		...(personal.userShell !== undefined && { userShell: personal.userShell })
 	});
 	const policySource = personal.policy === undefined ? undefined : 'personal';
@@ -148,6 +180,7 @@ export function selectProvider(
 	}
 
 	if (
+		!canProtectWorkspace(provider.capabilities, policy) ||
 		!provider.policies.workspaceAccess.includes(policy.workspaceAccess) ||
 		provider.policies.filesystemScope.every(
 			(scope) => !isFilesystemScopeSatisfied(scope, policy.filesystemScope)

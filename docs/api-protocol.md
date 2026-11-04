@@ -88,6 +88,18 @@ error that acquisition would throw. Status lists every started backend under
 `backends`, with its negotiated policy, state and backend ID; the top-level
 backend fields describe the backend for the personal policy.
 
+`WorkspaceProtection` is either `{ kind: 'git-metadata' }` or
+`{ kind: 'path', path: string }`. `SandboxPolicy.workspaceProtection` is an
+optional readonly resource array. Any nonempty requirement needs the
+`workspace.protection` operation capability. Effective resources must cover
+every requested resource, including personal requirements. A protected parent
+covers a child; Git metadata protection includes external repository
+administration data. Registration rejects protected defaults without the
+capability. See [protected workspace resources][workspace-protection] for path
+syntax, preset expansion, immutability and independent enforcement requirements.
+
+[workspace-protection]: workspace-protection.md
+
 Facade methods always exist, including `files` and `search`. Unsupported methods
 reject with `UnsupportedSandboxCapabilityError` before provider invocation. This
 keeps consumer code independent of optional backend method groups. A facade has

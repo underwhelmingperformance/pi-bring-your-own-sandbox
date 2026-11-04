@@ -238,6 +238,7 @@ export function providerContractCases<Config>(
 			label: 'metadata and policy',
 			run: async (fixture, backend, context) => {
 				const hasRestrictions =
+					(fixture.policy.workspaceProtection?.length ?? 0) > 0 ||
 					fixture.policy.workspaceAccess === 'read-only' ||
 					fixture.policy.filesystemScope !== 'provider-default' ||
 					fixture.policy.networkAccess === 'denied';

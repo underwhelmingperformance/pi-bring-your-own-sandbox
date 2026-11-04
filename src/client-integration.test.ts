@@ -20,10 +20,13 @@ import {
 	SandboxStartupError
 } from './api.js';
 import { discoverBroker } from './discovery.js';
+import { createSandbox } from './facade.js';
+import { TestBackendOwner } from './fixtures/backend-owner.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { ScriptedModel } from './fixtures/scripted-model.js';
 import { loadSdkInstance } from './fixtures/sdk-instance.js';
+import { ensureBroker } from './service.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -542,5 +545,34 @@ it.each([true, false])(
 			},
 			[consumer, model.extension]
 		);
+	}
+);
+
+it.each([
+	{ workspaceProtection: [{ kind: 'git-metadata' }] },
+	{ filesystemScope: 'system-read-only' }
+] as const)(
+	'rejects an independent broker that ignores the requested policy: %j',
+	async (policy) => {
+		const backend = new MemoryBackend();
+		const sandbox = createSandbox(new TestBackendOwner(backend));
+
+		await fixture(async ({ pi, context }) => {
+			ensureBroker(pi.events, (id) => ({
+				id,
+				acquire: () => Promise.resolve(sandbox),
+				negotiate: () => Promise.resolve({ ok: true, policy: sandbox.policy }),
+				close: () =>
+					Promise.resolve({ confirmed: true, failures: [], recoveries: [] }),
+				status: () =>
+					Promise.resolve({ generationId: 'independent', state: 'idle' }),
+				providers: () => Promise.resolve([])
+			}));
+
+			await expect(getSandbox(pi, context, { policy })).rejects.toMatchObject({
+				name: 'UnsupportedSandboxPolicyError'
+			});
+			expect(backend.calls).toStrictEqual([]);
+		});
 	}
 );

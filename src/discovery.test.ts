@@ -390,3 +390,55 @@ it('snapshots provider default policies and rejects unsupported defaults', () =>
 		expect.objectContaining({ name: 'InvalidSandboxDeclarationError' })
 	);
 });
+
+it.each([false, true])(
+	'requires an explicit capability for protected default policies: %s',
+	(canProtect) => {
+		const events = createEventBus();
+		const reply = providerReply();
+		const defaultPolicy = {
+			workspaceAccess: 'read-write',
+			filesystemScope: 'provider-default',
+			networkAccess: 'provider-default',
+			workspaceProtection: [{ kind: 'git-metadata' }]
+		};
+
+		respond(events, 'pi-byos:discovery:v1:providers', {
+			...reply,
+			service: {
+				...reply.service,
+				defaultPolicy,
+				capabilities: {
+					...reply.service.capabilities,
+					operations: canProtect ? ['exec', 'workspace.protection'] : ['exec']
+				}
+			}
+		});
+
+		if (!canProtect) {
+			expect(() => discoverProviders(events)).toThrow(
+				expect.objectContaining({ name: 'InvalidSandboxDeclarationError' })
+			);
+
+			return;
+		}
+
+		const provider = discoverProviders(events)[0];
+
+		defaultPolicy.workspaceProtection.push({ kind: 'git-metadata' });
+		expect({
+			policy: provider?.defaultPolicy,
+			frozen: Object.isFrozen(provider?.defaultPolicy?.workspaceProtection),
+			resourceFrozen: Object.isFrozen(
+				provider?.defaultPolicy?.workspaceProtection?.[0]
+			)
+		}).toStrictEqual({
+			policy: {
+				...defaultPolicy,
+				workspaceProtection: [{ kind: 'git-metadata' }]
+			},
+			frozen: true,
+			resourceFrozen: true
+		});
+	}
+);

@@ -157,6 +157,7 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 			for (const subpath of ['api', 'extension', 'pi-tools', 'testing']) {
 				expect(paths).toContain(`dist/${subpath}.js`);
 				expect(paths).toContain(`dist/${subpath}.d.ts`);
+				expect(paths).toContain(`src/${subpath}.ts`);
 			}
 
 			await project(host);
@@ -196,7 +197,7 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 					vitest: '5.0.5'
 				},
 				optional: { vitest: { optional: true } },
-				pi: { extensions: ['./dist/extension.js'] },
+				pi: { extensions: ['./src/extension.ts'] },
 				exports: Object.fromEntries(
 					['api', 'extension', 'pi-tools', 'testing'].map((entry) => [
 						`./${entry}`,

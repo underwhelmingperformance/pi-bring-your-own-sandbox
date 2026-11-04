@@ -13,6 +13,21 @@ is returned as an error.
 
 ## Run the example
 
+For development, install the SDK from Git in the consumer extension project:
+
+```sh
+pnpm add github:underwhelmingperformance/pi-bring-your-own-sandbox
+```
+
+Pi loads the source exports. A separate `pi install` of BYOS is optional;
+consumer acquisition can initialise the framework. Installing BYOS as a Pi
+package does not add it to another extension's dependency tree.
+
+For a compiled package, including use from plain Node, build and pack the
+checkout with pnpm. Its packed manifest selects the compiled SDK exports. Native
+Node cannot load the TypeScript source exports inside `node_modules`, and
+`prepare` alone would not change those exports.
+
 Build and pack this development checkout from the repository root:
 
 ```sh

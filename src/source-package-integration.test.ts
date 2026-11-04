@@ -1,7 +1,16 @@
 import { execFile } from 'node:child_process';
-import { cp, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import {
+	copyFile,
+	mkdir,
+	mkdtemp,
+	readFile,
+	rm,
+	stat,
+	writeFile
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 
 import {
@@ -10,52 +19,105 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { expect, it } from 'vitest';
 
+import { isRecord } from './validation.js';
+
 const execute = promisify(execFile);
 
-it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
-	'loads a source-only SDK and consumer after a production install without peers',
-	async () => {
+it
+	.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')
+	.each(['production clone', 'Git dependency'])(
+	'loads the committed source SDK and consumer through a %s',
+	async (installation) => {
 		const directory = await mkdtemp(path.join(tmpdir(), 'pi-byos-source-'));
+		const repository = fileURLToPath(new URL('..', import.meta.url));
 		const consumer = path.join(directory, 'consumer');
 		const sdk = path.join(
 			consumer,
 			'node_modules',
 			'pi-bring-your-own-sandbox'
 		);
+		const run = (
+			cwd: string,
+			executable: string,
+			arguments_: readonly string[]
+		) =>
+			execute(executable, arguments_, {
+				cwd,
+				env: {
+					...process.env,
+					npm_config_cache: path.join(directory, 'npm-cache')
+				},
+				timeout: 120_000
+			});
+		const install = [
+			'install',
+			'--omit=dev',
+			'--legacy-peer-deps',
+			'--no-audit',
+			'--no-fund'
+		];
 
 		try {
-			await mkdir(sdk, { recursive: true });
-			await cp(
-				new URL('../package.json', import.meta.url),
-				path.join(sdk, 'package.json')
+			const { stdout } = await run(repository, 'git', ['rev-parse', 'HEAD']);
+			const revision = stdout.trim();
+
+			await mkdir(consumer);
+			await writeFile(
+				path.join(consumer, 'package.json'),
+				JSON.stringify({
+					name: 'byos-source-consumer',
+					version: '0.0.0',
+					private: true,
+					type: 'module'
+				})
 			);
-			await cp(new URL('.', import.meta.url), path.join(sdk, 'src'), {
-				recursive: true
+
+			if (installation === 'production clone') {
+				await mkdir(path.dirname(sdk), { recursive: true });
+				await run(directory, 'git', [
+					'clone',
+					'--no-checkout',
+					repository,
+					sdk
+				]);
+				await run(sdk, 'git', ['checkout', '--detach', revision]);
+				await run(sdk, 'npm', install);
+			} else {
+				await run(consumer, 'npm', [
+					...install,
+					`git+${pathToFileURL(repository).href}#${revision}`
+				]);
+				await expect(
+					stat(path.join(sdk, 'src/fixtures'))
+				).rejects.toMatchObject({ code: 'ENOENT' });
+			}
+
+			for (const filename of ['index.ts', 'extension.ts', 'workspace.ts']) {
+				await copyFile(
+					path.join(sdk, 'examples/consumer/src', filename),
+					path.join(consumer, filename)
+				);
+			}
+
+			await expect(stat(path.join(sdk, 'dist'))).rejects.toMatchObject({
+				code: 'ENOENT'
 			});
-			await cp(
-				new URL('../examples/consumer/src/', import.meta.url),
-				consumer,
-				{
-					recursive: true
-				}
+
+			const manifest: unknown = JSON.parse(
+				await readFile(path.join(sdk, 'package.json'), 'utf8')
 			);
-			await execute(
-				'npm',
-				[
-					'install',
-					'--omit=dev',
-					'--legacy-peer-deps',
-					'--no-audit',
-					'--no-fund'
-				],
-				{
-					cwd: sdk,
-					env: {
-						...process.env,
-						npm_config_cache: path.join(directory, 'npm-cache')
-					},
-					timeout: 120_000
-				}
+
+			if (!isRecord(manifest)) {
+				throw new Error('The installed source manifest must be an object.');
+			}
+
+			expect(manifest.exports).toStrictEqual(
+				Object.fromEntries(
+					['api', 'extension', 'pi-tools', 'testing'].map((entry) => [
+						`./${entry}`,
+						{ types: `./src/${entry}.ts`, import: `./src/${entry}.ts` }
+					])
+				)
 			);
 
 			const loader = new DefaultResourceLoader({

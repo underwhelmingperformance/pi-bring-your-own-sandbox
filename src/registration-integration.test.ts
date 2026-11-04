@@ -2,7 +2,6 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 import type { InlineExtension } from '@earendil-works/pi-coding-agent';
 import {
@@ -17,7 +16,10 @@ import { imageProvider } from './fixtures/image-provider.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { brokerReply } from './fixtures/protocol-peer.js';
-import { loadSdkCopy } from './fixtures/sdk-copy.js';
+import {
+	loadIsolatedModule,
+	loadSdkInstance
+} from './fixtures/sdk-instance.js';
 import type { ensureBroker } from './service.js';
 
 interface BootstrapModule {
@@ -32,12 +34,8 @@ it('shares shell-only capabilities and unavailable exits across independent SDK 
 			{
 				name: 'provider-and-consumer-copies',
 				async factory(pi) {
-					const first = await loadSdkCopy(
-						path.join(agentDirectory, 'provider-copy')
-					);
-					const second = await loadSdkCopy(
-						path.join(agentDirectory, 'consumer-copy')
-					);
+					const first = await loadSdkInstance();
+					const second = await loadSdkInstance();
 					const template = new MemoryBackend('exec');
 
 					first.initialiseSandboxHost(pi, {
@@ -183,12 +181,12 @@ function isBootstrapModule(value: unknown): value is BootstrapModule {
 	);
 }
 
-it('interoperates across physical SDK copies and removes failed-factory responders in Pi', async () => {
+it('interoperates across independent SDK instances and removes failed-factory responders in Pi', async () => {
 	const directory = await mkdtemp(path.join(tmpdir(), 'pi-byos-registration-'));
 
 	try {
-		const first = await loadSdkCopy(path.join(directory, 'first'));
-		const second = await loadSdkCopy(path.join(directory, 'second'));
+		const first = await loadSdkInstance();
+		const second = await loadSdkInstance();
 		const events = createEventBus();
 		const loader = new DefaultResourceLoader({
 			cwd: directory,
@@ -264,51 +262,37 @@ it('interoperates across physical SDK copies and removes failed-factory responde
 });
 
 it('publishes one service during concurrent bootstrap through independent SDK copies', async () => {
-	const directory = await mkdtemp(path.join(tmpdir(), 'pi-byos-bootstrap-'));
-
-	try {
-		const copies = [
-			path.join(directory, 'first'),
-			path.join(directory, 'second')
-		];
-
-		await Promise.all(copies.map((copy) => loadSdkCopy(copy)));
-
-		const modules: readonly unknown[] = await Promise.all(
-			copies.map(
-				(copy) => import(pathToFileURL(path.join(copy, 'service.js')).href)
-			)
-		);
-		const events = createEventBus();
-		let constructions = 0;
-		const services = await Promise.all(
-			modules.map((module) => {
-				if (!isBootstrapModule(module)) {
-					throw new TypeError(
-						'The compiled service module has no bootstrap function.'
-					);
-				}
-
-				return Promise.try(() =>
-					module.ensureBroker(events, (id) => {
-						constructions++;
-
-						return brokerReply(id).service;
-					})
+	const modules = await Promise.all([
+		loadIsolatedModule('service'),
+		loadIsolatedModule('service')
+	]);
+	const events = createEventBus();
+	let constructions = 0;
+	const services = await Promise.all(
+		modules.map((module) => {
+			if (!isBootstrapModule(module)) {
+				throw new TypeError(
+					'The isolated service module has no bootstrap function.'
 				);
-			})
-		);
+			}
 
-		expect({
-			ids: services.map((service) => service.id),
-			constructions
-		}).toStrictEqual({
-			ids: [services[0]?.id, services[0]?.id],
-			constructions: 1
-		});
-	} finally {
-		await rm(directory, { recursive: true, force: true });
-	}
+			return Promise.try(() =>
+				module.ensureBroker(events, (id) => {
+					constructions++;
+
+					return brokerReply(id).service;
+				})
+			);
+		})
+	);
+
+	expect({
+		ids: services.map((service) => service.id),
+		constructions
+	}).toStrictEqual({
+		ids: [services[0]?.id, services[0]?.id],
+		constructions: 1
+	});
 });
 
 it.each([
@@ -321,163 +305,153 @@ it.each([
 ] as const)(
 	'shares independent approval and outside execution services in factory order %s, %s, %s',
 	async (...order) => {
-		const directory = await mkdtemp(
-			path.join(tmpdir(), 'pi-byos-approval-copies-')
-		);
+		const first = await loadSdkInstance();
+		const second = await loadSdkInstance();
+		const backend = new MemoryBackend('exec');
+		let reviews = 0;
+		let validations = 0;
+		let opens = 0;
+		let disposals = 0;
+		let personalDirectory = '';
 
-		try {
-			const first = await loadSdkCopy(path.join(directory, 'first'));
-			const second = await loadSdkCopy(path.join(directory, 'second'));
-			const backend = new MemoryBackend('exec');
-			let reviews = 0;
-			let validations = 0;
-			let opens = 0;
-			let disposals = 0;
-			let personalDirectory = '';
+		backend.dispose = () => {
+			disposals++;
 
-			backend.dispose = () => {
-				disposals++;
+			return Promise.resolve();
+		};
 
-				return Promise.resolve();
-			};
+		const factories: Record<(typeof order)[number], InlineExtension> = {
+			policy: {
+				name: 'approval-policy',
+				factory(pi) {
+					first.registerApprovalPolicy(pi, {
+						id: 'fixture',
+						label: 'Fixture approval',
+						protocolVersion: 1,
+						validateConfig(input) {
+							expect(input).toBeNull();
+							validations++;
 
-			const factories: Record<(typeof order)[number], InlineExtension> = {
-				policy: {
-					name: 'approval-policy',
-					factory(pi) {
-						first.registerApprovalPolicy(pi, {
-							id: 'fixture',
-							label: 'Fixture approval',
-							protocolVersion: 1,
-							validateConfig(input) {
-								expect(input).toBeNull();
-								validations++;
+							return {};
+						},
+						decide() {
+							reviews++;
 
-								return {};
-							},
-							decide() {
-								reviews++;
-
-								return Promise.resolve({ kind: 'allow' });
-							}
-						});
-					}
-				},
-				provider: {
-					name: 'outside-provider',
-					factory(pi) {
-						first.registerSandboxProvider(pi, {
-							id: 'fixture',
-							label: 'Fixture sandbox',
-							protocolVersion: 1,
-							capabilities: backend.capabilities,
-							policies: {
-								workspaceAccess: ['read-write'],
-								filesystemScope: ['provider-default'],
-								networkAccess: ['provider-default']
-							},
-							validateConfig: () => ({}),
-							open: () =>
-								Promise.reject(
-									new Error('The ordinary sandbox must not start.')
-								),
-							outsideSandbox: {
-								label: 'Fixture remote outside execution',
-								capabilities: backend.capabilities,
-								policy: backend.policy,
-								open() {
-									opens++;
-
-									return Promise.resolve(backend);
-								}
-							}
-						});
-					}
-				},
-				consumer: {
-					name: 'consumer',
-					factory(pi) {
-						pi.registerCommand('copies', {
-							description: 'Independent SDK fixture',
-							async handler(_arguments, context) {
-								const a = await first.getOutsideSandboxExecutor(pi, context);
-								const b = await second.getOutsideSandboxExecutor(pi, context);
-
-								await a.exec(
-									{ kind: 'argv', executable: 'probe', args: [] },
-									{ justification: 'First operation.' }
-								);
-								await b.exec(
-									{ kind: 'argv', executable: 'probe', args: [] },
-									{ justification: 'Second operation.' }
-								);
-
-								const report = await second.closeSandboxSession(pi, context);
-
-								expect({
-									sameDestination: a.destination.id === b.destination.id,
-									reviews,
-									validations,
-									opens,
-									disposals,
-									report,
-									foreignError:
-										first.ApprovalDeniedError !== second.ApprovalDeniedError,
-									recognised: second.isApprovalError(
-										new first.ApprovalDeniedError()
-									)
-								}).toStrictEqual({
-									sameDestination: true,
-									reviews: 2,
-									validations: 1,
-									opens: 1,
-									disposals: 1,
-									report: { confirmed: true, failures: [], recoveries: [] },
-									foreignError: true,
-									recognised: true
-								});
-							}
-						});
-					}
+							return Promise.resolve({ kind: 'allow' });
+						}
+					});
 				}
-			};
+			},
+			provider: {
+				name: 'outside-provider',
+				factory(pi) {
+					first.registerSandboxProvider(pi, {
+						id: 'fixture',
+						label: 'Fixture sandbox',
+						protocolVersion: 1,
+						capabilities: backend.capabilities,
+						policies: {
+							workspaceAccess: ['read-write'],
+							filesystemScope: ['provider-default'],
+							networkAccess: ['provider-default']
+						},
+						validateConfig: () => ({}),
+						open: () =>
+							Promise.reject(new Error('The ordinary sandbox must not start.')),
+						outsideSandbox: {
+							label: 'Fixture remote outside execution',
+							capabilities: backend.capabilities,
+							policy: backend.policy,
+							open() {
+								opens++;
 
-			await withPiRuntime(
-				[
-					{
-						name: 'host',
-						factory(pi) {
-							first.initialiseSandboxHost(pi, {
-								agentDirectory: personalDirectory
+								return Promise.resolve(backend);
+							}
+						}
+					});
+				}
+			},
+			consumer: {
+				name: 'consumer',
+				factory(pi) {
+					pi.registerCommand('copies', {
+						description: 'Independent SDK fixture',
+						async handler(_arguments, context) {
+							const a = await first.getOutsideSandboxExecutor(pi, context);
+							const b = await second.getOutsideSandboxExecutor(pi, context);
+
+							await a.exec(
+								{ kind: 'argv', executable: 'probe', args: [] },
+								{ justification: 'First operation.' }
+							);
+							await b.exec(
+								{ kind: 'argv', executable: 'probe', args: [] },
+								{ justification: 'Second operation.' }
+							);
+
+							const report = await second.closeSandboxSession(pi, context);
+
+							expect({
+								sameDestination: a.destination.id === b.destination.id,
+								reviews,
+								validations,
+								opens,
+								disposals,
+								report,
+								foreignError:
+									first.ApprovalDeniedError !== second.ApprovalDeniedError,
+								recognised: second.isApprovalError(
+									new first.ApprovalDeniedError()
+								)
+							}).toStrictEqual({
+								sameDestination: true,
+								reviews: 2,
+								validations: 1,
+								opens: 1,
+								disposals: 1,
+								report: { confirmed: true, failures: [], recoveries: [] },
+								foreignError: true,
+								recognised: true
 							});
 						}
-					},
-					...order.map((id) => factories[id])
-				],
-				async (runtime, errors) => {
-					await runtime.session.prompt('/copies');
-					expect(errors).toStrictEqual([]);
-				},
-				{
-					prepare: async (_cwd, agentDirectory) => {
-						personalDirectory = agentDirectory;
-						await writeFile(
-							path.join(agentDirectory, 'byos.json'),
-							JSON.stringify({
-								provider: 'fixture',
-								policy: backend.policy,
-								outsideSandbox: { destination: 'provider' },
-								approval: {
-									policy: 'fixture',
-									config: JSON.parse('null') as unknown
-								}
-							})
-						);
-					}
+					});
 				}
-			);
-		} finally {
-			await rm(directory, { recursive: true, force: true });
-		}
+			}
+		};
+
+		await withPiRuntime(
+			[
+				{
+					name: 'host',
+					factory(pi) {
+						first.initialiseSandboxHost(pi, {
+							agentDirectory: personalDirectory
+						});
+					}
+				},
+				...order.map((id) => factories[id])
+			],
+			async (runtime, errors) => {
+				await runtime.session.prompt('/copies');
+				expect(errors).toStrictEqual([]);
+			},
+			{
+				prepare: async (_cwd, agentDirectory) => {
+					personalDirectory = agentDirectory;
+					await writeFile(
+						path.join(agentDirectory, 'byos.json'),
+						JSON.stringify({
+							provider: 'fixture',
+							policy: backend.policy,
+							outsideSandbox: { destination: 'provider' },
+							approval: {
+								policy: 'fixture',
+								config: JSON.parse('null') as unknown
+							}
+						})
+					);
+				}
+			}
+		);
 	}
 );

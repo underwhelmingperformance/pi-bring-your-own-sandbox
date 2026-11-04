@@ -1,6 +1,4 @@
-import { cp, mkdir, symlink } from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createJiti } from 'jiti';
 
 import type {
 	ApprovalDeniedError,
@@ -46,38 +44,21 @@ function isFixtureApi(value: unknown): value is FixtureApi {
 	);
 }
 
-export async function loadSdkCopy(directory: string): Promise<FixtureApi> {
-	await cp(new URL('../../dist/', import.meta.url), directory, {
-		recursive: true
+export function loadIsolatedModule(entry: 'api' | 'service'): Promise<unknown> {
+	const loader = createJiti(import.meta.url, {
+		moduleCache: false,
+		tryNative: false
 	});
 
-	const peers = path.join(directory, 'node_modules', '@earendil-works');
+	return loader.import(`../${entry}.ts`);
+}
 
-	await mkdir(peers, { recursive: true });
-	await symlink(
-		fileURLToPath(
-			new URL(
-				'../../node_modules/@earendil-works/pi-coding-agent',
-				import.meta.url
-			)
-		),
-		path.join(peers, 'pi-coding-agent'),
-		'dir'
-	);
-
-	await symlink(
-		fileURLToPath(new URL('../../node_modules/typebox', import.meta.url)),
-		path.join(directory, 'node_modules', 'typebox'),
-		'dir'
-	);
-
-	const module: unknown = await import(
-		pathToFileURL(path.join(directory, 'api.js')).href
-	);
+export async function loadSdkInstance(): Promise<FixtureApi> {
+	const module = await loadIsolatedModule('api');
 
 	if (!isFixtureApi(module)) {
 		throw new TypeError(
-			'The built SDK does not export the consumer, registration and error APIs.'
+			'The SDK does not export the consumer, registration and error APIs.'
 		);
 	}
 

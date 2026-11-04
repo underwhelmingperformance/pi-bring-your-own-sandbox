@@ -2,6 +2,8 @@ import type { Static, TArrayOptions, TSchema } from 'typebox';
 import { Type } from 'typebox';
 import { Compile } from 'typebox/compile';
 
+import { canProtectWorkspace } from './workspace-protection.js';
+
 export function checker<Schema extends TSchema>(schema: Schema) {
 	const validator = Compile(schema);
 
@@ -53,7 +55,8 @@ export const capabilitySchema = Type.Enum([
 	'files.write',
 	'files.list',
 	'search.find',
-	'search.grep'
+	'search.grep',
+	'workspace.protection'
 ]);
 export const processKindSchema = Type.Enum(['argv', 'shell']);
 export const exitStatusSchema = Type.Enum(['guaranteed', 'optional']);
@@ -90,7 +93,30 @@ const filesystemScopeSchema = Type.Enum([
 ]);
 const networkAccessSchema = Type.Enum(['denied', 'provider-default']);
 
+export const protectedPathSchema = Type.Refine(
+	targetPathSchema,
+	(value) =>
+		!value.includes('\\') &&
+		!value.includes(':') &&
+		value.split('/').every((part) => !['', '.', '..'].includes(part))
+);
+
+const gitProtectionSchema = Type.Object(
+	{ kind: Type.Literal('git-metadata') },
+	{ additionalProperties: false }
+);
+const pathProtectionSchema = Type.Object(
+	{ kind: Type.Literal('path'), path: protectedPathSchema },
+	{ additionalProperties: false }
+);
+
+export const workspaceProtectionSchema = denseArray(
+	Type.Union([gitProtectionSchema, pathProtectionSchema]),
+	{ uniqueItems: true, maxItems: 128 }
+);
+
 export const policySchema = Type.Object({
+	workspaceProtection: Type.Optional(workspaceProtectionSchema),
 	workspaceAccess: workspaceAccessSchema,
 	filesystemScope: filesystemScopeSchema,
 	networkAccess: networkAccessSchema
@@ -129,7 +155,8 @@ export const providerInfoSchema = Type.Refine(
 			) &&
 			provider.policies.networkAccess.includes(
 				provider.defaultPolicy.networkAccess
-			))
+			) &&
+			canProtectWorkspace(provider.capabilities, provider.defaultPolicy))
 );
 
 const expirySchema = Type.Refine(Type.String(), (value) =>

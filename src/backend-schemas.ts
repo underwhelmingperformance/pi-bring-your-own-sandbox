@@ -23,6 +23,10 @@ import {
 	targetPathSchema
 } from './schemas.js';
 import { isTerminationScopeSatisfied } from './termination-scope.js';
+import {
+	canProtectWorkspace,
+	isWorkspaceProtectionSatisfied
+} from './workspace-protection.js';
 
 export function absolutePathSchema(flavor: 'posix' | 'win32') {
 	return Type.Refine(targetPathSchema, (value) =>
@@ -87,6 +91,7 @@ export const backendSchema = Type.Refine(backendShape, (value) => {
 	const { operations, shells } = value.capabilities;
 
 	return (
+		canProtectWorkspace(value.capabilities, value.policy) &&
 		(value.workspace.defaultShell === undefined ||
 			shells.includes(value.workspace.defaultShell)) &&
 		operations.includes('files.read') === (value.files?.read !== undefined) &&
@@ -103,7 +108,8 @@ export function providerBackendSchema(provider: ProviderInfo) {
 	const policy = Type.Object({
 		workspaceAccess: Type.Enum([...provider.policies.workspaceAccess]),
 		filesystemScope: Type.Enum([...provider.policies.filesystemScope]),
-		networkAccess: Type.Enum([...provider.policies.networkAccess])
+		networkAccess: Type.Enum([...provider.policies.networkAccess]),
+		workspaceProtection: policySchema.properties.workspaceProtection
 	});
 	const capabilities = Type.Object({
 		terminationScope: Type.Refine(
@@ -129,20 +135,24 @@ export function providerBackendSchema(provider: ProviderInfo) {
 }
 
 export function requiredPolicySchema(required: Partial<SandboxPolicy>) {
-	return Type.Object({
-		workspaceAccess:
-			required.workspaceAccess === undefined
-				? policySchema.properties.workspaceAccess
-				: Type.Literal(required.workspaceAccess),
-		filesystemScope: Type.Refine(
-			policySchema.properties.filesystemScope,
-			(scope) =>
-				required.filesystemScope === undefined ||
-				isFilesystemScopeSatisfied(scope, required.filesystemScope)
-		),
-		networkAccess:
-			required.networkAccess === 'denied'
-				? Type.Literal('denied')
-				: policySchema.properties.networkAccess
-	});
+	return Type.Refine(
+		Type.Object({
+			workspaceProtection: policySchema.properties.workspaceProtection,
+			workspaceAccess:
+				required.workspaceAccess === undefined
+					? policySchema.properties.workspaceAccess
+					: Type.Literal(required.workspaceAccess),
+			filesystemScope: Type.Refine(
+				policySchema.properties.filesystemScope,
+				(scope) =>
+					required.filesystemScope === undefined ||
+					isFilesystemScopeSatisfied(scope, required.filesystemScope)
+			),
+			networkAccess:
+				required.networkAccess === 'denied'
+					? Type.Literal('denied')
+					: policySchema.properties.networkAccess
+		}),
+		(effective) => isWorkspaceProtectionSatisfied(effective, required)
+	);
 }

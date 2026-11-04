@@ -26,9 +26,13 @@ interface BootstrapModule {
 	readonly ensureBroker: typeof ensureBroker;
 }
 
-it.each(['provider-default', 'system-read-only'] as const)(
-	'shares execution contracts across independent SDK instances under %s',
-	async (filesystemScope) => {
+it.each([
+	{ filesystemScope: 'provider-default', protection: false },
+	{ filesystemScope: 'system-read-only', protection: false },
+	{ filesystemScope: 'system-read-only', protection: true }
+] as const)(
+	'shares execution contracts across independent SDK instances under $filesystemScope with protection $protection',
+	async ({ filesystemScope, protection }) => {
 		let agentDirectory = '';
 
 		await withPiRuntime(
@@ -39,7 +43,16 @@ it.each(['provider-default', 'system-read-only'] as const)(
 						const first = await loadSdkInstance();
 						const second = await loadSdkInstance();
 						const template = new MemoryBackend('exec');
-						const policy = { ...template.policy, filesystemScope };
+						const policy = {
+							...template.policy,
+							filesystemScope,
+							...(protection && {
+								workspaceProtection: [{ kind: 'git-metadata' as const }]
+							})
+						};
+						const operations = protection
+							? (['exec', 'workspace.protection'] as const)
+							: (['exec'] as const);
 
 						first.initialiseSandboxHost(pi, {
 							agentDirectory,
@@ -54,7 +67,7 @@ it.each(['provider-default', 'system-read-only'] as const)(
 								filesystemScope: [filesystemScope]
 							},
 							capabilities: {
-								operations: ['exec'],
+								operations,
 								processKinds: ['shell'],
 								shells: ['sh'],
 								terminationScope: 'process-group',
@@ -69,7 +82,7 @@ it.each(['provider-default', 'system-read-only'] as const)(
 									policyDescription: template.policyDescription,
 									recovery: template.recovery,
 									capabilities: {
-										operations: ['exec'],
+										operations,
 										processKinds: ['shell'],
 										shells: ['sh'],
 										terminationScope: 'process-group',

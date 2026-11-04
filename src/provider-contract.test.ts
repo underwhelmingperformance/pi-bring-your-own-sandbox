@@ -254,13 +254,25 @@ it.each([
 	['network', 'missing'],
 	['network', 'failing'],
 	['filesystem', 'missing'],
-	['filesystem', 'failing']
+	['filesystem', 'failing'],
+	['workspace', 'missing'],
+	['workspace', 'failing']
 ] as const)(
 	'rejects a restrictive %s policy with %s independent checks',
 	async (restriction, verification) => {
 		const options = contractScenario();
 		const open = options.provider.open;
+		const capabilities = {
+			...options.provider.capabilities,
+			operations: [
+				...options.provider.capabilities.operations,
+				'workspace.protection' as const
+			]
+		};
 		const policy: SandboxPolicy = {
+			...(restriction === 'workspace' && {
+				workspaceProtection: [{ kind: 'git-metadata' as const }]
+			}),
 			workspaceAccess: 'read-write',
 			filesystemScope:
 				restriction === 'filesystem' ? 'system-read-only' : 'provider-default',
@@ -270,6 +282,7 @@ it.each([
 			...options,
 			provider: {
 				...options.provider,
+				capabilities,
 				policies: {
 					...options.provider.policies,
 					networkAccess: ['denied', 'provider-default'] as const,
@@ -277,6 +290,7 @@ it.each([
 				},
 				open: async (...arguments_: Parameters<typeof open>) => ({
 					...(await open(...arguments_)),
+					capabilities,
 					policy
 				})
 			},

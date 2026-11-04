@@ -105,11 +105,29 @@ export interface SandboxCapabilities {
 }
 
 /**
+A workspace resource that must remain immutable through every provider operation.
+Git metadata includes worktree pointers, common metadata and repository hooks.
+Paths identify a workspace-relative subtree, including absent entries and aliases.
+*/
+export type WorkspaceProtection =
+	| { readonly kind: 'git-metadata' }
+	| { readonly kind: 'path'; readonly path: string };
+
+/**
 Protection requirements for opening a backend, or effective protections
 after opening. `provider-default` delegates the boundary to the provider and
 promises no specific isolation.
 */
 export interface SandboxPolicy {
+	/**
+	Immutable workspace resources. Omission requests no resource-specific
+	protection. Providers must prevent creation, writes, removal, replacement
+	and renames through all aliases, including changes to parent directories.
+	Read-only workspace permissions alone do not establish immutability through
+	external aliases or referenced Git metadata.
+	*/
+	readonly workspaceProtection?: readonly WorkspaceProtection[];
+
 	/**
 	Required or effective ability to mutate the workspace. Read-only and
 	read-write requirements must match exactly.

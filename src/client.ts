@@ -1,3 +1,4 @@
+import { acquireOptions, checkRequirements } from './acquire-options.js';
 import { inspectContext } from './context.js';
 import type {
 	Sandbox,
@@ -28,7 +29,12 @@ export async function getSandbox(
 ): Promise<Sandbox> {
 	inspectContext(context, 'acquire');
 
-	return ensureSandboxService(pi).acquire(context, options);
+	const settings = acquireOptions(options);
+	const sandbox = await ensureSandboxService(pi).acquire(context, settings);
+
+	checkRequirements(sandbox, settings);
+
+	return sandbox;
 }
 
 /**

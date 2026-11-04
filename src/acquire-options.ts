@@ -9,6 +9,7 @@ import { operationOptions } from './file-input.js';
 import { acquireOptionsSchema } from './request-schemas.js';
 import { checker } from './schemas.js';
 import { isTerminationScopeSatisfied } from './termination-scope.js';
+import { snapshotWorkspaceProtection } from './workspace-protection.js';
 
 const isAcquireOptions = checker(acquireOptionsSchema);
 
@@ -41,6 +42,11 @@ export function acquireOptions(input: unknown): SandboxAcquireOptions {
 		}),
 		...(value.policy !== undefined && {
 			policy: Object.freeze({
+				...(value.policy.workspaceProtection !== undefined && {
+					workspaceProtection: snapshotWorkspaceProtection(
+						value.policy.workspaceProtection
+					)
+				}),
 				...(value.policy.workspaceAccess !== undefined && {
 					workspaceAccess: value.policy.workspaceAccess
 				}),

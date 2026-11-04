@@ -1,5 +1,6 @@
 import type {
 	SandboxCapabilities,
+	SandboxPolicy,
 	SupportedSandboxPolicies
 } from './contracts.js';
 import type { ProviderInfo } from './protocol.js';
@@ -13,6 +14,7 @@ import {
 	recoverySchema,
 	shellSchema
 } from './schemas.js';
+import { snapshotWorkspaceProtection } from './workspace-protection.js';
 
 export const isRecord = checker(recordSchema);
 export const isNonEmptyString = checker(nonEmptyStringSchema);
@@ -34,6 +36,19 @@ export function snapshotCapabilities(
 	});
 }
 
+export function snapshotPolicy(policy: SandboxPolicy): SandboxPolicy {
+	return Object.freeze({
+		workspaceAccess: policy.workspaceAccess,
+		filesystemScope: policy.filesystemScope,
+		networkAccess: policy.networkAccess,
+		...(policy.workspaceProtection !== undefined && {
+			workspaceProtection: snapshotWorkspaceProtection(
+				policy.workspaceProtection
+			)
+		})
+	});
+}
+
 export function snapshotProviderInfo(provider: ProviderInfo): ProviderInfo {
 	return Object.freeze({
 		id: provider.id,
@@ -41,11 +56,7 @@ export function snapshotProviderInfo(provider: ProviderInfo): ProviderInfo {
 		capabilities: snapshotCapabilities(provider.capabilities),
 		policies: snapshotPolicies(provider.policies),
 		...(provider.defaultPolicy !== undefined && {
-			defaultPolicy: Object.freeze({
-				workspaceAccess: provider.defaultPolicy.workspaceAccess,
-				filesystemScope: provider.defaultPolicy.filesystemScope,
-				networkAccess: provider.defaultPolicy.networkAccess
-			})
+			defaultPolicy: snapshotPolicy(provider.defaultPolicy)
 		})
 	});
 }

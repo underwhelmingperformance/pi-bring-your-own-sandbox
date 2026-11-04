@@ -57,7 +57,7 @@ calls, including when cleanup is already complete.
 | `list`            | A seeded directory, its complete metadata and immediate children. Listing order is ignored.                                                                                                                                                                                                   |
 | `find` and `grep` | Queries and complete expected results under the provider's documented search rules. Include exact-limit and truncated results, plus context and matching options where supported.                                                                                                             |
 | `cancellation`    | A long-running job and a stdout readiness marker. Promised termination scopes also require an independent `verifyStopped` callback. Emit the marker after the processes under test have started.                                                                                              |
-| `verifyPolicy`    | Independent negative tests for all requested restrictions. Required for read-only, workspace-only, system-read-only and denied-network scenarios. The callback receives the backend and a deadline context.                                                                                   |
+| `verifyPolicy`    | Independent negative tests for all requested restrictions. Required for read-only, workspace-only, system-read-only, denied-network and protected-resource scenarios. The callback receives the backend and a deadline context.                                                               |
 | `verifyDisposed`  | An independent check that generation-owned resources have been released after disposal resolves.                                                                                                                                                                                              |
 | `cleanup`         | Unconditional fixture teardown, including recovery from failed opening or disposal.                                                                                                                                                                                                           |
 
@@ -138,3 +138,9 @@ repository's `src/argv-conformance.test.ts` compares direct execution with a
 small real shell transport fixture. That fixture tests encoding and bootstrap
 separation; it does not establish any external runtime's cancellation or
 isolation guarantees.
+
+Protected-resource scenarios also need the independent mutation probes specified
+in [workspace protection][workspace-protection]. The test kit requires the
+probe; it cannot establish runtime enforcement from a capability declaration.
+
+[workspace-protection]: workspace-protection.md

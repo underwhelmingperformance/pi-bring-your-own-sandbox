@@ -348,3 +348,61 @@ it('keeps a complete personal policy when the provider declares another default'
 		expect(selectProvider(config, [provider])).toBe(provider);
 	});
 });
+
+it('expands the personal host-configuration preset and freezes user additions', async () => {
+	await withSources(async (sources) => {
+		await writeFile(
+			path.join(sources.agentDirectory, 'byos.json'),
+			JSON.stringify({
+				policy: {
+					...defaultPolicy,
+					workspaceProtection: {
+						preset: 'host-configuration',
+						additionalPaths: ['.custom']
+					}
+				}
+			})
+		);
+
+		const result = await readConfig(sources);
+		const expected = [
+			{ kind: 'git-metadata' },
+			{ kind: 'path', path: '.custom' },
+			{ kind: 'path', path: '.devcontainer' },
+			{ kind: 'path', path: '.direnv' },
+			{ kind: 'path', path: '.envrc' },
+			{ kind: 'path', path: '.idea' },
+			{ kind: 'path', path: '.pi' },
+			{ kind: 'path', path: '.vscode' }
+		];
+
+		expect({
+			resources: result.selection.policy.workspaceProtection,
+			frozen: Object.isFrozen(result.selection.policy.workspaceProtection)
+		}).toStrictEqual({ resources: expected, frozen: true });
+	});
+});
+
+it.each(['../private', '.git/../private', '/absolute', 'a\\b'])(
+	'rejects invalid additional protection %s before preset expansion',
+	async (path_) => {
+		await withSources(async (sources) => {
+			await writeFile(
+				path.join(sources.agentDirectory, 'byos.json'),
+				JSON.stringify({
+					policy: {
+						...defaultPolicy,
+						workspaceProtection: {
+							preset: 'host-configuration',
+							additionalPaths: [path_]
+						}
+					}
+				})
+			);
+			await expect(readConfig(sources)).rejects.toMatchObject({
+				name: 'InvalidSandboxConfigError',
+				configurationSource: 'personal'
+			});
+		});
+	}
+);

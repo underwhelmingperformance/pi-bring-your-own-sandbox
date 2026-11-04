@@ -11,12 +11,14 @@ import {
 	policySchema,
 	positiveIntegerSchema,
 	processKindSchema,
+	protectedPathSchema,
 	safeTextSchema,
 	shellSchema,
 	signalSchema,
 	targetPathSchema,
 	terminationScopeSchema,
-	timeoutSchema
+	timeoutSchema,
+	workspaceProtectionSchema
 } from './schemas.js';
 
 export const MAX_CAPTURE_BYTES = 1_048_576;
@@ -35,15 +37,32 @@ const outsideSelectionSchema = Type.Object(
 	{ additionalProperties: false }
 );
 
+const hostConfigPresetSchema = Type.Object(
+	{
+		preset: Type.Literal('host-configuration'),
+		additionalPaths: Type.Optional(
+			denseArray(protectedPathSchema, { maxItems: 128, uniqueItems: true })
+		)
+	},
+	{ additionalProperties: false }
+);
+const personalPolicySchema = Type.Object(
+	{
+		...policySchema.properties,
+		workspaceProtection: Type.Optional(
+			Type.Union([workspaceProtectionSchema, hostConfigPresetSchema])
+		)
+	},
+	{ additionalProperties: false }
+);
+
 export const configFileSchema = Type.Object(
 	{
 		provider: Type.Optional(nonEmptyStringSchema),
 		cleanup: Type.Optional(cleanupSelectionSchema),
 		approval: Type.Optional(approvalSelectionSchema),
 		outsideSandbox: Type.Optional(outsideSelectionSchema),
-		policy: Type.Optional(
-			Type.Object(policySchema.properties, { additionalProperties: false })
-		),
+		policy: Type.Optional(personalPolicySchema),
 		userShell: Type.Optional(shellSchema),
 		providerConfig: Type.Optional(Type.Unknown())
 	},

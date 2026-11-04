@@ -1,6 +1,7 @@
 import { SessionManager } from '@earendil-works/pi-coding-agent';
 import { expect, it } from 'vitest';
 
+import { snapshotBackend } from './backend-snapshot.js';
 import type {
 	SandboxBackend,
 	SandboxContext,
@@ -42,6 +43,7 @@ class PolicyBackend extends MemoryBackend {
 }
 
 interface FixtureOptions {
+	readonly protection?: boolean;
 	readonly personal?: SandboxPolicy;
 	readonly policies?: SupportedSandboxPolicies;
 	readonly open?: (
@@ -57,7 +59,13 @@ function fixture(options: FixtureOptions = {}) {
 		cwd: '/host/workspace',
 		sessionManager: SessionManager.inMemory('/host/workspace')
 	};
-	const capabilities = new MemoryBackend().capabilities;
+	const template = new MemoryBackend().capabilities;
+	const capabilities = options.protection
+		? {
+				...template,
+				operations: [...template.operations, 'workspace.protection' as const]
+			}
+		: template;
 	const provider: ProviderServiceV1 = {
 		id: 'fixture',
 		label: 'Fixture',
@@ -71,12 +79,15 @@ function fixture(options: FixtureOptions = {}) {
 					return options.open(request.policy, opening);
 				}
 
-				const backend = new PolicyBackend(request.policy);
+				const memory = new PolicyBackend(request.policy);
+				const backend: SandboxBackend = {
+					...snapshotBackend(memory),
+					capabilities,
+					dispose: () => {
+						disposed.push(memory.id);
 
-				backend.dispose = () => {
-					disposed.push(backend.id);
-
-					return Promise.resolve();
+						return Promise.resolve();
+					}
 				};
 
 				return Promise.resolve(backend);
@@ -366,6 +377,239 @@ it('uses a stronger supported scope when the provider has no intermediate mode',
 			policy: expected,
 			opened: [expected]
 		});
+	} finally {
+		await generation.close();
+	}
+});
+
+it('rejects unsupported workspace protection before opening a writable backend', async () => {
+	const { generation, context, opened } = fixture();
+
+	try {
+		await expect(
+			generation.acquire(context, {
+				policy: { workspaceProtection: [{ kind: 'git-metadata' }] }
+			})
+		).rejects.toMatchObject({ name: 'UnsupportedSandboxPolicyError' });
+		expect(opened).toStrictEqual([]);
+	} finally {
+		await generation.close();
+	}
+});
+
+it('combines personal and consumer workspace protections without sharing their arrays', async () => {
+	const personal: SandboxPolicy = {
+		...PERSONAL,
+		workspaceProtection: [{ kind: 'git-metadata' }]
+	};
+	const { generation, context, opened } = fixture({
+		personal,
+		protection: true
+	});
+	const requested: NonNullable<SandboxPolicy['workspaceProtection']>[number][] =
+		[{ kind: 'path', path: '.pi' }];
+
+	try {
+		const sandbox = await generation.acquire(context, {
+			policy: { workspaceProtection: requested }
+		});
+
+		requested.push({ kind: 'path', path: '.extra' });
+
+		const expected = {
+			...PERSONAL,
+			workspaceProtection: [
+				{ kind: 'git-metadata' },
+				{ kind: 'path', path: '.pi' }
+			]
+		};
+
+		expect({
+			policy: sandbox.policy,
+			opened,
+			frozen: Object.isFrozen(sandbox.policy.workspaceProtection)
+		}).toStrictEqual({ policy: expected, opened: [expected], frozen: true });
+	} finally {
+		await generation.close();
+	}
+});
+
+it.each(['/absolute', '../parent', 'a/../b', 'a//b', 'a\\b', 'C:drive', '.'])(
+	'rejects non-portable protected path %s',
+	async (path) => {
+		const { generation, context, opened } = fixture();
+
+		try {
+			await expect(
+				generation.acquire(context, {
+					policy: { workspaceProtection: [{ kind: 'path', path }] }
+				})
+			).rejects.toMatchObject({ name: 'InvalidSandboxRequestError' });
+			expect(opened).toStrictEqual([]);
+		} finally {
+			await generation.close();
+		}
+	}
+);
+
+it.each([{ kind: 'path', path: '.pi' }, { kind: 'git-metadata' }] as const)(
+	'rejects %j without a protection capability even under read-only access',
+	async (resource) => {
+		const { generation, context, opened } = fixture({
+			personal: { ...PERSONAL, workspaceAccess: 'read-only' }
+		});
+
+		try {
+			await expect(
+				generation.acquire(context, {
+					policy: { workspaceProtection: [resource] }
+				})
+			).rejects.toMatchObject({ name: 'UnsupportedSandboxPolicyError' });
+			expect(opened).toStrictEqual([]);
+		} finally {
+			await generation.close();
+		}
+	}
+);
+
+it.each([{ kind: 'path', path: '.pi' }, { kind: 'git-metadata' }] as const)(
+	'preserves explicit %j protection when opening a read-only backend',
+	async (resource) => {
+		const { generation, context, opened } = fixture({
+			protection: true,
+			personal: { ...PERSONAL, workspaceAccess: 'read-only' }
+		});
+
+		try {
+			const sandbox = await generation.acquire(context, {
+				policy: { workspaceProtection: [resource] }
+			});
+			const expected = {
+				...PERSONAL,
+				workspaceAccess: 'read-only',
+				workspaceProtection: [resource]
+			};
+
+			expect({ policy: sandbox.policy, opened }).toStrictEqual({
+				policy: expected,
+				opened: [expected]
+			});
+		} finally {
+			await generation.close();
+		}
+	}
+);
+
+it('shares equivalent protection sets while separating different resources', async () => {
+	const { generation, context, opened } = fixture({ protection: true });
+
+	try {
+		const first = await generation.acquire(context, {
+			policy: {
+				workspaceProtection: [
+					{ kind: 'path', path: '.a' },
+					{ kind: 'path', path: '.b' }
+				]
+			}
+		});
+		const repeated = await generation.acquire(context, {
+			policy: {
+				workspaceProtection: [
+					{ kind: 'path', path: '.b' },
+					{ kind: 'path', path: '.a' }
+				]
+			}
+		});
+		const other = await generation.acquire(context, {
+			policy: { workspaceProtection: [{ kind: 'path', path: '.c' }] }
+		});
+
+		expect({
+			shared: first.backendId === repeated.backendId,
+			policies: opened,
+			other: other.policy
+		}).toStrictEqual({
+			shared: true,
+			policies: [
+				{
+					...PERSONAL,
+					workspaceProtection: [
+						{ kind: 'path', path: '.a' },
+						{ kind: 'path', path: '.b' }
+					]
+				},
+				{ ...PERSONAL, workspaceProtection: [{ kind: 'path', path: '.c' }] }
+			],
+			other: {
+				...PERSONAL,
+				workspaceProtection: [{ kind: 'path', path: '.c' }]
+			}
+		});
+	} finally {
+		await generation.close();
+	}
+});
+
+it('rejects an opened backend that omits a promised protected resource and disposes it', async () => {
+	let disposals = 0;
+	const { generation, context } = fixture({
+		protection: true,
+		open: (policy) => {
+			const backend = new PolicyBackend({ ...policy, workspaceProtection: [] });
+
+			return Promise.resolve({
+				...snapshotBackend(backend),
+				capabilities: {
+					...backend.capabilities,
+					operations: [
+						...backend.capabilities.operations,
+						'workspace.protection'
+					]
+				},
+				dispose: () => {
+					disposals++;
+
+					return Promise.resolve();
+				}
+			});
+		}
+	});
+
+	try {
+		await expect(
+			generation.acquire(context, {
+				policy: { workspaceProtection: [{ kind: 'git-metadata' }] }
+			})
+		).rejects.toMatchObject({ name: 'UnsupportedSandboxPolicyError' });
+		expect(disposals).toBe(1);
+	} finally {
+		await generation.close();
+	}
+});
+
+function protectionResources(prefix: string) {
+	return Array.from({ length: 100 }, (_, index) => ({
+		kind: 'path' as const,
+		path: `${prefix}/${String(index)}`
+	}));
+}
+
+it('rejects an oversized combined resource set before opening a backend', async () => {
+	const { generation, context, opened } = fixture({
+		protection: true,
+		personal: {
+			...PERSONAL,
+			workspaceProtection: protectionResources('personal')
+		}
+	});
+
+	try {
+		await expect(
+			generation.acquire(context, {
+				policy: { workspaceProtection: protectionResources('consumer') }
+			})
+		).rejects.toMatchObject({ name: 'UnsupportedSandboxPolicyError' });
+		expect(opened).toStrictEqual([]);
 	} finally {
 		await generation.close();
 	}

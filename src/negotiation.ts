@@ -9,6 +9,10 @@ import {
 } from './errors.js';
 import { selectFilesystemScope } from './filesystem-scope.js';
 import type { ProviderInfo } from './protocol.js';
+import {
+	canProtectWorkspace,
+	snapshotWorkspaceProtection
+} from './workspace-protection.js';
 
 interface NegotiationIdentity {
 	readonly operation: 'acquire';
@@ -38,7 +42,13 @@ export function resolvePolicy(
 		throw new UnsupportedSandboxPolicyError(identity);
 	}
 
+	const protection = snapshotWorkspaceProtection([
+		...(personal.workspaceProtection ?? []),
+		...(requested?.workspaceProtection ?? [])
+	]);
+
 	const policy: SandboxPolicy = Object.freeze({
+		...(protection.length > 0 && { workspaceProtection: protection }),
 		workspaceAccess: requested?.workspaceAccess ?? personal.workspaceAccess,
 		filesystemScope,
 		networkAccess:
@@ -46,6 +56,7 @@ export function resolvePolicy(
 	});
 
 	if (
+		!canProtectWorkspace(provider.capabilities, policy) ||
 		!provider.policies.workspaceAccess.includes(policy.workspaceAccess) ||
 		!provider.policies.filesystemScope.includes(policy.filesystemScope) ||
 		!provider.policies.networkAccess.includes(policy.networkAccess)
@@ -77,5 +88,10 @@ export function checkDeclaredCapabilities(
 }
 
 export function policyKey(policy: SandboxPolicy): string {
-	return `${policy.workspaceAccess}/${policy.filesystemScope}/${policy.networkAccess}`;
+	return JSON.stringify([
+		policy.workspaceAccess,
+		policy.filesystemScope,
+		policy.networkAccess,
+		snapshotWorkspaceProtection(policy.workspaceProtection ?? [])
+	]);
 }

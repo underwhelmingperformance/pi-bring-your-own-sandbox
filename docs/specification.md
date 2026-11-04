@@ -330,9 +330,13 @@ The shared policy vocabulary is deliberately small:
   workspace inside a home directory remains accessible under workspace policy;
   selecting the home directory as the workspace exposes that directory.
   Arbitrary additional data grants require a different provider policy.
+- `workspaceProtection`: optional immutable resource requirements. Personal and
+  consumer sets are combined. See [protected resources][workspace-protection].
 - `networkAccess`: `denied` or `provider-default`. Denied blocks outbound
   network access from sandboxed operations, including access through host
   services.
+
+[workspace-protection]: workspace-protection.md
 
 Filesystem scope requirements have this ordering, from weakest to strongest:
 `provider-default`, `system-read-only`, `workspace-only`. Negotiation chooses

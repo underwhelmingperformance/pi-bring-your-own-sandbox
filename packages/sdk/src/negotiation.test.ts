@@ -100,7 +100,7 @@ function fixture(options: FixtureOptions = {}) {
 			Promise.resolve({
 				selection: {
 					providerId: 'fixture',
-					source: 'personal',
+					source: 'extension',
 					policy: options.personal ?? PERSONAL
 				},
 				providerConfig: {}

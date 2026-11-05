@@ -16,8 +16,8 @@ defaults to `/usr/bin/docker` and `/var/run/docker.sock`. Set absolute
 management CLI receives an empty environment and an explicit daemon address;
 Docker context and environment settings do not select another daemon.
 
-Run these commands from the repository root. Pull the pinned image before
-opening a backend:
+Run these commands from `packages/sdk`. Pull the pinned image before opening a
+backend:
 
 ```sh
 image=$(node --input-type=module -e 'import { DOCKER_IMAGE } from "./examples/docker/src/image.ts"; process.stdout.write(DOCKER_IMAGE)')
@@ -25,10 +25,10 @@ docker pull "$image"
 pnpm build
 ```
 
-From this checkout, load the provider with the diagnostic extension:
+From this checkout, load the provider:
 
 ```sh
-pi --no-extensions -e ./dist/extension.js -e ./examples/docker/src/index.ts
+pi --no-extensions -e ./examples/docker/src/index.ts
 ```
 
 For another project, copy `examples/docker/src` into `.pi/extensions/docker`. Pi
@@ -40,27 +40,16 @@ dependency.
 Pi supplies TypeBox at runtime. Add `typebox` as a development dependency to
 type-check the copied example outside Pi.
 
-Select the provider in the personal agent directory's `byos.json`:
-
-```json
-{
-  "provider": "example.docker",
-  "policy": {
-    "workspaceAccess": "read-write",
-    "filesystemScope": "workspace-only",
-    "networkAccess": "denied"
-  },
-  "providerConfig": {
-    "executable": "/usr/bin/docker",
-    "socketPath": "/var/run/docker.sock"
-  }
-}
-```
+Loading the example activates `example.docker` with default Docker settings and
+read-write workspace access. To customise the provider, write an extension
+factory that calls `registerSandboxProvider` with the declaration returned by
+`createDockerProvider` and a `configure` callback. Return raw Docker input under
+`configuration`, and provide a complete policy or use the declaration's default.
+The callback can read your extension's own settings.
 
 Use `read-only` for a read-only copy of the workspace. The provider rejects
-unsupported filesystem or network policies before allocation. Personal settings
-use the agent directory's `byos.json`. `/byos status` reports the selection and
-effective boundary.
+unsupported filesystem or network policies before allocation. An extension can
+also call `registerSandboxDiagnostics(pi)` to expose `/byos status`.
 
 SDK consumers use the selected provider automatically. The example supplies `sh`
 for user commands and Bash for the model `bash` tool. PowerShell is unsupported.

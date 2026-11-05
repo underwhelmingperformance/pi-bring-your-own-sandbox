@@ -1,6 +1,9 @@
-import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import { readFile as readSettingsFile } from 'node:fs/promises';
 
-import { InvalidSandboxConfigError, registerSandboxProvider } from '../api.js';
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import { getAgentDir } from '@earendil-works/pi-coding-agent';
+
+import { InvalidSandboxConfigError } from '../api.js';
 import type {
 	ProcessRequest,
 	SandboxBackend,
@@ -8,6 +11,8 @@ import type {
 } from '../contracts.js';
 import { registerUserShell } from '../user-shell.js';
 import { isRecord } from '../validation.js';
+
+import { FixtureConfig } from './config.js';
 
 export default function rpcFixture(pi: ExtensionAPI): void {
 	const ready = Promise.withResolvers<'ready'>();
@@ -30,7 +35,19 @@ export default function rpcFixture(pi: ExtensionAPI): void {
 		shells: ['sh']
 	};
 
-	registerSandboxProvider(pi, {
+	const config = new FixtureConfig(async () => {
+		const input: unknown = JSON.parse(
+			await readSettingsFile(
+				`${getAgentDir()}/user-shell-settings.json`,
+				'utf8'
+			)
+		);
+
+		return input;
+	});
+
+	config.bind(pi);
+	config.activate(pi, {
 		id: 'fixture',
 		label: 'RPC fixture',
 		protocolVersion: 1,

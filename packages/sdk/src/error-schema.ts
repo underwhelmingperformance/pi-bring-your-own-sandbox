@@ -37,6 +37,8 @@ export const ordinaryErrorNameSchema = Type.Enum([
 	'InvalidSandboxRequestError',
 	'ProviderNotFoundError',
 	'DuplicateProviderError',
+	'ConflictingSandboxConfigError',
+	'ConflictingSandboxProviderError',
 	'UnsupportedSandboxCapabilityError',
 	'UnsupportedSandboxPolicyError',
 	'SandboxStartupError',
@@ -52,7 +54,7 @@ const errorContextSchema = Type.Object({
 	sandboxErrorVersion: Type.Literal(1),
 	message: Type.String(),
 	operation: operationSchema,
-	configurationSource: Type.Optional(Type.Literal('personal')),
+	configurationSource: Type.Optional(Type.Literal('extension')),
 	providerId: Type.Optional(nonEmptyStringSchema),
 	backendId: Type.Optional(nonEmptyStringSchema),
 	recovery: Type.Optional(recoverySchema)

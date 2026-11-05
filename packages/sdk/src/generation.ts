@@ -61,13 +61,15 @@ import type {
 	SandboxNegotiation,
 	SandboxStatus
 } from './protocol.js';
+import type { DiagnosticStore } from './provider-diagnostics.js';
 import { ProviderDiagnostics } from './provider-diagnostics.js';
 import { callable, checker } from './schemas.js';
 import { isRecord, isRecovery, snapshotProviderInfo } from './validation.js';
 
 export interface GenerationDependencies {
+	readonly diagnostics?: DiagnosticStore;
 	readonly providers: () => readonly ProviderServiceV1[];
-	readonly readConfig: (context: SessionIdentity) => Promise<SandboxConfig>;
+	readonly readConfig: (context: SandboxContext) => Promise<SandboxConfig>;
 }
 interface Prepared {
 	readonly provider: ProviderServiceV1;
@@ -99,7 +101,7 @@ const isDisposable = checker(
 );
 
 export class SandboxGeneration {
-	readonly #diagnostics = new ProviderDiagnostics();
+	readonly #diagnostics: DiagnosticStore;
 	#cleanup = DEFAULT_CLEANUP_BUDGETS;
 	readonly #context: SandboxContext;
 	readonly #session: SessionIdentity;
@@ -111,7 +113,7 @@ export class SandboxGeneration {
 	#state: BrokerState = 'initialising';
 	#providerInfos: readonly ProviderInfo[] = [];
 	#selection: ProviderSelection | undefined;
-	#configurationSource: 'personal' | undefined;
+	#configurationSource: 'extension' | undefined;
 	#prepared: Promise<Prepared> | undefined;
 	readonly #slots = new Map<string, BackendSlot>();
 	#failure: SandboxErrorInfo | undefined;
@@ -122,6 +124,7 @@ export class SandboxGeneration {
 		this.#context = context;
 		this.#session = inspectContext(context, 'acquire');
 		this.#dependencies = dependencies;
+		this.#diagnostics = dependencies.diagnostics ?? new ProviderDiagnostics();
 	}
 
 	#assertContext(context: SandboxContext, operation: SandboxOperation): void {
@@ -174,6 +177,8 @@ export class SandboxGeneration {
 				cause.configurationSource !== undefined && {
 					configurationSource: cause.configurationSource
 				}),
+			...(isSandboxError(cause) &&
+				cause.providerId !== undefined && { providerId: cause.providerId }),
 			...(this.#selection !== undefined && {
 				providerId: this.#selection.providerId
 			}),
@@ -233,7 +238,7 @@ export class SandboxGeneration {
 				providers.map((provider) => snapshotProviderInfo(provider))
 			);
 
-			const config = await this.#dependencies.readConfig(this.#session);
+			const config = await this.#dependencies.readConfig(this.#context);
 
 			this.#cleanup = resolveCleanupBudgets(config.cleanup);
 

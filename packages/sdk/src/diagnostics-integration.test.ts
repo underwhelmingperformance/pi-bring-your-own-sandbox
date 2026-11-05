@@ -1,6 +1,3 @@
-import { writeFile } from 'node:fs/promises';
-import path from 'node:path';
-
 import type {
 	AgentSessionRuntime,
 	ExtensionAPI,
@@ -9,13 +6,11 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { afterEach, expect, it, vi } from 'vitest';
 
-import {
-	closeSandboxSession,
-	getSandbox,
-	registerSandboxProvider
-} from './api.js';
+import { registerSandboxProvider } from './api.js';
+import { closeSandboxSession, getSandbox } from './api.js';
+import { registerSandboxDiagnostics as sandboxExtension } from './diagnostic-registration.js';
 import { discoverBroker } from './discovery.js';
-import sandboxExtension from './extension.js';
+import { FixtureConfig } from './fixtures/config.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { getOutsideSandboxExecutor } from './outside-execution.js';
@@ -61,13 +56,19 @@ async function fixture(
 
 	const current: { pi?: ExtensionAPI; context?: ExtensionContext } = {};
 
+	const config = new FixtureConfig();
+
 	await withPiRuntime(
 		[
 			{ name: 'framework', factory: sandboxExtension },
 			{
 				name: 'provider',
 				factory(pi) {
-					registerSandboxProvider(pi, {
+					if (mode === 'default') {
+						return;
+					}
+
+					config.activate(pi, {
 						id: 'fixture',
 						label: 'In-memory fixture; no OS isolation.',
 						protocolVersion: 1,
@@ -115,6 +116,12 @@ async function fixture(
 						current.context = context;
 					});
 				}
+			},
+			{
+				name: 'execution-settings',
+				factory: (pi) => {
+					config.bind(pi);
+				}
 			}
 		],
 		async (runtime, errors) => {
@@ -135,27 +142,20 @@ async function fixture(
 		},
 		{
 			includeBuiltins: true,
-			async prepare(_directory, agentDirectory) {
+			prepare(_directory, agentDirectory) {
 				vi.stubEnv('PI_CODING_AGENT_DIR', agentDirectory);
-
-				if (mode === 'default') {
-					return;
-				}
-
-				const config =
+				config.set(
 					mode === 'invalid-config'
-						? `{"token":"${secret}",`
-						: JSON.stringify({
-								provider: 'fixture',
-								policy: backend.policy,
+						? 'invalid'
+						: {
 								providerConfig: { token: secret },
+								policy: backend.policy,
 								...(mode === 'outside' && {
 									outsideSandbox: { destination: 'provider' },
 									approval: { policy: 'always' }
 								})
-							});
-
-				await writeFile(path.join(agentDirectory, 'byos.json'), config);
+							}
+				);
 			}
 		}
 	);
@@ -260,7 +260,7 @@ it('reports the target and effective policy after acquisition', async () => {
 					{
 						display: true,
 						content:
-							'Provider: fixture (personal)\nState: ready\nGeneration: <generation>\nBackend: memory\nTarget: /remote/project (remote)\nEffective policy: workspace read-write; filesystem provider-default; network provider-default\nOperations: exec, files.read, files.write, files.list\nTermination scope: workload\nShells: none\nUser shell: unavailable\nProvider description: In-memory fixture; no OS isolation.\nBoundary: In-memory test fixture; no OS isolation.\nApproval policy: user\nOutside execution destination: normal\nOutside native Pi shell termination scope: none\nPi shell integration: not requested; routing unverified.'
+							'Provider: fixture (extension)\nState: ready\nGeneration: <generation>\nBackend: memory\nTarget: /remote/project (remote)\nEffective policy: workspace read-write; filesystem provider-default; network provider-default\nOperations: exec, files.read, files.write, files.list\nTermination scope: workload\nShells: none\nUser shell: unavailable\nProvider description: In-memory fixture; no OS isolation.\nBoundary: In-memory test fixture; no OS isolation.\nApproval policy: user\nOutside execution destination: normal\nOutside native Pi shell termination scope: none\nPi shell integration: not requested; routing unverified.'
 					}
 				]
 			});
@@ -522,6 +522,70 @@ it('shows outside-provider warnings without opening the ordinary sandbox', async
 			expect(content).toContain('Outside execution diagnostics:');
 			expect(content).toContain('Outside runtime warning');
 			expect(content).not.toContain('outside workload');
+		}
+	);
+});
+
+it('displays resolver diagnostics after configuration fails without exposing its cause', async () => {
+	const backend = new MemoryBackend();
+	const open = vi.fn(() => Promise.resolve(backend));
+
+	await withPiRuntime(
+		[
+			{ name: 'diagnostics', factory: sandboxExtension },
+			{
+				name: 'provider',
+				factory(pi) {
+					registerSandboxProvider(
+						pi,
+						{
+							id: 'configuration-fixture',
+							label: 'Configuration fixture',
+							protocolVersion: 1,
+							capabilities: backend.capabilities,
+							defaultPolicy: backend.policy,
+							policies: {
+								workspaceAccess: ['read-write'],
+								filesystemScope: ['provider-default'],
+								networkAccess: ['provider-default']
+							},
+							validateConfig: () => ({}),
+							open
+						},
+						{
+							configure(scope) {
+								scope.reportDiagnostic({
+									level: 'warning',
+									message: 'sandbox-settings.json: runtime must be a string.'
+								});
+
+								throw new Error('PRIVATE_CONFIGURATION_VALUE');
+							}
+						}
+					);
+				}
+			}
+		],
+		async (runtime, errors) => {
+			await runtime.session.prompt('/byos status');
+
+			const output = JSON.stringify(messages(runtime));
+
+			expect({
+				hasStartupError: errors.length > 0,
+				hasFailure: output.includes('InvalidSandboxConfigError'),
+				hasDiagnostic: output.includes(
+					'sandbox-settings.json: runtime must be a string.'
+				),
+				leaksCause: output.includes('PRIVATE_CONFIGURATION_VALUE'),
+				openings: open.mock.calls
+			}).toStrictEqual({
+				hasStartupError: true,
+				hasFailure: true,
+				hasDiagnostic: true,
+				leaksCause: false,
+				openings: []
+			});
 		}
 	);
 });

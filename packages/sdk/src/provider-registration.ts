@@ -1,16 +1,21 @@
-import type { SandboxHost, SandboxProvider } from './contracts.js';
+import type {
+	SandboxHost,
+	SandboxProvider,
+	SandboxProviderRegistration
+} from './contracts.js';
 import { isDiscoveryRequest } from './discovery.js';
 import {
 	InvalidSandboxConfigError,
-	InvalidSandboxDeclarationError
+	InvalidSandboxDeclarationError,
+	isSandboxError
 } from './errors.js';
-import { isSandboxError } from './errors.js';
 import type {
 	ConfiguredProviderV1,
 	ProviderServiceV1,
 	ServiceAdvertisementV1
 } from './protocol.js';
 import { PROVIDER_DISCOVERY_CHANNEL } from './protocol.js';
+import { registerProviderConfig } from './runtime-settings.js';
 import { checker } from './schemas.js';
 import { providerDeclarationSchema } from './service-schemas.js';
 import {
@@ -29,18 +34,27 @@ later; duplicate IDs are rejected during discovery.
 
 @typeParam Config - Provider-specific configuration returned by validation
 and received by opening.
+@typeParam Input - Raw validator input, defaulting to Config. Specify a separate
+type when validation transforms its input. Resolver values do not infer this type.
 @throws {@link InvalidSandboxDeclarationError} if the declaration is
 malformed or uses a reserved ID.
 */
-export function registerSandboxProvider<Config>(
+export function registerSandboxProvider<Config, Input = Config>(
 	pi: SandboxHost,
-	provider: SandboxProvider<Config>
+	provider: SandboxProvider<Config>,
+	options?: NoInfer<SandboxProviderRegistration<Input>>
 ): void {
 	if (!isProviderDeclaration(provider)) {
 		throw new InvalidSandboxDeclarationError({
 			operation: 'discover'
 		});
 	}
+
+	registerProviderConfig(
+		pi,
+		provider.id,
+		options?.configure ?? (() => ({ configuration: {} }))
+	);
 
 	const { id } = provider;
 	const validate = provider.validateConfig.bind(provider);

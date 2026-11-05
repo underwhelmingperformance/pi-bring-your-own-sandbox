@@ -11,7 +11,10 @@ export {
 } from './approval-errors.js';
 export { closeSandboxSession, getSandbox, negotiateSandbox } from './client.js';
 export type * from './contracts.js';
+export { registerSandboxDiagnostics } from './diagnostic-registration.js';
 export {
+	ConflictingSandboxConfigError,
+	ConflictingSandboxProviderError,
 	DuplicateBrokerError,
 	DuplicateProviderError,
 	IncompatibleSandboxProtocolError,
@@ -69,4 +72,8 @@ export {
 	PROVIDER_DISCOVERY_CHANNEL
 } from './protocol.js';
 export { registerSandboxProvider } from './provider-registration.js';
+export {
+	configureExecutionApproval,
+	configureOutsideExecution
+} from './runtime-settings.js';
 export { HOST_CONFIGURATION_PROTECTION } from './workspace-protection.js';

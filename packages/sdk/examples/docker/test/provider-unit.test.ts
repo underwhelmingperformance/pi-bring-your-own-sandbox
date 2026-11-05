@@ -7,12 +7,12 @@ import {
 	closeSandboxSession,
 	getSandbox,
 	initialiseSandboxHost,
-	registerSandboxProvider,
 	SandboxTransportError
 } from 'pi-bring-your-own-sandbox/api';
 import { expect, it } from 'vitest';
 
 import { FakeClock } from '../../../src/fixtures/clock.js';
+import { FixtureConfig } from '../../../src/fixtures/config.js';
 import { withPiRuntime } from '../../../src/fixtures/pi-runtime.js';
 import { remainingBudget } from '../../../src/fixtures/remaining-budget.js';
 import { OperationScope } from '../../../src/lifecycle.js';
@@ -221,15 +221,15 @@ it('reports confirmed broker cleanup after Docker opening releases partial alloc
 
 	docker.bootstrapStatus = 1;
 
-	let agentDirectory = '';
+	const config = new FixtureConfig();
 
 	await withPiRuntime(
 		[
 			{
 				name: 'docker',
 				factory(pi) {
-					initialiseSandboxHost(pi, { agentDirectory });
-					registerSandboxProvider(
+					initialiseSandboxHost(pi, {});
+					config.activate(
 						pi,
 						createDockerProvider(() => docker)
 					);
@@ -251,6 +251,12 @@ it('reports confirmed broker cleanup after Docker opening releases partial alloc
 						}
 					});
 				}
+			},
+			{
+				name: 'execution-settings',
+				factory: (pi) => {
+					config.bind(pi);
+				}
 			}
 		],
 		async (runtime, errors) => {
@@ -258,16 +264,12 @@ it('reports confirmed broker cleanup after Docker opening releases partial alloc
 			expect(errors).toStrictEqual([]);
 		},
 		{
-			async prepare(_directory, runtimeDirectory) {
-				agentDirectory = runtimeDirectory;
-				await writeFile(
-					path.join(agentDirectory, 'byos.json'),
-					JSON.stringify({
-						provider: 'example.docker',
-						policy: request.policy,
-						providerConfig: request.configuration
-					})
-				);
+			prepare(_directory, _runtimeDirectory) {
+				config.set({
+					provider: 'example.docker',
+					policy: request.policy,
+					providerConfig: request.configuration
+				});
 			}
 		}
 	);
@@ -579,8 +581,6 @@ it('releases a partial allocation when copying the workspace fails', async () =>
 		hasVolume: false
 	});
 });
-import { writeFile } from 'node:fs/promises';
-import path from 'node:path';
 
 it.each(['volume', 'container'] as const)(
 	'keeps %s creation uncertain after an empty cleanup query',

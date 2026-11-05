@@ -5,20 +5,17 @@ import { discoverProviders } from './discovery.js';
 import { runtimeSettings } from './runtime-settings.js';
 import { ensureBroker } from './service.js';
 
-export function ensureSandboxService(pi: SandboxHost, agentDirectory?: string) {
+export function ensureSandboxService(pi: SandboxHost) {
 	return ensureBroker(
 		pi.events,
 		(id) =>
 			new SandboxBroker(id, pi, {
+				diagnostics: runtimeSettings(pi).diagnostics,
 				providers: () => [
 					...builtinProviders.providers,
 					...discoverProviders(pi.events)
 				],
-				readConfig: () =>
-					runtimeSettings(
-						pi,
-						agentDirectory === undefined ? undefined : { agentDirectory }
-					).read()
+				readConfig: (context) => runtimeSettings(pi).read(context)
 			})
 	);
 }

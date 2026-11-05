@@ -36,9 +36,8 @@ Optional Pi integration connects public backend-operation hooks to the service.
 Pi remains responsible for tool algorithms, rendering and input handling.
 Missing hooks and execution paths that bypass those hooks require upstream Pi
 changes. The framework does not replace Pi executors to compensate for those
-gaps. The optional broker extension provides diagnostics and early service
-registration; it is not a prerequisite for SDK consumers. Neither SDK use nor
-loading that extension replaces Pi tools.
+gaps. Provider extensions can register optional diagnostics through
+`registerSandboxDiagnostics`. SDK use does not replace Pi tools.
 
 The framework supports foreground execution with streamed output, cancellation
 and deadlines; optional filesystem and search capabilities; session cleanup;
@@ -72,20 +71,19 @@ the host or automatically repeats a possibly completed remote operation.
 
 ## Packaging and extension author workflow
 
-Use one npm package, provisionally `pi-bring-your-own-sandbox`, with these entry
-points:
+The `pi-bring-your-own-sandbox` SDK package provides these entry points:
 
-| Entry point  | Purpose                                                                                                                              |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `/api`       | Provider and consumer types, registration, discovery and typed errors. No broker state or resource allocation on import.             |
-| `/extension` | Default Pi factory for the broker. This is the sole default `pi.extensions` entry.                                                   |
-| `/pi-tools`  | Optional Pi factory for tool routing. Users load this entry explicitly through a local extension or an explicit extension-file path. |
-| `/testing`   | Reusable provider contract-test definitions, with Vitest as an optional test peer. Production entry points do not import Vitest.     |
+| Entry point | Purpose                                                                                                                              |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `/api`      | Provider and consumer types, registration, discovery and typed errors. No broker state or resource allocation on import.             |
+| `/pi-tools` | Optional Pi factory for tool routing. Users load this entry explicitly through a local extension or an explicit extension-file path. |
+| `/testing`  | Reusable provider contract-test definitions, with Vitest as an optional test peer. Production entry points do not import Vitest.     |
 
-These are subpath exports of one package, not separate SDK, broker, adapter or
-passthrough packages. External providers and consumers are independently
-distributed Pi extensions. The built-in passthrough backend and on-demand broker
-service are included in the framework package.
+These are subpath exports of the SDK package. The optional
+`pi-bring-your-own-sandbox-guard` package provides a separate Pi extension.
+External providers and consumers are independently distributed Pi extensions.
+The built-in passthrough backend and on-demand broker service are included in
+the framework package.
 
 | Package role                | Dependency relationship                                                                                                                                                                     |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -110,7 +108,7 @@ Publish JavaScript and declarations for importable subpaths. Include the broker
 and adapter JavaScript in the tarball. Pi supplies its own runtime packages;
 declare them as peers, keep development versions pinned for tests and never
 bundle them. Consumer/provider packages declare the SDK dependency explicitly.
-Installing that dependency does not load the broker extension in Pi. It is
+Installing the SDK dependency does not register Pi tools or commands. It is
 sufficient for the consumer to use `/api`: the SDK can initialise the shared
 service without a separate framework installation or a Pi settings entry.
 
@@ -204,8 +202,8 @@ through the calling extension's Pi API, then acquires through that service.
 Discovery and publication must complete without an intervening await, so two SDK
 copies cannot each create a service before the other's registration becomes
 visible. The service owns its generation state and lifecycle handlers; it is not
-stored in a module singleton. The optional broker extension uses the same
-ensure-service operation and reuses an existing compatible service.
+stored in a module singleton. Diagnostics use the same ensure-service operation
+and reuse an existing compatible service.
 
 Duplicate, malformed or incompatible broker replies are errors; they do not
 trigger creation of a second service. Backend startup and errors travel through
@@ -238,56 +236,52 @@ cannot modify a closed collection.
 
 ## Selection and configuration
 
-Read personal configuration from the host-bound agent directory's `byos.json`,
-or from `getAgentDir()/byos.json` for the ordinary CLI. An embedded host with an
-explicit Pi `agentDir` must call `initialiseSandboxHost` from its first
-extension factory with that directory. Binding after service creation fails.
-Configuration comes from this personal file only. Provider-specific settings are
-under `providerConfig`. Invalid JSON, unknown framework keys and unknown
-provider IDs are errors. An absent file selects the defaults; other read errors
-propagate. A broken `byos.json` symlink is a configuration error. Preserve
-provider-specific values without coercion so the selected provider can validate
-its own input type. Configuration errors identify the personal source
-independently of provider selection.
+A provider extension calls `registerSandboxProvider(pi, provider, options)`
+during its factory. Registration activates the provider without resolving
+settings or allocating resources. The optional `configure` callback returns
+`configuration`, a complete base `policy`, optional `userShell` and cleanup
+overrides. The policy may be omitted when the provider declares `defaultPolicy`.
+Without a callback, provider input defaults to an empty object.
 
-When personal configuration has no `provider` field, select the built-in
-`passthrough` provider. No configuration file is required. A configured
-`provider` must be a valid ID; null, an empty value or an unknown ID is an
-error. Installing a provider extension does not select it automatically, even if
-it is the only external provider. An explicit `provider: "passthrough"` selects
-normal host execution.
+The SDK does not read files or select providers from project settings. A
+provider extension chooses its configuration source and validates provider input
+through `validateConfig`. The callback receives the live Pi context, a shared
+abort signal and the configuration deadline. Resolution runs once after
+extension loading and is shared across callers. Cancelling an acquisition does
+not cancel shared resolution. Shutdown cancels resolution, and failures remain
+errors for that runtime generation.
 
-| Situation                                                                      | Behaviour                                                            |
-| ------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| Consumer uses the SDK with no sandbox/framework installation or configuration. | Create the shared service on demand and use built-in host execution. |
-| A provider extension is installed but not selected.                            | Continue using `passthrough`.                                        |
-| Configuration selects an available provider.                                   | Use that provider for every consumer of this service.                |
-| The selected provider is missing, fails to start or loses its transport.       | Return an error; do not execute on the host.                         |
-| Configuration is invalid or cannot be read.                                    | Return a configuration error; do not assume the default.             |
+Configuration resolvers can call `reportDiagnostic` with a user-facing warning,
+including the configuration path and invalid field. Configuration and ordinary
+backend diagnostics share the runtime's bounded store. Status includes these
+warnings even when configuration fails. Raw exception causes remain private;
+reports after the resolver finishes are ignored.
 
-Approval policy selection and the destination for explicit outside execution are
-independent of sandbox provider selection. Their contracts are specified in
-[approval and outside execution][approval-execution]. Ordinary sandbox failures
-never request outside execution.
+Provider authors must choose their configuration directory explicitly. Pi 1.5.0
+extension contexts do not expose an agent directory passed through an embedding
+host's `agentDir` option. `getAgentDir()` uses the process-wide
+`PI_CODING_AGENT_DIR` setting or Pi's default directory, so that helper may
+select a different directory from the embedded runtime. A provider extension can
+accept a directory from its embedding host through a factory argument or
+closure. BYOS does not infer that directory from the working directory or
+session paths.
+
+With no activation, the built-in passthrough implementation is selected. One
+activation selects that provider for all consumers. Multiple activations, even
+with different IDs, are errors before resolution or allocation. Duplicate IDs
+and malformed declarations also fail. Loading order does not select a winner. A
+provider failure never selects passthrough.
+
+Approval and outside execution settings have separate callbacks:
+`configureExecutionApproval` and `configureOutsideExecution`. Each permits one
+binding per runtime generation. Conflicting bindings fail. The default approval
+policy is `user`, and the default outside destination is `normal`. An extension
+can supply either callback independently of the sandbox provider. Register all
+bindings before first use; reload to change them.
+
+[Approval and outside execution][approval-execution] specifies these services.
 
 [approval-execution]: approval-execution.md
-
-Illustrative configuration:
-
-```json
-{
-  "provider": "example.container",
-  "policy": {
-    "workspaceAccess": "read-write",
-    "filesystemScope": "workspace-only",
-    "networkAccess": "denied"
-  },
-  "userShell": "bash",
-  "providerConfig": {
-    "image": "example-image@sha256:replace-with-a-real-digest"
-  }
-}
-```
 
 The shared policy vocabulary is deliberately small:
 
@@ -304,7 +298,7 @@ The shared policy vocabulary is deliberately small:
   workspace inside a home directory remains accessible under workspace policy;
   selecting the home directory as the workspace exposes that directory.
   Arbitrary additional data grants require a different provider policy.
-- `workspaceProtection`: optional immutable resource requirements. Personal and
+- `workspaceProtection`: optional immutable resource requirements. Provider and
   consumer sets are combined. See [protected resources][workspace-protection].
 - `networkAccess`: `denied` or `provider-default`. Denied blocks outbound
   network access from sandboxed operations, including access through host
@@ -314,18 +308,18 @@ The shared policy vocabulary is deliberately small:
 
 Filesystem scope requirements have this ordering, from weakest to strongest:
 `provider-default`, `system-read-only`, `workspace-only`. Negotiation chooses
-the least restrictive supported value that satisfies both personal and consumer
+the least restrictive supported value that satisfies both base and consumer
 requirements. A backend must satisfy the same ordering after opening. A provider
 cannot advertise a restrictive value until independent probes verify normal
 access, denied host-home files, runtime symlink targets and conflicting grants.
 The provider test kit requires `verifyPolicy` for either restrictive value.
 
 A provider may declare a complete `defaultPolicy`. Each value must be among its
-supported policy values. When personal settings omit `policy`, use the selected
+supported policy values. When extension settings omit `policy`, use the selected
 provider's declared default. If the provider declares no default, require a
-complete personal policy. An explicit policy replaces the complete default and
-must still be supported; partial policies remain invalid. Installing an
-extension never selects it or changes the configured provider.
+complete base policy. An explicit policy replaces the complete default and must
+still be supported; partial policies remain invalid. Provider registration
+activates that provider; merely importing the SDK does not.
 
 Passthrough declares `read-write`, `provider-default` filesystem scope and
 `provider-default` network access through the same metadata as other providers.
@@ -349,11 +343,11 @@ control-plane traffic needed to operate a remote provider is separate from
 sandbox egress.
 
 Consumers can require capabilities and stricter common policy values when
-acquiring a handle. The broker negotiates each request against the personal
-policy and the selected provider's declaration. Omitted fields, and fields that
-request `provider-default`, keep the personal value. A request can tighten a
-field (`read-only` instead of `read-write`, `workspace-only` or `denied` instead
-of `provider-default`) but cannot loosen one, so the personal policy is both the
+acquiring a handle. The broker negotiates each request against the base policy
+and the selected provider's declaration. Omitted fields, and fields that request
+`provider-default`, keep the base value. A request can tighten a field
+(`read-only` instead of `read-write`, `workspace-only` or `denied` instead of
+`provider-default`) but cannot loosen one, so the base policy is both the
 default and the limit. The broker opens one backend from the selected provider
 for each distinct negotiated policy, and consumers that negotiate the same
 policy share it. A request that the declaration cannot satisfy fails before any
@@ -597,19 +591,17 @@ deadline, defaulting to ten seconds. Cleanup that cannot finish reports recovery
 metadata and relies on the provider's lease or expiry; the broker never reports
 successful cleanup from timeout alone.
 
-Personal `byos.json` can specify cleanup budgets:
+Provider configuration callbacks can specify cleanup budgets:
 
-```json
-{
-  "cleanup": {
-    "cancellationGraceMs": 8000,
-    "disposalTimeoutMs": 15000
-  }
-}
+```typescript
+configure: () => ({
+  configuration: {},
+  cleanup: { cancellationGraceMs: 8000, disposalTimeoutMs: 15000 }
+});
 ```
 
 Each value is an integer from 1 to 300,000 milliseconds. Embedding hosts can
-provide defaults through `initialiseSandboxHost`'s `cleanup` option. Personal
+provide defaults through `initialiseSandboxHost`'s `cleanup` option. Provider
 values override host defaults. The effective budgets are copied and frozen for
 the generation and exposed as `sandbox.cleanupBudgets`. Outside execution uses
 the same configuration. Consumers cannot extend a generation's cleanup budgets
@@ -692,7 +684,7 @@ The broker uses explicit states: initialising, idle, opening, ready, failed,
 closing and closed. Each backend has its own opening, ready or failed state and
 opening promise, and the broker creates at most one backend for each negotiated
 policy in a generation. The generation's reported state follows the backend for
-the personal policy. Both `session_start` and acquisition can initialise session
+the base policy. Both `session_start` and acquisition can initialise session
 metadata, so a consumer's earlier start handler cannot deadlock while waiting
 for the broker's later start handler.
 
@@ -749,8 +741,8 @@ supported embedding configuration.
 ## Optional Pi integration
 
 Integration is a separate opt-in extension entry. It supplies broker-backed
-operations through Pi's public extension points. Loading the default broker
-extension preserves Pi's tools and active tool selection.
+operations through Pi's public extension points. Registering diagnostics
+preserves Pi's tools and active tool selection.
 
 Pi owns argument preparation, edit matching, read ranges, image processing,
 search execution orchestration, truncation, progress updates, output schemas,

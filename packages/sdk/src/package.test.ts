@@ -161,7 +161,7 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 					.toSorted((left, right) => left.localeCompare(right))
 			).toStrictEqual(paths);
 
-			for (const subpath of ['api', 'extension', 'pi-tools', 'testing']) {
+			for (const subpath of ['api', 'pi-tools', 'testing']) {
 				expect(paths).toContain(`dist/${subpath}.js`);
 				expect(paths).toContain(`dist/${subpath}.d.ts`);
 				expect(paths).toContain(`src/${subpath}.ts`);
@@ -204,9 +204,9 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 					vitest: '5.0.5'
 				},
 				optional: { vitest: { optional: true } },
-				pi: { extensions: ['./src/extension.ts'] },
+				pi: undefined,
 				exports: Object.fromEntries(
-					['api', 'extension', 'pi-tools', 'testing'].map((entry) => [
+					['api', 'pi-tools', 'testing'].map((entry) => [
 						`./${entry}`,
 						{ types: `./dist/${entry}.d.ts`, import: `./dist/${entry}.js` }
 					])

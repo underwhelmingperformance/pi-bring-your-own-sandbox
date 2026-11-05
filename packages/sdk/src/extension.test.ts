@@ -35,7 +35,7 @@ async function load(extensionPath: string) {
 	}
 }
 
-it.each(['extension.ts', '../dist/extension.js'])(
+it.each(['fixtures/diagnostics-extension.ts'])(
 	'loads diagnostics through the Pi extension loader: %s',
 	async (extensionPath) => {
 		const result = await load(extensionPath);

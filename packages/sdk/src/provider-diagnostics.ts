@@ -12,6 +12,14 @@ export type DiagnosticReporter = (
 	diagnostic: unknown
 ) => void;
 
+export interface DiagnosticStore {
+	readonly record: DiagnosticReporter;
+	readonly snapshot: () => {
+		readonly entries: readonly SandboxDiagnosticRecord[];
+		readonly dropped: number;
+	};
+}
+
 const isDiagnostic = checker(
 	Type.Object({
 		level: Type.Literal('warning'),
@@ -39,7 +47,7 @@ function snapshotDiagnostic(input: unknown) {
 	}
 }
 
-export class ProviderDiagnostics {
+export class ProviderDiagnostics implements DiagnosticStore {
 	readonly #entries: SandboxDiagnosticRecord[] = [];
 	#dropped = 0;
 

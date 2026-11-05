@@ -1,14 +1,9 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-
 import { SessionManager } from '@earendil-works/pi-coding-agent';
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { acquireOptions } from './acquire-options.js';
 import { snapshotBackend } from './backend-snapshot.js';
 import type { SandboxConfig } from './config.js';
-import { readConfig } from './config.js';
 import type {
 	SandboxBackend,
 	SandboxContext,
@@ -104,69 +99,56 @@ it('records bounded provider warnings separately from process output and cleanup
 });
 
 it.each(['providerConfig', 'policy'] as const)(
-	'reports personal provenance for invalid %s',
+	'reports extension provenance for invalid %s',
 	async (field) => {
-		const directory = await mkdtemp(
-			path.join(tmpdir(), 'pi-byos-config-generation-')
+		const { generation, context, backend } = fixture(() =>
+			Promise.reject(new Error('Must not open.'))
 		);
-		const sources = {
-			agentDirectory: path.join(directory, 'agent'),
-			workspace: path.join(directory, 'workspace')
-		};
-		const backend = new MemoryBackend();
+
+		await generation.close();
+
+		const selected = new SandboxGeneration(context, {
+			readConfig: () =>
+				Promise.resolve({
+					selection: {
+						providerId: 'fixture',
+						source: 'extension',
+						policy:
+							field === 'policy'
+								? { ...backend.policy, filesystemScope: 'workspace-only' }
+								: backend.policy
+					},
+					providerConfig: {},
+					providerConfigSource: 'extension',
+					policySource: 'extension'
+				}),
+			providers: () => [
+				{
+					id: 'fixture',
+					label: 'Fixture',
+					capabilities: backend.capabilities,
+					policies: {
+						workspaceAccess: ['read-write'],
+						filesystemScope: ['provider-default'],
+						networkAccess: ['provider-default']
+					},
+					configure() {
+						throw new InvalidSandboxConfigError({ operation: 'configure' });
+					}
+				}
+			]
+		});
 
 		try {
-			await mkdir(sources.agentDirectory);
-			await mkdir(path.join(sources.workspace, '.pi'), { recursive: true });
-			await writeFile(
-				path.join(sources.agentDirectory, 'byos.json'),
-				JSON.stringify({
-					provider: 'fixture',
-					policy:
-						field === 'policy'
-							? { ...backend.policy, filesystemScope: 'workspace-only' }
-							: backend.policy,
-					providerConfig: { valid: false }
-				})
-			);
-
-			const context = {
-				cwd: sources.workspace,
-
-				sessionManager: SessionManager.inMemory(sources.workspace)
-			};
-			const generation = new SandboxGeneration(context, {
-				readConfig: () => readConfig(sources),
-				providers: () => [
-					{
-						id: 'fixture',
-						label: 'Fixture',
-						capabilities: backend.capabilities,
-						policies: {
-							workspaceAccess: ['read-write'],
-							filesystemScope: ['provider-default'],
-							networkAccess: ['provider-default']
-						},
-						configure() {
-							throw new InvalidSandboxConfigError({ operation: 'configure' });
-						}
-					}
-				]
+			await expect(selected.acquire(context)).rejects.toMatchObject({
+				name:
+					field === 'policy'
+						? 'UnsupportedSandboxPolicyError'
+						: 'InvalidSandboxConfigError',
+				configurationSource: 'extension'
 			});
-
-			try {
-				await expect(generation.acquire(context)).rejects.toMatchObject({
-					name:
-						field === 'policy'
-							? 'UnsupportedSandboxPolicyError'
-							: 'InvalidSandboxConfigError',
-					configurationSource: 'personal'
-				});
-			} finally {
-				await generation.close();
-			}
 		} finally {
-			await rm(directory, { recursive: true, force: true });
+			await selected.close();
 		}
 	}
 );
@@ -276,7 +258,7 @@ it('preserves the configuration source when recording a typed initialisation fai
 	const { context } = fixture();
 	const cause = new InvalidSandboxConfigError({
 		operation: 'configure',
-		configurationSource: 'personal'
+		configurationSource: 'extension'
 	});
 	const generation = new SandboxGeneration(context, {
 		providers: () => [],
@@ -285,7 +267,7 @@ it('preserves the configuration source when recording a typed initialisation fai
 
 	await expect(generation.acquire(context)).rejects.toMatchObject({
 		name: 'InvalidSandboxConfigError',
-		configurationSource: 'personal',
+		configurationSource: 'extension',
 		cause
 	});
 	await generation.close();
@@ -348,7 +330,7 @@ function fixture(
 			return Promise.resolve({
 				selection: {
 					providerId: 'fixture',
-					source: 'personal',
+					source: 'extension',
 					policy: backend.policy
 				},
 				providerConfig: {}
@@ -642,7 +624,7 @@ it('freezes provider services before asynchronous configuration completes', asyn
 	configGate.resolve({
 		selection: {
 			providerId: 'fixture',
-			source: 'personal',
+			source: 'extension',
 			policy: backend.policy
 		},
 		providerConfig: {}
@@ -723,7 +705,7 @@ it('closes before configuration completes without starting a provider afterwards
 	gate.resolve({
 		selection: {
 			providerId: 'fixture',
-			source: 'personal',
+			source: 'extension',
 			policy: backend.policy
 		},
 		providerConfig: {}

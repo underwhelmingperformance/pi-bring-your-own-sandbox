@@ -1,25 +1,28 @@
 # Approval and execution outside the sandbox
 
 Approval policies and execution providers are independently selected services.
-An extension can supply either service or both. Registration does not select a
-service. The framework includes the `user`, `always` and `never` approval
-policies; an unconfigured user gets `user`.
+An extension can supply either service or both. Approval policy registration
+does not select an approval policy. The framework includes the `user`, `always`
+and `never` approval policies; an unconfigured user gets `user`.
 
-## Personal settings
+## Extension-owned settings
 
-Configure these services in the personal agent directory's `byos.json`:
+Register independent callbacks during extension loading:
 
-```json
-{
-  "approval": { "policy": "user" },
-  "outsideSandbox": { "destination": "normal" }
-}
+```typescript
+import {
+  configureExecutionApproval,
+  configureOutsideExecution
+} from 'pi-bring-your-own-sandbox/api';
+
+configureExecutionApproval(pi, () => ({ policy: 'user' }));
+configureOutsideExecution(pi, () => ({ destination: 'normal' }));
 ```
 
-`approval.config` contains policy-specific input. Its validator receives that
-input unchanged; an omitted value becomes an empty object. Built-in policies
-accept an empty object only. Unknown policy IDs, invalid configuration and
-duplicate registrations produce errors.
+`config` in the approval selection contains policy-specific input. Its validator
+receives that input unchanged; an omitted value becomes an empty object.
+Built-in policies accept an empty object only. Unknown policy IDs, invalid
+configuration and duplicate registrations produce errors.
 
 `normal` is the default outside destination. SDK calls use the normal
 passthrough backend. Pi Bash and PowerShell calls use Pi's public normal shell
@@ -28,8 +31,9 @@ operations. An embedding host can provide another normal environment through
 
 `provider` selects the ordinary sandbox provider's optional `outsideSandbox`
 declaration. This can provide, for example, execution on the same remote machine
-with different restrictions. The provider validates its personal configuration
-and allocates this destination separately from its ordinary sandbox.
+with different restrictions. The provider validates its extension-owned
+configuration and allocates this destination separately from its ordinary
+sandbox.
 
 Configuration is fixed for a runtime generation. Reload to apply changes.
 
@@ -129,7 +133,7 @@ advertised restrictions.
 
 The framework owns approval and dispatch. An execution provider cannot select
 the approval policy. An extension that implements both services registers each
-service explicitly; personal settings select them independently.
+service explicitly; configuration callbacks select them independently.
 
 The optional `/pi-tools` entry adds `execution` and `justification` arguments to
 Pi's Bash and PowerShell definitions. `execution` defaults to `sandbox`; use

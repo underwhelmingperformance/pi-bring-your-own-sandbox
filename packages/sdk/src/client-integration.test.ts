@@ -12,16 +12,14 @@ import type { SandboxContext, SandboxHost } from './api.js';
 import {
 	closeSandboxSession,
 	getSandbox,
-	initialiseSandboxHost,
-	InvalidSandboxRequestError,
 	negotiateSandbox,
 	registerSandboxProvider,
-	SandboxInitialisationError,
 	SandboxStartupError
 } from './api.js';
 import { discoverBroker } from './discovery.js';
 import { createSandbox } from './facade.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
+import { FixtureConfig } from './fixtures/config.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { ScriptedModel } from './fixtures/scripted-model.js';
@@ -30,78 +28,6 @@ import { ensureBroker } from './service.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();
-});
-
-it.each(['', 'relative', '/tmp/invalid\0directory'])(
-	'rejects invalid host directory %j before publishing a service',
-	async (agentDirectory) => {
-		await fixture(async ({ pi }) => {
-			expect(() => {
-				initialiseSandboxHost(pi, { agentDirectory });
-			}).toThrow(InvalidSandboxRequestError);
-			expect(discoverBroker(pi.events)).toBeUndefined();
-			await Promise.resolve();
-		});
-	}
-);
-
-it('binds independent runtime directories across SDK copies without changing the process default', async () => {
-	expect(initialiseSandboxHost).toBeTypeOf('function');
-	vi.stubEnv('PI_CODING_AGENT_DIR', '/missing/byos-process-default');
-	await Promise.all(
-		['first', 'second'].map(async (providerId) => {
-			let agentDirectory = '';
-			let host: SandboxHost | undefined;
-			let liveContext: SandboxContext | undefined;
-
-			await withPiRuntime(
-				[
-					{
-						name: 'host-binding',
-						factory(pi) {
-							host = pi;
-							initialiseSandboxHost(pi, { agentDirectory });
-							pi.on('session_start', (_event, context) => {
-								liveContext = context;
-							});
-						}
-					}
-				],
-				async () => {
-					if (host === undefined || liveContext === undefined) {
-						throw new Error('Pi did not initialise the host fixture.');
-					}
-
-					const copy = await loadSdkInstance();
-
-					await expect(
-						copy.getSandbox(host, liveContext)
-					).rejects.toMatchObject({
-						name: 'ProviderNotFoundError',
-						providerId
-					});
-
-					const pi = host;
-
-					expect(() => {
-						initialiseSandboxHost(pi, { agentDirectory });
-					}).toThrow(SandboxInitialisationError);
-				},
-				{
-					async prepare(_directory, runtimeDirectory) {
-						agentDirectory = runtimeDirectory;
-						await writeFile(
-							path.join(agentDirectory, 'byos.json'),
-							JSON.stringify({
-								...fixtureConfig,
-								provider: providerId
-							})
-						);
-					}
-				}
-			);
-		})
-	);
 });
 
 interface ClientFixture {
@@ -117,6 +43,8 @@ async function fixture(
 ): Promise<void> {
 	const current: { pi?: SandboxHost; context?: SandboxContext } = {};
 
+	const config1 = new FixtureConfig();
+
 	await withPiRuntime(
 		[
 			{
@@ -128,7 +56,13 @@ async function fixture(
 					});
 				}
 			},
-			...extensions
+			...extensions,
+			{
+				name: 'execution-settings',
+				factory: (pi) => {
+					config1.bind(pi);
+				}
+			}
 		],
 		async (runtime, errors) => {
 			const { pi, context } = current;
@@ -151,6 +85,7 @@ function provider(open: () => Promise<MemoryBackend>): InlineExtension {
 		factory(pi) {
 			registerSandboxProvider(pi, {
 				id: 'fixture',
+				defaultPolicy: template.policy,
 				label: 'Fixture',
 				protocolVersion: 1,
 				capabilities: template.capabilities,
@@ -165,22 +100,6 @@ function provider(open: () => Promise<MemoryBackend>): InlineExtension {
 		}
 	};
 }
-
-async function selectFixtureProvider(context: SandboxContext): Promise<void> {
-	await writeFile(
-		path.join(context.cwd, 'agent', 'byos.json'),
-		JSON.stringify(fixtureConfig)
-	);
-}
-
-const fixtureConfig = {
-	provider: 'fixture',
-	policy: {
-		workspaceAccess: 'read-write',
-		filesystemScope: 'provider-default',
-		networkAccess: 'provider-default'
-	}
-};
 
 it('provides a shared host backend with only a consumer and no configuration', async () => {
 	await fixture(async ({ pi, context, errors }) => {
@@ -259,8 +178,6 @@ it('uses the same consumer operations with a configured provider and no broker e
 
 	await fixture(
 		async ({ pi, context, errors }) => {
-			await selectFixtureProvider(context);
-
 			const sandbox = await getSandbox(pi, context);
 
 			await sandbox.files.writeFile(
@@ -291,7 +208,7 @@ it('uses the same consumer operations with a configured provider and no broker e
 	);
 });
 
-it('keeps an installed but unselected provider idle', async () => {
+it('uses an activated provider without a selector file', async () => {
 	let opens = 0;
 
 	await fixture(
@@ -299,8 +216,8 @@ it('keeps an installed but unselected provider idle', async () => {
 			const sandbox = await getSandbox(pi, context);
 
 			expect({ provider: sandbox.providerId, opens }).toStrictEqual({
-				provider: 'passthrough',
-				opens: 0
+				provider: 'fixture',
+				opens: 1
 			});
 		},
 		[
@@ -313,61 +230,51 @@ it('keeps an installed but unselected provider idle', async () => {
 	);
 });
 
-it.each(['missing', 'startup'] as const)(
-	'persists an explicit provider %s failure without executing on the host',
-	async (failure) => {
-		await fixture(
-			async ({ pi, context }) => {
-				await selectFixtureProvider(context);
+it('persists an explicit provider startup failure without executing on the host', async () => {
+	await fixture(
+		async ({ pi, context }) => {
+			const name = 'SandboxStartupError';
 
-				const name =
-					failure === 'missing'
-						? 'ProviderNotFoundError'
-						: 'SandboxStartupError';
+			await expect(getSandbox(pi, context)).rejects.toMatchObject({
+				name,
+				providerId: 'fixture',
+				configurationSource: 'extension'
+			});
+			await expect(getSandbox(pi, context)).rejects.toMatchObject({
+				name,
+				providerId: 'fixture'
+			});
 
-				await expect(getSandbox(pi, context)).rejects.toMatchObject({
-					name,
-					providerId: 'fixture',
-					configurationSource: 'personal'
-				});
-				await expect(getSandbox(pi, context)).rejects.toMatchObject({
-					name,
-					providerId: 'fixture'
-				});
+			const broker = discoverBroker(pi.events);
+			const status = await broker?.status(context);
 
-				const broker = discoverBroker(pi.events);
-				const status = await broker?.status(context);
-
-				expect({
-					state: status?.state,
-					backendId: status?.backendId
-				}).toStrictEqual({ state: 'failed', backendId: undefined });
-			},
-			failure === 'startup'
-				? [
-						provider(() =>
-							Promise.reject(
-								new SandboxStartupError({
-									operation: 'open',
-									providerId: 'fixture'
-								})
-							)
-						)
-					]
-				: []
-		);
-	}
-);
+			expect({
+				state: status?.state,
+				backendId: status?.backendId
+			}).toStrictEqual({ state: 'failed', backendId: undefined });
+		},
+		[
+			provider(() =>
+				Promise.reject(
+					new SandboxStartupError({
+						operation: 'open',
+						providerId: 'fixture'
+					})
+				)
+			)
+		]
+	);
+});
 
 it.each(['{', '{"provider":null}', '{"unexpected":true}'])(
-	'rejects invalid configuration before selecting host execution: %s',
+	'ignores obsolete selector files: %s',
 	async (config) => {
 		await fixture(async ({ pi, context }) => {
 			await writeFile(path.join(context.cwd, 'agent', 'byos.json'), config);
-			await expect(getSandbox(pi, context)).rejects.toMatchObject({
-				name: 'InvalidSandboxConfigError',
-				configurationSource: 'personal'
-			});
+
+			const sandbox = await getSandbox(pi, context);
+
+			expect(sandbox.providerId).toBe('passthrough');
 		});
 	}
 );

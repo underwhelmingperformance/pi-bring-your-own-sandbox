@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 
 import type {
@@ -14,13 +14,10 @@ import type {
 	SandboxPolicy
 } from 'pi-bring-your-own-sandbox/api';
 import * as sandboxClient from 'pi-bring-your-own-sandbox/api';
-import {
-	closeSandboxSession,
-	getSandbox,
-	registerSandboxProvider
-} from 'pi-bring-your-own-sandbox/api';
+import { closeSandboxSession, getSandbox } from 'pi-bring-your-own-sandbox/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { FixtureConfig } from '../../../src/fixtures/config.js';
 import { withPiRuntime } from '../../../src/fixtures/pi-runtime.js';
 import { ScriptedModel } from '../../../src/fixtures/scripted-model.js';
 import sandboxTools from '../../../src/pi-tools.js';
@@ -55,6 +52,8 @@ async function withDockerSession(
 	const current: { pi?: SandboxHost; context?: SandboxContext } = {};
 
 	try {
+		const config = new FixtureConfig();
+
 		await withPiRuntime(
 			[
 				{
@@ -66,7 +65,7 @@ async function withDockerSession(
 
 						const prepared = fixture;
 
-						registerSandboxProvider(
+						config.activate(
 							pi,
 							createDockerProvider(() => prepared.providerClient())
 						);
@@ -76,7 +75,13 @@ async function withDockerSession(
 						});
 					}
 				},
-				...extensions
+				...extensions,
+				{
+					name: 'execution-settings',
+					factory: (pi) => {
+						config.bind(pi);
+					}
+				}
 			],
 			async (runtime, errors) => {
 				const { pi, context } = current;
@@ -108,18 +113,15 @@ async function withDockerSession(
 				prepare: async (directory, agentDirectory) => {
 					fixture = await DockerFixture.create(directory);
 					vi.stubEnv('PI_CODING_AGENT_DIR', agentDirectory);
-					await writeFile(
-						path.join(agentDirectory, 'byos.json'),
-						JSON.stringify({
-							provider: 'example.docker',
-							providerConfig: fixture.config,
-							policy: {
-								workspaceAccess: 'read-write',
-								filesystemScope,
-								networkAccess: 'denied'
-							}
-						})
-					);
+					config.set({
+						provider: 'example.docker',
+						providerConfig: fixture.config,
+						policy: {
+							workspaceAccess: 'read-write',
+							filesystemScope,
+							networkAccess: 'denied'
+						}
+					});
 				}
 			}
 		);

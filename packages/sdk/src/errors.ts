@@ -32,10 +32,9 @@ export abstract class SandboxError<Name extends string = string> extends Error {
 	readonly operation: SandboxOperation;
 
 	/**
-	The personal settings file associated with a configuration
-	error.
+	The source of invalid extension configuration.
 	*/
-	declare readonly configurationSource?: 'personal';
+	declare readonly configurationSource?: 'extension';
 
 	/**
 	Provider identity, when known before the failure.
@@ -173,9 +172,9 @@ export class InvalidSandboxConfigError extends SandboxError<'InvalidSandboxConfi
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			InvalidSandboxConfigError.errorName,
-			context.configurationSource === 'personal'
-				? 'Personal sandbox settings are invalid. Check byos.json.'
-				: 'Sandbox settings are invalid. Check byos.json.',
+			context.configurationSource === 'extension'
+				? 'Sandbox extension settings are invalid. Check the extension configuration.'
+				: 'Sandbox settings are invalid. Check the extension configuration.',
 			context,
 			options
 		);
@@ -216,6 +215,44 @@ export class ProviderNotFoundError extends SandboxError<'ProviderNotFoundError'>
 		super(
 			ProviderNotFoundError.errorName,
 			'The selected sandbox provider is not installed.',
+			context,
+			options
+		);
+	}
+}
+
+/**
+Multiple extensions activated sandbox providers for one runtime.
+*/
+export class ConflictingSandboxProviderError extends SandboxError<'ConflictingSandboxProviderError'> {
+	/**
+ Stable identity recognised across independently installed SDK copies.
+ */
+	static readonly errorName = 'ConflictingSandboxProviderError';
+
+	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
+		super(
+			ConflictingSandboxProviderError.errorName,
+			'More than one sandbox provider is active. Disable the conflicting provider and reload.',
+			context,
+			options
+		);
+	}
+}
+
+/**
+Multiple extensions configured the same execution setting.
+*/
+export class ConflictingSandboxConfigError extends SandboxError<'ConflictingSandboxConfigError'> {
+	/**
+ Stable identity recognised across independently installed SDK copies.
+ */
+	static readonly errorName = 'ConflictingSandboxConfigError';
+
+	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
+		super(
+			ConflictingSandboxConfigError.errorName,
+			'More than one extension configured the same execution setting.',
 			context,
 			options
 		);
@@ -639,6 +676,14 @@ export function rehydrateSandboxError(
 
 		case 'ProviderNotFoundError': {
 			return new ProviderNotFoundError(context, options);
+		}
+
+		case 'ConflictingSandboxProviderError': {
+			return new ConflictingSandboxProviderError(context, options);
+		}
+
+		case 'ConflictingSandboxConfigError': {
+			return new ConflictingSandboxConfigError(context, options);
 		}
 
 		case 'DuplicateProviderError': {

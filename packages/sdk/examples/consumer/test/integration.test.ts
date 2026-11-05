@@ -1,5 +1,4 @@
-import { realpath, writeFile } from 'node:fs/promises';
-import path from 'node:path';
+import { realpath } from 'node:fs/promises';
 
 import type {
 	ExtensionAPI,
@@ -9,9 +8,9 @@ import type {
 	ProcessRequest,
 	SandboxProvider
 } from 'pi-bring-your-own-sandbox/api';
-import { registerSandboxProvider } from 'pi-bring-your-own-sandbox/api';
 import { afterEach, expect, it, vi } from 'vitest';
 
+import { FixtureConfig } from '../../../src/fixtures/config.js';
 import { connectionProvider } from '../../../src/fixtures/connection-provider.js';
 import { imageProvider } from '../../../src/fixtures/image-provider.js';
 import { messageScenario } from '../../../src/fixtures/message-provider.js';
@@ -26,13 +25,20 @@ afterEach(() => {
 
 function observedProvider<Config>(
 	provider: SandboxProvider<Config>,
-	calls: ProcessRequest[],
-	opening: string[]
+	{
+		calls,
+		opening,
+		configuration
+	}: {
+		calls: ProcessRequest[];
+		opening: string[];
+		configuration: FixtureConfig;
+	}
 ): InlineExtension {
 	return {
 		name: provider.id,
 		factory(pi) {
-			registerSandboxProvider(pi, {
+			configuration.activate(pi, {
 				...provider,
 				async open(request, context) {
 					opening.push(provider.id);
@@ -95,6 +101,7 @@ it.each([
 ] as const)('runs the same consumer tool with $provider', async (scenario) => {
 	const calls: ProcessRequest[] = [];
 	const opening: string[] = [];
+	const config = new FixtureConfig();
 	const model = new ScriptedModel([
 		{
 			type: 'toolCall',
@@ -107,10 +114,28 @@ it.each([
 	await withPiRuntime(
 		[
 			{ name: 'consumer-example', factory: consumerExtension },
-			observedProvider(imageProvider, calls, opening),
-			observedProvider(connectionProvider, calls, opening),
-			observedProvider(contractScenario().provider, calls, opening),
-			observedProvider(messageScenario().provider, calls, opening),
+			...[
+				observedProvider(imageProvider, {
+					calls,
+					opening,
+					configuration: config
+				}),
+				observedProvider(connectionProvider, {
+					calls,
+					opening,
+					configuration: config
+				}),
+				observedProvider(contractScenario().provider, {
+					calls,
+					opening,
+					configuration: config
+				}),
+				observedProvider(messageScenario().provider, {
+					calls,
+					opening,
+					configuration: config
+				})
+			].filter((extension) => extension.name === scenario.provider),
 			model.extension
 		],
 		async (runtime, errors) => {
@@ -163,18 +188,15 @@ it.each([
 			});
 		},
 		{
-			prepare: async (_directory, agentDirectory) => {
+			prepare: (_directory, agentDirectory) => {
 				vi.stubEnv('PI_CODING_AGENT_DIR', agentDirectory);
 
 				if (scenario.provider !== 'passthrough') {
-					await writeFile(
-						path.join(agentDirectory, 'byos.json'),
-						JSON.stringify({
-							provider: scenario.provider,
-							providerConfig: scenario.config,
-							policy: scenario.policy
-						})
-					);
+					config.set({
+						provider: scenario.provider,
+						providerConfig: scenario.config,
+						policy: scenario.policy
+					});
 				}
 			}
 		}
@@ -184,6 +206,7 @@ it.each([
 it('uses Pi approval before the consumer can acquire or execute', async () => {
 	const calls: ProcessRequest[] = [];
 	const opening: string[] = [];
+	const config = new FixtureConfig();
 	const model = new ScriptedModel([
 		{
 			type: 'toolCall',
@@ -205,7 +228,11 @@ it('uses Pi approval before the consumer can acquire or execute', async () => {
 	await withPiRuntime(
 		[
 			{ name: 'consumer-example', factory: consumerExtension },
-			observedProvider(imageProvider, calls, opening),
+			observedProvider(imageProvider, {
+				calls,
+				opening,
+				configuration: config
+			}),
 			model.extension,
 			approver
 		],
@@ -243,20 +270,17 @@ it('uses Pi approval before the consumer can acquire or execute', async () => {
 			});
 		},
 		{
-			prepare: async (_directory, agentDirectory) => {
+			prepare: (_directory, agentDirectory) => {
 				vi.stubEnv('PI_CODING_AGENT_DIR', agentDirectory);
-				await writeFile(
-					path.join(agentDirectory, 'byos.json'),
-					JSON.stringify({
-						provider: 'fixture.image',
-						providerConfig: { image: 'fixture-image' },
-						policy: {
-							workspaceAccess: 'read-write',
-							filesystemScope: 'provider-default',
-							networkAccess: 'provider-default'
-						}
-					})
-				);
+				config.set({
+					provider: 'fixture.image',
+					providerConfig: { image: 'fixture-image' },
+					policy: {
+						workspaceAccess: 'read-write',
+						filesystemScope: 'provider-default',
+						networkAccess: 'provider-default'
+					}
+				});
 			}
 		}
 	);

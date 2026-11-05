@@ -12,10 +12,6 @@
 			"types": "./src/api.ts",
 			"import": "./src/api.ts"
 		},
-		"./extension": {
-			"types": "./src/extension.ts",
-			"import": "./src/extension.ts"
-		},
 		"./pi-tools": {
 			"types": "./src/pi-tools.ts",
 			"import": "./src/pi-tools.ts"
@@ -37,11 +33,6 @@
 		"examples/consumer/src",
 		"README.md"
 	],
-	"pi": {
-		"extensions": [
-			"./src/extension.ts"
-		]
-	},
 	"peerDependencies": {
 		"@earendil-works/pi-coding-agent": "1.5.0",
 		"typebox": "1.3.27",
@@ -58,10 +49,6 @@
 			"./api": {
 				"types": "./dist/api.d.ts",
 				"import": "./dist/api.js"
-			},
-			"./extension": {
-				"types": "./dist/extension.d.ts",
-				"import": "./dist/extension.js"
 			},
 			"./pi-tools": {
 				"types": "./dist/pi-tools.d.ts",

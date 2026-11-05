@@ -19,9 +19,9 @@ For development, install the SDK from Git in the consumer extension project:
 pnpm add github:underwhelmingperformance/pi-bring-your-own-sandbox
 ```
 
-Pi loads the source exports. A separate `pi install` of BYOS is optional;
-consumer acquisition can initialise the framework. Installing BYOS as a Pi
-package does not add it to another extension's dependency tree.
+Pi loads the source exports. consumer acquisition can initialise the framework.
+Installing BYOS as a Pi package does not add it to another extension's
+dependency tree.
 
 For a compiled package, including use from plain Node, build and pack the
 checkout with pnpm. Its packed manifest selects the compiled SDK exports. Native
@@ -142,17 +142,14 @@ the failed operation or switch to passthrough.
 
 ## Host shutdown and tests
 
-An embedded host with an explicit Pi `agentDir` must initialise the framework
-from its first extension factory:
+An embedded host can provide cleanup defaults from its first extension factory:
 
 ```typescript
-initialiseSandboxHost(pi, { agentDirectory });
+initialiseSandboxHost(pi, { cleanup: { cancellationGraceMs: 8000 } });
 ```
 
-Import `initialiseSandboxHost` from `/api`. Pass the same absolute directory as
-Pi's `agentDir`, before the broker or consumer factories run. This binds the
-shared service for all SDK copies without changing the process environment. Late
-or repeated initialisation fails. The ordinary Pi CLI requires no binding.
+Import `initialiseSandboxHost` from `/api`. Initialise before other SDK services
+exist. Late or repeated binding fails. The ordinary Pi CLI requires no binding.
 
 Pi's session runtime emits the lifecycle events needed for cleanup. A host that
 embeds a raw `AgentSession` must call `closeSandboxSession(pi, context)` before

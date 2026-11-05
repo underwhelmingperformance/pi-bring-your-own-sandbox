@@ -6,12 +6,12 @@ within that workspace. It does not prevent reads. It applies to every provider
 operation, including arbitrary commands, file operations and searches that can
 cause mutations.
 
-Protection overrides writable workspace access and provider grants. Personal and
-consumer requirements are combined; a consumer cannot remove personal
-protections. Omission requests no resource-specific protection. A provider must
-advertise `workspace.protection`. Missing capability support fails before
-opening; providers must reject resources that they cannot enforce. The framework
-also validates the effective policy after opening and the consumer validates the
+Protection overrides writable workspace access and provider grants. Provider and
+consumer requirements are combined; a consumer cannot remove base protections.
+Omission requests no resource-specific protection. A provider must advertise
+`workspace.protection`. Missing capability support fails before opening;
+providers must reject resources that they cannot enforce. The framework also
+validates the effective policy after opening and the consumer validates the
 acquired handle. The capability is in the closed operation vocabulary, so an
 older broker rejects its declaration instead of silently accepting policy
 metadata that it does not understand.
@@ -21,7 +21,7 @@ Their existing filesystem guarantees remain separately negotiated. A read-only
 workspace alone does not establish resource immutability: Git can refer to
 external metadata, and writable aliases can expose the same underlying objects.
 
-## Resources and personal configuration
+## Resources and provider configuration
 
 Two resource forms are available:
 
@@ -41,25 +41,27 @@ and development-container lifecycle commands can all cause host-side execution.
 The preset protects these inputs. It does not make arbitrary modified source,
 package scripts or build files safe to execute on the host.
 
-Personal `byos.json` can expand the preset and add project-specific paths:
+A provider configuration callback can combine the preset with additional paths:
 
-```json
-{
-  "provider": "example.native",
-  "policy": {
-    "workspaceAccess": "read-write",
-    "filesystemScope": "system-read-only",
-    "networkAccess": "provider-default",
-    "workspaceProtection": {
-      "preset": "host-configuration",
-      "additionalPaths": [".custom-host-hooks"]
-    }
+```typescript
+import type { SandboxProviderConfig } from 'pi-bring-your-own-sandbox/api';
+import { HOST_CONFIGURATION_PROTECTION } from 'pi-bring-your-own-sandbox/api';
+
+const configure = (): SandboxProviderConfig<object> => ({
+  configuration: {},
+  policy: {
+    workspaceAccess: 'read-write',
+    filesystemScope: 'workspace-only',
+    networkAccess: 'denied',
+    workspaceProtection: [
+      ...HOST_CONFIGURATION_PROTECTION,
+      { kind: 'path', path: '.custom-host-hooks' }
+    ]
   }
-}
+});
 ```
 
-The provider receives ordinary typed resources after expansion, never the preset
-object. SDK requests use a resource array. Snapshots are deeply frozen,
+The provider receives a typed resource array. Snapshots are deeply frozen,
 duplicate and covered resources are removed, and ordering is deterministic for
 backend reuse. A combined policy can contain at most 128 resources after
 reduction; an oversized request fails before allocation. A protected parent

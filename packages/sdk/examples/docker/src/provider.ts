@@ -21,7 +21,7 @@ import {
 } from 'pi-bring-your-own-sandbox/api';
 
 import { NodeDockerClient } from './client.js';
-import { dockerConfig as dockerConfig } from './config.js';
+import { dockerConfig } from './config.js';
 import type {
 	DockerClient,
 	DockerConfig,
@@ -349,6 +349,11 @@ export function createDockerProvider(
 ): SandboxProvider<DockerConfig> {
 	return {
 		id: 'example.docker',
+		defaultPolicy: {
+			workspaceAccess: 'read-write',
+			filesystemScope: 'workspace-only',
+			networkAccess: 'denied'
+		},
 		label: 'Docker reference provider',
 		protocolVersion: 1,
 		capabilities: {

@@ -27,19 +27,14 @@ export type SandboxHost = Pick<
 	'events' | 'on' | 'sendMessage' | 'appendEntry'
 >;
 /**
-Configuration supplied by a host that creates Pi runtimes with an explicit
-agent directory. Each runtime requires its own event bus.
+Execution defaults supplied by an embedding host. Each runtime requires its
+own event bus.
 */
 export interface SandboxHostOptions {
 	/**
-	Trusted cleanup defaults. Personal cleanup settings override these values.
+	Cleanup defaults used unless the activated provider supplies overrides.
 	*/
 	readonly cleanup?: Partial<SandboxCleanupBudgets>;
-	/**
-	Absolute host directory containing the runtime's personal `byos.json`.
-	Pass the same directory as Pi's `agentDir` option.
-	*/
-	readonly agentDirectory: string;
 	/**
 	Normal execution environment supplied by an embedded host.
 	*/
@@ -915,15 +910,69 @@ export interface SandboxOpenRequest<Config = unknown> {
 }
 
 /**
+Live runtime context and shared startup budget supplied to configuration
+resolvers. Cancelling an individual acquisition does not cancel this resolver.
+*/
+export interface SandboxConfigContext extends SandboxOperationContext {
+	/**
+	Pi context for the runtime whose configuration is being resolved. Pi 1.5.0
+	does not expose an embedding host's custom agent directory here; providers
+	must obtain that directory from their host when needed.
+	*/
+	readonly pi: SandboxContext;
+}
+/**
+Reads extension-owned settings without allocating a backend. The SDK resolves
+and validates the returned settings once per runtime generation.
+*/
+export type SandboxConfigResolver<Value> = (
+	context: SandboxConfigContext
+) => Value | Promise<Value>;
+/**
+Provider-owned configuration and execution defaults. An omitted policy uses the
+provider declaration's default; provider configuration is never displayed.
+*/
+export interface SandboxProviderConfig<Config> {
+	/**
+ Typed input for the provider's configuration validator.
+ */
+	readonly configuration: Config;
+	/**
+ Base policy that consumer and guard requirements may tighten.
+ */
+	readonly policy?: SandboxPolicy;
+	/**
+ Target dialect for user-shell commands.
+ */
+	readonly userShell?: ShellDialect;
+	/**
+ Cleanup overrides for this runtime generation.
+ */
+	readonly cleanup?: Partial<SandboxCleanupBudgets>;
+}
+/**
+Activates a provider before resolving its extension-owned configuration. Omit
+the resolver only when the provider accepts empty configuration and has a
+default policy.
+@typeParam Input - Raw input accepted by the provider validator.
+*/
+export interface SandboxProviderRegistration<Input> {
+	/**
+	Returns raw input for the provider validator after extension factories complete.
+	*/
+	readonly configure: SandboxConfigResolver<SandboxProviderConfig<Input>>;
+}
+
+/**
 Provider declaration registered synchronously during a Pi extension factory.
-Validation must not allocate resources. Each generation opens at most one
-shared backend.
+Validation must not allocate resources. Consumers that request the same policy
+share one backend per generation.
 @typeParam Config - Provider-specific configuration returned by validation
 and received by opening.
 */
 export interface SandboxProvider<Config> {
 	/**
-	Complete policy to use when personal settings select this provider without
+	Complete policy to use when extension settings select this provider without
 	specifying a policy. Every value must be supported by `policies`.
 	*/
 	readonly defaultPolicy?: SandboxPolicy;
@@ -943,7 +992,7 @@ export interface SandboxProvider<Config> {
 	*/
 	readonly protocolVersion: 1;
 	/**
-	Optional execution destination selected independently through personal settings.
+	Optional execution destination selected independently through extension settings.
 	*/
 	readonly outsideSandbox?: OutsideSandboxProvider<Config>;
 
@@ -1248,9 +1297,9 @@ export interface SandboxErrorContext {
 	readonly operation: SandboxOperation;
 
 	/**
-	The settings file that could not be read or validated.
+	The extension-owned configuration that could not be resolved or validated.
 	*/
-	readonly configurationSource?: 'personal';
+	readonly configurationSource?: 'extension';
 
 	/**
 	The selected provider, if discovery or selection progressed far enough.
@@ -1370,10 +1419,7 @@ export interface SandboxClient {
 	Register synchronously during an extension factory. Declaration
 	validation and discovery registration do not allocate a backend.
 	*/
-	readonly registerSandboxProvider: <Config>(
-		pi: SandboxHost,
-		provider: SandboxProvider<Config>
-	) => void;
+	readonly registerSandboxProvider: typeof import('./provider-registration.js').registerSandboxProvider;
 
 	/**
 	Idempotently close this generation and return its bounded cleanup

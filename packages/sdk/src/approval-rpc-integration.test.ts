@@ -67,7 +67,7 @@ async function fixture(
 			})
 		);
 		await writeFile(
-			path.join(directory, 'agent/byos.json'),
+			path.join(directory, 'agent/approval-settings.json'),
 			JSON.stringify(
 				options.config ?? {
 					provider: 'rpc-provider',

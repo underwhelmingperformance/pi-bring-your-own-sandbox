@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { InlineExtension } from '@earendil-works/pi-coding-agent';
@@ -10,13 +10,14 @@ import { approvalDecisionSchema } from './approval-schemas.js';
 import type { SandboxConfig } from './config.js';
 import { registerApprovalPolicy } from './execution-approval.js';
 import { publishService } from './extension-services.js';
+import { FixtureConfig } from './fixtures/config.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { ScriptedModel } from './fixtures/scripted-model.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import { initialiseSandboxHost } from './host.js';
 import { outsideShellOperations } from './outside-shell-operations.js';
 import sandboxTools from './pi-tools.js';
-import { registerSandboxProvider } from './provider-registration.js';
+import { ProviderDiagnostics } from './provider-diagnostics.js';
 import { checker } from './schemas.js';
 
 const isDecision = checker(approvalDecisionSchema);
@@ -50,19 +51,20 @@ it.each([
 		const backend = shellBackend();
 		const reviewed: ExecutionApprovalRequest[] = [];
 		let ordinaryOpens = 0;
-		let agentDirectory = '';
+
 		let workspace = '';
+		const config = new FixtureConfig();
 		const extensions: InlineExtension[] = [
 			{
 				name: 'host',
 				factory(pi) {
-					initialiseSandboxHost(pi, { agentDirectory });
+					initialiseSandboxHost(pi, {});
 				}
 			},
 			{
 				name: 'provider',
 				factory(pi) {
-					registerSandboxProvider(pi, {
+					config.activate(pi, {
 						id: 'fixture',
 						label: 'Fixture sandbox',
 						protocolVersion: 1,
@@ -147,7 +149,15 @@ it.each([
 		];
 
 		await withPiRuntime(
-			extensions,
+			[
+				...extensions,
+				{
+					name: 'execution-settings',
+					factory: (pi) => {
+						config.bind(pi);
+					}
+				}
+			],
 			async (runtime, errors) => {
 				runtime.session.setActiveToolsByName([dialect]);
 
@@ -234,18 +244,14 @@ it.each([
 				).toStrictEqual([[JSON.stringify(reviewed[0])]]);
 			},
 			{
-				prepare: async (directory_, directory) => {
-					agentDirectory = directory;
+				prepare: (directory_, _directory) => {
 					workspace = directory_;
-					await writeFile(
-						path.join(directory, 'byos.json'),
-						JSON.stringify({
-							provider: 'fixture',
-							policy: backend.backend.policy,
-							approval: { policy: 'scripted-review' },
-							outsideSandbox: { destination }
-						})
-					);
+					config.set({
+						provider: 'fixture',
+						policy: backend.backend.policy,
+						approval: { policy: 'scripted-review' },
+						outsideSandbox: { destination }
+					});
 				}
 			}
 		);
@@ -253,14 +259,14 @@ it.each([
 );
 
 it('preserves native outside shell output on timeout', async () => {
-	let directory = '';
+	const config1 = new FixtureConfig();
 
 	await withPiRuntime(
 		[
 			{
 				name: 'timeout',
 				factory(pi) {
-					initialiseSandboxHost(pi, { agentDirectory: directory });
+					initialiseSandboxHost(pi, {});
 					pi.registerCommand('timeout', {
 						description: 'Exercise timeout output.',
 						async handler(_arguments, context) {
@@ -309,6 +315,12 @@ it('preserves native outside shell output on timeout', async () => {
 						}
 					});
 				}
+			},
+			{
+				name: 'execution-settings',
+				factory: (pi) => {
+					config1.bind(pi);
+				}
 			}
 		],
 		async (runtime, errors) => {
@@ -316,12 +328,8 @@ it('preserves native outside shell output on timeout', async () => {
 			expect(errors).toStrictEqual([]);
 		},
 		{
-			prepare: async (_cwd, agentDirectory) => {
-				directory = agentDirectory;
-				await writeFile(
-					path.join(directory, 'byos.json'),
-					JSON.stringify({ approval: { policy: 'always' } })
-				);
+			prepare: (_cwd, _agentDirectory) => {
+				config1.set({ approval: { policy: 'always' } });
 			}
 		}
 	);
@@ -357,6 +365,9 @@ it('includes configuration loading in the outside shell deadline', async () => {
 					const lifetime = new AbortController();
 					const settings = {
 						id: 'delayed-settings',
+						diagnostics: new ProviderDiagnostics(),
+						configurationVersion: 1 as const,
+						assertConfigurable: vi.fn(),
 						lifetime: lifetime.signal,
 						close() {
 							lifetime.abort();

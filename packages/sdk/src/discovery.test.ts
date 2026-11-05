@@ -2,7 +2,7 @@ import {
 	createEventBus,
 	SessionManager
 } from '@earendil-works/pi-coding-agent';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 
 import { InvalidSandboxConfigError, registerSandboxProvider } from './api.js';
 import { discoverBroker, discoverProviders } from './discovery.js';
@@ -250,9 +250,7 @@ it('registers a typed provider without allocating or validating configuration', 
 			appendEntry() {
 				throw new Error('Unexpected diagnostic entry.');
 			},
-			on() {
-				throw new Error('Registration must not subscribe to lifecycle events.');
-			}
+			on: vi.fn(() => vi.fn())
 		},
 		{
 			...imageProvider,
@@ -287,16 +285,14 @@ it('preserves explicit provider configuration provenance through registration', 
 			appendEntry() {
 				throw new Error('Unexpected diagnostic entry.');
 			},
-			on() {
-				throw new Error('Unexpected lifecycle subscription.');
-			}
+			on: vi.fn(() => vi.fn())
 		},
 		{
 			...imageProvider,
 			validateConfig() {
 				throw new InvalidSandboxConfigError({
 					operation: 'configure',
-					configurationSource: 'personal'
+					configurationSource: 'extension'
 				});
 			}
 		}
@@ -307,7 +303,7 @@ it('preserves explicit provider configuration provenance through registration', 
 	expect(() => service?.configure({})).toThrow(
 		expect.objectContaining({
 			name: 'InvalidSandboxConfigError',
-			configurationSource: 'personal'
+			configurationSource: 'extension'
 		})
 	);
 });
@@ -335,9 +331,7 @@ it.each([
 				appendEntry() {
 					throw new Error('Unexpected diagnostic entry.');
 				},
-				on() {
-					throw new Error('Unexpected lifecycle registration.');
-				}
+				on: vi.fn(() => vi.fn())
 			},
 			{
 				id: imageProvider.id,

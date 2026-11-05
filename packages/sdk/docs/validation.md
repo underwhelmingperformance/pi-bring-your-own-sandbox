@@ -42,7 +42,7 @@ and CodeQL results.
 Load the diagnostic extension without changing Pi settings:
 
 ```sh
-pi --no-extensions -e ./src/extension.ts
+pi --no-extensions -e ./examples/docker/src/index.ts
 ```
 
 Use `/byos status`, `/byos providers` or `/byos approval-policies` to inspect

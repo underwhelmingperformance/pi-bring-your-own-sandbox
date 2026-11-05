@@ -1,6 +1,3 @@
-import { writeFile } from 'node:fs/promises';
-import path from 'node:path';
-
 import type {
 	ExtensionAPI,
 	ExtensionContext,
@@ -15,15 +12,23 @@ import type {
 } from './approval-contracts.js';
 import { ApprovalDeniedError } from './approval-errors.js';
 import { closeSandboxSession, getSandbox } from './client.js';
-import type { SandboxBackend, SandboxProvider } from './contracts.js';
-import { UnsupportedSandboxCapabilityError } from './errors.js';
-import { UnconfirmedSandboxTerminationError } from './errors.js';
+import type {
+	SandboxBackend,
+	SandboxConfigContext,
+	SandboxProvider
+} from './contracts.js';
+import { ensureSandboxService } from './default-broker.js';
+import {
+	UnconfirmedSandboxTerminationError,
+	UnsupportedSandboxCapabilityError
+} from './errors.js';
 import {
 	APPROVAL_SERVICE_CHANNEL,
 	registerApprovalPolicy,
 	requestExecutionApproval
 } from './execution-approval.js';
 import { publishService } from './extension-services.js';
+import { FixtureConfig } from './fixtures/config.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { shellBackend } from './fixtures/shell-backend.js';
@@ -52,7 +57,7 @@ async function scenario({
 	run,
 	normalExecutor
 }: Scenario) {
-	let directory = '';
+	const config_ = new FixtureConfig();
 
 	await withPiRuntime(
 		[
@@ -60,7 +65,6 @@ async function scenario({
 				name: 'host',
 				factory(pi) {
 					initialiseSandboxHost(pi, {
-						agentDirectory: directory,
 						...(normalExecutor !== undefined && { normalExecutor })
 					});
 				}
@@ -74,6 +78,12 @@ async function scenario({
 						handler: (_arguments, context) => run(pi, context)
 					});
 				}
+			},
+			{
+				name: 'execution-settings',
+				factory: (pi) => {
+					config_.bind(pi);
+				}
 			}
 		],
 		async (runtime, errors) => {
@@ -81,12 +91,8 @@ async function scenario({
 			expect(errors).toStrictEqual([]);
 		},
 		{
-			prepare: async (_cwd, agentDirectory) => {
-				directory = agentDirectory;
-				await writeFile(
-					path.join(directory, 'byos.json'),
-					JSON.stringify(config)
-				);
+			prepare: (_cwd, _agentDirectory) => {
+				config_.set(config);
 			}
 		}
 	);
@@ -147,6 +153,7 @@ it.each(['allow', 'deny'] as const)(
 			id: 'remote',
 			label: 'Remote sandbox',
 			protocolVersion: 1,
+			defaultPolicy: backend.policy,
 			capabilities: backend.capabilities,
 			policies: {
 				workspaceAccess: ['read-write'],
@@ -250,6 +257,7 @@ it('fails when the selected provider has no outside capability', async () => {
 						id: 'fixture',
 						label: 'Fixture',
 						protocolVersion: 1,
+						defaultPolicy: backend.policy,
 						capabilities: backend.capabilities,
 						policies: {
 							workspaceAccess: ['read-write'],
@@ -488,6 +496,7 @@ it.each(['normal', 'provider'] as const)(
 							id: 'fixture',
 							label: 'Fixture',
 							protocolVersion: 1,
+							defaultPolicy: backend.policy,
 							capabilities: backend.capabilities,
 							policies: {
 								workspaceAccess: ['read-write'],
@@ -581,14 +590,14 @@ it('expires a queued user request without opening another confirmation', async (
 });
 
 it('reports native termination failures during Pi session shutdown', async () => {
-	let directory = '';
+	const config1 = new FixtureConfig();
 
 	await withPiRuntime(
 		[
 			{
 				name: 'cleanup',
 				factory(pi) {
-					initialiseSandboxHost(pi, { agentDirectory: directory });
+					initialiseSandboxHost(pi, {});
 					pi.registerCommand('unconfirmed', {
 						description: 'Record an unconfirmed native operation.',
 						async handler(_arguments, context) {
@@ -617,6 +626,12 @@ it('reports native termination failures during Pi session shutdown', async () =>
 						}
 					});
 				}
+			},
+			{
+				name: 'execution-settings',
+				factory: (pi) => {
+					config1.bind(pi);
+				}
 			}
 		],
 		async (runtime, errors) => {
@@ -638,11 +653,6 @@ it('reports native termination failures during Pi session shutdown', async () =>
 					'Cleanup: incomplete\nCleanup error: UnconfirmedSandboxTerminationError: The sandbox did not confirm termination. Operation completion is unknown.'
 				]
 			});
-		},
-		{
-			prepare: (_cwd, agentDirectory) => {
-				directory = agentDirectory;
-			}
 		}
 	);
 });
@@ -796,6 +806,72 @@ it('preserves the SDK deadline while an approval policy is still pending', async
 			await vi.advanceTimersByTimeAsync(10);
 			await failed;
 			decision.resolve({ kind: 'deny' });
+		}
+	});
+});
+
+it('retains configuration warnings when outside execution resolves settings first', async () => {
+	const backend = new MemoryBackend('exec');
+	const configure = vi.fn((context: SandboxConfigContext) => {
+		context.reportDiagnostic({
+			level: 'warning',
+			message: 'Using the extension configuration default.'
+		});
+
+		return { configuration: {} };
+	});
+	const open = vi.fn(() => Promise.resolve(backend));
+
+	await scenario({
+		config: {},
+		extensions: [
+			{
+				name: 'provider',
+				factory(pi) {
+					registerSandboxProvider(
+						pi,
+						{
+							id: 'fixture',
+							label: 'Configuration fixture',
+							protocolVersion: 1,
+							capabilities: backend.capabilities,
+							defaultPolicy: backend.policy,
+							policies: {
+								workspaceAccess: ['read-write'],
+								filesystemScope: ['provider-default'],
+								networkAccess: ['provider-default']
+							},
+							validateConfig: () => ({}),
+							open
+						},
+						{ configure }
+					);
+				}
+			}
+		],
+		async run(pi, context) {
+			await getOutsideSandboxExecutor(pi, context);
+
+			const status = await ensureSandboxService(pi).status(context);
+			const operationId: unknown = expect.any(String);
+
+			expect({
+				diagnostics: status.diagnostics,
+				resolutions: configure.mock.calls.length,
+				openings: open.mock.calls
+			}).toStrictEqual({
+				diagnostics: [
+					{
+						level: 'warning',
+						message: 'Using the extension configuration default.',
+						operation: 'configure',
+						operationId,
+						providerId: 'fixture'
+					}
+				],
+				resolutions: 1,
+				openings: []
+			});
 		}
 	});
 });

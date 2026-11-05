@@ -12,16 +12,22 @@ prerequisites, commands and platform limits.
 
 [validation]: validation.md
 
+Guard integration tests cover missing activation, expected provider IDs,
+capability and policy minima, combined requirements, independent SDK copies,
+late registration and Pi shell dispatch. Standalone guard tests load both source
+and compiled factories through Pi. Archive tests install the SDK and guard into
+an isolated host and use a provider with a separate SDK dependency root.
+
 ## Installation and configuration
 
 | User flow                                                                                                  | Integration evidence                                                                                                                                                                                                          |
 | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Install a consumer without configuring a sandbox or loading the diagnostic extension.                      | [Client integration][client] acquires default passthrough, performs host file operations and shares startup across SDK copies.                                                                                                |
-| Select a provider, or leave an installed provider unselected.                                              | [Client integration][client] verifies configured target operations, idle unselected providers and missing/startup-failed providers without host fallback.                                                                     |
+| Activate a provider or use default host execution.                                                         | [Client integration][client] verifies activated target operations and startup failures without host fallback. Activation integration checks conflicts, lazy resolution and shutdown.                                          |
 | Use extension-owned settings while a project contains conflicting selector files.                          | [Approval RPC integration][approval-rpc] starts Pi with conflicting project settings and verifies that extension activation and user approval still apply.                                                                    |
 | Supply invalid extension configuration.                                                                    | [Client integration][client] verifies that obsolete selector files are ignored and checks invalid declarations in a real Pi runtime. Approval RPC cases check invalid built-in policy configuration and missing policy IDs.   |
 | Load separate provider, policy and consumer extensions in any order, including separate SDK installations. | [Registration integration][registration] checks all six factory orders across independent SDK module graphs. The [archive gate][package] installs two independent package roots and exercises approval and outside execution. |
-| Embed Pi with an explicit agent directory or a different normal execution environment.                     | Client integration checks independent bound directories and rejected late/repeated bindings. [Outside execution integration][outside] uses an injected normal executor and verifies its destination and cleanup.              |
+| Embed Pi with cleanup defaults or a different normal execution environment.                                | Activation integration checks cleanup overrides. Client integration checks lifecycle and stale handles. [Outside execution integration][outside] uses an injected normal executor and verifies its destination and cleanup.   |
 
 [client]: ../src/client-integration.test.ts
 [approval-rpc]: ../src/approval-rpc-integration.test.ts

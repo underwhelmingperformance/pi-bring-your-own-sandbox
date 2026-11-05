@@ -39,6 +39,8 @@ export const ordinaryErrorNameSchema = Type.Enum([
 	'DuplicateProviderError',
 	'ConflictingSandboxConfigError',
 	'ConflictingSandboxProviderError',
+	'SandboxProviderRequiredError',
+	'SandboxProviderMismatchError',
 	'UnsupportedSandboxCapabilityError',
 	'UnsupportedSandboxPolicyError',
 	'SandboxStartupError',

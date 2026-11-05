@@ -52,6 +52,7 @@ export function ensureBroker(
 	};
 
 	const service = Object.freeze<BrokerServiceV1>({
+		guardVersion: 1,
 		id,
 		acquire: (context, options) =>
 			invoke((broker) => broker.acquire(context, options)),

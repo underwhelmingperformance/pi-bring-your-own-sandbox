@@ -5,23 +5,24 @@ Import the SDK from `pi-bring-your-own-sandbox/api`. Pi supplies the extension
 context and event bus. The supported host baseline is Pi 1.5.0.
 
 The user chooses a sandbox provider separately from installing a consumer.
-Without configuration, `getSandbox` returns the built-in host passthrough
+Without provider activation, `getSandbox` returns the built-in host passthrough
 backend. Selecting a provider changes subsequent consumer execution without a
-consumer source change. Configuration is cached for a generation; a new session
-or extension reload applies a changed selection. A configured provider failure
-is returned as an error.
+consumer source change. Configuration is cached for a runtime generation. Reload
+extensions to apply changed settings. A configured provider failure is returned
+as an error.
 
 ## Run the example
 
-For development, install the SDK from Git in the consumer extension project:
+For development, install the SDK package from a checkout into the consumer
+extension project:
 
 ```sh
-pnpm add github:underwhelmingperformance/pi-bring-your-own-sandbox
+pnpm add /absolute/path/to/pi-bring-your-own-sandbox/packages/sdk
 ```
 
-Pi loads the source exports. consumer acquisition can initialise the framework.
-Installing BYOS as a Pi package does not add it to another extension's
-dependency tree.
+Pi loads the source exports. Consumer acquisition initialises the shared service
+on demand. The SDK is a library dependency; provider extensions activate the
+execution environment separately.
 
 For a compiled package, including use from plain Node, build and pack the
 checkout with pnpm. Its packed manifest selects the compiled SDK exports. Native
@@ -31,8 +32,8 @@ Node cannot load the TypeScript source exports inside `node_modules`, and
 Build and pack this development checkout from the repository root:
 
 ```sh
-pnpm build
-pnpm pack --pack-destination /tmp/byos-artifacts
+pnpm --dir packages/sdk build
+pnpm --dir packages/sdk pack --pack-destination /tmp/byos-artifacts
 ```
 
 In an extension project, install the tarball:
@@ -49,15 +50,15 @@ provider][docker].
 
 [docker]: ../docker/README.md
 
-From this checkout, load the source directly:
+From `packages/sdk`, load the source directly:
 
 ```sh
 pi --no-extensions -e ./examples/consumer/src/index.ts
 ```
 
 No sandbox configuration is needed for host execution. To use Docker, load its
-provider extension and apply the explicit selection in the Docker guide. The
-same consumer files work in both cases.
+provider extension as described in the Docker guide. The same consumer files
+work in both cases.
 
 ## Acquire and execute
 

@@ -9,6 +9,11 @@ import {
 import { afterEach, expect, it, vi } from 'vitest';
 
 import {
+	configureExecutionApproval,
+	configureOutsideExecution,
+	initialiseSandboxHost
+} from './api.js';
+import {
 	closeSandboxSession,
 	getSandbox,
 	registerSandboxProvider
@@ -180,6 +185,96 @@ it('keeps shared configuration running when one caller cancels', async () => {
 			aborted: signal.aborted,
 			providerId: sandbox.providerId
 		}).toStrictEqual({ aborted: false, providerId: 'active' });
+	});
+});
+
+it.each(['approval', 'outside'] as const)(
+	'rejects conflicting %s configuration bindings before resolution',
+	async (domain) => {
+		await fixture(async (pi, context) => {
+			const approval = vi.fn(() => ({ policy: 'always' }));
+			const outside = vi.fn(() => ({ destination: 'normal' as const }));
+
+			for (const _binding of [1, 2]) {
+				if (domain === 'approval') {
+					configureExecutionApproval(pi, approval);
+					continue;
+				}
+
+				configureOutsideExecution(pi, outside);
+			}
+
+			await expect(getSandbox(pi, context)).rejects.toMatchObject({
+				name: 'ConflictingSandboxConfigError'
+			});
+			expect({
+				approval: approval.mock.calls,
+				outside: outside.mock.calls
+			}).toStrictEqual({ approval: [], outside: [] });
+		});
+	}
+);
+
+it('applies provider cleanup overrides to host defaults', async () => {
+	await fixture(async (pi, context) => {
+		initialiseSandboxHost(pi, {
+			cleanup: { cancellationGraceMs: 200, disposalTimeoutMs: 400 }
+		});
+		registerSandboxProvider(pi, provider('active', new MemoryBackend()), {
+			configure: () => ({
+				configuration: {},
+				cleanup: { cancellationGraceMs: 300 }
+			})
+		});
+
+		const sandbox = await getSandbox(pi, context);
+
+		expect(sandbox.cleanupBudgets).toStrictEqual({
+			cancellationGraceMs: 300,
+			disposalTimeoutMs: 400
+		});
+	});
+});
+
+it('cancels shared configuration on shutdown and ignores its late result', async () => {
+	await fixture(async (pi, context) => {
+		const backend = new MemoryBackend();
+		const open = vi.fn(() => Promise.resolve(backend));
+		const started = Promise.withResolvers<AbortSignal>();
+		const configured = Promise.withResolvers<{ configuration: object }>();
+
+		registerSandboxProvider(
+			pi,
+			{ ...provider('active', backend), open },
+			{
+				configure: (scope) => {
+					started.resolve(scope.signal);
+
+					return configured.promise;
+				}
+			}
+		);
+
+		const acquisition = getSandbox(pi, context);
+		const signal = await started.promise;
+		const failure = expect(acquisition).rejects.toMatchObject({
+			name: 'SandboxCancelledError',
+			reason: 'shutdown'
+		});
+		const report = await closeSandboxSession(pi, context);
+
+		await failure;
+		configured.resolve({ configuration: {} });
+		await Promise.resolve();
+		expect({
+			aborted: signal.aborted,
+			report,
+			openings: open.mock.calls
+		}).toStrictEqual({
+			aborted: true,
+			report: { confirmed: true, failures: [], recoveries: [] },
+			openings: []
+		});
 	});
 });
 

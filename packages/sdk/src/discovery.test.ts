@@ -436,3 +436,14 @@ it.each([false, true])(
 		});
 	}
 );
+
+it('rejects an independent broker without the required guard contract', () => {
+	const events = createEventBus();
+	const reply = brokerReply();
+
+	Reflect.deleteProperty(reply.service, 'guardVersion');
+	respond(events, 'pi-byos:discovery:v1:brokers', reply);
+	expect(() => discoverBroker(events)).toThrow(
+		expect.objectContaining({ name: 'InvalidSandboxDeclarationError' })
+	);
+});

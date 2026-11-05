@@ -367,6 +367,7 @@ it('includes configuration loading in the outside shell deadline', async () => {
 						id: 'delayed-settings',
 						diagnostics: new ProviderDiagnostics(),
 						configurationVersion: 1 as const,
+						guardVersion: 1 as const,
 						assertConfigurable: vi.fn(),
 						lifetime: lifetime.signal,
 						close() {

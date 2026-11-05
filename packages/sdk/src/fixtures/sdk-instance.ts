@@ -7,6 +7,7 @@ import type {
 	isApprovalError,
 	isSandboxError,
 	registerApprovalPolicy,
+	registerSandboxRequirement,
 	requestExecutionApproval,
 	SandboxCancelledError,
 	SandboxClient,
@@ -16,6 +17,7 @@ import { isRecord } from '../validation.js';
 
 interface FixtureApi extends SandboxClient {
 	readonly SandboxCancelledError: typeof SandboxCancelledError;
+	readonly registerSandboxRequirement: typeof registerSandboxRequirement;
 	readonly registerApprovalPolicy: typeof registerApprovalPolicy;
 	readonly requestExecutionApproval: typeof requestExecutionApproval;
 	readonly getOutsideSandboxExecutor: typeof getOutsideSandboxExecutor;
@@ -30,6 +32,7 @@ function isFixtureApi(value: unknown): value is FixtureApi {
 	return (
 		isRecord(value) &&
 		typeof value.getSandbox === 'function' &&
+		typeof value.registerSandboxRequirement === 'function' &&
 		typeof value.closeSandboxSession === 'function' &&
 		typeof value.registerSandboxProvider === 'function' &&
 		typeof value.isSandboxError === 'function' &&

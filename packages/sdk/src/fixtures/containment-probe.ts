@@ -43,6 +43,7 @@ export default async function probe(marker: string): Promise<void> {
 				name: 'peer-extension',
 				factory(pi) {
 					ensureBroker(pi.events, (id) => ({
+						guardVersion: 1,
 						id,
 						acquire: () => Promise.resolve(sandbox),
 						negotiate: () =>

@@ -23,7 +23,8 @@ import type {
 	SandboxErrorInfo,
 	SandboxOperation,
 	SandboxOperationContext,
-	SandboxPolicy
+	SandboxPolicy,
+	SandboxRequirements
 } from './contracts.js';
 import {
 	InvalidSandboxDeclarationError,
@@ -106,6 +107,7 @@ export class SandboxGeneration {
 	readonly #context: SandboxContext;
 	readonly #session: SessionIdentity;
 	readonly #dependencies: GenerationDependencies;
+	#requirements: readonly SandboxRequirements[] = [];
 	readonly #lifetime = new AbortController();
 	readonly #operations = new OperationRegistry();
 	readonly #mutations = new MutationQueue();
@@ -241,6 +243,7 @@ export class SandboxGeneration {
 			const config = await this.#dependencies.readConfig(this.#context);
 
 			this.#cleanup = resolveCleanupBudgets(config.cleanup);
+			this.#requirements = config.requirements ?? [];
 
 			if (this.#lifetime.signal.aborted) {
 				throw new SandboxSessionClosingError({ operation: 'configure' });
@@ -765,6 +768,10 @@ export class SandboxGeneration {
 			this.#assertOpen('acquire', slot);
 
 			const sandbox = createSandbox(this.#owner(context, slot, result.value));
+
+			for (const required of this.#requirements) {
+				checkRequirements(sandbox, required);
+			}
 
 			checkRequirements(sandbox, options);
 

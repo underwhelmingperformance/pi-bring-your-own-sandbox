@@ -21,3 +21,9 @@ the integration, package installation and real Docker suites. See the
 [development guide][development] for prerequisites.
 
 [development]: packages/sdk/docs/validation.md
+
+The optional [guard extension][guard] requires provider activation and can
+enforce minimum capabilities and policy for SDK consumers. The SDK remains
+usable without the guard or a sandbox provider.
+
+[guard]: packages/guard/README.md

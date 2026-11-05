@@ -51,7 +51,9 @@ function isConsumer(value: unknown): value is Consumer {
 
 const root = process.cwd();
 const apiUrl = import.meta.resolve('pi-bring-your-own-sandbox/api');
-const sdkRoot = path.dirname(path.dirname(fileURLToPath(apiUrl)));
+const sdkRoot = path.join(root, 'node_modules/pi-bring-your-own-sandbox');
+const guardPackage = 'pi-bring-your-own-sandbox-guard';
+const guardRoot = path.join(root, 'node_modules', guardPackage);
 
 assert.notEqual(
 	await realpath(fileURLToPath(apiUrl)),
@@ -142,6 +144,7 @@ const create: CreateAgentSessionRuntimeFactory = async (options) => {
 			noPromptTemplates: true,
 			noContextFiles: true,
 			additionalExtensionPaths: [
+				guardRoot,
 				path.join(sdkRoot, 'dist/pi-tools.js'),
 				path.join(consumer, 'index.ts')
 			],

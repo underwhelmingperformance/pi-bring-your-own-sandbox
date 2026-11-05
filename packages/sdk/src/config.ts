@@ -1,7 +1,8 @@
 import type { ApprovalSelection } from './approval-contracts.js';
 import type {
 	SandboxCleanupBudgets,
-	SandboxProviderConfig
+	SandboxProviderConfig,
+	SandboxRequirements
 } from './contracts.js';
 import {
 	InvalidSandboxConfigError,
@@ -14,6 +15,7 @@ import { isPolicy, snapshotPolicy } from './validation.js';
 import { canProtectWorkspace } from './workspace-protection.js';
 
 export interface SandboxConfig {
+	readonly requirements?: readonly SandboxRequirements[];
 	readonly cleanup?: Partial<SandboxCleanupBudgets>;
 	readonly selection: ProviderSelection;
 	readonly approval?: ApprovalSelection;

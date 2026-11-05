@@ -2,6 +2,8 @@ import { expect, expectTypeOf, it } from 'vitest';
 
 import type { SandboxErrorInfo } from './api.js';
 import {
+	ConflictingSandboxConfigError,
+	ConflictingSandboxProviderError,
 	DuplicateBrokerError,
 	DuplicateProviderError,
 	IncompatibleSandboxProtocolError,
@@ -18,6 +20,8 @@ import {
 	SandboxOutputCallbackError,
 	SandboxPathNotFoundError,
 	SandboxPermissionDeniedError,
+	SandboxProviderMismatchError,
+	SandboxProviderRequiredError,
 	SandboxSessionClosingError,
 	SandboxStartupError,
 	SandboxTimeoutError,
@@ -180,6 +184,38 @@ it.each([
 });
 
 const cases = [
+	{
+		name: 'ConflictingSandboxConfigError',
+		create: (cause: unknown) =>
+			new ConflictingSandboxConfigError(
+				{ operation: 'exec', providerId: 'test.remote' },
+				{ cause }
+			)
+	},
+	{
+		name: 'ConflictingSandboxProviderError',
+		create: (cause: unknown) =>
+			new ConflictingSandboxProviderError(
+				{ operation: 'exec', providerId: 'test.remote' },
+				{ cause }
+			)
+	},
+	{
+		name: 'SandboxProviderRequiredError',
+		create: (cause: unknown) =>
+			new SandboxProviderRequiredError(
+				{ operation: 'exec', providerId: 'test.remote' },
+				{ cause }
+			)
+	},
+	{
+		name: 'SandboxProviderMismatchError',
+		create: (cause: unknown) =>
+			new SandboxProviderMismatchError(
+				{ operation: 'exec', providerId: 'test.remote' },
+				{ cause }
+			)
+	},
 	{
 		name: 'SandboxInitialisationError',
 		create: (cause: unknown) =>

@@ -119,6 +119,14 @@ export const acquireOptionsSchema = Type.Object(
 	{ additionalProperties: false }
 );
 
+export const sandboxRequirementsSchema = Type.Object(
+	{
+		...Type.Omit(acquireOptionsSchema, ['signal', 'timeoutMs']).properties,
+		providerId: Type.Optional(nonEmptyStringSchema)
+	},
+	{ additionalProperties: false }
+);
+
 export const findRequestSchema = Type.Object(
 	{
 		pattern: safeTextSchema,

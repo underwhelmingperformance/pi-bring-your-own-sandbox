@@ -13,6 +13,10 @@
 				"examples/consumer/src/extension.ts"
 			],
 			"project": ["src/**/*.ts", "examples/**/*.ts", "*.config.ts"]
+		},
+		"packages/guard": {
+			"entry": ["src/**/*.test.ts", "src/extension.ts"],
+			"project": ["src/**/*.ts"]
 		}
 	}
 }

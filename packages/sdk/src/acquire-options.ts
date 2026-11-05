@@ -1,5 +1,10 @@
 import { isPolicySatisfied } from './backend-validation.js';
-import type { Sandbox, SandboxAcquireOptions } from './contracts.js';
+import type {
+	Sandbox,
+	SandboxAcquireOptions,
+	SandboxCapabilities,
+	SandboxErrorContext
+} from './contracts.js';
 import {
 	InvalidSandboxRequestError,
 	UnsupportedSandboxCapabilityError,
@@ -71,31 +76,37 @@ export function checkRequirements(
 		backendId: sandbox.backendId
 	};
 
-	if (
-		(options.terminationScope !== undefined &&
-			!isTerminationScopeSatisfied(
-				sandbox.capabilities.terminationScope,
-				options.terminationScope
-			)) ||
-		options.processKinds?.some(
-			(kind) => !sandbox.capabilities.processKinds.includes(kind)
-		) ||
-		options.shells?.some(
-			(shell) => !sandbox.capabilities.shells.includes(shell)
-		) ||
-		(options.exitStatus === 'guaranteed' &&
-			sandbox.capabilities.exitStatus !== 'guaranteed') ||
-		options.capabilities?.some(
-			(capability) => !sandbox.capabilities.operations.includes(capability)
-		)
-	) {
-		throw new UnsupportedSandboxCapabilityError(identity);
-	}
+	checkCapabilityRequirements(sandbox.capabilities, options, identity);
 
 	if (
 		options.policy !== undefined &&
 		!isPolicySatisfied(sandbox.policy, { ...sandbox.policy, ...options.policy })
 	) {
 		throw new UnsupportedSandboxPolicyError(identity);
+	}
+}
+
+export function checkCapabilityRequirements(
+	capabilities: SandboxCapabilities,
+	options: SandboxAcquireOptions,
+	identity: SandboxErrorContext
+): void {
+	if (
+		(options.terminationScope !== undefined &&
+			!isTerminationScopeSatisfied(
+				capabilities.terminationScope,
+				options.terminationScope
+			)) ||
+		options.processKinds?.some(
+			(kind) => !capabilities.processKinds.includes(kind)
+		) ||
+		options.shells?.some((shell) => !capabilities.shells.includes(shell)) ||
+		(options.exitStatus === 'guaranteed' &&
+			capabilities.exitStatus !== 'guaranteed') ||
+		options.capabilities?.some(
+			(capability) => !capabilities.operations.includes(capability)
+		)
+	) {
+		throw new UnsupportedSandboxCapabilityError(identity);
 	}
 }

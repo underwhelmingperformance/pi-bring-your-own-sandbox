@@ -283,6 +283,36 @@ bindings before first use; reload to change them.
 
 [approval-execution]: approval-execution.md
 
+### Optional guard
+
+`registerSandboxRequirement(pi, requirements = {})` requires explicit provider
+activation for this runtime. Optional `providerId`, capability, process-kind,
+shell, exit-status, termination-scope and policy requirements apply to every
+ordinary acquisition. Multiple registrations apply together. Policy requirements
+tighten the base policy before consumer negotiation; consumers cannot loosen
+them.
+
+The separate `pi-bring-your-own-sandbox-guard` package supplies a default Pi
+extension and `createSandboxGuard(requirements = {})`. The default accepts any
+activated provider. The guard has no SDK configuration file or flags and does
+not replace Pi tools or register tool-call interception hooks.
+
+Missing activation, a mismatched ID or unsupported declared guarantees blocks
+ordinary and outside acquisition before allocation or approval. The ordinary
+backend must also satisfy all guard requirements after opening. Approved outside
+execution retains its independently configured destination and policy. Checking
+the ordinary provider declaration does not open the ordinary backend.
+
+Register requirements before configuration starts. Registration snapshots
+inputs; late registration fails. Reload creates a fresh runtime. Guard-free
+consumers retain default host execution. An explicitly activated host
+implementation uses the same requirements as other providers.
+
+IDs and capabilities are unauthenticated declarations on Pi's event bus. The
+framework cannot verify which installed extension registered an ID or prove that
+a provider enforces its policy. The guard prevents missing or conflicting
+configuration within the cooperative threat model.
+
 The shared policy vocabulary is deliberately small:
 
 - `workspaceAccess`: `read-only` or `read-write` for the project workspace.

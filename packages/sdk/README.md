@@ -14,7 +14,10 @@ selected sandbox. The package is currently a private development build for Pi
 
 The SDK is a library dependency. Provider extensions control their own
 configuration and activate themselves when loaded. The optional guard extension
-can require an activated provider before SDK calls proceed.
+can require an activated provider before SDK calls proceed. See the [guard
+contract][guard] for its scope and requirements.
+
+[guard]: docs/specification.md#optional-guard
 
 ## Use the SDK in an extension
 

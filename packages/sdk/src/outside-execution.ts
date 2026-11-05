@@ -147,6 +147,7 @@ function normalProvider(
 }
 
 export interface OutsideServiceV1 {
+	readonly guardVersion: 1;
 	readonly status: (
 		context: SandboxContext
 	) => Promise<SandboxStatus | undefined>;
@@ -240,6 +241,7 @@ function outsideService(pi: SandboxHost): OutsideServiceV1 {
 			});
 
 			return {
+				guardVersion: 1,
 				id,
 				async status(context) {
 					return broker?.status(context);

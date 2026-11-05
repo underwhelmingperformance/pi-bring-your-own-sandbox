@@ -467,6 +467,7 @@ it.each([
 		await fixture(async ({ pi, context }) => {
 			ensureBroker(pi.events, (id) => ({
 				id,
+				guardVersion: 1,
 				acquire: () => Promise.resolve(sandbox),
 				negotiate: () => Promise.resolve({ ok: true, policy: sandbox.policy }),
 				close: () =>

@@ -21,7 +21,7 @@ Describes the environment in which an approved process will execute.
 */
 export interface ExecutionDestination {
 	/**
-	Identifies the route selected through personal configuration.
+	Identifies the route selected through extension-owned configuration.
 	*/
 	readonly kind: 'normal' | 'provider';
 	/**
@@ -82,7 +82,7 @@ resources; decide may inspect the live Pi context but must respect its signal.
 */
 export interface ApprovalPolicy<Config> {
 	/**
-	Policy ID used for discovery and personal approval settings.
+	Policy ID used for discovery and approval selection.
 	*/
 	readonly id: string;
 	/**
@@ -94,7 +94,7 @@ export interface ApprovalPolicy<Config> {
 	*/
 	readonly protocolVersion: 1;
 	/**
-	Validate personal policy configuration synchronously without allocating resources.
+	Validate approval policy configuration synchronously without allocating resources.
 	*/
 	readonly validateConfig: (input: unknown) => Config;
 	/**
@@ -187,7 +187,7 @@ Policy identity and description available without starting a review.
 */
 export interface ApprovalPolicyInfo {
 	/**
-	Registered identity used by personal approval.policy settings.
+	Registered identity used by approval selection.
 	*/
 	readonly id: string;
 	/**

@@ -11,9 +11,8 @@ import { hostOptionsSchema } from './service-schemas.js';
 const isHostOptions = checker(hostOptionsSchema);
 
 /**
-Bind an embedded Pi runtime to its personal configuration directory. Call once
-from the host's first extension factory, before the broker or consumer factories
-run. Every SDK copy then discovers the same service. A late or repeated binding
+Bind cleanup defaults or a normal executor for an embedded Pi runtime. Call
+once from the host's first extension factory, before other SDK services exist. Every SDK copy then discovers the same service. A late or repeated binding
 fails; it cannot change an existing service's configuration.
 */
 export function initialiseSandboxHost(

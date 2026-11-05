@@ -7,8 +7,11 @@ import type {
 	Sandbox,
 	SandboxClient,
 	SandboxErrorInfo,
-	SandboxProvider
+	SandboxHost,
+	SandboxProvider,
+	SandboxProviderRegistration
 } from './api.js';
+import { registerSandboxProvider } from './api.js';
 import { connectionProvider } from './fixtures/connection-provider.js';
 import { inspectWorkspace } from './fixtures/consumer.js';
 import { imageProvider } from './fixtures/image-provider.js';
@@ -104,4 +107,33 @@ it('rejects shell requests without a dialect and ambiguous termination outcomes'
 		operation: 'exec';
 		completion: 'confirmed';
 	}>().not.toExtend<SandboxErrorInfo>();
+});
+
+it('connects registration options to provider configuration', () => {
+	expectTypeOf<typeof registerSandboxProvider<ImageConfig>>()
+		.parameter(2)
+		.toEqualTypeOf<SandboxProviderRegistration<ImageConfig> | undefined>();
+	expectTypeOf<{
+		configure: () => { configuration: { image: number } };
+	}>().not.toExtend<
+		NonNullable<Parameters<typeof registerSandboxProvider<ImageConfig>>[2]>
+	>();
+	expectTypeOf<
+		typeof registerSandboxProvider<ConnectionConfig, { endpoint: string }>
+	>()
+		.parameter(2)
+		.toEqualTypeOf<
+			SandboxProviderRegistration<{ endpoint: string }> | undefined
+		>();
+});
+
+function invalidRegistration(pi: SandboxHost): void {
+	registerSandboxProvider(pi, imageProvider, {
+		// @ts-expect-error The provider requires a string image identifier.
+		configure: () => ({ configuration: { image: 123 } })
+	});
+}
+
+it('does not infer a wider input type from an incompatible resolver', () => {
+	expectTypeOf(invalidRegistration).toBeFunction();
 });

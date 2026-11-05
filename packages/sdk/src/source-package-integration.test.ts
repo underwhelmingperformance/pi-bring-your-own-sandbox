@@ -26,7 +26,7 @@ it('loads the workspace source package and consumer through Pi', async () => {
 
 		expect(manifest.exports).toStrictEqual(
 			Object.fromEntries(
-				['api', 'extension', 'pi-tools', 'testing'].map((entry) => [
+				['api', 'pi-tools', 'testing'].map((entry) => [
 					`./${entry}`,
 					{ types: `./src/${entry}.ts`, import: `./src/${entry}.ts` }
 				])
@@ -38,7 +38,6 @@ it('loads the workspace source package and consumer through Pi', async () => {
 			agentDir: path.join(directory, 'agent'),
 			settingsManager: SettingsManager.inMemory(),
 			additionalExtensionPaths: [
-				sdk,
 				path.join(sdk, 'examples/consumer/src/index.ts')
 			],
 			noExtensions: true,
@@ -63,7 +62,7 @@ it('loads the workspace source package and consumer through Pi', async () => {
 		}).toStrictEqual({
 			errors: [],
 			tools: ['sandbox_pwd'],
-			commands: ['byos']
+			commands: []
 		});
 	} finally {
 		await rm(directory, { recursive: true, force: true });

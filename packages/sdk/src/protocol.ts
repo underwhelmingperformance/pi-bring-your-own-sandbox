@@ -103,7 +103,7 @@ Discovery and configuration allocate no backend.
 */
 export interface ProviderServiceV1 {
 	/**
-	Policy used when personal settings omit a policy. Must use supported values.
+	Policy used when extension settings omit a policy. Must use supported values.
 	*/
 	readonly defaultPolicy?: SandboxPolicy;
 	/**
@@ -157,14 +157,14 @@ acquisition can loosen.
 */
 export interface ProviderSelection {
 	/**
-	Provider chosen by personal configuration or the registered built-in default.
+	Provider chosen by extension-owned configuration or the registered built-in default.
 	*/
 	readonly providerId: string;
 
 	/**
-	Whether selection used the implicit default or personal settings.
+	Whether selection used the implicit default or extension settings.
 	*/
-	readonly source: 'default' | 'personal';
+	readonly source: 'default' | 'extension';
 
 	/**
 	Complete requirements applied before backend publication.
@@ -216,7 +216,7 @@ export interface SandboxStatus {
 	readonly backends?: readonly SandboxBackendStatus[];
 
 	/**
-	Available after allocation of the backend for the personal policy
+	Available after allocation of the backend for the base policy
 	establishes an identity. The fields from here to `failure` describe that
 	backend.
 	*/
@@ -336,7 +336,7 @@ export interface BrokerServiceV1 {
 	) => Promise<Sandbox>;
 
 	/**
-	Check requirements against the personal policy and the selected provider's
+	Check requirements against the base policy and the selected provider's
 	declaration without provisioning a backend.
 	*/
 	readonly negotiate: (

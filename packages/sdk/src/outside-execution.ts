@@ -271,7 +271,7 @@ function outsideService(pi: SandboxHost): OutsideServiceV1 {
 
 					assertLive();
 
-					const config = await settings.read();
+					const config = await settings.read(context);
 
 					assertLive();
 
@@ -295,7 +295,7 @@ function outsideService(pi: SandboxHost): OutsideServiceV1 {
 									Promise.resolve({
 										selection: {
 											providerId: provider.id,
-											source: 'personal',
+											source: 'extension',
 											policy: {
 												workspaceAccess:
 													executionPolicy(provider).workspaceAccess,
@@ -306,7 +306,7 @@ function outsideService(pi: SandboxHost): OutsideServiceV1 {
 										},
 										providerConfig:
 											kind === 'provider' ? config.providerConfig : {},
-										providerConfigSource: 'personal',
+										providerConfigSource: 'extension',
 										...(config.cleanup !== undefined && {
 											cleanup: config.cleanup
 										})
@@ -330,7 +330,7 @@ function outsideService(pi: SandboxHost): OutsideServiceV1 {
 }
 
 /**
-Prepare the personally configured outside execution destination. This opens no
+Prepare the configured outside execution destination. This opens no
 ordinary sandbox. Execution requires a fresh approval for every invocation.
 */
 export async function getOutsideSandboxExecutor(

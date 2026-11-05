@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type {
@@ -32,6 +32,7 @@ function provider(backend: SandboxBackend): InlineExtension {
 		factory(pi) {
 			registerSandboxProvider(pi, {
 				id: 'fixture',
+				defaultPolicy: backend.policy,
 				label: 'In-memory shell; no OS isolation.',
 				protocolVersion: 1,
 				capabilities: backend.capabilities,
@@ -47,22 +48,10 @@ function provider(backend: SandboxBackend): InlineExtension {
 	};
 }
 
-async function prepare(
-	_directory: string,
-	agentDirectory: string
-): Promise<void> {
+function prepare(_directory: string, agentDirectory: string): Promise<void> {
 	vi.stubEnv('PI_CODING_AGENT_DIR', agentDirectory);
-	await writeFile(
-		path.join(agentDirectory, 'byos.json'),
-		JSON.stringify({
-			provider: 'fixture',
-			policy: {
-				workspaceAccess: 'read-write',
-				filesystemScope: 'provider-default',
-				networkAccess: 'provider-default'
-			}
-		})
-	);
+
+	return Promise.resolve();
 }
 
 afterEach(() => {

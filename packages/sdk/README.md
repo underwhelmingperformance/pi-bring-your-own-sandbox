@@ -12,14 +12,9 @@ This is a cooperative framework: only operations sent through its API use the
 selected sandbox. The package is currently a private development build for Pi
 1.5.0.
 
-Install the development version from Git:
-
-```sh
-pi install git:github.com/underwhelmingperformance/pi-bring-your-own-sandbox
-```
-
-Pi loads the TypeScript source directly. A build is not required for this
-installation.
+The SDK is a library dependency. Provider extensions control their own
+configuration and activate themselves when loaded. The optional guard extension
+can require an activated provider before SDK calls proceed.
 
 ## Use the SDK in an extension
 
@@ -53,9 +48,9 @@ shared contract.
 
 ## Choose where commands run
 
-Load a provider extension and select it in your personal agent directory's
-`byos.json`. Follow the provider's setup instructions; the Docker example
-includes a complete configuration.
+Load your chosen provider extension and follow its setup instructions. The SDK
+does not read configuration files. See the [Docker example][docker] for a
+provider that activates with default settings.
 
 To route Pi's Bash, PowerShell and user-shell commands through the framework,
 create `.pi/extensions/sandbox-tools.ts`:

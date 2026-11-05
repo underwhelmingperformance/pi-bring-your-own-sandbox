@@ -1,5 +1,4 @@
 import { mkdtemp, rm } from 'node:fs/promises';
-import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -12,6 +11,7 @@ import {
 import { expect, it } from 'vitest';
 
 import { discoverBroker, discoverProviders } from './discovery.js';
+import { FixtureConfig } from './fixtures/config.js';
 import { imageProvider } from './fixtures/image-provider.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
@@ -33,7 +33,7 @@ it.each([
 ] as const)(
 	'shares execution contracts across independent SDK instances under $filesystemScope with protection $protection',
 	async ({ filesystemScope, protection }) => {
-		let agentDirectory = '';
+		const config = new FixtureConfig();
 
 		await withPiRuntime(
 			[
@@ -55,53 +55,56 @@ it.each([
 							: (['exec'] as const);
 
 						first.initialiseSandboxHost(pi, {
-							agentDirectory,
 							cleanup: { disposalTimeoutMs: 9000 }
 						});
-						first.registerSandboxProvider(pi, {
-							...imageProvider,
-							id: 'fixture',
-							defaultPolicy: policy,
-							policies: {
-								...imageProvider.policies,
-								filesystemScope: [filesystemScope]
-							},
-							capabilities: {
-								operations,
-								processKinds: ['shell'],
-								shells: ['sh'],
-								terminationScope: 'process-group',
-								exitStatus: 'optional'
-							},
-							validateConfig: () => ({ image: 'fixture' }),
-							open: () =>
-								Promise.resolve({
-									id: template.id,
-									workspace: template.workspace,
-									policy,
-									policyDescription: template.policyDescription,
-									recovery: template.recovery,
-									capabilities: {
-										operations,
-										processKinds: ['shell'],
-										shells: ['sh'],
-										terminationScope: 'process-group',
-										exitStatus: 'optional'
-									},
-									exec: (_request, execution) => {
-										execution.reportDiagnostic({
-											level: 'warning',
-											message: 'Independent provider warning'
-										});
+						config.activate(
+							pi,
+							{
+								...imageProvider,
+								id: 'fixture',
+								defaultPolicy: policy,
+								policies: {
+									...imageProvider.policies,
+									filesystemScope: [filesystemScope]
+								},
+								capabilities: {
+									operations,
+									processKinds: ['shell'],
+									shells: ['sh'],
+									terminationScope: 'process-group',
+									exitStatus: 'optional'
+								},
+								validateConfig: () => ({ image: 'fixture' }),
+								open: () =>
+									Promise.resolve({
+										id: template.id,
+										workspace: template.workspace,
+										policy,
+										policyDescription: template.policyDescription,
+										recovery: template.recovery,
+										capabilities: {
+											operations,
+											processKinds: ['shell'],
+											shells: ['sh'],
+											terminationScope: 'process-group',
+											exitStatus: 'optional'
+										},
+										exec: (_request, execution) => {
+											execution.reportDiagnostic({
+												level: 'warning',
+												message: 'Independent provider warning'
+											});
 
-										return Promise.resolve({
-											kind: 'exited',
-											exit: { kind: 'unavailable' }
-										});
-									},
-									dispose: () => Promise.resolve()
-								})
-						});
+											return Promise.resolve({
+												kind: 'exited',
+												exit: { kind: 'unavailable' }
+											});
+										},
+										dispose: () => Promise.resolve()
+									})
+							},
+							first.registerSandboxProvider
+						);
 						pi.registerCommand('capabilities-test', {
 							description: 'Check independently installed execution contracts.',
 							async handler(_arguments, context) {
@@ -176,6 +179,12 @@ it.each([
 							}
 						});
 					}
+				},
+				{
+					name: 'execution-settings',
+					factory: (pi) => {
+						config.bind(pi);
+					}
 				}
 			],
 			async (runtime, errors) => {
@@ -183,15 +192,11 @@ it.each([
 				expect(errors).toStrictEqual([]);
 			},
 			{
-				async prepare(_directory, personal) {
-					agentDirectory = personal;
-					await writeFile(
-						path.join(personal, 'byos.json'),
-						JSON.stringify({
-							provider: 'fixture',
-							cleanup: { cancellationGraceMs: 8000 }
-						})
-					);
+				prepare(_directory, _personal) {
+					config.set({
+						provider: 'fixture',
+						cleanup: { cancellationGraceMs: 8000 }
+					});
 				}
 			}
 		);
@@ -338,7 +343,6 @@ it.each([
 		let validations = 0;
 		let opens = 0;
 		let disposals = 0;
-		let personalDirectory = '';
 
 		backend.dispose = () => {
 			disposals++;
@@ -375,6 +379,7 @@ it.each([
 						id: 'fixture',
 						label: 'Fixture sandbox',
 						protocolVersion: 1,
+						defaultPolicy: backend.policy,
 						capabilities: backend.capabilities,
 						policies: {
 							workspaceAccess: ['read-write'],
@@ -445,37 +450,39 @@ it.each([
 			}
 		};
 
+		const config1 = new FixtureConfig();
+
 		await withPiRuntime(
 			[
 				{
 					name: 'host',
 					factory(pi) {
-						first.initialiseSandboxHost(pi, {
-							agentDirectory: personalDirectory
-						});
+						first.initialiseSandboxHost(pi, {});
 					}
 				},
-				...order.map((id) => factories[id])
+				...order.map((id) => factories[id]),
+				{
+					name: 'execution-settings',
+					factory: (pi) => {
+						config1.bind(pi);
+					}
+				}
 			],
 			async (runtime, errors) => {
 				await runtime.session.prompt('/copies');
 				expect(errors).toStrictEqual([]);
 			},
 			{
-				prepare: async (_cwd, agentDirectory) => {
-					personalDirectory = agentDirectory;
-					await writeFile(
-						path.join(agentDirectory, 'byos.json'),
-						JSON.stringify({
-							provider: 'fixture',
-							policy: backend.policy,
-							outsideSandbox: { destination: 'provider' },
-							approval: {
-								policy: 'fixture',
-								config: JSON.parse('null') as unknown
-							}
-						})
-					);
+				prepare: (_cwd, _agentDirectory) => {
+					config1.set({
+						provider: 'fixture',
+						policy: backend.policy,
+						outsideSandbox: { destination: 'provider' },
+						approval: {
+							policy: 'fixture',
+							config: JSON.parse('null') as unknown
+						}
+					});
 				}
 			}
 		);

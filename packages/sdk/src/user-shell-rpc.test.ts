@@ -18,7 +18,7 @@ async function fixture(
 	try {
 		await mkdir(path.join(directory, 'agent'));
 		await writeFile(
-			path.join(directory, 'agent', 'byos.json'),
+			path.join(directory, 'agent', 'user-shell-settings.json'),
 			JSON.stringify({
 				provider: 'fixture',
 				providerConfig: { shouldWaitForReady },

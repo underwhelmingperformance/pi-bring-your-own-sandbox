@@ -4,7 +4,6 @@ import type {
 	ApprovalPolicy,
 	OutsideSandboxProvider
 } from './approval-contracts.js';
-import { absolutePathSchema } from './backend-schemas.js';
 import { builtinProviders } from './builtin-providers.js';
 import { cleanupSelectionSchema } from './cleanup-budgets.js';
 import type { SandboxProvider } from './contracts.js';
@@ -13,13 +12,16 @@ import type {
 	ApprovalServiceV1,
 	ConfiguredApprovalPolicyV1
 } from './execution-approval.js';
-import type { OutsideServiceV1 } from './outside-execution.js';
-import type { OutsideProviderServiceV1 } from './outside-execution.js';
+import type {
+	OutsideProviderServiceV1,
+	OutsideServiceV1
+} from './outside-execution.js';
 import type {
 	BrokerServiceV1,
 	DiscoveryRequestV1,
 	ProviderServiceV1
 } from './protocol.js';
+import type { DiagnosticStore } from './provider-diagnostics.js';
 import type { RuntimeSettingsV1 } from './runtime-settings.js';
 import {
 	callable,
@@ -142,6 +144,12 @@ const normalExecutorSchema = Type.Object({
 });
 
 export const runtimeSettingsSchema = Type.Object({
+	diagnostics: Type.Object({
+		record: callable<DiagnosticStore['record']>(),
+		snapshot: callable<DiagnosticStore['snapshot']>()
+	}),
+	configurationVersion: Type.Literal(1),
+	assertConfigurable: callable<RuntimeSettingsV1['assertConfigurable']>(),
 	id: nonEmptyStringSchema,
 	lifetime: signalSchema,
 	close: callable<RuntimeSettingsV1['close']>(),
@@ -161,9 +169,6 @@ export const outsideServiceSchema = Type.Object({
 
 export const hostOptionsSchema = Type.Object(
 	{
-		agentDirectory: absolutePathSchema(
-			process.platform === 'win32' ? 'win32' : 'posix'
-		),
 		normalExecutor: Type.Optional(normalExecutorSchema),
 		cleanup: Type.Optional(cleanupSelectionSchema)
 	},

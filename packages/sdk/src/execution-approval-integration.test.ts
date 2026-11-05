@@ -1,6 +1,10 @@
 import { expect, it, vi } from 'vitest';
 
-import type { ExecutionApprovalRequest } from './approval-contracts.js';
+import { configureExecutionApproval } from './api.js';
+import type {
+	ApprovalDecision,
+	ExecutionApprovalRequest
+} from './approval-contracts.js';
 import {
 	approvalService,
 	registerApprovalPolicy,
@@ -182,6 +186,74 @@ it.each([-1_000_000, 1_000_000])(
 			async (runtime, errors) => {
 				await runtime.session.prompt('/queued');
 				expect(errors).toStrictEqual([]);
+			}
+		);
+	}
+);
+
+it.each([
+	{ config: undefined, expected: {} },
+	{ config: { enabled: true }, expected: { enabled: true } }
+])(
+	'normalises optional approval configuration: $config',
+	async ({ config, expected }) => {
+		const validateConfig = vi.fn((input: unknown) => input);
+		const decisions: ApprovalDecision[] = [];
+
+		await withPiRuntime(
+			[
+				{
+					name: 'configured-approval',
+					factory(pi) {
+						configureExecutionApproval(pi, () => ({
+							policy: 'fixture.config',
+							config
+						}));
+						registerApprovalPolicy(pi, {
+							id: 'fixture.config',
+							label: 'Fixture policy',
+							protocolVersion: 1,
+							validateConfig,
+							decide: () => Promise.resolve({ kind: 'allow' })
+						});
+						pi.registerCommand('configured', {
+							description: 'Check optional approval configuration.',
+							async handler(_arguments, context) {
+								decisions.push(
+									await requestExecutionApproval(pi, context, {
+										process: { kind: 'argv', executable: 'probe', args: [] },
+										justification:
+											'Check configuration supplied to the policy.',
+										destination: {
+											kind: 'normal',
+											id: 'normal',
+											label: 'Fixture',
+											workspace: {
+												root: context.cwd,
+												pathFlavor: 'posix',
+												relationship: 'shared',
+												description: 'Fixture workspace.'
+											},
+											policyDescription: 'Fixture policy.'
+										}
+									})
+								);
+							}
+						});
+					}
+				}
+			],
+			async (runtime, errors) => {
+				await runtime.session.prompt('/configured');
+				expect({
+					errors,
+					decisions,
+					configured: validateConfig.mock.calls
+				}).toStrictEqual({
+					errors: [],
+					decisions: [{ kind: 'allow' }],
+					configured: [[expected]]
+				});
 			}
 		);
 	}

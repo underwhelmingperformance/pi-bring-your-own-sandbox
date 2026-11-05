@@ -1,6 +1,3 @@
-import { writeFile } from 'node:fs/promises';
-import path from 'node:path';
-
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { closeSandboxSession, getSandbox } from './client.js';
@@ -9,12 +6,12 @@ import type {
 	SandboxBackend,
 	SandboxOperationContext
 } from './contracts.js';
+import { FixtureConfig } from './fixtures/config.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import { initialiseSandboxHost } from './host.js';
 import { observe } from './lifecycle.js';
 import { getOutsideSandboxExecutor } from './outside-execution.js';
-import { registerSandboxProvider } from './provider-registration.js';
 
 afterEach(() => {
 	vi.useRealTimers();
@@ -23,7 +20,6 @@ afterEach(() => {
 it.each(['sandbox', 'normal', 'provider'] as const)(
 	'uses the generation cleanup budgets for %s execution and disposal',
 	async (destination) => {
-		let agentDirectory = '';
 		let isRunning = false;
 		let isDisposed = false;
 		let execution: SandboxOperationContext | undefined;
@@ -66,13 +62,14 @@ it.each(['sandbox', 'normal', 'provider'] as const)(
 			open: () => Promise.resolve(backend)
 		};
 
+		const config = new FixtureConfig();
+
 		await withPiRuntime(
 			[
 				{
 					name: 'host',
 					factory(pi) {
 						initialiseSandboxHost(pi, {
-							agentDirectory,
 							cleanup: { cancellationGraceMs: 9000, disposalTimeoutMs: 9000 },
 							...(destination === 'normal' && { normalExecutor: outside })
 						});
@@ -81,7 +78,7 @@ it.each(['sandbox', 'normal', 'provider'] as const)(
 				{
 					name: 'provider',
 					factory(pi) {
-						registerSandboxProvider(pi, {
+						config.activate(pi, {
 							id: 'fixture',
 							label: 'Cleanup fixture',
 							protocolVersion: 1,
@@ -169,6 +166,12 @@ it.each(['sandbox', 'normal', 'provider'] as const)(
 							}
 						});
 					}
+				},
+				{
+					name: 'execution-settings',
+					factory: (pi) => {
+						config.bind(pi);
+					}
 				}
 			],
 			async (runtime, errors) => {
@@ -176,20 +179,16 @@ it.each(['sandbox', 'normal', 'provider'] as const)(
 				expect(errors).toStrictEqual([]);
 			},
 			{
-				async prepare(_directory, personal) {
-					agentDirectory = personal;
-					await writeFile(
-						path.join(personal, 'byos.json'),
-						JSON.stringify({
-							provider: 'fixture',
-							policy: backend.policy,
-							cleanup: { cancellationGraceMs: 8000 },
-							approval: { policy: 'always' },
-							outsideSandbox: {
-								destination: destination === 'provider' ? 'provider' : 'normal'
-							}
-						})
-					);
+				prepare(_directory, _personal) {
+					config.set({
+						provider: 'fixture',
+						policy: backend.policy,
+						cleanup: { cancellationGraceMs: 8000 },
+						approval: { policy: 'always' },
+						outsideSandbox: {
+							destination: destination === 'provider' ? 'provider' : 'normal'
+						}
+					});
 				}
 			}
 		);

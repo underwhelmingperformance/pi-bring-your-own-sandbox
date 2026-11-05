@@ -1,24 +1,20 @@
-import { writeFile } from 'node:fs/promises';
-import path from 'node:path';
-
 import { expect, it, vi } from 'vitest';
 
 import { closeSandboxSession, getSandbox } from './client.js';
 import type { SandboxAcquireOptions, SandboxBackend } from './contracts.js';
 import { discoverBroker } from './discovery.js';
 import { isSandboxError } from './errors.js';
+import { FixtureConfig } from './fixtures/config.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { initialiseSandboxHost } from './host.js';
 import { observe } from './lifecycle.js';
 import { getOutsideSandboxExecutor } from './outside-execution.js';
 import { outsideShellOperations } from './outside-shell-operations.js';
-import { registerSandboxProvider } from './provider-registration.js';
 
 it.each(['sandbox', 'normal', 'provider'] as const)(
 	'keeps %s execution usable after cancellation without a termination guarantee',
 	async (destination) => {
-		let agentDirectory = '';
 		const template = new MemoryBackend('exec');
 		const pending = Promise.withResolvers<never>();
 		const started = Promise.withResolvers<undefined>();
@@ -59,16 +55,17 @@ it.each(['sandbox', 'normal', 'provider'] as const)(
 		};
 
 		try {
+			const config = new FixtureConfig();
+
 			await withPiRuntime(
 				[
 					{
 						name: 'scope-fixture',
 						factory(pi) {
 							initialiseSandboxHost(pi, {
-								agentDirectory,
 								...(destination === 'normal' && { normalExecutor: outside })
 							});
-							registerSandboxProvider(pi, {
+							config.activate(pi, {
 								id: 'fixture',
 								label: 'Termination fixture',
 								protocolVersion: 1,
@@ -181,6 +178,12 @@ it.each(['sandbox', 'normal', 'provider'] as const)(
 								}
 							});
 						}
+					},
+					{
+						name: 'execution-settings',
+						factory: (pi) => {
+							config.bind(pi);
+						}
 					}
 				],
 				async (runtime, errors) => {
@@ -188,19 +191,15 @@ it.each(['sandbox', 'normal', 'provider'] as const)(
 					expect(errors).toStrictEqual([]);
 				},
 				{
-					async prepare(_cwd, personal) {
-						agentDirectory = personal;
-						await writeFile(
-							path.join(personal, 'byos.json'),
-							JSON.stringify({
-								provider: 'fixture',
-								policy: backend.policy,
-								approval: { policy: 'always' },
-								...(destination !== 'sandbox' && {
-									outsideSandbox: { destination }
-								})
+					prepare(_cwd, _personal) {
+						config.set({
+							provider: 'fixture',
+							policy: backend.policy,
+							approval: { policy: 'always' },
+							...(destination !== 'sandbox' && {
+								outsideSandbox: { destination }
 							})
-						);
+						});
 					}
 				}
 			);
@@ -212,14 +211,14 @@ it.each(['sandbox', 'normal', 'provider'] as const)(
 );
 
 it('reports native Pi outside-shell cancellation without a termination guarantee', async () => {
-	let agentDirectory = '';
+	const config1 = new FixtureConfig();
 
 	await withPiRuntime(
 		[
 			{
 				name: 'native-shell-fixture',
 				factory(pi) {
-					initialiseSandboxHost(pi, { agentDirectory });
+					initialiseSandboxHost(pi, {});
 					pi.registerCommand('native-scope-test', {
 						description: 'Exercise native Pi cancellation.',
 						async handler(_arguments, context) {
@@ -279,6 +278,12 @@ it('reports native Pi outside-shell cancellation without a termination guarantee
 						}
 					});
 				}
+			},
+			{
+				name: 'execution-settings',
+				factory: (pi) => {
+					config1.bind(pi);
+				}
 			}
 		],
 		async (runtime, errors) => {
@@ -286,12 +291,8 @@ it('reports native Pi outside-shell cancellation without a termination guarantee
 			expect(errors).toStrictEqual([]);
 		},
 		{
-			async prepare(_cwd, personal) {
-				agentDirectory = personal;
-				await writeFile(
-					path.join(personal, 'byos.json'),
-					JSON.stringify({ approval: { policy: 'always' } })
-				);
+			prepare(_cwd, _personal) {
+				config1.set({ approval: { policy: 'always' } });
 			}
 		}
 	);

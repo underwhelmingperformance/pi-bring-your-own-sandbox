@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { copyFile, mkdir, realpath, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -16,6 +16,7 @@ import {
 	createAgentSessionFromServices,
 	createAgentSessionRuntime,
 	createAgentSessionServices,
+	DefaultResourceLoader,
 	ModelRuntime,
 	SessionManager,
 	SettingsManager
@@ -78,22 +79,23 @@ const agentDirectory = path.join(root, 'agent');
 await mkdir(workspace);
 await mkdir(agentDirectory);
 process.env.PI_CODING_AGENT_DIR = agentDirectory;
-await writeFile(
-	path.join(agentDirectory, 'byos.json'),
-	JSON.stringify({
-		provider: 'packed.fixture',
-		approval: { policy: 'packed.review' },
-		outsideSandbox: { destination: 'provider' },
-		policy: {
-			workspaceAccess: 'read-write',
-			filesystemScope: 'provider-default',
-			networkAccess: 'provider-default'
-		}
-	})
-);
 
 const consumer = path.join(sdkRoot, 'examples/consumer/src');
-const docker = path.join(sdkRoot, 'examples/docker/src');
+
+const dockerLoader = new DefaultResourceLoader({
+	cwd: workspace,
+	agentDir: agentDirectory,
+	settingsManager: SettingsManager.inMemory(),
+	noExtensions: true,
+	noSkills: true,
+	noThemes: true,
+	noPromptTemplates: true,
+	noContextFiles: true,
+	additionalExtensionPaths: [path.join(sdkRoot, 'examples/docker/src/index.ts')]
+});
+
+await dockerLoader.reload();
+assert.deepEqual(dockerLoader.getExtensions().errors, []);
 
 const helperPath = path.join(root, 'workspace-helper.ts');
 
@@ -140,16 +142,15 @@ const create: CreateAgentSessionRuntimeFactory = async (options) => {
 			noPromptTemplates: true,
 			noContextFiles: true,
 			additionalExtensionPaths: [
-				sdkRoot,
 				path.join(sdkRoot, 'dist/pi-tools.js'),
-				path.join(consumer, 'index.ts'),
-				path.join(docker, 'index.ts')
+				path.join(consumer, 'index.ts')
 			],
 			extensionFactories: [
 				{ name: 'peer-provider', factory: peer.default },
 				{
 					name: 'capture',
 					factory(pi) {
+						sdk.registerSandboxDiagnostics(pi);
 						live.pi = pi;
 						pi.on('session_start', (_event, context) => {
 							live.context = context;

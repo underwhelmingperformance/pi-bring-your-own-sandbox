@@ -14,7 +14,7 @@ it('shows a configured shell that the ready backend does not support', () => {
 			state: 'ready',
 			selection: {
 				providerId: 'fixture',
-				source: 'personal',
+				source: 'extension',
 				policy: backend.policy,
 				userShell: 'powershell'
 			},
@@ -26,7 +26,7 @@ it('shows a configured shell that the ready backend does not support', () => {
 		})
 	).toBe(
 		[
-			'Provider: fixture (personal)',
+			'Provider: fixture (extension)',
 			'State: ready',
 			'Generation: generation',
 			'Backend: memory',
@@ -50,7 +50,7 @@ it('shows allocation recovery instructions and expiry when cleanup is incomplete
 			state: 'closed',
 			selection: {
 				providerId: 'fixture',
-				source: 'personal',
+				source: 'extension',
 				policy: backend.policy
 			},
 			closeReport: {
@@ -69,7 +69,7 @@ it('shows allocation recovery instructions and expiry when cleanup is incomplete
 		})
 	).toBe(
 		[
-			'Provider: fixture (personal)',
+			'Provider: fixture (extension)',
 			'State: closed',
 			'Generation: generation',
 			'Target: not opened',

@@ -58,7 +58,7 @@ function fixture(
 							Promise.resolve({
 								selection: {
 									providerId: 'fixture',
-									source: 'personal',
+									source: 'extension',
 									policy: template.policy
 								},
 								providerConfig: {}
@@ -478,7 +478,7 @@ it.each([
 						Promise.resolve({
 							selection: {
 								providerId: 'fixture',
-								source: 'personal',
+								source: 'extension',
 								policy: template.policy
 							},
 							providerConfig: {}

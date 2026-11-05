@@ -95,7 +95,7 @@ export class ApprovalPolicyNotFoundError extends ApprovalError<'ApprovalPolicyNo
 	constructor() {
 		super(
 			'ApprovalPolicyNotFoundError',
-			'The configured approval policy is not registered. Check approval.policy in personal byos.json.'
+			'The configured approval policy is not registered. Check the approval policy configuration supplied by the extension.'
 		);
 	}
 }

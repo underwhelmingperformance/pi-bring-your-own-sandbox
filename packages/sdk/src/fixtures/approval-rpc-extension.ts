@@ -1,7 +1,12 @@
-import { appendFile, readFile } from 'node:fs/promises';
+import {
+	appendFile,
+	readFile,
+	readFile as readSettingsFile
+} from 'node:fs/promises';
 import path from 'node:path';
 
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import { getAgentDir } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 
 import {
@@ -9,14 +14,14 @@ import {
 	getOutsideSandboxExecutor,
 	isApprovalError,
 	isSandboxError,
-	registerApprovalPolicy,
-	registerSandboxProvider
+	registerApprovalPolicy
 } from '../api.js';
 import type { SandboxBackend } from '../contracts.js';
-import sandboxExtension from '../extension.js';
+import { registerSandboxDiagnostics as sandboxExtension } from '../diagnostic-registration.js';
 import sandboxTools from '../pi-tools.js';
 import { checker } from '../schemas.js';
 
+import { FixtureConfig } from './config.js';
 import { ScriptedModel } from './scripted-model.js';
 
 const modelArgumentsSchema = Type.Record(
@@ -92,7 +97,16 @@ export default async function approvalRpcFixture(
 		dispose: () => journal({ kind: 'dispose' })
 	};
 
-	registerSandboxProvider(pi, {
+	const config_ = new FixtureConfig(async () => {
+		const input: unknown = JSON.parse(
+			await readSettingsFile(`${getAgentDir()}/approval-settings.json`, 'utf8')
+		);
+
+		return input;
+	});
+
+	config_.bind(pi);
+	config_.activate(pi, {
 		id: 'rpc-provider',
 		label: 'RPC sandbox',
 		protocolVersion: 1,

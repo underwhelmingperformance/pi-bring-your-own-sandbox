@@ -54,7 +54,7 @@ Discovery channel for the runtime's independent approval service.
 export const APPROVAL_SERVICE_CHANNEL = 'pi-byos:discovery:v1:approvals';
 
 /**
-A policy with validated personal configuration captured in its decision closure.
+A policy with validated extension-owned configuration captured in its decision closure.
 */
 export interface ConfiguredApprovalPolicyV1 {
 	/**
@@ -78,7 +78,7 @@ export interface ApprovalPolicyServiceV1 {
 	*/
 	readonly label: string;
 	/**
- Validate opaque personal settings and return the configured decision method.
+ Validate opaque extension settings and return the configured decision method.
  */
 	readonly configure: (input: unknown) => ConfiguredApprovalPolicyV1;
 }
@@ -266,8 +266,10 @@ class ApprovalService implements ApprovalServiceV1 {
 		return prompt;
 	}
 
-	async #configure(): Promise<ConfiguredApprovalPolicyV1> {
-		const config = await runtimeSettings(this.#pi).read();
+	async #configure(
+		context: ExtensionContext
+	): Promise<ConfiguredApprovalPolicyV1> {
+		const config = await runtimeSettings(this.#pi).read(context);
 		const selection = config.approval ?? { policy: 'user' };
 		const policy = this.#available().find(
 			(candidate) => candidate.id === selection.policy
@@ -369,7 +371,7 @@ class ApprovalService implements ApprovalServiceV1 {
 		try {
 			const configured = await boundedApproval(
 				scope,
-				() => (this.#configured ??= this.#configure())
+				() => (this.#configured ??= this.#configure(context))
 			);
 			const decision: unknown = await boundedApproval(scope, () =>
 				configured.decide(

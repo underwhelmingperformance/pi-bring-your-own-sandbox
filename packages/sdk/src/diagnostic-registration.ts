@@ -18,7 +18,7 @@ Register optional sandbox diagnostics. Status and provider enumeration use
 the same service as SDK consumers and do not allocate a backend. Loading
 this extension preserves Pi's tools and active tool selection.
 */
-export default function sandboxExtension(pi: ExtensionAPI): void {
+export function registerSandboxDiagnostics(pi: ExtensionAPI): void {
 	const service = ensureSandboxService(pi);
 
 	pi.registerCommand('byos', {
@@ -64,7 +64,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 					try {
 						const settings = runtimeSettings(pi);
-						const config = await settings.read();
+						const config = await settings.read(context);
 						const policies = approvalService(pi).policies();
 						const selected = config.approval?.policy ?? 'user';
 						const isAvailable = policies.some(

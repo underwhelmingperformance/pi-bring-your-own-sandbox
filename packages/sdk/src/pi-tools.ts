@@ -31,7 +31,7 @@ function shellDefinition(pi: ExtensionAPI, dialect: 'bash' | 'powershell') {
 			execution: Type.Optional(
 				Type.Enum(['sandbox', 'outside-sandbox'], {
 					description:
-						'Use outside-sandbox to request approved execution on the personally configured outside destination.'
+						'Use outside-sandbox to request approved execution on the configured outside destination.'
 				})
 			),
 			justification: Type.Optional(
@@ -51,7 +51,7 @@ function shellDefinition(pi: ExtensionAPI, dialect: 'bash' | 'powershell') {
 		promptGuidelines: [
 			...(base.promptGuidelines ?? []),
 			'Shell commands execute in the selected sandbox workspace by default.',
-			'To request execution outside the sandbox, specify execution: outside-sandbox and a justification. Requests use the personally selected approval policy and execution destination.',
+			'To request execution outside the sandbox, specify execution: outside-sandbox and a justification. Requests use the selected approval policy and execution destination.',
 			'Pi full-output paths refer to host transcript files.'
 		],
 		async execute(id, input, signal, update, context) {

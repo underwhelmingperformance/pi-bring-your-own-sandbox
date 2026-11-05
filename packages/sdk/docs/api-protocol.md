@@ -28,8 +28,9 @@ initialiseSandboxHost(pi: SandboxHost, options: SandboxHostOptions): void;
 getSandbox(pi: SandboxHost, context: SandboxContext,
   options?: SandboxAcquireOptions): Promise<Sandbox>;
 
-registerSandboxProvider<Config>(pi: SandboxHost,
-  provider: SandboxProvider<Config>): void;
+registerSandboxProvider<Config, Input = Config>(pi: SandboxHost,
+  provider: SandboxProvider<Config>,
+  options?: NoInfer<SandboxProviderRegistration<Input>>): void;
 
 closeSandboxSession(pi: SandboxHost,
   context: SandboxContext): Promise<SandboxCloseReport>;
@@ -40,13 +41,24 @@ and custom entry writers. `SandboxContext` uses its live workspace, decision and
 session manager. Callers pass a real live Pi context. Structural compatibility
 does not authorise constructing a context that bypasses Pi's lifecycle checks.
 
-An embedding host that supplies Pi's `agentDir` calls
-`initialiseSandboxHost(pi, { agentDirectory })` once from its first extension
-factory, before any broker or consumer factory runs. Use the same absolute
-directory as Pi. This creates the shared service synchronously without reading
-configuration or opening a backend. Late or repeated initialisation fails with
-`SandboxInitialisationError`. Without explicit initialisation, the ordinary CLI
-uses `getAgentDir()`. Each runtime requires a separate event bus.
+`SandboxProviderRegistration<Input>` types the raw configuration returned by the
+resolver. `Config` is the validator's output and the input to backend opening.
+`Input` defaults to `Config` and is not inferred from the resolver. Specify both
+type arguments when validation transforms the input, for example from
+`{ endpoint: string }` to `{ endpoint: URL }`. Runtime validation still accepts
+unknown values at the discovery boundary.
+
+An embedding host can call `initialiseSandboxHost(pi, options)` before any SDK
+service is created to supply cleanup defaults or a normal executor. Late or
+repeated binding fails. Each runtime requires a separate event bus.
+
+Provider activation and configuration callbacks are specified in [selection and
+configuration][configuration]. `configureExecutionApproval` and
+`configureOutsideExecution` bind independent configuration callbacks. All
+callbacks are lazy and shared per runtime generation. The SDK performs no
+configuration file I/O.
+
+[configuration]: specification.md#selection-and-configuration
 
 Registration is synchronous, validates the declaration and installs a discovery
 responder. It does not validate configuration, create a backend or allocate an
@@ -56,45 +68,44 @@ strings; duplicate IDs are errors even when unselected. The initial registry
 uses passthrough as its default implementation.
 
 Provider metadata may include a complete `defaultPolicy`. Its values must appear
-in the provider's supported policies. Personal settings may omit `policy` when
-the selected provider declares a default. An explicit complete personal policy
+in the provider's supported policies. Extension settings may omit `policy` when
+the selected provider declares a default. An explicit complete base policy
 replaces that default; partial policies remain invalid. The broker snapshots and
 freezes defaults during registration, discovery and enumeration. Status retains
 the selected declaration's `providerLabel`, including after closure. Formatting
 that label uses the captured metadata without additional discovery or
 configuration.
 
-Acquisition negotiates a complete policy from the request and the personal
-policy, then uses the generation's backend for that policy, opening it if
-necessary. Omitted fields and `provider-default` requests keep the personal
-value. `read-only` tightens `read-write`; filesystem scopes progress from
-`provider-default` through `system-read-only` to `workspace-only`.
-`networkAccess: 'denied'` tightens network delegation. Requesting `read-write`
-when the personal policy is `read-only` loosens it and fails with
-`UnsupportedSandboxPolicyError`. A negotiated value that the provider does not
-declare fails the same way, and a requested operation, process kind or shell
-that the declaration lacks fails with `UnsupportedSandboxCapabilityError`; both
-happen before any backend is opened. Exit status and termination scope are
-checked after opening, because a backend may strengthen its declaration. Every
-requested capability must then be present in the opened backend. Negotiation
-never selects another provider.
+Acquisition negotiates a complete policy from the request and the base policy,
+then uses the generation's backend for that policy, opening it if necessary.
+Omitted fields and `provider-default` requests keep the base value. `read-only`
+tightens `read-write`; filesystem scopes progress from `provider-default`
+through `system-read-only` to `workspace-only`. `networkAccess: 'denied'`
+tightens network delegation. Requesting `read-write` when the base policy is
+`read-only` loosens it and fails with `UnsupportedSandboxPolicyError`. A
+negotiated value that the provider does not declare fails the same way, and a
+requested operation, process kind or shell that the declaration lacks fails with
+`UnsupportedSandboxCapabilityError`; both happen before any backend is opened.
+Exit status and termination scope are checked after opening, because a backend
+may strengthen its declaration. Every requested capability must then be present
+in the opened backend. Negotiation never selects another provider.
 
 `negotiate(context, options)` on the broker, exposed as `negotiateSandbox`,
 performs the same checks without opening a backend. It resolves to
 `{ ok: true, policy }` or `{ ok: false, error }`, where `error` is the typed
 error that acquisition would throw. Status lists every started backend under
 `backends`, with its negotiated policy, state and backend ID; the top-level
-backend fields describe the backend for the personal policy.
+backend fields describe the backend for the base policy.
 
 `WorkspaceProtection` is either `{ kind: 'git-metadata' }` or
 `{ kind: 'path', path: string }`. `SandboxPolicy.workspaceProtection` is an
 optional readonly resource array. Any nonempty requirement needs the
 `workspace.protection` operation capability. Effective resources must cover
-every requested resource, including personal requirements. A protected parent
-covers a child; Git metadata protection includes external repository
-administration data. Registration rejects protected defaults without the
-capability. See [protected workspace resources][workspace-protection] for path
-syntax, preset expansion, immutability and independent enforcement requirements.
+every requested resource, including base requirements. A protected parent covers
+a child; Git metadata protection includes external repository administration
+data. Registration rejects protected defaults without the capability. See
+[protected workspace resources][workspace-protection] for path syntax, preset
+expansion, immutability and independent enforcement requirements.
 
 [workspace-protection]: workspace-protection.md
 
@@ -249,8 +260,8 @@ allowance. Remote transports must account for transit and queue time without
 assuming a shared monotonic origin. Expiry does not establish termination;
 providers must still acknowledge that work stopped.
 
-`SandboxHostOptions.cleanup` and personal `byos.json`'s `cleanup` accept partial
-`SandboxCleanupBudgets`. Personal values override host defaults. Both
+`SandboxHostOptions.cleanup` and provider callbacks' `cleanup` accept partial
+`SandboxCleanupBudgets`. Provider callback values override host defaults. Both
 `cancellationGraceMs` and `disposalTimeoutMs` accept integers from 1 to 300,000;
 their defaults are 5,000 and 10,000. Facades and outside executors expose the
 frozen effective `cleanupBudgets` for their generation.
@@ -377,7 +388,7 @@ retains manual recovery metadata. Cancellation completion alone does not
 acknowledge allocation cleanup.
 
 Status reports the generation state, effective selection and optional backend
-metadata. Selection distinguishes implicit default and personal configuration.
+metadata. Selection distinguishes implicit default and extension configuration.
 The user-shell dialect is explicit when configured. Status never allocates a
 backend. Provider enumeration validates configuration and declarations but does
 not provision.
@@ -414,7 +425,7 @@ Consumers do not supply message strings or free-form detail fields.
 `SandboxErrorInfo` is the union of the concrete error types. Errors expose the
 version marker `sandboxErrorVersion: 1`, `name`, `message`, `operation` and
 optional provider/backend/recovery context directly. Configuration errors can
-identify the personal source through `configurationSource`.
+identify the extension source through `configurationSource`.
 
 Use `isSandboxError(value)` to recognise supported structural errors, or
 `isSandboxError(value, SandboxTimeoutError)` to narrow to a concrete type across
@@ -481,12 +492,46 @@ late replies are ignored. Duplicate identities, malformed replies and
 unsupported versions are errors. Callbacks, signals and service objects remain
 in-process.
 
-| Channel                                  | Service methods and metadata                                                 |
-| ---------------------------------------- | ---------------------------------------------------------------------------- |
-| `pi-byos:discovery:v1:approval-policies` | `id`, `label`, `configure(input)` returning a bound `decide` method.         |
-| `pi-byos:discovery:v1:approvals`         | `id`, `request(context, request, options?)`, `policies()`, `close()`.        |
-| `pi-byos:settings:v1`                    | `id`, `lifetime`, `close()`, `read()`, optional host-bound `normalExecutor`. |
-| `pi-byos:discovery:v1:outside-execution` | `id`, `lifetime`, `acquire`, `track`, `assertLive`, `close`.                 |
+| Channel                                  | Service methods and metadata                                                                                                                          |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pi-byos:discovery:v1:approval-policies` | `id`, `label`, `configure(input)` returning a bound `decide` method.                                                                                  |
+| `pi-byos:discovery:v1:approvals`         | `id`, `request(context, request, options?)`, `policies()`, `close()`.                                                                                 |
+| `pi-byos:settings:v1`                    | `id`, `configurationVersion: 1`, `diagnostics`, `lifetime`, `close()`, `assertConfigurable()`, `read(context)`, optional host-bound `normalExecutor`. |
+| `pi-byos:discovery:v1:outside-execution` | `id`, `lifetime`, `acquire`, `track`, `assertLive`, `close`, `status`.                                                                                |
+
+Configuration bindings use the same service envelope:
+
+| Channel                              | Service payload                        |
+| ------------------------------------ | -------------------------------------- |
+| `pi-byos:configuration:v1:providers` | `{ id: providerId, resolve(context) }` |
+| `pi-byos:configuration:v1:approval`  | `{ id: 'approval', resolve(context) }` |
+| `pi-byos:configuration:v1:outside`   | `{ id: 'outside', resolve(context) }`  |
+
+Provider registration publishes both its declaration and activation binding.
+Provider resolvers return `SandboxProviderConfig<unknown>`; the provider's
+validator receives `configuration` unchanged. Approval resolvers return
+`ApprovalSelection`, and outside resolvers return
+`{ destination: 'normal' | 'provider' }`. Resolvers receive
+`SandboxConfigContext` and may return a promise. The shared resolution budget is
+60 seconds. Its abort signal and monotonic remaining time apply to configuration
+only; backend allocation has a separate startup scope. One caller's cancellation
+does not abort shared resolution.
+
+The SDK permits one provider activation, one approval binding and one outside
+binding. Duplicate binding IDs and multiple provider activations fail before
+resolution. Discoveries collect all replies before validation; malformed or
+incompatible services fail without creating replacements. Registration calls
+`assertConfigurable()` before publication. The first configuration read and SDK
+shutdown permanently close registration for that runtime.
+
+The settings service's `diagnostics` contains `record(identity, diagnostic)` and
+`snapshot()`. The snapshot returns immutable `entries` and a `dropped` count.
+The ordinary broker uses this store for both configuration and backend warnings;
+the existing 64-entry and 2,048-character limits apply across both phases.
+Warnings remain available after failed configuration without exposing exception
+causes. Outside backend operations retain their separate store. Configuration
+warnings are visible through ordinary broker status even when outside execution
+was the first caller to resolve settings.
 
 The runtime settings and outside execution services are internal SDK protocols;
 the public APIs acquire their shared instances. Settings are bound before use

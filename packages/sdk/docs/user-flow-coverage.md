@@ -18,8 +18,8 @@ prerequisites, commands and platform limits.
 | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Install a consumer without configuring a sandbox or loading the diagnostic extension.                      | [Client integration][client] acquires default passthrough, performs host file operations and shares startup across SDK copies.                                                                                                |
 | Select a provider, or leave an installed provider unselected.                                              | [Client integration][client] verifies configured target operations, idle unselected providers and missing/startup-failed providers without host fallback.                                                                     |
-| Use personal provider and approval settings while a project contains conflicting settings.                 | [Approval RPC integration][approval-rpc] starts Pi with conflicting project settings and verifies that personal provider selection and user approval still apply.                                                             |
-| Supply invalid personal configuration.                                                                     | [Client integration][client] exercises malformed JSON, invalid declarations and unknown keys in a real Pi runtime. Approval RPC cases check invalid built-in policy configuration and missing policy IDs.                     |
+| Use extension-owned settings while a project contains conflicting selector files.                          | [Approval RPC integration][approval-rpc] starts Pi with conflicting project settings and verifies that extension activation and user approval still apply.                                                                    |
+| Supply invalid extension configuration.                                                                    | [Client integration][client] verifies that obsolete selector files are ignored and checks invalid declarations in a real Pi runtime. Approval RPC cases check invalid built-in policy configuration and missing policy IDs.   |
 | Load separate provider, policy and consumer extensions in any order, including separate SDK installations. | [Registration integration][registration] checks all six factory orders across independent SDK module graphs. The [archive gate][package] installs two independent package roots and exercises approval and outside execution. |
 | Embed Pi with an explicit agent directory or a different normal execution environment.                     | Client integration checks independent bound directories and rejected late/repeated bindings. [Outside execution integration][outside] uses an injected normal executor and verifies its destination and cleanup.              |
 
@@ -77,10 +77,10 @@ status preserves output and reports a failed command.
 
 The [cleanup integration suite][cleanup] exercises cancellation and disposal
 under configured budgets on sandboxed, normal outside and provider-defined
-outside destinations. It checks personal precedence and the deadlines visible to
-providers. Diagnostic integration verifies that ordinary and outside provider
-warnings appear through generic status without entering workload output or
-allocating the ordinary sandbox.
+outside destinations. It checks extension-owned selection and the deadlines
+visible to providers. Diagnostic integration verifies that ordinary and outside
+provider warnings appear through generic status without entering workload output
+or allocating the ordinary sandbox.
 
 [cleanup]: ../src/cleanup-integration.test.ts
 

@@ -1,221 +1,18 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-
 import { expect, it } from 'vitest';
 
-import type { ConfigSources } from './config.js';
-import { readConfig, selectProvider } from './config.js';
+import { resolveSandboxConfig, selectProvider } from './config.js';
 import type { ProviderServiceV1 } from './protocol.js';
 
-const isolatedPolicy = {
-	workspaceAccess: 'read-write',
-	filesystemScope: 'workspace-only',
-	networkAccess: 'denied'
-} as const;
 const defaultPolicy = {
 	workspaceAccess: 'read-write',
 	filesystemScope: 'provider-default',
 	networkAccess: 'provider-default'
 } as const;
-
-async function withSources(
-	run: (
-		sources: ConfigSources & { readonly workspace: string }
-	) => Promise<void>
-) {
-	const directory = await mkdtemp(path.join(tmpdir(), 'pi-byos-settings-'));
-	const sources = {
-		agentDirectory: path.join(directory, 'agent'),
-		workspace: path.join(directory, 'workspace')
-	};
-
-	try {
-		await mkdir(sources.agentDirectory);
-		await mkdir(path.join(sources.workspace, '.pi'), { recursive: true });
-		await run(sources);
-	} finally {
-		await rm(directory, { recursive: true, force: true });
-	}
-}
-
-it('reads cleanup budgets only from personal settings', async () => {
-	await withSources(async (sources) => {
-		await writeFile(
-			path.join(sources.workspace, '.pi', 'byos.json'),
-			JSON.stringify({ cleanup: { cancellationGraceMs: 1 } })
-		);
-		await writeFile(
-			path.join(sources.agentDirectory, 'byos.json'),
-			JSON.stringify({ cleanup: { cancellationGraceMs: 8000 } })
-		);
-
-		const config = await readConfig(sources);
-
-		expect(config.cleanup).toStrictEqual({
-			cancellationGraceMs: 8000
-		});
-	});
-});
-
-it.each([0, -1, 1.5, 300_001, '5000', { value: 5000 }])(
-	'rejects an invalid cleanup budget: %j',
-	async (value) => {
-		await withSources(async (sources) => {
-			await writeFile(
-				path.join(sources.agentDirectory, 'byos.json'),
-				JSON.stringify({ cleanup: { cancellationGraceMs: value } })
-			);
-			await expect(readConfig(sources)).rejects.toMatchObject({
-				name: 'InvalidSandboxConfigError',
-				configurationSource: 'personal'
-			});
-		});
-	}
-);
-
-it('uses the implicit host default without creating any configuration', async () => {
-	await withSources(async (sources) => {
-		expect(await readConfig(sources)).toStrictEqual({
-			selection: {
-				providerId: 'passthrough',
-				source: 'default',
-				policy: defaultPolicy
-			},
-			providerConfig: {}
-		});
-	});
-});
-
-it.each([
-	'invalid JSON',
-	'{"provider":"passthrough"}',
-	'{"approval":{"policy":"always"}}'
-])(
-	'uses personal configuration independently of workspace files: %s',
-	async (contents) => {
-		await withSources(async (sources) => {
-			await writeFile(
-				path.join(sources.agentDirectory, 'byos.json'),
-				JSON.stringify({
-					provider: 'personal',
-					policy: isolatedPolicy,
-					providerConfig: { image: 'personal-image' }
-				})
-			);
-			await writeFile(
-				path.join(sources.workspace, '.pi', 'byos.json'),
-				contents
-			);
-			expect(await readConfig(sources)).toStrictEqual({
-				selection: {
-					providerId: 'personal',
-					source: 'personal',
-					policy: isolatedPolicy
-				},
-				providerConfig: { image: 'personal-image' },
-				providerConfigSource: 'personal',
-				policySource: 'personal'
-			});
-		});
-	}
-);
-
-it.each([
-	'not JSON',
-	'null',
-	'[]',
-	'{"provider":null}',
-	'{"provider":""}',
-	'{"provider":"external"}',
-	'{"unknown":true}',
-	'{"userShell":"zsh"}',
-	'{"policy":{"workspaceAccess":"read-write"}}',
-	'{"policy":{"workspaceAccess":"read-write","filesystemScope":"provider-default","networkAccess":"provider-default","extra":true}}'
-])(
-	'rejects malformed personal configuration without assuming host execution: %s',
-	async (contents) => {
-		await withSources(async (sources) => {
-			await writeFile(path.join(sources.agentDirectory, 'byos.json'), contents);
-			await expect(readConfig(sources)).rejects.toMatchObject({
-				name: 'InvalidSandboxConfigError',
-				operation: 'configure'
-			});
-		});
-	}
-);
-
-it('propagates an unreadable personal configuration entry', async () => {
-	await withSources(async (sources) => {
-		await mkdir(path.join(sources.agentDirectory, 'byos.json'));
-		await writeFile(
-			path.join(sources.workspace, '.pi', 'byos.json'),
-			JSON.stringify({ provider: 'passthrough' })
-		);
-		await expect(readConfig(sources)).rejects.toMatchObject({
-			name: 'InvalidSandboxConfigError'
-		});
-	});
-});
-
-it('does not interpret a dangling configuration symlink as an absent file', async () => {
-	await withSources(async (sources) => {
-		await symlink(
-			'missing.json',
-			path.join(sources.agentDirectory, 'byos.json')
-		);
-		await expect(readConfig(sources)).rejects.toMatchObject({
-			name: 'InvalidSandboxConfigError'
-		});
-	});
-});
-
-it.each(['null', 'false', '0', '"value"', '[]', '{}'])(
-	'preserves provider-owned configuration without coercion: %s',
-	async (payload) => {
-		await withSources(async (sources) => {
-			await writeFile(
-				path.join(sources.agentDirectory, 'byos.json'),
-				`{"providerConfig":${payload}}`
-			);
-
-			const expected: unknown = JSON.parse(payload);
-
-			expect(await readConfig(sources)).toStrictEqual({
-				selection: {
-					providerId: 'passthrough',
-					source: 'default',
-					policy: defaultPolicy
-				},
-				providerConfig: expected,
-				providerConfigSource: 'personal'
-			});
-		});
-	}
-);
-
-it('requires a complete replacement policy and retains an explicit shell dialect', async () => {
-	await withSources(async (sources) => {
-		await writeFile(
-			path.join(sources.agentDirectory, 'byos.json'),
-			JSON.stringify({
-				provider: 'external',
-				policy: isolatedPolicy,
-				userShell: 'sh'
-			})
-		);
-		expect(await readConfig(sources)).toStrictEqual({
-			selection: {
-				providerId: 'external',
-				source: 'personal',
-				policy: isolatedPolicy,
-				userShell: 'sh'
-			},
-			policySource: 'personal',
-			providerConfig: {}
-		});
-	});
-});
+const isolatedPolicy = {
+	...defaultPolicy,
+	filesystemScope: 'workspace-only',
+	networkAccess: 'denied'
+} as const;
 
 function service(id: string): ProviderServiceV1 {
 	return {
@@ -239,22 +36,11 @@ function service(id: string): ProviderServiceV1 {
 	};
 }
 
-it('does not automatically select an installed external provider', async () => {
-	await withSources(async (sources) => {
-		const config = await readConfig(sources);
-		const passthrough = service('passthrough');
-
-		expect(selectProvider(config, [passthrough, service('external')])).toBe(
-			passthrough
-		);
-	});
-});
-
 it.each([
 	{
 		selection: {
 			providerId: 'missing',
-			source: 'personal',
+			source: 'extension',
 			policy: defaultPolicy
 		},
 		name: 'ProviderNotFoundError'
@@ -262,7 +48,7 @@ it.each([
 	{
 		selection: {
 			providerId: 'passthrough',
-			source: 'personal',
+			source: 'extension',
 			policy: isolatedPolicy
 		},
 		name: 'UnsupportedSandboxPolicyError'
@@ -278,131 +64,54 @@ it.each([
 	}
 );
 
-it.each([false, true])(
-	'uses declared provider defaults for personal selection %s',
-	async (isPersonal) => {
-		await withSources(async (sources) => {
-			const provider = {
-				...service('custom-default'),
-				defaultPolicy: isolatedPolicy,
-				policies: {
-					workspaceAccess: ['read-write'],
-					filesystemScope: ['workspace-only'],
-					networkAccess: ['denied']
-				}
-			} satisfies ProviderServiceV1;
+it('uses the declared default policy and preserves typed configuration', () => {
+	const provider = { ...service('fixture'), defaultPolicy };
+	const config = { image: 'selected' };
 
-			if (isPersonal) {
-				await writeFile(
-					path.join(sources.agentDirectory, 'byos.json'),
-					JSON.stringify({ provider: provider.id })
-				);
-			}
+	expect(
+		resolveSandboxConfig(provider, { configuration: config }, 'extension')
+	).toStrictEqual({
+		selection: {
+			providerId: 'fixture',
+			source: 'extension',
+			policy: defaultPolicy
+		},
+		providerConfig: config,
+		providerConfigSource: 'extension'
+	});
+});
+it('requires a policy when the provider has no default', () => {
+	expect(() =>
+		resolveSandboxConfig(service('fixture'), { configuration: {} }, 'extension')
+	).toThrow(expect.objectContaining({ name: 'InvalidSandboxConfigError' }));
+});
+it('uses a complete supplied policy and snapshots its protected resources', () => {
+	const resources = [{ kind: 'git-metadata' as const }];
+	const result = resolveSandboxConfig(
+		{ ...service('fixture'), defaultPolicy },
+		{
+			configuration: {},
+			policy: { ...isolatedPolicy, workspaceProtection: resources },
+			userShell: 'sh',
+			cleanup: { cancellationGraceMs: 8000 }
+		},
+		'extension'
+	);
 
-			expect(
-				await readConfig({
-					...sources,
-					providers: [provider],
-					...(!isPersonal && { defaultProvider: provider })
-				})
-			).toStrictEqual({
-				selection: {
-					providerId: provider.id,
-					source: isPersonal ? 'personal' : 'default',
-					policy: isolatedPolicy
-				},
-				providerConfig: {}
-			});
-		});
-	}
-);
-
-it('keeps a complete personal policy when the provider declares another default', async () => {
-	await withSources(async (sources) => {
-		const provider = {
-			...service('custom-default'),
-			defaultPolicy: isolatedPolicy,
-			policies: {
-				workspaceAccess: ['read-write'],
-				filesystemScope: ['workspace-only', 'provider-default'],
-				networkAccess: ['denied', 'provider-default']
-			}
-		} satisfies ProviderServiceV1;
-
-		await writeFile(
-			path.join(sources.agentDirectory, 'byos.json'),
-			JSON.stringify({ provider: provider.id, policy: defaultPolicy })
-		);
-
-		const config = await readConfig({ ...sources, providers: [provider] });
-
-		expect(config).toStrictEqual({
-			selection: {
-				providerId: provider.id,
-				source: 'personal',
-				policy: defaultPolicy
+	resources.push({ kind: 'git-metadata' });
+	expect(result).toStrictEqual({
+		selection: {
+			providerId: 'fixture',
+			source: 'extension',
+			policy: {
+				...isolatedPolicy,
+				workspaceProtection: [{ kind: 'git-metadata' }]
 			},
-			providerConfig: {},
-			policySource: 'personal'
-		});
-		expect(selectProvider(config, [provider])).toBe(provider);
+			userShell: 'sh'
+		},
+		providerConfig: {},
+		providerConfigSource: 'extension',
+		policySource: 'extension',
+		cleanup: { cancellationGraceMs: 8000 }
 	});
 });
-
-it('expands the personal host-configuration preset and freezes user additions', async () => {
-	await withSources(async (sources) => {
-		await writeFile(
-			path.join(sources.agentDirectory, 'byos.json'),
-			JSON.stringify({
-				policy: {
-					...defaultPolicy,
-					workspaceProtection: {
-						preset: 'host-configuration',
-						additionalPaths: ['.custom']
-					}
-				}
-			})
-		);
-
-		const result = await readConfig(sources);
-		const expected = [
-			{ kind: 'git-metadata' },
-			{ kind: 'path', path: '.custom' },
-			{ kind: 'path', path: '.devcontainer' },
-			{ kind: 'path', path: '.direnv' },
-			{ kind: 'path', path: '.envrc' },
-			{ kind: 'path', path: '.idea' },
-			{ kind: 'path', path: '.pi' },
-			{ kind: 'path', path: '.vscode' }
-		];
-
-		expect({
-			resources: result.selection.policy.workspaceProtection,
-			frozen: Object.isFrozen(result.selection.policy.workspaceProtection)
-		}).toStrictEqual({ resources: expected, frozen: true });
-	});
-});
-
-it.each(['../private', '.git/../private', '/absolute', 'a\\b'])(
-	'rejects invalid additional protection %s before preset expansion',
-	async (path_) => {
-		await withSources(async (sources) => {
-			await writeFile(
-				path.join(sources.agentDirectory, 'byos.json'),
-				JSON.stringify({
-					policy: {
-						...defaultPolicy,
-						workspaceProtection: {
-							preset: 'host-configuration',
-							additionalPaths: [path_]
-						}
-					}
-				})
-			);
-			await expect(readConfig(sources)).rejects.toMatchObject({
-				name: 'InvalidSandboxConfigError',
-				configurationSource: 'personal'
-			});
-		});
-	}
-);

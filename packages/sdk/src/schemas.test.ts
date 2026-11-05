@@ -4,8 +4,8 @@ import { expect, it } from 'vitest';
 
 import {
 	acquireOptionsSchema,
-	configFileSchema,
-	processRequestSchema
+	processRequestSchema,
+	providerConfigSchema
 } from './request-schemas.js';
 import {
 	capabilitiesSchema,
@@ -95,10 +95,14 @@ it.each([
 		input: { policy: { unrecognised: undefined } },
 		expected: false
 	},
-	{ schema: configFileSchema, input: { userShell: undefined }, expected: true },
-	{ schema: configFileSchema, input: { extra: true }, expected: false },
 	{
-		schema: configFileSchema,
+		schema: providerConfigSchema,
+		input: { configuration: {}, userShell: undefined },
+		expected: true
+	},
+	{ schema: providerConfigSchema, input: { extra: true }, expected: false },
+	{
+		schema: providerConfigSchema,
 		input: {
 			policy: {
 				workspaceAccess: 'read-write',

@@ -111,7 +111,7 @@ function fixture(
 							Promise.resolve({
 								selection: {
 									providerId: 'fixture',
-									source: 'personal',
+									source: 'extension',
 									policy: template.policy,
 									...(config.userShell !== undefined && {
 										userShell: config.userShell

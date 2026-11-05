@@ -75,6 +75,7 @@ export const providerServiceSchema = Type.Intersect([
 ]);
 
 export const brokerServiceSchema = Type.Object({
+	guardVersion: Type.Literal(1),
 	id: nonEmptyStringSchema,
 	acquire: callable<BrokerServiceV1['acquire']>(),
 	negotiate: callable<BrokerServiceV1['negotiate']>(),
@@ -148,6 +149,7 @@ export const runtimeSettingsSchema = Type.Object({
 		record: callable<DiagnosticStore['record']>(),
 		snapshot: callable<DiagnosticStore['snapshot']>()
 	}),
+	guardVersion: Type.Literal(1),
 	configurationVersion: Type.Literal(1),
 	assertConfigurable: callable<RuntimeSettingsV1['assertConfigurable']>(),
 	id: nonEmptyStringSchema,
@@ -158,6 +160,7 @@ export const runtimeSettingsSchema = Type.Object({
 });
 
 export const outsideServiceSchema = Type.Object({
+	guardVersion: Type.Literal(1),
 	status: callable<OutsideServiceV1['status']>(),
 	id: nonEmptyStringSchema,
 	lifetime: signalSchema,

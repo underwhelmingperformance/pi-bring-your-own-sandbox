@@ -320,6 +320,10 @@ session generations allocate a backend for each negotiated policy lazily.
 */
 export interface BrokerServiceV1 {
 	/**
+ Required guard enforcement contract for cooperating SDK copies.
+ */
+	readonly guardVersion: 1;
+	/**
 	Runtime service identity shared across independently installed SDK
 	copies.
 	*/

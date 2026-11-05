@@ -38,7 +38,7 @@ async function run(
 	}
 }
 
-async function project(directory: string) {
+async function project(directory: string, sdkOverride?: string) {
 	await mkdir(directory);
 	await writeFile(
 		path.join(directory, 'package.json'),
@@ -50,6 +50,16 @@ async function project(directory: string) {
 			packageManager: 'pnpm@12.15.0'
 		})
 	);
+
+	if (sdkOverride !== undefined) {
+		await writeFile(
+			path.join(directory, 'pnpm-workspace.yaml'),
+			`overrides:
+  pi-bring-your-own-sandbox: ${JSON.stringify(`file:${sdkOverride}`)}
+`
+		);
+	}
+
 	await writeFile(
 		path.join(directory, 'tsconfig.json'),
 		JSON.stringify({
@@ -83,24 +93,37 @@ async function add(
 	]);
 }
 
-function packedPaths(output: string): string[] {
+interface PackedArchive {
+	readonly filename: string;
+	readonly version: string;
+	readonly paths: readonly string[];
+}
+
+function packedArchive(output: string): PackedArchive {
 	const result: unknown = JSON.parse(output);
 
-	expect(isRecord(result) && Array.isArray(result.files)).toBe(true);
-
-	if (!isRecord(result) || !Array.isArray(result.files)) {
-		throw new Error('pnpm pack did not report the packed files.');
+	if (
+		!isRecord(result) ||
+		typeof result.filename !== 'string' ||
+		typeof result.version !== 'string' ||
+		!Array.isArray(result.files)
+	) {
+		throw new Error('pnpm pack did not report the archive and packed files.');
 	}
 
-	return result.files
-		.map((file: unknown) => {
-			if (!isRecord(file) || typeof file.path !== 'string') {
-				throw new Error('pnpm pack reported an invalid file path.');
-			}
+	return {
+		filename: result.filename,
+		version: result.version,
+		paths: result.files
+			.map((file: unknown) => {
+				if (!isRecord(file) || typeof file.path !== 'string') {
+					throw new Error('pnpm pack reported an invalid file path.');
+				}
 
-			return file.path;
-		})
-		.toSorted((left, right) => left.localeCompare(right));
+				return file.path;
+			})
+			.toSorted((left, right) => left.localeCompare(right))
+	};
 }
 
 it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
@@ -126,7 +149,7 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 				'--dry-run',
 				'--json'
 			]);
-			const preview = packedPaths(dryRun.stdout);
+			const preview = packedArchive(dryRun.stdout).paths;
 
 			expect(preview).not.toContain(obsolete.split(path.sep).join('/'));
 
@@ -136,7 +159,8 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 				'--pack-destination',
 				artifacts
 			]);
-			const paths = packedPaths(packed.stdout);
+			const archive = packedArchive(packed.stdout);
+			const paths = archive.paths;
 
 			expect(paths).toStrictEqual(preview);
 			expect(
@@ -147,14 +171,11 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 				)
 			).toStrictEqual([]);
 
-			const tarball = path.join(
-				artifacts,
-				'pi-bring-your-own-sandbox-0.0.0.tgz'
-			);
-			const archive = await run(directory, 'tar', ['-tzf', tarball]);
+			const tarball = archive.filename;
+			const contents = await run(directory, 'tar', ['-tzf', tarball]);
 
 			expect(
-				archive.stdout
+				contents.stdout
 					.trim()
 					.split('\n')
 					.map((file) => file.replace(/^package\//, ''))
@@ -167,9 +188,22 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 				expect(paths).toContain(`src/${subpath}.ts`);
 			}
 
-			await project(host);
+			const guardRoot = path.resolve('../guard');
+
+			await run(guardRoot, 'pnpm', ['build']);
+
+			const guardPacked = await run(guardRoot, 'pnpm', [
+				'pack',
+				'--json',
+				'--pack-destination',
+				artifacts
+			]);
+			const guardTarball = packedArchive(guardPacked.stdout).filename;
+
+			await project(host, tarball);
 			await project(provider);
 			await add(host, [
+				guardTarball,
 				tarball,
 				'@earendil-works/pi-coding-agent@1.5.0',
 				'@earendil-works/pi-ai@1.5.0'
@@ -211,6 +245,32 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 						{ types: `./dist/${entry}.d.ts`, import: `./dist/${entry}.js` }
 					])
 				)
+			});
+
+			const guardManifest: unknown = JSON.parse(
+				await readFile(
+					path.join(
+						host,
+						'node_modules/pi-bring-your-own-sandbox-guard/package.json'
+					),
+					'utf8'
+				)
+			);
+
+			if (!isRecord(guardManifest)) {
+				throw new Error('The installed guard manifest must be an object.');
+			}
+
+			expect({
+				pi: guardManifest.pi,
+				exports: guardManifest.exports,
+				dependencies: guardManifest.dependencies
+			}).toStrictEqual({
+				pi: { extensions: ['./src/extension.ts'] },
+				exports: {
+					'.': { types: './dist/index.d.ts', import: './dist/index.js' }
+				},
+				dependencies: { 'pi-bring-your-own-sandbox': `^${archive.version}` }
 			});
 
 			const declarations = await readFile(

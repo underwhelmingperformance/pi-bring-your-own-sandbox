@@ -31,6 +31,7 @@ export function providerReply(id = 'independent') {
 class IndependentBroker {
 	readonly #identity: string;
 	readonly id: string;
+	readonly guardVersion = 1;
 
 	constructor(id: string) {
 		this.id = id;

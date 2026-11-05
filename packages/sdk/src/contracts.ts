@@ -910,6 +910,21 @@ export interface SandboxOpenRequest<Config = unknown> {
 }
 
 /**
+Minimum provider identity, capabilities and policy required for every SDK
+consumer in this runtime. Installing a requirement always requires explicit
+provider activation. Per-call cancellation and timeout options are excluded.
+*/
+export interface SandboxRequirements extends Omit<
+	SandboxAcquireOptions,
+	'signal' | 'timeoutMs'
+> {
+	/**
+	Expected activated provider ID. Omit to accept any activated provider.
+	*/
+	readonly providerId?: string;
+}
+
+/**
 Live runtime context and shared startup budget supplied to configuration
 resolvers. Cancelling an individual acquisition does not cancel this resolver.
 */
@@ -934,20 +949,20 @@ provider declaration's default; provider configuration is never displayed.
 */
 export interface SandboxProviderConfig<Config> {
 	/**
- Typed input for the provider's configuration validator.
- */
+	Typed input for the provider's configuration validator.
+	*/
 	readonly configuration: Config;
 	/**
- Base policy that consumer and guard requirements may tighten.
- */
+	Base policy that consumer and guard requirements may tighten.
+	*/
 	readonly policy?: SandboxPolicy;
 	/**
- Target dialect for user-shell commands.
- */
+	Target dialect for user-shell commands.
+	*/
 	readonly userShell?: ShellDialect;
 	/**
- Cleanup overrides for this runtime generation.
- */
+	Cleanup overrides for this runtime generation.
+	*/
 	readonly cleanup?: Partial<SandboxCleanupBudgets>;
 }
 /**

@@ -25,6 +25,15 @@ extension-point gaps.
 ```typescript
 initialiseSandboxHost(pi: SandboxHost, options: SandboxHostOptions): void;
 
+registerSandboxRequirement(pi: SandboxHost,
+  requirements?: SandboxRequirements): void;
+
+configureExecutionApproval(pi: SandboxHost,
+  resolve: SandboxConfigResolver<ApprovalSelection>): void;
+
+configureOutsideExecution(pi: SandboxHost,
+  resolve: SandboxConfigResolver<{ readonly destination: 'normal' | 'provider' }>): void;
+
 getSandbox(pi: SandboxHost, context: SandboxContext,
   options?: SandboxAcquireOptions): Promise<Sandbox>;
 
@@ -492,20 +501,21 @@ late replies are ignored. Duplicate identities, malformed replies and
 unsupported versions are errors. Callbacks, signals and service objects remain
 in-process.
 
-| Channel                                  | Service methods and metadata                                                                                                                          |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pi-byos:discovery:v1:approval-policies` | `id`, `label`, `configure(input)` returning a bound `decide` method.                                                                                  |
-| `pi-byos:discovery:v1:approvals`         | `id`, `request(context, request, options?)`, `policies()`, `close()`.                                                                                 |
-| `pi-byos:settings:v1`                    | `id`, `configurationVersion: 1`, `diagnostics`, `lifetime`, `close()`, `assertConfigurable()`, `read(context)`, optional host-bound `normalExecutor`. |
-| `pi-byos:discovery:v1:outside-execution` | `id`, `lifetime`, `acquire`, `track`, `assertLive`, `close`, `status`.                                                                                |
+| Channel                                  | Service methods and metadata                                                                                                                                             |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pi-byos:discovery:v1:approval-policies` | `id`, `label`, `configure(input)` returning a bound `decide` method.                                                                                                     |
+| `pi-byos:discovery:v1:approvals`         | `id`, `request(context, request, options?)`, `policies()`, `close()`.                                                                                                    |
+| `pi-byos:settings:v1`                    | `id`, `configurationVersion: 1`, `guardVersion: 1`, `diagnostics`, `lifetime`, `close()`, `assertConfigurable()`, `read(context)`, optional host-bound `normalExecutor`. |
+| `pi-byos:discovery:v1:outside-execution` | `id`, `guardVersion: 1`, `lifetime`, `acquire`, `track`, `assertLive`, `close`, `status`.                                                                                |
 
-Configuration bindings use the same service envelope:
+Configuration bindings and guard requirements use the same service envelope:
 
-| Channel                              | Service payload                        |
-| ------------------------------------ | -------------------------------------- |
-| `pi-byos:configuration:v1:providers` | `{ id: providerId, resolve(context) }` |
-| `pi-byos:configuration:v1:approval`  | `{ id: 'approval', resolve(context) }` |
-| `pi-byos:configuration:v1:outside`   | `{ id: 'outside', resolve(context) }`  |
+| Channel                              | Service payload                              |
+| ------------------------------------ | -------------------------------------------- |
+| `pi-byos:configuration:v1:providers` | `{ id: providerId, resolve(context) }`       |
+| `pi-byos:configuration:v1:approval`  | `{ id: 'approval', resolve(context) }`       |
+| `pi-byos:configuration:v1:outside`   | `{ id: 'outside', resolve(context) }`        |
+| `pi-byos:requirements:v1`            | `{ id: uniqueRegistrationId, requirements }` |
 
 Provider registration publishes both its declaration and activation binding.
 Provider resolvers return `SandboxProviderConfig<unknown>`; the provider's
@@ -519,7 +529,8 @@ does not abort shared resolution.
 
 The SDK permits one provider activation, one approval binding and one outside
 binding. Duplicate binding IDs and multiple provider activations fail before
-resolution. Discoveries collect all replies before validation; malformed or
+resolution. Requirement registration IDs are unique so multiple guards apply
+together. Discoveries collect all replies before validation; malformed or
 incompatible services fail without creating replacements. Registration calls
 `assertConfigurable()` before publication. The first configuration read and SDK
 shutdown permanently close registration for that runtime.
@@ -548,3 +559,23 @@ The provider-v1 service accepts optional `outsideSandbox` metadata with `label`,
 an allocation closure for the outside backend. Existing declarations without
 this optional member retain their behaviour. The framework validates and
 snapshots the optional metadata before use.
+
+## Guard requirements
+
+`SandboxRequirements` includes acquisition capability and policy requirements,
+plus optional `providerId`. It excludes `signal` and `timeoutMs`. Any
+registration requires explicit activation; an empty object accepts any activated
+provider. Registration is synchronous and snapshots arrays and policies.
+Requirements are fixed before lazy configuration resolution starts, and multiple
+registrations apply together.
+
+The broker, runtime settings and outside-execution service require
+`guardVersion: 1` in their structural service contracts. A service without this
+field is invalid. The baseline service protocol remains version 1. Independent
+SDK copies must discover and enforce the same requirements before returning
+ordinary handles or preparing outside execution.
+
+`SandboxProviderRequiredError` reports missing activation.
+`SandboxProviderMismatchError` reports a mismatched expected ID. Existing typed
+capability and policy errors report unsupported guarantees. Diagnostics and
+cleanup remain available when requirements cannot be satisfied.

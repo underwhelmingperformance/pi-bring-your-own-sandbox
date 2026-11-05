@@ -6,5 +6,48 @@
 	"license": "MIT",
 	"engines": {
 		"node": ">=24"
+	},
+	"dependencies": {
+		"pi-bring-your-own-sandbox": "workspace:^"
+	},
+	"devDependencies": {
+		"@earendil-works/pi-coding-agent": "1.5.0",
+		"@types/node": "24.12.2",
+		"typescript": "6.0.3",
+		"vitest": "5.0.5"
+	},
+	"description": "Require an activated sandbox provider for BYOS SDK operations",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"import": "./src/index.ts"
+		}
+	},
+	"pi": {
+		"extensions": [
+			"./src/extension.ts"
+		]
+	},
+	"files": [
+		"src",
+		"dist",
+		"!src/**/*.test.ts",
+		"README.md"
+	],
+	"publishConfig": {
+		"exports": {
+			".": {
+				"types": "./dist/index.d.ts",
+				"import": "./dist/index.js"
+			}
+		}
+	},
+	"scripts": {
+		"build": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\" && tsc -b tsconfig.build.json --force",
+		"check:types": "tsc --noEmit",
+		"test": "pnpm build && vitest run"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "1.5.0"
 	}
 }

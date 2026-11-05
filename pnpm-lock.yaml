@@ -214,7 +214,24 @@ importers:
         specifier: 8.72.1
         version: 8.72.1(eslint@10.14.0(jiti@2.7.0))(typescript@6.0.3)
 
-  packages/guard: {}
+  packages/guard:
+    dependencies:
+      pi-bring-your-own-sandbox:
+        specifier: workspace:^
+        version: link:../sdk
+    devDependencies:
+      '@earendil-works/pi-coding-agent':
+        specifier: 1.5.0
+        version: 1.5.0(@aws-sdk/credential-provider-node@3.972.90)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.7)
+      '@types/node':
+        specifier: 24.12.2
+        version: 24.12.2
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.5
+        version: 5.0.5(@types/node@24.12.2)(vite@8.3.5(@types/node@24.12.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/sdk:
     devDependencies:

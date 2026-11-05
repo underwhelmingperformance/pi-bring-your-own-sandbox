@@ -5,7 +5,8 @@ import { expect, it } from 'vitest';
 import {
 	acquireOptionsSchema,
 	processRequestSchema,
-	providerConfigSchema
+	providerConfigSchema,
+	sandboxRequirementsSchema
 } from './request-schemas.js';
 import {
 	capabilitiesSchema,
@@ -18,6 +19,28 @@ const sparse: string[] = ['exec'];
 sparse.length++;
 
 it.each([
+	{ schema: sandboxRequirementsSchema, input: {}, expected: true },
+	{
+		schema: sandboxRequirementsSchema,
+		input: { providerId: 'expected', terminationScope: 'workload' },
+		expected: true
+	},
+	{
+		schema: sandboxRequirementsSchema,
+		input: { providerId: '' },
+		expected: false
+	},
+	{
+		schema: sandboxRequirementsSchema,
+		input: { timeoutMs: 100 },
+		expected: false
+	},
+	{
+		schema: sandboxRequirementsSchema,
+		input: { signal: new AbortController().signal },
+		expected: false
+	},
+
 	{
 		schema: capabilitiesSchema,
 		input: {

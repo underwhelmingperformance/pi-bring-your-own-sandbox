@@ -31,6 +31,8 @@ export {
 	SandboxOutputCallbackError,
 	SandboxPathNotFoundError,
 	SandboxPermissionDeniedError,
+	SandboxProviderMismatchError,
+	SandboxProviderRequiredError,
 	SandboxSessionClosingError,
 	SandboxStartupError,
 	SandboxTimeoutError,
@@ -72,6 +74,7 @@ export {
 	PROVIDER_DISCOVERY_CHANNEL
 } from './protocol.js';
 export { registerSandboxProvider } from './provider-registration.js';
+export { registerSandboxRequirement } from './requirements.js';
 export {
 	configureExecutionApproval,
 	configureOutsideExecution

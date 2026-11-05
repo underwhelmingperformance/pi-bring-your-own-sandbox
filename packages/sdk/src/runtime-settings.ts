@@ -35,12 +35,18 @@ import {
 	outsideSelectionSchema,
 	providerConfigSchema
 } from './request-schemas.js';
+import {
+	applySandboxRequirements,
+	checkRequiredProvider,
+	sandboxRequirements
+} from './requirements.js';
 import { callable, checker, nonEmptyStringSchema } from './schemas.js';
 import { runtimeSettingsSchema } from './service-schemas.js';
 
 export interface RuntimeSettingsV1 {
 	readonly configurationVersion: 1;
 	readonly diagnostics: DiagnosticStore;
+	readonly guardVersion: 1;
 	readonly id: string;
 	readonly lifetime: AbortSignal;
 	readonly close: () => void;
@@ -183,6 +189,14 @@ export function runtimeSettings(
 						);
 					});
 
+					const requirements = sandboxRequirements(pi);
+
+					checkRequiredProvider(
+						requirements,
+						provider,
+						activation !== undefined
+					);
+
 					const approvalBindings = bindings(pi, 'approval');
 					const outsideBindings = bindings(pi, 'outside');
 					const resolutionContext: SandboxConfigContext = Object.freeze({
@@ -213,10 +227,15 @@ export function runtimeSettings(
 								});
 							}
 
-							const value = resolveSandboxConfig(
+							const resolved = resolveSandboxConfig(
 								provider,
 								provided,
 								activation === undefined ? 'default' : 'extension'
+							);
+							const value = applySandboxRequirements(
+								resolved,
+								provider,
+								requirements
 							);
 
 							return Object.freeze({
@@ -277,6 +296,7 @@ export function runtimeSettings(
 			return {
 				configurationVersion: 1,
 				diagnostics,
+				guardVersion: 1,
 				id,
 				lifetime: lifetime.signal,
 				close: () => {

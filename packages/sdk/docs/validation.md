@@ -39,15 +39,16 @@ and CodeQL results.
 
 ## Try the checkout
 
-Load the diagnostic extension without changing Pi settings:
+From `packages/sdk`, load the Docker provider:
 
 ```sh
 pi --no-extensions -e ./examples/docker/src/index.ts
 ```
 
-Use `/byos status`, `/byos providers` or `/byos approval-policies` to inspect
-configuration without allocating a sandbox. Pi Git installations load TypeScript
-source directly. `pnpm build` produces the compiled SDK used by packed archives.
+Provider extensions can call `registerSandboxDiagnostics(pi)` to expose
+`/byos status`, `/byos providers` and `/byos approval-policies`. These commands
+inspect configuration without allocating a sandbox. Pi loads extension source
+directly. `pnpm build` produces the compiled SDK used by archive exports.
 
 ## Test boundaries
 

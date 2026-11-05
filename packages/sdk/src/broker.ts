@@ -19,6 +19,7 @@ export class SandboxBroker implements BrokerServiceV1 {
 	#generation: SandboxGeneration | undefined;
 	#isClosing = false;
 	readonly id: string;
+	readonly guardVersion = 1;
 
 	constructor(
 		id: string,

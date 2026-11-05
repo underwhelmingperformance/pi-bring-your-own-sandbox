@@ -140,6 +140,44 @@ export class IncompatibleSandboxProtocolError extends SandboxError<'Incompatible
 }
 
 /**
+The activated provider does not match a guard requirement.
+*/
+export class SandboxProviderMismatchError extends SandboxError<'SandboxProviderMismatchError'> {
+	/**
+	Stable identity used by the structural guard across SDK copies.
+	*/
+	static readonly errorName = 'SandboxProviderMismatchError';
+
+	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
+		super(
+			SandboxProviderMismatchError.errorName,
+			'The activated sandbox provider does not match the guard requirements. Check the loaded provider extension.',
+			context,
+			options
+		);
+	}
+}
+
+/**
+A guard requires explicit provider activation before SDK operations can proceed.
+*/
+export class SandboxProviderRequiredError extends SandboxError<'SandboxProviderRequiredError'> {
+	/**
+	Stable identity used by the structural guard across SDK copies.
+	*/
+	static readonly errorName = 'SandboxProviderRequiredError';
+
+	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
+		super(
+			SandboxProviderRequiredError.errorName,
+			'A sandbox provider must be activated. Load the required provider extension.',
+			context,
+			options
+		);
+	}
+}
+
+/**
 Provider or backend metadata violates the advertised protocol. Consumers
 must not use the declaration.
 */
@@ -650,6 +688,14 @@ export function rehydrateSandboxError(
 	context: SandboxErrorContext = error
 ): SandboxErrorInfo {
 	switch (error.name) {
+		case 'SandboxProviderMismatchError': {
+			return new SandboxProviderMismatchError(context, options);
+		}
+
+		case 'SandboxProviderRequiredError': {
+			return new SandboxProviderRequiredError(context, options);
+		}
+
 		case 'SandboxInitialisationError': {
 			return new SandboxInitialisationError(context, options);
 		}

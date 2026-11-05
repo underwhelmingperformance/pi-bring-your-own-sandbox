@@ -1,10 +1,18 @@
 {
 	"$schema": "https://unpkg.com/knip/schema.json",
-	"entry": [
-		"src/**/*.test.ts",
-		"examples/**/*.test.ts",
-		"examples/docker/src/extension.ts",
-		"examples/consumer/src/extension.ts"
-	],
-	"project": ["src/**/*.ts", "examples/**/*.ts", "*.config.ts"]
+	"workspaces": {
+		".": {
+			"entry": ["*.config.ts"],
+			"project": ["*.config.ts"]
+		},
+		"packages/sdk": {
+			"entry": [
+				"src/**/*.test.ts",
+				"examples/**/*.test.ts",
+				"examples/docker/src/extension.ts",
+				"examples/consumer/src/extension.ts"
+			],
+			"project": ["src/**/*.ts", "examples/**/*.ts", "*.config.ts"]
+		}
+	}
 }

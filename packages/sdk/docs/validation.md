@@ -18,11 +18,11 @@ Markdown, tests and types. Use `pnpm fix` to apply ESLint and Prettier fixes.
 
 Additional test commands run specific suites:
 
-| Command                 | Purpose                                                                | Requirements                          |
-| ----------------------- | ---------------------------------------------------------------------- | ------------------------------------- |
-| `pnpm test:integration` | Real Pi sessions, CLI/RPC approval and consumer integration.           | Local fixtures; no model credentials. |
-| `pnpm test:package`     | Git installation, packed archives, exports and independent SDK copies. | Dependency installation access.       |
-| `pnpm test:provider`    | Real Docker execution, isolation and cleanup.                          | Local Docker daemon and pinned image. |
+| Command                 | Purpose                                                      | Requirements                          |
+| ----------------------- | ------------------------------------------------------------ | ------------------------------------- |
+| `pnpm test:integration` | Real Pi sessions, CLI/RPC approval and consumer integration. | Local fixtures; no model credentials. |
+| `pnpm test:package`     | Packed archives, exports and independent SDK copies.         | Dependency installation access.       |
+| `pnpm test:provider`    | Real Docker execution, isolation and cleanup.                | Local Docker daemon and pinned image. |
 
 The ordinary test run includes integration tests but skips the package and
 Docker suites. Run their dedicated commands separately. The [Docker
@@ -35,7 +35,7 @@ on all of those jobs. Separate workflows check Actions security, commit messages
 and CodeQL results.
 
 [docker]: ../examples/docker/README.md
-[workflow]: ../.github/workflows/check.yml
+[workflow]: ../../../.github/workflows/check.yml
 
 ## Try the checkout
 

@@ -123,7 +123,7 @@ jobs:
       - name: Prepare the local Docker daemon and pinned image
         run: |
           docker version
-          image=$(node --input-type=module -e 'import { DOCKER_IMAGE } from "./examples/docker/src/image.ts"; process.stdout.write(DOCKER_IMAGE)')
+          image=$(node --input-type=module -e 'import { DOCKER_IMAGE } from "./packages/sdk/examples/docker/src/image.ts"; process.stdout.write(DOCKER_IMAGE)')
           docker pull "$image"
 
       - run: pnpm test:provider

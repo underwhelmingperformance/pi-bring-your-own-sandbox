@@ -130,7 +130,7 @@ async function withDockerSession(
 	}
 }
 
-describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
+describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 	'Docker SDK integration (pnpm test:provider requires a local daemon and the pinned image)',
 	() => {
 		it('satisfies the intermediate filesystem request with Docker workspace isolation', async () => {

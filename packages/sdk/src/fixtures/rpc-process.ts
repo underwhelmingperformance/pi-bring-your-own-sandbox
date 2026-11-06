@@ -92,8 +92,8 @@ export class RpcProcess {
 
 		if (
 			!isRecord(message) ||
-			message.type !== 'response' ||
-			typeof message.id !== 'string'
+			message['type'] !== 'response' ||
+			typeof message['id'] !== 'string'
 		) {
 			this.#events.push(message);
 
@@ -106,7 +106,7 @@ export class RpcProcess {
 			return;
 		}
 
-		this.#requests.get(message.id)?.resolve(message);
+		this.#requests.get(message['id'])?.resolve(message);
 	}
 
 	get events(): readonly unknown[] {

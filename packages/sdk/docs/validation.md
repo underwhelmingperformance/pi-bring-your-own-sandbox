@@ -29,6 +29,10 @@ Additional test commands run specific suites:
 | `pnpm test:package`     | Packed archives, exports and independent SDK copies.         | Dependency installation access.       |
 | `pnpm test:provider`    | Real Docker execution, isolation and cleanup.                | Local Docker daemon and pinned image. |
 
+Package tests compile every source export in an isolated consumer with
+`noPropertyAccessFromIndexSignature` enabled. Source and compiled consumers use
+the project's TypeScript compiler version.
+
 The ordinary test run includes integration tests but skips the package and
 Docker suites. Run their dedicated commands separately. The [Docker
 guide][docker] explains daemon configuration and image preparation. Model and

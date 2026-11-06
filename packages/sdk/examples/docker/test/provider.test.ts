@@ -5,7 +5,7 @@ import { createDockerProvider } from '../src/provider.js';
 
 import { DockerFixture } from './fixture.js';
 
-describe.skipIf(process.env.BYOS_DOCKER_TESTS !== '1')(
+describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 	'Docker reference provider (pnpm test:provider requires a local daemon and the pinned image)',
 	() => {
 		for (const workspaceAccess of ['read-write', 'read-only'] as const) {

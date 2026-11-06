@@ -108,8 +108,8 @@ export class DockerFixture {
 	readonly server = `pi-byos-network-${randomUUID()}`;
 	hasServer = false;
 	readonly config: DockerConfig = {
-		executable: process.env.BYOS_DOCKER_EXECUTABLE ?? '/usr/bin/docker',
-		socketPath: process.env.BYOS_DOCKER_SOCKET ?? '/var/run/docker.sock'
+		executable: process.env['BYOS_DOCKER_EXECUTABLE'] ?? '/usr/bin/docker',
+		socketPath: process.env['BYOS_DOCKER_SOCKET'] ?? '/var/run/docker.sock'
 	};
 
 	private constructor(directory: string, workspace: string) {

@@ -577,11 +577,11 @@ it('keeps Pi full-output storage and formatting for large target output', async 
 			const structured = result?.structuredContent;
 			const details = result?.details;
 
-			if (!isRecord(details) || typeof details.fullOutputPath !== 'string') {
+			if (!isRecord(details) || typeof details['fullOutputPath'] !== 'string') {
 				throw new Error('Pi did not publish its full-output path.');
 			}
 
-			const filename = details.fullOutputPath;
+			const filename = details['fullOutputPath'];
 			const contents = await readFile(filename, 'utf8');
 			const measuredTime: unknown = expect.any(Number);
 			const text = result?.content

@@ -24,7 +24,7 @@ it('loads the workspace source package and consumer through Pi', async () => {
 			throw new TypeError('The SDK manifest must be an object.');
 		}
 
-		expect(manifest.exports).toStrictEqual(
+		expect(manifest['exports']).toStrictEqual(
 			Object.fromEntries(
 				['api', 'pi-tools', 'testing'].map((entry) => [
 					`./${entry}`,

@@ -31,19 +31,19 @@ interface FixtureApi extends SandboxClient {
 function isFixtureApi(value: unknown): value is FixtureApi {
 	return (
 		isRecord(value) &&
-		typeof value.getSandbox === 'function' &&
-		typeof value.registerSandboxRequirement === 'function' &&
-		typeof value.closeSandboxSession === 'function' &&
-		typeof value.registerSandboxProvider === 'function' &&
-		typeof value.isSandboxError === 'function' &&
-		typeof value.SandboxOperationError === 'function' &&
-		typeof value.SandboxCancelledError === 'function' &&
-		typeof value.registerApprovalPolicy === 'function' &&
-		typeof value.requestExecutionApproval === 'function' &&
-		typeof value.getOutsideSandboxExecutor === 'function' &&
-		typeof value.isApprovalError === 'function' &&
-		typeof value.ApprovalDeniedError === 'function' &&
-		typeof value.initialiseSandboxHost === 'function'
+		typeof value['getSandbox'] === 'function' &&
+		typeof value['registerSandboxRequirement'] === 'function' &&
+		typeof value['closeSandboxSession'] === 'function' &&
+		typeof value['registerSandboxProvider'] === 'function' &&
+		typeof value['isSandboxError'] === 'function' &&
+		typeof value['SandboxOperationError'] === 'function' &&
+		typeof value['SandboxCancelledError'] === 'function' &&
+		typeof value['registerApprovalPolicy'] === 'function' &&
+		typeof value['requestExecutionApproval'] === 'function' &&
+		typeof value['getOutsideSandboxExecutor'] === 'function' &&
+		typeof value['isApprovalError'] === 'function' &&
+		typeof value['ApprovalDeniedError'] === 'function' &&
+		typeof value['initialiseSandboxHost'] === 'function'
 	);
 }
 

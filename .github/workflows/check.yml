@@ -52,13 +52,18 @@ jobs:
       - run: pnpm check:types
 
   test:
-    name: tests (${{ matrix.runner }})
+    name: tests (${{ matrix.runner }}, Node ${{ matrix.node.label }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         runner: [ubuntu-24.04, macos-15]
+        node:
+          - label: project
+            version-file: .node-version
+          - label: '24'
+            version: '24'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -68,7 +73,8 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: .node-version
+          node-version: ${{ matrix.node.version }}
+          node-version-file: ${{ matrix.node.version-file }}
           cache: pnpm
 
       - name: Install native search test tools (Linux)
@@ -85,9 +91,17 @@ jobs:
       - run: pnpm test
 
   package:
-    name: package installation
+    name: package installation (Node ${{ matrix.node.label }})
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node:
+          - label: project
+            version-file: .node-version
+          - label: '24'
+            version: '24'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -97,7 +111,8 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: .node-version
+          node-version: ${{ matrix.node.version }}
+          node-version-file: ${{ matrix.node.version-file }}
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile

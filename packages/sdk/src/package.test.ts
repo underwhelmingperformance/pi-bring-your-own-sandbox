@@ -101,6 +101,7 @@ async function add(
 		...(isDevelopment ? ['--save-dev'] : []),
 		...packages,
 		'--ignore-scripts',
+		'--strict-peer-dependencies',
 		'--package-import-method=copy',
 		'--prefer-offline'
 	]);
@@ -139,9 +140,9 @@ function packedArchive(output: string): PackedArchive {
 	};
 }
 
-it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
-	'clean tarball installs (pnpm test:package installs isolated dependency roots)',
-	async () => {
+it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
+	'clean tarball installs with Vitest %s (pnpm test:package installs isolated dependency roots)',
+	async (vitestVersion) => {
 		const directory = await mkdtemp(path.join(tmpdir(), 'pi-byos-package-'));
 		const host = path.join(directory, 'host');
 		const provider = path.join(directory, 'provider');
@@ -249,7 +250,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
 				peers: {
 					'@earendil-works/pi-coding-agent': '1.5.0',
 					typebox: '1.3.27',
-					vitest: '5.0.5'
+					vitest: '5.0.5 || 5.1.0'
 				},
 				optional: { vitest: { optional: true } },
 				pi: undefined,
@@ -313,7 +314,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
 			await run(host, 'pnpm', ['exec', 'tsc', '--noEmit']);
 			await add(
 				provider,
-				['vitest@5.0.5', compiler, '@types/node@24.12.2'],
+				[`vitest@${vitestVersion}`, compiler, '@types/node@24.12.2'],
 				true
 			);
 			await copyFile(

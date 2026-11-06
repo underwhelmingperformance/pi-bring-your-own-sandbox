@@ -1,9 +1,9 @@
 # Testing a provider
 
 The optional `pi-bring-your-own-sandbox/testing` entry registers reusable Vitest
-tests for a provider declaration. Install Vitest 5.0.5 in the provider project.
-Production imports from `/api` do not load Vitest. The framework does not
-require a second Pi runtime for these tests.
+tests for a provider declaration. Install Vitest 5.1.0 in the provider project.
+Vitest 5.0.5 is also supported. Production imports from `/api` do not load
+Vitest. The framework does not require a second Pi runtime for these tests.
 
 Call the suite at test-module scope:
 

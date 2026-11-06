@@ -5,6 +5,7 @@ import {
 	mkdir,
 	mkdtemp,
 	readFile,
+	realpath,
 	rm,
 	writeFile
 } from 'node:fs/promises';
@@ -36,6 +37,17 @@ async function run(
 			{ cause: error }
 		);
 	}
+}
+
+async function compilerPackage(): Promise<string> {
+	const result = await run(process.cwd(), 'pnpm', ['exec', 'tsc', '--version']);
+	const version = /^Version (\S+)$/.exec(result.stdout.trim())?.[1];
+
+	if (version === undefined) {
+		throw new Error('The project compiler did not report its version.');
+	}
+
+	return `typescript@${version}`;
 }
 
 async function project(directory: string, sdkOverride?: string) {
@@ -70,6 +82,7 @@ async function project(directory: string, sdkOverride?: string) {
 				strict: true,
 				exactOptionalPropertyTypes: true,
 				noUncheckedIndexedAccess: true,
+				noPropertyAccessFromIndexSignature: true,
 				skipLibCheck: true,
 				types: ['node']
 			},
@@ -104,35 +117,36 @@ function packedArchive(output: string): PackedArchive {
 
 	if (
 		!isRecord(result) ||
-		typeof result.filename !== 'string' ||
-		typeof result.version !== 'string' ||
-		!Array.isArray(result.files)
+		typeof result['filename'] !== 'string' ||
+		typeof result['version'] !== 'string' ||
+		!Array.isArray(result['files'])
 	) {
 		throw new Error('pnpm pack did not report the archive and packed files.');
 	}
 
 	return {
-		filename: result.filename,
-		version: result.version,
-		paths: result.files
+		filename: result['filename'],
+		version: result['version'],
+		paths: result['files']
 			.map((file: unknown) => {
-				if (!isRecord(file) || typeof file.path !== 'string') {
+				if (!isRecord(file) || typeof file['path'] !== 'string') {
 					throw new Error('pnpm pack reported an invalid file path.');
 				}
 
-				return file.path;
+				return file['path'];
 			})
 			.toSorted((left, right) => left.localeCompare(right))
 	};
 }
 
-it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
+it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
 	'clean tarball installs (pnpm test:package installs isolated dependency roots)',
 	async () => {
 		const directory = await mkdtemp(path.join(tmpdir(), 'pi-byos-package-'));
 		const host = path.join(directory, 'host');
 		const provider = path.join(directory, 'provider');
 		const artifacts = path.join(directory, 'artifacts');
+		const compiler = await compilerPackage();
 		const obsolete = path.join(
 			'dist',
 			`obsolete-package-test-${randomUUID()}.js`
@@ -225,11 +239,11 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 			}
 
 			expect({
-				dependencies: manifest.dependencies,
-				peers: manifest.peerDependencies,
-				optional: manifest.peerDependenciesMeta,
-				pi: manifest.pi,
-				exports: manifest.exports
+				dependencies: manifest['dependencies'],
+				peers: manifest['peerDependencies'],
+				optional: manifest['peerDependenciesMeta'],
+				pi: manifest['pi'],
+				exports: manifest['exports']
 			}).toStrictEqual({
 				dependencies: undefined,
 				peers: {
@@ -262,9 +276,9 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 			}
 
 			expect({
-				pi: guardManifest.pi,
-				exports: guardManifest.exports,
-				dependencies: guardManifest.dependencies
+				pi: guardManifest['pi'],
+				exports: guardManifest['exports'],
+				dependencies: guardManifest['dependencies']
 			}).toStrictEqual({
 				pi: { extensions: ['./src/extension.ts'] },
 				exports: {
@@ -291,7 +305,7 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 			);
 			await add(
 				host,
-				['typescript@6.0.3', '@types/node@24.12.2', 'typebox@1.3.27'],
+				[compiler, '@types/node@24.12.2', 'typebox@1.3.27'],
 				true
 			);
 			await run(host, 'pnpm', ['exec', 'tsc']);
@@ -299,7 +313,7 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 			await run(host, 'pnpm', ['exec', 'tsc', '--noEmit']);
 			await add(
 				provider,
-				['vitest@5.0.5', 'typescript@6.0.3', '@types/node@24.12.2'],
+				['vitest@5.0.5', compiler, '@types/node@24.12.2'],
 				true
 			);
 			await copyFile(
@@ -330,6 +344,75 @@ it.skipIf(process.env.BYOS_PACKAGE_TESTS !== '1')(
 			});
 		} finally {
 			await rm(obsolete, { force: true });
+			await rm(directory, { recursive: true, force: true });
+		}
+	},
+	300_000
+);
+
+it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
+	'installed source exports compile with strict consumer settings',
+	async () => {
+		const directory = await mkdtemp(
+			path.join(tmpdir(), 'pi-byos-source-package-')
+		);
+		const consumer = path.join(directory, 'consumer');
+		const compiler = await compilerPackage();
+
+		try {
+			const packed = await run(process.cwd(), 'pnpm', [
+				'pack',
+				'--json',
+				'--pack-destination',
+				directory
+			]);
+
+			await project(consumer);
+			await add(consumer, [packedArchive(packed.stdout).filename]);
+			await add(
+				consumer,
+				[compiler, '@types/node@24.12.2', 'vitest@5.0.5'],
+				true
+			);
+
+			const installed = path.join(
+				consumer,
+				'node_modules/pi-bring-your-own-sandbox'
+			);
+
+			await copyFile(
+				new URL('../package.json', import.meta.url),
+				path.join(installed, 'package.json')
+			);
+			await rm(path.join(installed, 'dist'), { recursive: true, force: true });
+			await writeFile(
+				path.join(consumer, 'consumer.ts'),
+				[
+					"export { getSandbox } from 'pi-bring-your-own-sandbox/api';",
+					"export { default as sandboxTools } from 'pi-bring-your-own-sandbox/pi-tools';",
+					"export { defineSandboxProviderTests } from 'pi-bring-your-own-sandbox/testing';"
+				].join('\n')
+			);
+
+			const source = await realpath(installed);
+			const entrypoints = ['api', 'pi-tools', 'testing']
+				.map((entry) => path.join(source, 'src', `${entry}.ts`))
+				.toSorted((left, right) => left.localeCompare(right));
+			const checked = await run(consumer, 'pnpm', [
+				'exec',
+				'tsc',
+				'--noEmit',
+				'--listFiles'
+			]);
+
+			expect(
+				checked.stdout
+					.split(/\r?\n/)
+					.map((file) => path.normalize(file))
+					.filter((file) => entrypoints.includes(file))
+					.toSorted((left, right) => left.localeCompare(right))
+			).toStrictEqual(entrypoints);
+		} finally {
 			await rm(directory, { recursive: true, force: true });
 		}
 	},

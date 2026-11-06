@@ -10,12 +10,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isInvocation(value: unknown): value is TargetInvocation {
 	return (
 		isRecord(value) &&
-		typeof value.executable === 'string' &&
-		Array.isArray(value.args) &&
-		value.args.every((argument: unknown) => typeof argument === 'string') &&
-		typeof value.cwd === 'string' &&
-		isRecord(value.env) &&
-		Object.values(value.env).every(
+		typeof value['executable'] === 'string' &&
+		Array.isArray(value['args']) &&
+		value['args'].every((argument: unknown) => typeof argument === 'string') &&
+		typeof value['cwd'] === 'string' &&
+		isRecord(value['env']) &&
+		Object.values(value['env']).every(
 			(entry) => typeof entry === 'string' || entry === null
 		)
 	);

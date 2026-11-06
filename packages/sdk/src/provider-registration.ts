@@ -63,7 +63,7 @@ export function registerSandboxProvider<Config, Input = Config>(
 		try {
 			const config = validate(input);
 
-			if (isRecord(config) && typeof config.then === 'function') {
+			if (isRecord(config) && typeof config['then'] === 'function') {
 				void Promise.allSettled([Promise.resolve(config)]);
 
 				throw new InvalidSandboxConfigError({

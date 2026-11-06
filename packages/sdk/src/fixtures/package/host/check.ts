@@ -80,7 +80,7 @@ const agentDirectory = path.join(root, 'agent');
 
 await mkdir(workspace);
 await mkdir(agentDirectory);
-process.env.PI_CODING_AGENT_DIR = agentDirectory;
+process.env['PI_CODING_AGENT_DIR'] = agentDirectory;
 
 const consumer = path.join(sdkRoot, 'examples/consumer/src');
 

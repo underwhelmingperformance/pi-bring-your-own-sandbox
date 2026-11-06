@@ -238,7 +238,7 @@ export async function executeProcess(
 					data: new Uint8Array(output.data)
 				});
 
-				if (isRecord(returned) && typeof returned.then === 'function') {
+				if (isRecord(returned) && typeof returned['then'] === 'function') {
 					void Promise.allSettled([Promise.resolve(returned)]);
 
 					throw new InvalidSandboxRequestError({

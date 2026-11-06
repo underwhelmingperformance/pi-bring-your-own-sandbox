@@ -380,11 +380,11 @@ export class SandboxGeneration {
 
 		slot.candidate = candidate;
 
-		if (isRecord(candidate) && isRecovery(candidate.recovery)) {
-			slot.candidateRecovery = snapshotRecovery(candidate.recovery);
+		if (isRecord(candidate) && isRecovery(candidate['recovery'])) {
+			slot.candidateRecovery = snapshotRecovery(candidate['recovery']);
 
 			if (!slot.hasRecovery) {
-				slot.recovery = snapshotRecovery(candidate.recovery);
+				slot.recovery = snapshotRecovery(candidate['recovery']);
 			}
 		}
 

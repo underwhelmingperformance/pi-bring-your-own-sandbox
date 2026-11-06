@@ -138,7 +138,7 @@ export function registerApprovalPolicy<Config>(
 			configure(input: unknown) {
 				const config = validate(input);
 
-				if (isRecord(config) && typeof config.then === 'function') {
+				if (isRecord(config) && typeof config['then'] === 'function') {
 					void Promise.allSettled([Promise.resolve(config)]);
 
 					throw new ApprovalPolicyError();

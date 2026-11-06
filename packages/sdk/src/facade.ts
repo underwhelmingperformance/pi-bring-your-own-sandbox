@@ -298,7 +298,7 @@ class Files implements SandboxFiles {
 				}
 
 				if (typeof after !== 'string') {
-					if (isRecord(after) && typeof after.then === 'function') {
+					if (isRecord(after) && typeof after['then'] === 'function') {
 						void Promise.allSettled([Promise.resolve(after)]);
 					}
 

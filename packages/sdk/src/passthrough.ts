@@ -19,7 +19,7 @@ async function executable(
 	workspace: string,
 	environment: NodeJS.ProcessEnv
 ): Promise<string | undefined> {
-	const directories = (environment.PATH ?? '').split(path.delimiter);
+	const directories = (environment['PATH'] ?? '').split(path.delimiter);
 
 	for (const directory of directories) {
 		const candidate = path.resolve(workspace, directory, command);

@@ -110,7 +110,7 @@ async function fixture(
 			try {
 				return await readFile(path.join(directory, filename), 'utf8');
 			} catch (error) {
-				if (isRecord(error) && error.code === 'ENOENT') {
+				if (isRecord(error) && error['code'] === 'ENOENT') {
 					return '';
 				}
 
@@ -199,7 +199,7 @@ it.each([
 					journal.filter(
 						(record) =>
 							isRecord(record) &&
-							['ordinary-open', 'outside-open'].includes(String(record.kind))
+							['ordinary-open', 'outside-open'].includes(String(record['kind']))
 					)
 				).toStrictEqual(
 					destination === 'provider' ? [{ kind: 'outside-open' }] : []
@@ -210,7 +210,7 @@ it.each([
 					result: journal.filter(
 						(record) =>
 							isRecord(record) &&
-							['result', 'error'].includes(String(record.kind))
+							['result', 'error'].includes(String(record['kind']))
 					)
 				}).toStrictEqual({
 					effects: allowed ? `${destination}\n` : '',
@@ -268,7 +268,7 @@ it('ignores an expired RPC response and asks again for the next invocation', asy
 			const outcomes = journal.filter(
 				(record) =>
 					isRecord(record) &&
-					(record.kind === 'error' || record.kind === 'result')
+					(record['kind'] === 'error' || record['kind'] === 'result')
 			);
 			const [expiredOutcome, ...laterOutcomes] = outcomes;
 
@@ -327,7 +327,8 @@ it('expires a queued request without displaying a second RPC dialogue', async ()
 			effects: await effects(),
 			outcomes: journal.filter(
 				(record) =>
-					isRecord(record) && ['error', 'result'].includes(String(record.kind))
+					isRecord(record) &&
+					['error', 'result'].includes(String(record['kind']))
 			)
 		}).toStrictEqual({
 			effects: 'provider\n',
@@ -372,7 +373,7 @@ it.each(['fixture-cancel', 'fixture-close', 'session_shutdown'] as const)(
 			expect({
 				effects: await effects(),
 				outcomes: journal.filter(
-					(record) => isRecord(record) && record.kind === 'error'
+					(record) => isRecord(record) && record['kind'] === 'error'
 				)
 			}).toStrictEqual({
 				effects: '',
@@ -392,17 +393,17 @@ it.each(['fixture-cancel', 'fixture-close', 'session_shutdown'] as const)(
 
 async function toolResult(rpc: RpcProcess) {
 	const event = await rpc.waitForEvent(
-		(event) => isRecord(event) && event.type === 'tool_execution_end'
+		(event) => isRecord(event) && event['type'] === 'tool_execution_end'
 	);
 
-	if (!isRecord(event) || !isRecord(event.result)) {
+	if (!isRecord(event) || !isRecord(event['result'])) {
 		throw new Error('Pi did not emit a tool result.');
 	}
 
 	return {
-		tool: event.toolName,
-		content: event.result.content,
-		isError: event.isError
+		tool: event['toolName'],
+		content: event['result']['content'],
+		isError: event['isError']
 	};
 }
 
@@ -555,7 +556,7 @@ it('invalidates pending user approval when RPC replaces the session', async () =
 		expect({
 			effects: await effects(),
 			outcomes: journal.filter(
-				(record) => isRecord(record) && record.kind === 'error'
+				(record) => isRecord(record) && record['kind'] === 'error'
 			)
 		}).toStrictEqual({
 			effects: '',
@@ -621,7 +622,7 @@ it.each([
 					outcomes: journal.filter(
 						(record) =>
 							isRecord(record) &&
-							['error', 'result'].includes(String(record.kind))
+							['error', 'result'].includes(String(record['kind']))
 					),
 					confirmations: rpc.events.filter((event) => isConfirmation(event))
 				}).toStrictEqual({
@@ -677,7 +678,7 @@ it.each([
 				expect({
 					effects: await effects(),
 					outcomes: journal.filter(
-						(record) => isRecord(record) && record.kind === 'error'
+						(record) => isRecord(record) && record['kind'] === 'error'
 					)
 				}).toStrictEqual({
 					effects: '',
@@ -786,27 +787,27 @@ async function diagnosticMessages(rpc: RpcProcess): Promise<string[]> {
 
 	if (
 		!isRecord(response) ||
-		!isRecord(response.data) ||
-		!Array.isArray(response.data.messages)
+		!isRecord(response['data']) ||
+		!Array.isArray(response['data']['messages'])
 	) {
 		throw new Error('Pi did not return a message list.');
 	}
 
-	const messages: unknown[] = response.data.messages;
+	const messages: unknown[] = response['data']['messages'];
 
 	const contents: string[] = [];
 
 	for (const message of messages) {
 		if (
 			!isRecord(message) ||
-			message.role !== 'custom' ||
-			message.customType !== 'byos' ||
-			typeof message.content !== 'string'
+			message['role'] !== 'custom' ||
+			message['customType'] !== 'byos' ||
+			typeof message['content'] !== 'string'
 		) {
 			continue;
 		}
 
-		contents.push(message.content);
+		contents.push(message['content']);
 	}
 
 	return contents;
@@ -896,7 +897,7 @@ it.each(['normal', 'provider'] as const)(
 					result,
 					effects: await effects(),
 					dispatched: journal.filter(
-						(record) => isRecord(record) && record.kind === 'execute'
+						(record) => isRecord(record) && record['kind'] === 'execute'
 					)
 				}).toStrictEqual({
 					reviewed: `${prefix}\n${command}`,

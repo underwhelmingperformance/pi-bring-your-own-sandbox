@@ -25,17 +25,17 @@ function decode(value: unknown, isPath = false): string {
 		throw invalidOutput();
 	}
 
-	if (typeof value.text === 'string' && value.bytes === undefined) {
-		return value.text;
+	if (typeof value['text'] === 'string' && value['bytes'] === undefined) {
+		return value['text'];
 	}
 
-	if (typeof value.bytes !== 'string' || value.text !== undefined) {
+	if (typeof value['bytes'] !== 'string' || value['text'] !== undefined) {
 		throw invalidOutput();
 	}
 
-	const bytes = Buffer.from(value.bytes, 'base64');
+	const bytes = Buffer.from(value['bytes'], 'base64');
 
-	if (bytes.toString('base64') !== value.bytes) {
+	if (bytes.toString('base64') !== value['bytes']) {
 		throw invalidOutput();
 	}
 
@@ -105,17 +105,17 @@ export class GrepOutput implements SearchOutput<GrepResult> {
 
 	#end(data: Record<string, unknown>, file: FileLines): void {
 		if (
-			data.binary_offset !== null &&
-			(typeof data.binary_offset !== 'number' ||
-				!Number.isSafeInteger(data.binary_offset) ||
-				data.binary_offset < 0)
+			data['binary_offset'] !== null &&
+			(typeof data['binary_offset'] !== 'number' ||
+				!Number.isSafeInteger(data['binary_offset']) ||
+				data['binary_offset'] < 0)
 		) {
 			throw invalidOutput();
 		}
 
 		this.#file = undefined;
 
-		if (data.binary_offset !== null) {
+		if (data['binary_offset'] !== null) {
 			return;
 		}
 
@@ -143,13 +143,13 @@ export class GrepOutput implements SearchOutput<GrepResult> {
 
 		const event: unknown = JSON.parse(row);
 
-		if (!isRecord(event) || !isRecord(event.data)) {
+		if (!isRecord(event) || !isRecord(event['data'])) {
 			throw invalidOutput();
 		}
 
 		const { data } = event;
 
-		if (event.type === 'summary') {
+		if (event['type'] === 'summary') {
 			if (this.#file !== undefined) {
 				throw invalidOutput();
 			}
@@ -159,9 +159,9 @@ export class GrepOutput implements SearchOutput<GrepResult> {
 			return;
 		}
 
-		const filename = decode(data.path, true).replace(/^\.\//u, '');
+		const filename = decode(data['path'], true).replace(/^\.\//u, '');
 
-		if (event.type === 'begin') {
+		if (event['type'] === 'begin') {
 			if (this.#file !== undefined) {
 				throw invalidOutput();
 			}
@@ -183,35 +183,38 @@ export class GrepOutput implements SearchOutput<GrepResult> {
 			throw invalidOutput();
 		}
 
-		if (event.type === 'end') {
+		if (event['type'] === 'end') {
 			this.#end(data, file);
 
 			return;
 		}
 
 		if (
-			(event.type !== 'match' && event.type !== 'context') ||
-			typeof data.line_number !== 'number' ||
-			!Number.isSafeInteger(data.line_number) ||
-			data.line_number <= file.lastLine
+			(event['type'] !== 'match' && event['type'] !== 'context') ||
+			typeof data['line_number'] !== 'number' ||
+			!Number.isSafeInteger(data['line_number']) ||
+			data['line_number'] <= file.lastLine
 		) {
 			throw invalidOutput();
 		}
 
-		file.lastLine = data.line_number;
+		file.lastLine = data['line_number'];
 
 		const canRetainMatch = file.matches.size <= this.#limit;
 
-		if (canRetainMatch || data.line_number - file.lastMatch <= this.#context) {
-			file.lines.set(data.line_number, lineText(data.lines));
+		if (
+			canRetainMatch ||
+			data['line_number'] - file.lastMatch <= this.#context
+		) {
+			file.lines.set(data['line_number'], lineText(data['lines']));
 		}
 
-		if (!(canRetainMatch && event.type === 'match')) {
+		if (!(canRetainMatch && event['type'] === 'match')) {
 			return;
 		}
 
-		file.matches.add(data.line_number);
-		file.lastMatch = data.line_number;
+		file.matches.add(data['line_number']);
+		file.lastMatch = data['line_number'];
 	}
 
 	write(data: Uint8Array): void {

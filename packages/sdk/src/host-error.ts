@@ -16,12 +16,15 @@ export function hostError(cause: unknown, operation: SandboxOperation) {
 
 	if (
 		isRecord(cause) &&
-		(cause.code === 'ENOENT' || cause.code === 'ENOTDIR')
+		(cause['code'] === 'ENOENT' || cause['code'] === 'ENOTDIR')
 	) {
 		return new SandboxPathNotFoundError(context, { cause });
 	}
 
-	if (isRecord(cause) && (cause.code === 'EACCES' || cause.code === 'EPERM')) {
+	if (
+		isRecord(cause) &&
+		(cause['code'] === 'EACCES' || cause['code'] === 'EPERM')
+	) {
 		return new SandboxPermissionDeniedError(context, { cause });
 	}
 

@@ -58,11 +58,14 @@ export default function rpcFixture(pi: ExtensionAPI): void {
 			networkAccess: ['provider-default']
 		},
 		validateConfig(input: unknown) {
-			if (!isRecord(input) || typeof input.shouldWaitForReady !== 'boolean') {
+			if (
+				!isRecord(input) ||
+				typeof input['shouldWaitForReady'] !== 'boolean'
+			) {
 				throw new InvalidSandboxConfigError({ operation: 'configure' });
 			}
 
-			return { shouldWaitForReady: input.shouldWaitForReady };
+			return { shouldWaitForReady: input['shouldWaitForReady'] };
 		},
 		async open(request) {
 			pi.sendMessage({

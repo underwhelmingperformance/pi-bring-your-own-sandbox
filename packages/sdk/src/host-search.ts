@@ -50,7 +50,7 @@ async function isInsideRepository(directory: string): Promise<boolean> {
 		} catch (error) {
 			if (
 				!isRecord(error) ||
-				(error.code !== 'ENOENT' && error.code !== 'ENOTDIR')
+				(error['code'] !== 'ENOENT' && error['code'] !== 'ENOTDIR')
 			) {
 				throw error;
 			}

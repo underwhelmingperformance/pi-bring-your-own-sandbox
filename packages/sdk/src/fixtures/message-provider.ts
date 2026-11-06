@@ -60,26 +60,26 @@ class MessageBackend implements SandboxBackend {
 	#dispatch(message: unknown): void {
 		assert.ok(isRecord(message));
 
-		if (message.kind === 'dispose') {
+		if (message['kind'] === 'dispose') {
 			this.#jobs.clear();
 			this.#channel.port2.postMessage({ kind: 'disposed' });
 
 			return;
 		}
 
-		assert.equal(typeof message.id, 'string');
+		assert.equal(typeof message['id'], 'string');
 
-		if (typeof message.id !== 'string') {
+		if (typeof message['id'] !== 'string') {
 			return;
 		}
 
-		const id = message.id;
+		const id = message['id'];
 
 		const reply = (value: object) => {
 			this.#channel.port2.postMessage({ ...value, id });
 		};
 
-		if (message.kind === 'cancel') {
+		if (message['kind'] === 'cancel') {
 			if (this.#jobs.delete(id)) {
 				reply({ kind: 'cancelled' });
 			}
@@ -88,19 +88,19 @@ class MessageBackend implements SandboxBackend {
 		}
 
 		try {
-			assert.equal(message.kind, 'exec');
-			assert.ok(isRecord(message.request));
+			assert.equal(message['kind'], 'exec');
+			assert.ok(isRecord(message['request']));
 
-			const request = message.request;
+			const request = message['request'];
 
-			if (request.kind === 'argv' && request.executable === 'wait') {
+			if (request['kind'] === 'argv' && request['executable'] === 'wait') {
 				this.#jobs.add(id);
 				reply({ kind: 'output', stream: 'stdout', data: encode('ready') });
 
 				return;
 			}
 
-			if (request.kind === 'argv' && request.executable === 'pwd') {
+			if (request['kind'] === 'argv' && request['executable'] === 'pwd') {
 				assert.deepEqual(request, {
 					kind: 'argv',
 					executable: 'pwd',
@@ -118,7 +118,7 @@ class MessageBackend implements SandboxBackend {
 
 			assert.deepEqual(
 				request,
-				request.kind === 'argv'
+				request['kind'] === 'argv'
 					? { kind: 'argv', executable: 'probe', args: ['$HOME', '; exit 99'] }
 					: { kind: 'shell', dialect: 'sh', command: 'probe' }
 			);
@@ -140,41 +140,43 @@ class MessageBackend implements SandboxBackend {
 	#receive(message: unknown): void {
 		assert.ok(isRecord(message));
 
-		if (message.kind === 'disposed') {
+		if (message['kind'] === 'disposed') {
 			this.#disposed.resolve(undefined);
 
 			return;
 		}
 
-		assert.equal(typeof message.id, 'string');
+		assert.equal(typeof message['id'], 'string');
 
-		if (typeof message.id !== 'string') {
+		if (typeof message['id'] !== 'string') {
 			return;
 		}
 
-		const pending = this.#pending.get(message.id);
+		const pending = this.#pending.get(message['id']);
 
 		assert.ok(pending);
 
-		switch (message.kind) {
+		switch (message['kind']) {
 			case 'output': {
-				assert.ok(message.stream === 'stdout' || message.stream === 'stderr');
-				assert.ok(message.data instanceof Uint8Array);
+				assert.ok(
+					message['stream'] === 'stdout' || message['stream'] === 'stderr'
+				);
+				assert.ok(message['data'] instanceof Uint8Array);
 				pending.context.onOutput({
-					stream: message.stream,
-					data: message.data
+					stream: message['stream'],
+					data: message['data']
 				});
 
 				return;
 			}
 
 			case 'exited': {
-				assert.equal(typeof message.code, 'number');
+				assert.equal(typeof message['code'], 'number');
 
-				if (typeof message.code === 'number') {
+				if (typeof message['code'] === 'number') {
 					pending.resolve({
 						kind: 'exited',
-						exit: { kind: 'code', code: message.code }
+						exit: { kind: 'code', code: message['code'] }
 					});
 				}
 
@@ -191,7 +193,7 @@ class MessageBackend implements SandboxBackend {
 				pending.reject(
 					new SandboxOperationError(
 						{ operation: 'exec' },
-						{ cause: message.error }
+						{ cause: message['error'] }
 					)
 				);
 			}

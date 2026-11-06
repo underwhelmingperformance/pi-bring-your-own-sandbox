@@ -62,18 +62,18 @@ it.each([false, true])(
 
 			if (
 				!isRecord(response) ||
-				!isRecord(response.data) ||
-				typeof response.data.output !== 'string'
+				!isRecord(response['data']) ||
+				typeof response['data']['output'] !== 'string'
 			) {
 				throw new Error('Pi returned an invalid RPC response.');
 			}
 
-			const output: unknown = JSON.parse(response.data.output);
+			const output: unknown = JSON.parse(response['data']['output']);
 
 			expect({
 				...response,
 				id: '<id>',
-				data: { ...response.data, output }
+				data: { ...response['data'], output }
 			}).toStrictEqual({
 				id: '<id>',
 				type: 'response',
@@ -106,23 +106,23 @@ it.each([false, true])(
 
 			if (
 				!isRecord(messages) ||
-				!isRecord(messages.data) ||
-				!Array.isArray(messages.data.messages)
+				!isRecord(messages['data']) ||
+				!Array.isArray(messages['data']['messages'])
 			) {
 				throw new Error('Pi returned an invalid message list.');
 			}
 
-			const records: unknown[] = messages.data.messages;
+			const records: unknown[] = messages['data']['messages'];
 			const shellMessages = records
 				.filter(
-					(message) => isRecord(message) && message.role === 'bashExecution'
+					(message) => isRecord(message) && message['role'] === 'bashExecution'
 				)
 				.map((message) => {
-					if (!isRecord(message) || typeof message.output !== 'string') {
+					if (!isRecord(message) || typeof message['output'] !== 'string') {
 						throw new Error('A shell transcript record is invalid.');
 					}
 
-					const request: unknown = JSON.parse(message.output);
+					const request: unknown = JSON.parse(message['output']);
 
 					return { ...message, timestamp: '<time>', output: request };
 				});
@@ -165,9 +165,9 @@ it('aborts cold user-shell startup through RPC and runs only a later command', a
 			rpc.waitForEvent(
 				(event) =>
 					isRecord(event) &&
-					event.type === 'message_end' &&
-					isRecord(event.message) &&
-					event.message.customType === 'fixture-opening'
+					event['type'] === 'message_end' &&
+					isRecord(event['message']) &&
+					event['message']['customType'] === 'fixture-opening'
 			)
 		);
 		const running = observe(
@@ -208,18 +208,18 @@ it('aborts cold user-shell startup through RPC and runs only a later command', a
 
 		if (
 			!isRecord(later) ||
-			!isRecord(later.data) ||
-			typeof later.data.output !== 'string'
+			!isRecord(later['data']) ||
+			typeof later['data']['output'] !== 'string'
 		) {
 			throw new Error('Pi returned an invalid later command result.');
 		}
 
-		const output: unknown = JSON.parse(later.data.output);
+		const output: unknown = JSON.parse(later['data']['output']);
 
 		expect({
 			...later,
 			id: '<id>',
-			data: { ...later.data, output }
+			data: { ...later['data'], output }
 		}).toStrictEqual({
 			id: '<id>',
 			type: 'response',

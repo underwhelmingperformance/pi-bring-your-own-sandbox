@@ -105,8 +105,8 @@ export class HostOperations {
 					scope.reason !== undefined &&
 					(operation !== 'exec' ||
 						(isRecord(result) &&
-							result.kind === 'cancelled' &&
-							result.termination === 'confirmed'))
+							result['kind'] === 'cancelled' &&
+							result['termination'] === 'confirmed'))
 				) {
 					throw scope.cancellationError('confirmed');
 				}

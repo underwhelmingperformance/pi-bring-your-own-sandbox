@@ -43,11 +43,11 @@ function signalGroup(
 
 		return 'signalled';
 	} catch (error) {
-		if (isRecord(error) && error.code === 'ESRCH') {
+		if (isRecord(error) && error['code'] === 'ESRCH') {
 			return 'missing';
 		}
 
-		if (isRecord(error) && error.code === 'EPERM') {
+		if (isRecord(error) && error['code'] === 'EPERM') {
 			return 'denied';
 		}
 

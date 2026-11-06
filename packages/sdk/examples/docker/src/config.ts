@@ -22,8 +22,8 @@ export function dockerConfig(input: unknown): DockerConfig {
 	const value = {
 		...input,
 		socketPath:
-			'socketPath' in input ? input.socketPath : '/var/run/docker.sock',
-		executable: 'executable' in input ? input.executable : '/usr/bin/docker'
+			'socketPath' in input ? input['socketPath'] : '/var/run/docker.sock',
+		executable: 'executable' in input ? input['executable'] : '/usr/bin/docker'
 	};
 
 	if (!configValidator.Check(value)) {

@@ -79,7 +79,7 @@ async function fixture(
 							networkAccess: ['provider-default']
 						},
 						validateConfig(input: unknown) {
-							if (!isRecord(input) || input.token !== secret) {
+							if (!isRecord(input) || input['token'] !== secret) {
 								throw new Error(secret);
 							}
 

@@ -14,7 +14,12 @@ pnpm check
 ```
 
 `pnpm check` builds the SDK, then checks formatting, dependency usage, lint,
-Markdown, tests and types. Use `pnpm fix` to apply ESLint and Prettier fixes.
+Markdown, tests and types. Builds and type checks use TypeScript 7. ESLint keeps
+TypeScript 6's compiler API for type-aware Unicorn rules.
+
+Linting runs Oxlint/tsgolint for the typed typescript-eslint rules, then ESLint
+for the remaining checks. `pnpm fix` applies Oxlint, ESLint and Prettier fixes
+in that order.
 
 Additional test commands run specific suites:
 

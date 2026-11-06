@@ -1,7 +1,10 @@
+import path from 'node:path';
+
 import eslint from '@eslint/js';
 import stylistic from '@stylistic/eslint-plugin';
 import { defineConfig } from 'eslint/config';
 import eslintConfigPrettier from 'eslint-config-prettier/flat';
+import oxlint from 'eslint-plugin-oxlint';
 import simpleImportSort from 'eslint-plugin-simple-import-sort';
 import unicorn from 'eslint-plugin-unicorn';
 import globals from 'globals';
@@ -82,5 +85,8 @@ export default defineConfig(
 			],
 			'simple-import-sort/exports': 'error'
 		}
-	}
+	},
+	await oxlint.buildFromConfigFile(
+		path.join(import.meta.dirname, '.oxlintrc.json')
+	)
 );

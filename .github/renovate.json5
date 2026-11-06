@@ -4,6 +4,10 @@
 		{
 			matchPackageNames: ['typebox'],
 			groupName: null
+		},
+		{
+			matchPackageNames: ['@types/node'],
+			allowedVersions: '<25'
 		}
 	],
 	postUpgradeTasks: {

@@ -4,7 +4,7 @@
 	"private": true,
 	"description": "Development workspace for the BYOS SDK and guard",
 	"type": "module",
-	"packageManager": "pnpm@12.17.0",
+	"packageManager": "pnpm@12.18.0",
 	"engines": {
 		"node": ">=24"
 	},

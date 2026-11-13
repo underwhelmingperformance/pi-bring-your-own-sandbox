@@ -32,18 +32,18 @@
 		"@typescript/native": "npm:typescript@7.0.2",
 		"eslint": "10.14.0",
 		"eslint-config-prettier": "10.1.8",
-		"eslint-plugin-oxlint": "1.92.0",
+		"eslint-plugin-oxlint": "1.93.0",
 		"eslint-plugin-simple-import-sort": "14.0.0",
 		"eslint-plugin-unicorn": "79.0.0",
 		"globals": "17.14.0",
 		"jiti": "2.7.0",
 		"knip": "6.44.2",
 		"markdownlint-cli2": "0.24.0",
-		"oxlint": "1.92.0",
+		"oxlint": "1.93.0",
 		"oxlint-tsgolint": "7.0.2006",
 		"prettier": "3.9.10",
 		"typescript": "npm:@typescript/typescript6@6.0.2",
-		"typescript-eslint": "8.72.1"
+		"typescript-eslint": "8.72.2"
 	},
 	"license": "MIT"
 }

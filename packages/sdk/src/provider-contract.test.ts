@@ -525,6 +525,11 @@ it.each(['confirmed cancellation', 'idempotent disposal'])(
 
 it.each([
 	{
+		defect: 'a shared writer that exits before the host replaces the file',
+		relationship: 'shared',
+		expected: 'writer must wait'
+	},
+	{
 		defect: 'a stale shared read',
 		relationship: 'shared',
 		expected: 'target process'
@@ -598,9 +603,17 @@ it.each([
 					replaceSource: (bytes: Uint8Array) => {
 						source = Buffer.from(bytes);
 
+						if (
+							defect ===
+							'a shared writer that exits before the host replaces the file'
+						) {
+							target = source;
+						}
+
 						return Promise.resolve();
 					},
 					readTarget,
+					waitForReplacement: () => readTarget,
 					writeTarget: (bytes: Uint8Array): ProcessRequest => ({
 						kind: 'argv',
 						executable: 'write',

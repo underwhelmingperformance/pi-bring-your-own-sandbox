@@ -108,10 +108,10 @@ unconfirmed termination, which makes the shared SDK backend unhealthy. Losing
 the CLI transport does not establish that the target stopped.
 
 File operations share an unprivileged worker container for the open backend. The
-first request starts the worker. After 30 idle seconds Docker removes it. The
-workspace volume persists. A read returns the complete contents of a regular
-file up to 16 MiB. Writes accept up to 16 MiB and check the length of the
-received input before opening the destination. Directory listings report
+first request starts the worker. After 30 idle seconds the provider removes the
+worker. The workspace volume persists. A read returns the complete contents of a
+regular file up to 16 MiB. Writes accept up to 16 MiB and check the length of
+the received input before opening the destination. Directory listings report
 symlinks as entries. A read-only workspace rejects write-access checks, file
 writes and directory creation. Cancellation removes the worker so later
 operations start with a fresh worker.

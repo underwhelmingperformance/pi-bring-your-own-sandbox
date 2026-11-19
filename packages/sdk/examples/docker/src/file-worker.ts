@@ -55,7 +55,7 @@ export class DockerFileWorker implements BackendFileReader {
 	#tail: Promise<unknown> = Promise.resolve();
 	#pending = 0;
 	#idle: NodeJS.Timeout | undefined;
-	#cleanupFailure: SandboxCleanupError | undefined;
+	#requiresRemoval = false;
 
 	constructor(
 		resources: DockerResources,
@@ -71,7 +71,14 @@ export class DockerFileWorker implements BackendFileReader {
 		this.#lifetime = lifetime;
 	}
 
-	async #start(context: SandboxOperationContext): Promise<string> {
+	async #start(
+		context: SandboxOperationContext,
+		operation: FileOperation
+	): Promise<string> {
+		if (this.#requiresRemoval) {
+			await this.#remove(context, operation);
+		}
+
 		if (this.#name !== undefined) {
 			return this.#name;
 		}
@@ -104,14 +111,17 @@ export class DockerFileWorker implements BackendFileReader {
 				'infinity'
 			],
 			context,
-			'exec'
+			operation
 		);
-		await this.#resources.checked(['start', name], context, 'exec');
+		await this.#resources.checked(['start', name], context, operation);
 
 		return name;
 	}
 
-	async #remove(context: SandboxOperationContext): Promise<void> {
+	async #remove(
+		context: SandboxOperationContext,
+		operation: FileOperation | 'dispose'
+	): Promise<void> {
 		if (this.#name === undefined) {
 			return;
 		}
@@ -120,20 +130,22 @@ export class DockerFileWorker implements BackendFileReader {
 			await this.#resources.removeContainer(
 				this.#name,
 				cleanupContext(context),
-				'exec'
+				operation
 			);
 			this.#name = undefined;
+			this.#requiresRemoval = false;
 		} catch (error) {
-			this.#cleanupFailure = new SandboxCleanupError(
+			this.#requiresRemoval = true;
+
+			throw new SandboxCleanupError(
 				{
-					operation: 'dispose',
+					operation,
+					backendId: this.#resources.volume,
 					providerId: 'example.docker',
 					recovery: this.#resources.recovery
 				},
 				{ cause: error }
 			);
-
-			throw this.#cleanupFailure;
 		}
 	}
 
@@ -144,10 +156,6 @@ export class DockerFileWorker implements BackendFileReader {
 		input?: Uint8Array,
 		requiresWrite = false
 	): Promise<Uint8Array> {
-		if (this.#cleanupFailure !== undefined) {
-			throw this.#cleanupFailure;
-		}
-
 		const identity = {
 			operation,
 			providerId: 'example.docker',
@@ -171,14 +179,16 @@ export class DockerFileWorker implements BackendFileReader {
 
 		const chunks: Uint8Array[] = [];
 		let bytes = 0;
+		let errorBytes = 0;
 		let removal: Promise<void> | undefined;
+		let hasDispatched = false;
 		const cancel = () => {
-			removal ??= this.#remove(context);
+			removal ??= this.#remove(context, operation);
 			void Promise.allSettled([removal]);
 		};
 
 		try {
-			const name = await this.#start(context);
+			const name = await this.#start(context, operation);
 
 			signal.addEventListener('abort', cancel, { once: true });
 
@@ -189,6 +199,8 @@ export class DockerFileWorker implements BackendFileReader {
 					completion: 'not-started'
 				});
 			}
+
+			hasDispatched = true;
 
 			const result = await this.#client.command({
 				args: [
@@ -210,6 +222,18 @@ export class DockerFileWorker implements BackendFileReader {
 				operation,
 				recovery: this.#resources.recovery,
 				onOutput(output) {
+					if (output.stream === 'stderr') {
+						errorBytes += output.data.byteLength;
+
+						if (errorBytes > 64 * 1024) {
+							throw new RangeError(
+								'Docker helper diagnostics exceeded 64 KiB.'
+							);
+						}
+
+						return;
+					}
+
 					bytes += output.data.byteLength;
 
 					if (bytes > transferLimit) {
@@ -218,11 +242,11 @@ export class DockerFileWorker implements BackendFileReader {
 						);
 					}
 
-					if (output.stream === 'stdout') {
-						chunks.push(new Uint8Array(output.data));
-					}
+					chunks.push(new Uint8Array(output.data));
 				}
 			});
+
+			signal.throwIfAborted();
 
 			switch (result.status) {
 				case 0: {
@@ -246,6 +270,20 @@ export class DockerFileWorker implements BackendFileReader {
 				}
 			}
 		} catch (error) {
+			if (signal.aborted) {
+				cancel();
+				await removal;
+
+				throw new SandboxCancelledError(
+					{
+						...identity,
+						reason: 'caller',
+						completion: hasDispatched ? 'confirmed' : 'not-started'
+					},
+					{ cause: error }
+				);
+			}
+
 			if (!(
 				error instanceof SandboxPathNotFoundError ||
 				error instanceof SandboxPermissionDeniedError ||
@@ -289,8 +327,29 @@ export class DockerFileWorker implements BackendFileReader {
 		this.#pending++;
 
 		const previous = this.#tail;
+		const signal = AbortSignal.any([context.signal, this.#lifetime]);
+		const queued = Promise.withResolvers<never>();
+		const cancelQueued = () => {
+			queued.reject(
+				new SandboxCancelledError({
+					operation,
+					providerId: 'example.docker',
+					backendId: this.#resources.volume,
+					reason: 'caller',
+					completion: 'not-started'
+				})
+			);
+		};
+
+		signal.addEventListener('abort', cancelQueued, { once: true });
+
+		if (signal.aborted) {
+			cancelQueued();
+		}
+
 		const task = (async () => {
 			await previous;
+			signal.removeEventListener('abort', cancelQueued);
 
 			try {
 				return await this.#execute(
@@ -309,7 +368,7 @@ export class DockerFileWorker implements BackendFileReader {
 					this.#name !== undefined
 				) {
 					this.#idle = setTimeout(() => {
-						this.#tail = Promise.allSettled([this.#remove(context)]);
+						this.#tail = Promise.allSettled([this.#remove(context, 'dispose')]);
 					}, 30_000).unref();
 				}
 			}
@@ -317,7 +376,38 @@ export class DockerFileWorker implements BackendFileReader {
 
 		this.#tail = Promise.allSettled([task]);
 
-		return task;
+		return Promise.race([task, queued.promise]);
+	}
+
+	async #json<Value>(
+		operation: 'listDirectory' | 'stat',
+		filename: string,
+		context: SandboxOperationContext,
+		isValid: (value: unknown) => value is Value
+	): Promise<Value> {
+		const data = await this.#request(operation, filename, context);
+
+		try {
+			const value: unknown = JSON.parse(
+				new TextDecoder('utf-8', { fatal: true }).decode(data)
+			);
+
+			if (isValid(value)) {
+				return value;
+			}
+
+			throw new TypeError('Invalid Docker helper response.');
+		} catch (error) {
+			throw new SandboxTransportError(
+				{
+					operation,
+					providerId: 'example.docker',
+					backendId: this.#resources.volume,
+					recovery: this.#resources.recovery
+				},
+				{ cause: error }
+			);
+		}
 	}
 
 	readFile(filename: string, context: SandboxOperationContext) {
@@ -356,32 +446,16 @@ export class DockerFileWorker implements BackendFileReader {
 		await this.#request('mkdir', filename, context);
 	}
 
-	async listDirectory(filename: string, context: SandboxOperationContext) {
-		const data = await this.#request('listDirectory', filename, context);
-		const entries: unknown = JSON.parse(new TextDecoder().decode(data));
-
-		if (!listValidator.Check(entries)) {
-			throw new SandboxTransportError({
-				operation: 'listDirectory',
-				recovery: this.#resources.recovery
-			});
-		}
-
-		return entries;
+	listDirectory(filename: string, context: SandboxOperationContext) {
+		return this.#json('listDirectory', filename, context, (value) =>
+			listValidator.Check(value)
+		);
 	}
 
-	async stat(filename: string, context: SandboxOperationContext) {
-		const data = await this.#request('stat', filename, context);
-		const meta: unknown = JSON.parse(new TextDecoder().decode(data));
-
-		if (!statValidator.Check(meta)) {
-			throw new SandboxTransportError({
-				operation: 'stat',
-				recovery: this.#resources.recovery
-			});
-		}
-
-		return meta;
+	stat(filename: string, context: SandboxOperationContext) {
+		return this.#json('stat', filename, context, (value) =>
+			statValidator.Check(value)
+		);
 	}
 
 	async close() {

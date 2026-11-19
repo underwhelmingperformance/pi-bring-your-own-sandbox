@@ -12,6 +12,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 			let fixture: DockerFixture | undefined;
 
 			defineSandboxProviderTests({
+				workspaceVisibility: 'copied',
 				label: `Docker ${workspaceAccess}`,
 				provider: createDockerProvider(() => {
 					if (fixture === undefined) {

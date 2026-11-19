@@ -33,6 +33,7 @@ import {
 	settleProcess
 } from './termination-scope.js';
 import { isProviderInfo, isRecord, isRecovery } from './validation.js';
+import { checkWorkspaceVisibility } from './workspace-visibility-suite.js';
 
 function compareEntries(left: DirectoryEntry, right: DirectoryEntry): number {
 	return left.name.localeCompare(right.name);
@@ -361,6 +362,16 @@ export function providerContractCases<Config>(
 				)
 		}
 	];
+
+	const relationship = options.workspaceVisibility;
+
+	if (relationship !== undefined) {
+		cases.push({
+			label: `workspace visibility (${relationship})`,
+			run: (fixture, backend, context) =>
+				checkWorkspaceVisibility(relationship, fixture, backend, context)
+		});
+	}
 
 	if (capabilities.processKinds.includes('argv')) {
 		cases.push({

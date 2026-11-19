@@ -20,6 +20,7 @@ import type {
 import type { SandboxProviderTestFixture } from 'pi-bring-your-own-sandbox/testing';
 import { expect } from 'vitest';
 
+import { nodeVisibilityProbe } from '../../../src/fixtures/node-visibility-probe.js';
 import { remainingBudget } from '../../../src/fixtures/remaining-budget.js';
 import { NodeDockerClient } from '../src/client.js';
 import type { DockerClient, DockerConfig } from '../src/contracts.js';
@@ -313,6 +314,11 @@ export class DockerFixture {
 		return {
 			configuration: this.config,
 			hostWorkspace: this.workspace,
+			visibility: nodeVisibilityProbe(
+				this.workspace,
+				'source.txt',
+				'/usr/local/bin/node'
+			),
 			policy,
 			processes: [
 				{

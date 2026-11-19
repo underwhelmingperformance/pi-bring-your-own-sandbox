@@ -45,6 +45,23 @@ fresh fixture for every test. Seed target files before returning this value.
 */
 export interface SandboxProviderTestFixture {
 	/**
+	A seeded regular file seen from the source workspace and through a target
+	process. Replace the source by rename so a stale open inode cannot pass.
+	*/
+	readonly visibility?: {
+		readonly targetPath: string;
+		readonly readSource: () => Promise<Uint8Array>;
+		readonly replaceSource: (bytes: Uint8Array) => Promise<void>;
+		readonly readTarget: ProcessRequest;
+		readonly writeTarget: (bytes: Uint8Array) => ProcessRequest;
+		/**
+		Write the bytes, emit "ready" on stdout, then emit the replacement
+		bytes from the same path before exiting. Required for writable sharing.
+		*/
+		readonly waitForReplacement?: (bytes: Uint8Array) => ProcessRequest;
+	};
+
+	/**
 	Unknown configuration passed through the provider's validator.
 	*/
 	readonly configuration: unknown;
@@ -189,6 +206,12 @@ for different policy modes and backend capability subsets.
 @typeParam Config - Validated provider configuration.
 */
 export interface SandboxProviderTestOptions<Config> {
+	/**
+	Run workspace visibility checks with independent source observations.
+	The fixture must supply a visibility probe for each selected scenario.
+	*/
+	readonly workspaceVisibility?: 'shared' | 'copied';
+
 	/**
 	Vitest suite description identifying this scenario.
 	*/

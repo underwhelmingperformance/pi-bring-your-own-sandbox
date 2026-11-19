@@ -85,6 +85,15 @@ also fails, an `AggregateError` preserves the original failure and the cleanup
 failures. Fixture resources must be independent between cases. Do not combine
 these scenarios with concurrent tests that reuse the same allocation.
 
+Set `workspaceVisibility` to `shared` or `copied` to register the corresponding
+visibility scenario. Its `visibility` probe reads and atomically replaces a
+seeded source file and constructs target commands for the same file. In a
+writable shared workspace, the test observes a target write from the source
+while the writer is running, then replaces the file and waits for the writer to
+observe the replacement. Copied workspaces must isolate changes in both
+directions. When file methods are available the suite also compares their
+results with target process reads and independent source reads.
+
 ## Verify effects at the target
 
 Provider contexts expose synchronous `reportDiagnostic` for warnings outside

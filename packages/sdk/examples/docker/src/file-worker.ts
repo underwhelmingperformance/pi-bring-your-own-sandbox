@@ -71,6 +71,15 @@ export class DockerFileWorker implements BackendFileReader {
 		this.#lifetime = lifetime;
 	}
 
+	#identity(operation: FileOperation) {
+		return {
+			operation,
+			providerId: 'example.docker',
+			backendId: this.#resources.volume,
+			recovery: this.#resources.recovery
+		};
+	}
+
 	async #start(
 		context: SandboxOperationContext,
 		operation: FileOperation
@@ -156,12 +165,7 @@ export class DockerFileWorker implements BackendFileReader {
 		input?: Uint8Array,
 		requiresWrite = false
 	): Promise<Uint8Array> {
-		const identity = {
-			operation,
-			providerId: 'example.docker',
-			backendId: this.#resources.volume,
-			recovery: this.#resources.recovery
-		};
+		const identity = this.#identity(operation);
 
 		const signal = AbortSignal.any([context.signal, this.#lifetime]);
 
@@ -315,11 +319,7 @@ export class DockerFileWorker implements BackendFileReader {
 			(operation === 'mkdir' || operation === 'writeFile' || requiresWrite)
 		) {
 			return Promise.reject(
-				new SandboxPermissionDeniedError({
-					operation,
-					providerId: 'example.docker',
-					backendId: this.#resources.volume
-				})
+				new SandboxPermissionDeniedError(this.#identity(operation))
 			);
 		}
 
@@ -424,10 +424,9 @@ export class DockerFileWorker implements BackendFileReader {
 		context: SandboxOperationContext
 	) {
 		if (content.byteLength > transferLimit) {
-			throw new SandboxOperationError(
-				{ operation: 'writeFile', recovery: this.#resources.recovery },
-				{ cause: new RangeError('The file exceeds 16 MiB.') }
-			);
+			throw new SandboxOperationError(this.#identity('writeFile'), {
+				cause: new RangeError('The file exceeds 16 MiB.')
+			});
 		}
 
 		await this.#request(

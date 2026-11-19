@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 
-import type { DockerClient } from '../src/contracts.js';
+import type { DockerClient, DockerCommand } from '../src/contracts.js';
 import { DockerFileWorker } from '../src/file-worker.js';
 import { DockerResources } from '../src/resources.js';
 
@@ -261,5 +261,91 @@ it('accepts a full-size file with helper diagnostics and retries a failed idle r
 		lifetime.abort();
 		await worker.close();
 		vi.useRealTimers();
+	}
+});
+
+it('sends only accepted write requests to the helper and validates directory responses', async () => {
+	const calls: DockerCommand[] = [];
+	const client: DockerClient = {
+		command(command) {
+			calls.push(command);
+
+			if (command.args.includes('listDirectory')) {
+				command.onOutput?.({
+					stream: 'stdout',
+					data: Buffer.from('[{"name":"f","kind":"unknown"}]')
+				});
+			}
+
+			return Promise.resolve({
+				status: 0,
+				stdout: new Uint8Array(),
+				stderr: new Uint8Array()
+			});
+		}
+	};
+	const lifetime = new AbortController();
+	const resources = new DockerResources(client, '/example.sock');
+	const create = (isReadOnly: boolean) =>
+		new DockerFileWorker(
+			resources,
+			client,
+			{ mount: 'type=volume', readOnly: isReadOnly },
+			'',
+			lifetime.signal
+		);
+	const writable = create(false);
+	const readOnly = create(true);
+	const context = operationContext();
+	const input = Uint8Array.of(0, 255, 10);
+
+	try {
+		for (const request of [
+			() => readOnly.writeFile('file', input, context),
+			() => readOnly.writeAccess('file', context),
+			() => readOnly.mkdir('dir', context)
+		]) {
+			await expect(request()).rejects.toMatchObject({
+				name: 'SandboxPermissionDeniedError',
+				backendId: resources.volume,
+				recovery: resources.recovery
+			});
+		}
+
+		await expect(
+			writable.writeFile('file', new Uint8Array(16 * 1024 * 1024 + 1), context)
+		).rejects.toMatchObject({
+			name: 'SandboxOperationError',
+			operation: 'writeFile',
+			providerId: 'example.docker',
+			backendId: resources.volume,
+			recovery: resources.recovery
+		});
+		expect(calls).toStrictEqual([]);
+
+		const written = writable.writeFile('file', input, context);
+
+		input.fill(1);
+		await written;
+
+		const exec = calls.find((command) => command.args[0] === 'exec');
+
+		expect({
+			mode: exec?.args[1],
+			operation: exec?.args.slice(-4),
+			input: exec?.input
+		}).toStrictEqual({
+			mode: '--interactive',
+			operation: ['writeFile', 'file', '16777216', '3'],
+			input: Uint8Array.of(0, 255, 10)
+		});
+		await expect(writable.listDirectory('.', context)).rejects.toMatchObject({
+			name: 'SandboxTransportError',
+			operation: 'listDirectory',
+			backendId: resources.volume
+		});
+	} finally {
+		lifetime.abort();
+		await Promise.all([writable.close(), readOnly.close()]);
 	}
 });

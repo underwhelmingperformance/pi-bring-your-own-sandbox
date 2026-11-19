@@ -143,7 +143,8 @@ export interface SandboxProviderTestFixture {
 		*/
 		readonly path: string;
 		/**
-		Complete expected metadata of that directory.
+		Complete expected directory metadata. The suite calls a supplied callback
+		after stat. Observe the target independently of the backend under test.
 		*/
 		readonly stat: FileStat | (() => Promise<FileStat>);
 		/**

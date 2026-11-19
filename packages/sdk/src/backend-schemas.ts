@@ -20,7 +20,8 @@ import {
 	policySchema,
 	recoverySchema,
 	shellSchema,
-	targetPathSchema
+	targetPathSchema,
+	workspaceRelationshipSchema
 } from './schemas.js';
 import { isTerminationScopeSatisfied } from './termination-scope.js';
 import {
@@ -40,7 +41,7 @@ function workspaceShape(flavor: 'posix' | 'win32') {
 		root: absolutePathSchema(flavor),
 		home: Type.Optional(absolutePathSchema(flavor)),
 		description: nonEmptyStringSchema,
-		relationship: Type.Enum(['shared', 'copied', 'remote']),
+		relationship: workspaceRelationshipSchema,
 		defaultShell: Type.Optional(shellSchema)
 	});
 }
@@ -91,6 +92,8 @@ export const backendSchema = Type.Refine(backendShape, (value) => {
 	const { operations, shells } = value.capabilities;
 
 	return (
+		(value.policy.workspaceRelationship === undefined ||
+			value.policy.workspaceRelationship === value.workspace.relationship) &&
 		canProtectWorkspace(value.capabilities, value.policy) &&
 		(value.workspace.defaultShell === undefined ||
 			shells.includes(value.workspace.defaultShell)) &&
@@ -131,12 +134,23 @@ export function providerBackendSchema(provider: ProviderInfo) {
 				: Type.Enum(['guaranteed', 'optional'])
 	});
 
-	return Type.Intersect([backendSchema, Type.Object({ capabilities, policy })]);
+	return Type.Refine(
+		Type.Intersect([backendSchema, Type.Object({ capabilities, policy })]),
+		(backend) =>
+			provider.policies.workspaceRelationship === undefined ||
+			provider.policies.workspaceRelationship.includes(
+				backend.workspace.relationship
+			)
+	);
 }
 
 export function requiredPolicySchema(required: Partial<SandboxPolicy>) {
 	return Type.Refine(
 		Type.Object({
+			workspaceRelationship:
+				required.workspaceRelationship === undefined
+					? policySchema.properties.workspaceRelationship
+					: Type.Literal(required.workspaceRelationship),
 			workspaceProtection: policySchema.properties.workspaceProtection,
 			workspaceAccess:
 				required.workspaceAccess === undefined

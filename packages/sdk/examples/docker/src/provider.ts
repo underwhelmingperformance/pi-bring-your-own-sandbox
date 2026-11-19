@@ -364,6 +364,7 @@ export function createDockerProvider(
 			shells: ['sh', 'bash']
 		},
 		policies: {
+			workspaceRelationship: ['copied'],
 			workspaceAccess: ['read-only', 'read-write'],
 			filesystemScope: ['workspace-only'],
 			networkAccess: ['denied']

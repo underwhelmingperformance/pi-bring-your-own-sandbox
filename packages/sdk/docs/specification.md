@@ -320,6 +320,11 @@ configuration within the cooperative threat model.
 
 The shared policy vocabulary is deliberately small:
 
+- `workspaceRelationship` optionally requires a `shared`, `copied` or `remote`
+  workspace. Providers declare which relationships they can open. Acquisition
+  rejects an undeclared relationship or a conflict with the configured policy.
+  An explicit requirement gets a separate backend from an unspecified one. The
+  broker verifies the relationship against the opened workspace.
 - `workspaceAccess`: `read-only` or `read-write` for the project workspace.
 - `filesystemScope`: `workspace-only`, `system-read-only` or `provider-default`.
   Workspace-only forbids access to host files outside exposed workspace mounts.

@@ -51,7 +51,12 @@ export function validateBackend(
 		});
 	}
 
-	if (!isPolicySatisfied(value.policy, required)) {
+	if (
+		!isPolicySatisfied(
+			{ ...value.policy, workspaceRelationship: value.workspace.relationship },
+			required
+		)
+	) {
 		throw new UnsupportedSandboxPolicyError({
 			operation: 'open',
 			providerId: provider.id,

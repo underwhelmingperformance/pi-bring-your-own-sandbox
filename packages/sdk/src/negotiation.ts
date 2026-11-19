@@ -25,6 +25,18 @@ export function resolvePolicy(
 	requested: Partial<SandboxPolicy> | undefined,
 	identity: NegotiationIdentity
 ): SandboxPolicy {
+	const workspaceRelationship =
+		requested?.workspaceRelationship ?? personal.workspaceRelationship;
+
+	if (
+		workspaceRelationship !== undefined &&
+		((personal.workspaceRelationship !== undefined &&
+			personal.workspaceRelationship !== workspaceRelationship) ||
+			!provider.policies.workspaceRelationship?.includes(workspaceRelationship))
+	) {
+		throw new UnsupportedSandboxPolicyError(identity);
+	}
+
 	if (
 		requested?.workspaceAccess === 'read-write' &&
 		personal.workspaceAccess === 'read-only'
@@ -48,6 +60,7 @@ export function resolvePolicy(
 	]);
 
 	const policy: SandboxPolicy = Object.freeze({
+		...(workspaceRelationship !== undefined && { workspaceRelationship }),
 		...(protection.length > 0 && { workspaceProtection: protection }),
 		workspaceAccess: requested?.workspaceAccess ?? personal.workspaceAccess,
 		filesystemScope,
@@ -89,6 +102,7 @@ export function checkDeclaredCapabilities(
 
 export function policyKey(policy: SandboxPolicy): string {
 	return JSON.stringify([
+		policy.workspaceRelationship,
 		policy.workspaceAccess,
 		policy.filesystemScope,
 		policy.networkAccess,

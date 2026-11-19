@@ -134,6 +134,34 @@ it('opens a backend for each distinct configuration and reuses it', async () => 
 	await generation.close();
 });
 
+it('allocates a separate backend for an explicit workspace relationship', async () => {
+	const { generation, context, opened } = fixture({
+		policies: { ...ALL_POLICIES, workspaceRelationship: ['remote'] }
+	});
+	const policy = { workspaceRelationship: 'remote' } as const;
+
+	await generation.acquire(context);
+	await generation.acquire(context, { policy });
+	await generation.acquire(context, { policy });
+
+	expect(opened).toStrictEqual([PERSONAL, { ...PERSONAL, ...policy }]);
+	await generation.close();
+});
+
+it('rejects a backend that returns another workspace relationship', async () => {
+	const { generation, context } = fixture({
+		policies: { ...ALL_POLICIES, workspaceRelationship: ['copied', 'remote'] },
+		open: () => Promise.resolve(new PolicyBackend(PERSONAL))
+	});
+
+	await expect(
+		generation.acquire(context, {
+			policy: { workspaceRelationship: 'copied' }
+		})
+	).rejects.toMatchObject({ name: 'UnsupportedSandboxPolicyError' });
+	await generation.close();
+});
+
 it('keeps a personal restriction when a request delegates that field', async () => {
 	const personal: SandboxPolicy = { ...PERSONAL, networkAccess: 'denied' };
 	const { generation, context, opened } = fixture({ personal });
@@ -149,6 +177,18 @@ it('keeps a personal restriction when a request delegates that field', async () 
 });
 
 it.each([
+	{
+		name: 'a relationship that a legacy provider does not declare',
+		personal: PERSONAL,
+		policies: ALL_POLICIES,
+		requested: { workspaceRelationship: 'copied' }
+	},
+	{
+		name: 'a shared workspace when the personal policy specifies a copy',
+		personal: { ...PERSONAL, workspaceRelationship: 'copied' },
+		policies: { ...ALL_POLICIES, workspaceRelationship: ['copied', 'shared'] },
+		requested: { workspaceRelationship: 'shared' }
+	},
 	{
 		name: 'a value that the provider does not declare',
 		personal: PERSONAL,

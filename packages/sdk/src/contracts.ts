@@ -116,6 +116,11 @@ promises no specific isolation.
 */
 export interface SandboxPolicy {
 	/**
+	Required relationship between the target and host workspace.
+	*/
+	readonly workspaceRelationship?: SandboxWorkspace['relationship'];
+
+	/**
 	Immutable workspace resources. Omission requests no resource-specific
 	protection. Providers must prevent creation, writes, removal, replacement
 	and renames through all aliases, including changes to parent directories.
@@ -149,6 +154,11 @@ export interface SandboxPolicy {
 Policy values that a provider accepts before allocating a backend.
 */
 export interface SupportedSandboxPolicies {
+	/**
+	Workspace relationships available for explicit selection.
+	*/
+	readonly workspaceRelationship?: readonly SandboxWorkspace['relationship'][];
+
 	/**
 	Workspace modes available when opening a backend.
 	*/

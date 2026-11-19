@@ -1,8 +1,8 @@
 # Docker reference provider
 
 This example implements the public provider contract with a local Docker daemon.
-It advertises `exec`, POSIX `sh` and Bash. Filesystem and search facades reject
-unsupported capability requests.
+It advertises `exec`, POSIX `sh`, Bash and `files.read`. File reads, readability
+checks and metadata queries use the same volume as shell commands.
 
 The framework's runtime does not depend on Docker. Registering the example does
 not contact the daemon. Docker is required when a consumer acquires an
@@ -74,7 +74,7 @@ the job limits below do not bound that volume. Run this example only with
 workspace sizes and daemon storage that you can manage. Enforceable storage
 quotas require additional provider support.
 
-Each foreground operation creates a separate container. Containers have a
+Each foreground command creates a separate container. Containers have a
 read-only runtime image, a private 16 MiB `/tmp`, a limit of 64 processes, a 128
 MiB memory limit and one CPU. Network mode is `none`. Job containers do not
 mount the host workspace or Docker socket. Docker logging is disabled for job
@@ -106,6 +106,12 @@ attached client to finish. A confirmed cancellation permits another operation
 against the same workspace volume. Failure to confirm removal reports
 unconfirmed termination, which makes the shared SDK backend unhealthy. Losing
 the CLI transport does not establish that the target stopped.
+
+File operations share an unprivileged worker container for the open backend. The
+first request starts the worker. After 30 idle seconds Docker removes it. The
+workspace volume persists. A read returns the complete contents of a regular
+file up to 16 MiB. A larger file produces an operation error. Cancellation
+removes the worker so later operations start with a fresh worker.
 
 ## Cleanup and recovery
 

@@ -93,34 +93,6 @@ export class DockerResources {
 		};
 	}
 
-	async #remove(
-		name: string,
-		context: DockerOperationContext,
-		operation: DockerCommand['operation']
-	): Promise<void> {
-		try {
-			await this.checked(['rm', '--force', name], context, operation);
-		} catch (error) {
-			const remaining = await this.checked(
-				[
-					'container',
-					'ls',
-					'--all',
-					'--filter',
-					`name=^/${name}$`,
-					'--format',
-					'{{.ID}}'
-				],
-				context,
-				operation
-			);
-
-			if (remaining.stdout.byteLength !== 0) {
-				throw error;
-			}
-		}
-	}
-
 	async #attach(
 		name: string,
 		context: BackendProcessContext,
@@ -167,6 +139,34 @@ export class DockerResources {
 		}
 
 		return { kind: 'exited', exit: { kind: 'code', code: state.ExitCode } };
+	}
+
+	async removeContainer(
+		name: string,
+		context: DockerOperationContext,
+		operation: DockerCommand['operation']
+	): Promise<void> {
+		try {
+			await this.checked(['rm', '--force', name], context, operation);
+		} catch (error) {
+			const remaining = await this.checked(
+				[
+					'container',
+					'ls',
+					'--all',
+					'--filter',
+					`name=^/${name}$`,
+					'--format',
+					'{{.ID}}'
+				],
+				context,
+				operation
+			);
+
+			if (remaining.stdout.byteLength !== 0) {
+				throw error;
+			}
+		}
 	}
 
 	/**
@@ -234,7 +234,11 @@ export class DockerResources {
 		let removal: Promise<void> | undefined;
 
 		const remove = () => {
-			removal ??= this.#remove(name, cleanupContext(context), operation);
+			removal ??= this.removeContainer(
+				name,
+				cleanupContext(context),
+				operation
+			);
 			void Promise.allSettled([removal]);
 
 			return removal;

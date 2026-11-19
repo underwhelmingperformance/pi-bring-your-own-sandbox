@@ -448,9 +448,9 @@ socket.on('error', error => {
 		it('persists target changes between jobs, keeps host files unchanged and excludes host environment', async () => {
 			vi.stubEnv('BYOS_DOCKER_SENTINEL', 'synthetic-host-secret');
 			await withDockerSession(async ({ sandbox, fixture }) => {
-				await expect(
-					sandbox.files.readFile('source.txt')
-				).rejects.toMatchObject({ name: 'UnsupportedSandboxCapabilityError' });
+				expect(await sandbox.files.readFile('source.txt')).toStrictEqual(
+					new TextEncoder().encode('original')
+				);
 
 				const removed: unknown = JSON.parse('null');
 				const environment = await sandbox.exec(

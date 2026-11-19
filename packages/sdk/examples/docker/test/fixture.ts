@@ -314,6 +314,11 @@ export class DockerFixture {
 		return {
 			configuration: this.config,
 			hostWorkspace: this.workspace,
+			read: {
+				path: 'source.txt',
+				bytes: encode('original'),
+				missingPath: 'missing-file'
+			},
 			visibility: nodeVisibilityProbe(
 				this.workspace,
 				'source.txt',

@@ -46,7 +46,8 @@ export interface DockerCommand {
 	/**
 	SDK operation associated with a transport failure.
 	*/
-	readonly operation: 'open' | 'exec' | 'dispose';
+	readonly operation:
+		'open' | 'exec' | 'dispose' | 'readFile' | 'stat' | 'access';
 	/**
 	Recovery metadata for resources that may remain after a transport failure.
 	*/

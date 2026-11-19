@@ -28,6 +28,7 @@ import type {
 	TargetInvocation
 } from './contracts.js';
 import { DeadlineTimer } from './deadline.js';
+import { DockerFileWorker } from './file-worker.js';
 import { LaunchFrames } from './frames.js';
 import { DOCKER_IMAGE } from './image.js';
 import {
@@ -46,6 +47,7 @@ class DockerBackend implements SandboxBackend {
 	readonly #lifetime = new AbortController();
 	readonly #active = new Set<Promise<BackendProcessOutcome>>();
 	#closing: Promise<void> | undefined;
+	readonly files: { readonly read: DockerFileWorker };
 	readonly id: string;
 	readonly workspace = {
 		root: '/workspace',
@@ -60,7 +62,7 @@ class DockerBackend implements SandboxBackend {
 		processKinds: ['argv', 'shell'],
 		terminationScope: 'workload',
 		exitStatus: 'guaranteed',
-		operations: ['exec'],
+		operations: ['exec', 'files.read'],
 		shells: ['sh', 'bash']
 	} as const;
 	readonly policy: SandboxBackend['policy'];
@@ -71,12 +73,23 @@ class DockerBackend implements SandboxBackend {
 	constructor(
 		resources: DockerResources,
 		policy: SandboxBackend['policy'],
-		launcher: string
+		launcher: string,
+		client: DockerClient,
+		helper: string
 	) {
 		this.#resources = resources;
 		this.#launcher = launcher;
 		this.id = resources.volume;
 		this.recovery = resources.recovery;
+		this.files = {
+			read: new DockerFileWorker(
+				resources,
+				client,
+				this.#mount(policy.workspaceAccess === 'read-only'),
+				helper,
+				this.#lifetime.signal
+			)
+		};
 		this.policy = { ...policy };
 	}
 
@@ -170,7 +183,10 @@ class DockerBackend implements SandboxBackend {
 		}
 
 		try {
-			await Promise.race([Promise.allSettled(this.#active), expired.promise]);
+			await Promise.race([
+				Promise.allSettled([...this.#active, this.files.read.close()]),
+				expired.promise
+			]);
 		} finally {
 			timer.dispose();
 			context.signal.removeEventListener('abort', fail);
@@ -360,7 +376,7 @@ export function createDockerProvider(
 			processKinds: ['argv', 'shell'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			operations: ['exec'],
+			operations: ['exec', 'files.read'],
 			shells: ['sh', 'bash']
 		},
 		policies: {
@@ -387,14 +403,16 @@ export function createDockerProvider(
 			const client =
 				createClient?.(request.configuration) ??
 				new NodeDockerClient(request.configuration);
-			const launcher = await readFile(
-				new URL('launcher.ts', import.meta.url),
-				'utf8'
-			);
+			const [launcher, helper] = await Promise.all([
+				readFile(new URL('launcher.ts', import.meta.url), 'utf8'),
+				readFile(new URL('file-helper.ts', import.meta.url), 'utf8')
+			]);
 			const backend = new DockerBackend(
 				new DockerResources(client, request.configuration.socketPath),
 				request.policy,
-				launcher
+				launcher,
+				client,
+				helper
 			);
 
 			await backend.initialise(request.hostWorkspace, context);

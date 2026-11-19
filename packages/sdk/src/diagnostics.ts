@@ -7,7 +7,12 @@ function list(values: readonly string[]): string {
 }
 
 function policy(value: SandboxPolicy): string {
-	return `workspace ${value.workspaceAccess}; filesystem ${value.filesystemScope}; network ${value.networkAccess}`;
+	const relationship =
+		value.workspaceRelationship === undefined
+			? ''
+			: ` (${value.workspaceRelationship})`;
+
+	return `workspace ${value.workspaceAccess}${relationship}; filesystem ${value.filesystemScope}; network ${value.networkAccess}`;
 }
 
 function userShell(status: SandboxStatus): string {
@@ -118,6 +123,11 @@ export function formatProviders(providers: readonly ProviderInfo[]): string {
 	for (const provider of providers) {
 		lines.push(
 			`${provider.id}: ${provider.label}`,
+			...(provider.policies.workspaceRelationship === undefined
+				? []
+				: [
+						`  Workspace relationships: ${list(provider.policies.workspaceRelationship)}`
+					]),
 			`  Operations: ${list(provider.capabilities.operations)}`,
 			`  Termination scope: ${provider.capabilities.terminationScope}`,
 			`  Shells: ${list(provider.capabilities.shells)}`,

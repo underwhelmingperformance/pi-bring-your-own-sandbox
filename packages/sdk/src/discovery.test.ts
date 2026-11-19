@@ -130,7 +130,7 @@ it.each([
 	],
 	[
 		'future service',
-		{ ...providerReply(), serviceVersions: [2] },
+		{ ...providerReply(), serviceVersions: [3] },
 		'IncompatibleSandboxProtocolError'
 	],
 	[
@@ -235,6 +235,32 @@ it('rejects a repeated provider callback', () => {
 	expect(() => discoverProviders(events)).toThrow(
 		expect.objectContaining({ name: 'DuplicateProviderError' })
 	);
+});
+
+it('requires relationship-aware peers for providers that offer a copy', () => {
+	const events = createEventBus();
+
+	registerSandboxProvider(
+		{ events, sendMessage: vi.fn(), appendEntry: vi.fn(), on: vi.fn() },
+		{
+			...imageProvider,
+			policies: { ...imageProvider.policies, workspaceRelationship: ['copied'] }
+		}
+	);
+
+	const reply = vi.fn();
+
+	events.emit('pi-byos:discovery:v1:providers', {
+		kind: 'pi-byos.discover',
+		discoveryVersion: 1,
+		reply
+	});
+	expect(reply).toHaveBeenCalledExactlyOnceWith(
+		expect.objectContaining({ serviceVersions: [2] })
+	);
+	expect(
+		discoverProviders(events)[0]?.policies.workspaceRelationship
+	).toStrictEqual(['copied']);
 });
 
 it('registers a typed provider without allocating or validating configuration', () => {

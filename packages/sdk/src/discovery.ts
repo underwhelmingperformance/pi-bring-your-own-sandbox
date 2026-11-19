@@ -68,7 +68,10 @@ function collect(
 			});
 		}
 
-		if (!reply.serviceVersions.includes(1)) {
+		if (
+			!reply.serviceVersions.includes(1) &&
+			!(kind === 'pi-byos.provider' && reply.serviceVersions.includes(2))
+		) {
 			throw new IncompatibleSandboxProtocolError({
 				operation: 'discover'
 			});

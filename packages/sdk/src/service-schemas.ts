@@ -150,7 +150,7 @@ export const runtimeSettingsSchema = Type.Object({
 		snapshot: callable<DiagnosticStore['snapshot']>()
 	}),
 	guardVersion: Type.Literal(1),
-	configurationVersion: Type.Literal(1),
+	configurationVersion: Type.Enum([1, 2]),
 	assertConfigurable: callable<RuntimeSettingsV1['assertConfigurable']>(),
 	id: nonEmptyStringSchema,
 	lifetime: signalSchema,

@@ -464,7 +464,10 @@ it.each(['normal', 'provider'] as const)(
 		const outside = {
 			label: 'Shell-only outside fixture',
 			capabilities: backend.capabilities,
-			policy: backend.policy,
+			policy: {
+				...backend.policy,
+				workspaceRelationship: backend.workspace.relationship
+			},
 			open: () => Promise.resolve(backend)
 		};
 
@@ -511,7 +514,9 @@ it.each(['normal', 'provider'] as const)(
 				}
 			],
 			async run(pi, context) {
-				const executor = await getOutsideSandboxExecutor(pi, context);
+				const executor = await getOutsideSandboxExecutor(pi, context, {
+					policy: { workspaceRelationship: backend.workspace.relationship }
+				});
 
 				await expect(
 					executor.exec(

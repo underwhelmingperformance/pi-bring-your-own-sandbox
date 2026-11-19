@@ -155,7 +155,8 @@ Policy values that a provider accepts before allocating a backend.
 */
 export interface SupportedSandboxPolicies {
 	/**
-	Workspace relationships available for explicit selection.
+	Every workspace relationship that an opened backend can report.
+	Omit this field if the provider cannot negotiate a relationship.
 	*/
 	readonly workspaceRelationship?: readonly SandboxWorkspace['relationship'][];
 

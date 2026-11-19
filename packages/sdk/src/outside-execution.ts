@@ -24,7 +24,9 @@ import type {
 	SandboxCloseReport,
 	SandboxContext,
 	SandboxErrorInfo,
-	SandboxHost
+	SandboxHost,
+	SandboxPolicy,
+	SupportedSandboxPolicies
 } from './contracts.js';
 import { discoverProviders } from './discovery.js';
 import {
@@ -89,6 +91,17 @@ const isOutsideProvider = checker(outsideProviderSchema);
 const isOutsideService = checker(outsideServiceSchema);
 const isOutsideOptions = checker(outsideProcessOptionsSchema);
 
+function supportedPolicies(policy: SandboxPolicy): SupportedSandboxPolicies {
+	return {
+		...(policy.workspaceRelationship !== undefined && {
+			workspaceRelationship: [policy.workspaceRelationship]
+		}),
+		workspaceAccess: [policy.workspaceAccess],
+		filesystemScope: [policy.filesystemScope],
+		networkAccess: [policy.networkAccess]
+	};
+}
+
 function outsideProvider(
 	pi: SandboxHost,
 	config: SandboxConfig
@@ -118,11 +131,8 @@ function outsideProvider(
 		id: provider.id,
 		label: outside.label,
 		capabilities: snapshotCapabilities(outside.capabilities),
-		policies: {
-			workspaceAccess: [outside.policy.workspaceAccess],
-			filesystemScope: [outside.policy.filesystemScope],
-			networkAccess: [outside.policy.networkAccess]
-		},
+		defaultPolicy: outside.policy,
+		policies: supportedPolicies(outside.policy),
 		configure: outside.configure.bind(outside)
 	};
 }
@@ -134,11 +144,8 @@ function normalProvider(
 		id: 'normal',
 		label: provider.label,
 		capabilities: snapshotCapabilities(provider.capabilities),
-		policies: {
-			workspaceAccess: [provider.policy.workspaceAccess],
-			filesystemScope: [provider.policy.filesystemScope],
-			networkAccess: [provider.policy.networkAccess]
-		},
+		defaultPolicy: provider.policy,
+		policies: supportedPolicies(provider.policy),
 		configure: () => ({
 			open: (request, context) =>
 				provider.open({ ...request, configuration: undefined }, context)
@@ -167,22 +174,6 @@ export interface OutsideServiceV1 {
 		readonly kind: 'normal' | 'provider';
 		readonly label: string;
 	}>;
-}
-
-function executionPolicy(provider: ProviderServiceV1) {
-	const workspaceAccess = provider.policies.workspaceAccess[0];
-	const filesystemScope = provider.policies.filesystemScope[0];
-	const networkAccess = provider.policies.networkAccess[0];
-
-	if (
-		workspaceAccess === undefined ||
-		filesystemScope === undefined ||
-		networkAccess === undefined
-	) {
-		throw new InvalidSandboxDeclarationError({ operation: 'configure' });
-	}
-
-	return { workspaceAccess, filesystemScope, networkAccess };
 }
 
 function outsideService(pi: SandboxHost): OutsideServiceV1 {
@@ -287,6 +278,13 @@ function outsideService(pi: SandboxHost): OutsideServiceV1 {
 									: normalProvider(settings.normalExecutor);
 
 						const provider = selected;
+						const policy = provider.defaultPolicy;
+
+						if (policy === undefined) {
+							throw new InvalidSandboxDeclarationError({
+								operation: 'configure'
+							});
+						}
 
 						broker = new SandboxBroker(
 							randomUUID(),
@@ -298,13 +296,7 @@ function outsideService(pi: SandboxHost): OutsideServiceV1 {
 										selection: {
 											providerId: provider.id,
 											source: 'extension',
-											policy: {
-												workspaceAccess:
-													executionPolicy(provider).workspaceAccess,
-												filesystemScope:
-													executionPolicy(provider).filesystemScope,
-												networkAccess: executionPolicy(provider).networkAccess
-											}
+											policy
 										},
 										providerConfig:
 											kind === 'provider' ? config.providerConfig : {},

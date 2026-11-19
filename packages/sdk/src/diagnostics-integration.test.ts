@@ -228,7 +228,7 @@ it('enumerates providers without allocation and omits provider configuration', a
 					{
 						display: true,
 						content:
-							'Available sandbox providers (declared capabilities):\npassthrough: Host execution without isolation\n  Operations: exec, files.read, files.write, files.list, search.find, search.grep\n  Termination scope: process-group\n  Shells: bash, sh, powershell\n  Policies: workspace read-write; filesystem provider-default; network provider-default\nfixture: In-memory fixture; no OS isolation.\n  Operations: exec, files.read, files.write, files.list\n  Termination scope: workload\n  Shells: none\n  Policies: workspace read-write; filesystem provider-default; network provider-default'
+							'Available sandbox providers (declared capabilities):\npassthrough: Host execution without isolation\n  Workspace relationships: shared\n  Operations: exec, files.read, files.write, files.list, search.find, search.grep\n  Termination scope: process-group\n  Shells: bash, sh, powershell\n  Policies: workspace read-write; filesystem provider-default; network provider-default\nfixture: In-memory fixture; no OS isolation.\n  Operations: exec, files.read, files.write, files.list\n  Termination scope: workload\n  Shells: none\n  Policies: workspace read-write; filesystem provider-default; network provider-default'
 					}
 				]
 			}

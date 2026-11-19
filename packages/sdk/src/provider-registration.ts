@@ -1,13 +1,15 @@
 import type {
 	SandboxHost,
 	SandboxProvider,
+	SandboxProviderConfig,
 	SandboxProviderRegistration
 } from './contracts.js';
 import { isDiscoveryRequest } from './discovery.js';
 import {
 	InvalidSandboxConfigError,
 	InvalidSandboxDeclarationError,
-	isSandboxError
+	isSandboxError,
+	UnsupportedSandboxPolicyError
 } from './errors.js';
 import type {
 	ConfiguredProviderV1,
@@ -50,11 +52,25 @@ export function registerSandboxProvider<Config, Input = Config>(
 		});
 	}
 
-	registerProviderConfig(
-		pi,
-		provider.id,
-		options?.configure ?? (() => ({ configuration: {} }))
-	);
+	registerProviderConfig(pi, provider.id, async (context) => {
+		const configured: SandboxProviderConfig<unknown> =
+			options?.configure === undefined
+				? { configuration: {} }
+				: await options.configure(context);
+		const relationship = configured.policy?.workspaceRelationship;
+
+		if (
+			relationship !== undefined &&
+			!provider.policies.workspaceRelationship?.includes(relationship)
+		) {
+			throw new UnsupportedSandboxPolicyError({
+				operation: 'configure',
+				providerId: provider.id
+			});
+		}
+
+		return configured;
+	});
 
 	const { id } = provider;
 	const validate = provider.validateConfig.bind(provider);
@@ -120,7 +136,12 @@ export function registerSandboxProvider<Config, Input = Config>(
 	const advertisement: ServiceAdvertisementV1 = Object.freeze({
 		kind: 'pi-byos.provider',
 		discoveryVersion: 1,
-		serviceVersions: Object.freeze([1]),
+		serviceVersions: Object.freeze([
+			service.policies.workspaceRelationship === undefined &&
+			service.outsideSandbox?.policy.workspaceRelationship === undefined
+				? 1
+				: 2
+		]),
 		id,
 		service
 	});

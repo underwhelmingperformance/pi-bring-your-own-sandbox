@@ -99,6 +99,15 @@ Exit status and termination scope are checked after opening, because a backend
 may strengthen its declaration. Every requested capability must then be present
 in the opened backend. Negotiation never selects another provider.
 
+An explicit `workspaceRelationship` must match the base policy when both specify
+a value. The provider must declare support and return that relationship in its
+workspace descriptor. Each relationship, including the unspecified default, has
+its own allocation key. Provider discovery uses service version 2 when the
+provider declares workspace relationships or requires one for outside execution.
+A host normal executor with a required relationship uses settings configuration
+version 2. Older peers reject these declarations before they can discard the
+requirement.
+
 `negotiate(context, options)` on the broker, exposed as `negotiateSandbox`,
 performs the same checks without opening a backend. It resolves to
 `{ ok: true, policy }` or `{ ok: false, error }`, where `error` is the typed

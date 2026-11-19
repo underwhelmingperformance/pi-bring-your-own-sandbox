@@ -12,6 +12,7 @@ import type {
 	InlineExtension
 } from '@earendil-works/pi-coding-agent';
 import type {
+	ReviewSnapshot,
 	Sandbox,
 	SandboxBackend,
 	SandboxContext,
@@ -47,6 +48,9 @@ interface DockerSession {
 	readonly context: SandboxContext;
 	readonly fixture: DockerFixture;
 }
+
+const readSnapshot = async (snapshot: ReviewSnapshot) =>
+	new TextDecoder().decode(await snapshot.sandbox.files.readFile('source.txt'));
 
 async function withDockerSession(
 	run: (session: DockerSession) => Promise<void>,
@@ -175,6 +179,82 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 			);
 		}, 30_000);
 
+		it('takes fresh independent review snapshots from the proposed command destination', async () => {
+			await withDockerSession(async ({ pi, context, sandbox }) => {
+				const source = {
+					kind: 'sandbox' as const,
+					providerId: sandbox.providerId,
+					generationId: sandbox.generationId,
+					backendId: sandbox.backendId
+				};
+
+				await sandbox.files.writeFile('source.txt', Buffer.from('first'));
+
+				const first = await sandboxClient.openReviewSnapshot(
+					pi,
+					context,
+					source
+				);
+
+				await sandbox.files.writeFile('source.txt', Buffer.from('second'));
+
+				const second = await sandboxClient.openReviewSnapshot(
+					pi,
+					context,
+					source
+				);
+				const host = await sandboxClient.openReviewSnapshot(pi, context, {
+					kind: 'host'
+				});
+
+				try {
+					expect(
+						await Promise.all([
+							readSnapshot(first),
+							readSnapshot(second),
+							readSnapshot(host)
+						])
+					).toStrictEqual(['first', 'second', 'original']);
+					await first.close();
+
+					const shell = await second.sandbox.exec({
+						kind: 'shell',
+						dialect: 'sh',
+						command: 'cat source.txt'
+					});
+
+					expect(new TextDecoder().decode(shell.stdout)).toBe('second');
+					await expect(
+						host.sandbox.files.writeFile('source.txt', Uint8Array.of(9))
+					).rejects.toMatchObject({ name: 'SandboxPermissionDeniedError' });
+				} finally {
+					await Promise.all([first.close(), second.close(), host.close()]);
+				}
+			});
+		}, 30_000);
+		it.each(['external hard link', 'oversized file'])(
+			'rejects a host snapshot with an %s and preserves the active backend',
+			async (defect) => {
+				await withDockerSession(async ({ pi, context, fixture, sandbox }) => {
+					const added = path.join(fixture.workspace, 'added');
+
+					if (defect === 'external hard link') {
+						await link(fixture.outside, added);
+					} else {
+						await using file = await open(added, 'wx');
+						await file.truncate(512 * 1024 * 1024 + 1);
+					}
+
+					await expect(
+						sandboxClient.openReviewSnapshot(pi, context, { kind: 'host' })
+					).rejects.toMatchObject({ operation: 'open' });
+					await expect(
+						sandbox.files.readFile('source.txt')
+					).resolves.toStrictEqual(new TextEncoder().encode('original'));
+				});
+			},
+			30_000
+		);
 		it('keeps a host file unchanged when a hard link appears after opening', async () => {
 			await withDockerSession(async ({ sandbox, fixture }) => {
 				await link(fixture.outside, path.join(fixture.workspace, 'alias'));

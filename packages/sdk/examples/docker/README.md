@@ -68,12 +68,18 @@ Commands share the volume for that generation. Host changes after opening are
 not synchronised, and target changes are not copied back. Disposal deletes the
 volume. An empty workspace is writable in read-write mode.
 
-The workspace volume has no storage quota. Opening copies the complete workspace
-with a bootstrap container that has no job CPU, memory or process limits. A
-large source tree or a job that fills `/workspace` can exhaust daemon storage;
-the job limits below do not bound that volume. Run this example only with
-workspace sizes and daemon storage that you can manage. Enforceable storage
-quotas require additional provider support.
+Import accepts up to 512 MiB of regular-file contents, 100,000 entries and 128
+directory levels. The importer copies regular files and symbolic links. It omits
+sockets, FIFOs and devices, and rejects regular files with links outside the
+source tree. It checks file contents and metadata against the source a second
+time before the backend opens. The bootstrap container has one CPU, 256 MiB of
+memory and a limit of 32 processes. The writable workspace volume has no storage
+quota after import.
+
+Review snapshots use the same importer with a fresh volume. A review of a
+sandbox command copies the live backend volume, including edits made by shell
+and file operations. A host-command review copies the host checkout. Each review
+mounts its copy read-only and can release it independently.
 
 Each foreground command creates a separate container. Containers have a
 read-only runtime image, a private 16 MiB `/tmp`, a limit of 64 processes, a 128

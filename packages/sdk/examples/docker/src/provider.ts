@@ -7,6 +7,7 @@ import type {
 	BackendProcessOutcome,
 	BackendSearch,
 	ProcessRequest,
+	ReviewSnapshotSource,
 	SandboxBackend,
 	SandboxOpenContext,
 	SandboxOpenRequest,
@@ -18,6 +19,7 @@ import {
 	SandboxCleanupError,
 	SandboxOperationError,
 	SandboxSessionClosingError,
+	StaleSandboxHandleError,
 	UnsupportedSandboxCapabilityError,
 	UnsupportedSandboxPolicyError
 } from 'pi-bring-your-own-sandbox/api';
@@ -45,6 +47,8 @@ function mount(fields: readonly string[]): string {
 
 class DockerBackend implements SandboxBackend {
 	readonly #resources: DockerResources;
+	readonly #onClose: () => void;
+	readonly #snapshots = new Set<Promise<void>>();
 	readonly #launcher: string;
 	readonly #lifetime = new AbortController();
 	readonly #active = new Set<Promise<BackendProcessOutcome>>();
@@ -86,8 +90,10 @@ class DockerBackend implements SandboxBackend {
 		policy: SandboxBackend['policy'],
 		launcher: string,
 		client: DockerClient,
-		helpers: { readonly files: string; readonly search: string }
+		helpers: { readonly files: string; readonly search: string },
+		onClose: () => void
 	) {
+		this.#onClose = onClose;
 		this.#resources = resources;
 		this.#launcher = launcher;
 		this.id = resources.volume;
@@ -209,7 +215,11 @@ class DockerBackend implements SandboxBackend {
 
 		try {
 			await Promise.race([
-				Promise.allSettled([...this.#active, this.#worker.close()]),
+				Promise.allSettled([
+					...this.#active,
+					...this.#snapshots,
+					this.#worker.close()
+				]),
 				expired.promise
 			]);
 		} finally {
@@ -225,8 +235,46 @@ class DockerBackend implements SandboxBackend {
 		await this.#resources.dispose(context);
 	}
 
+	copyInto(
+		backend: DockerBackend,
+		importer: string,
+		context: SandboxOpenContext
+	): Promise<void> {
+		if (this.#lifetime.signal.aborted) {
+			return Promise.reject(
+				new SandboxSessionClosingError({
+					operation: 'open',
+					backendId: this.id
+				})
+			);
+		}
+
+		const copying = backend.initialise(
+			mount([
+				'type=volume',
+				`source=${this.id}`,
+				'target=/source',
+				'readonly',
+				'volume-nocopy'
+			]),
+			importer,
+			{
+				...context,
+				signal: AbortSignal.any([context.signal, this.#lifetime.signal])
+			}
+		);
+
+		this.#snapshots.add(copying);
+		void Promise.allSettled([copying]).then(() => {
+			this.#snapshots.delete(copying);
+		});
+
+		return copying;
+	}
+
 	async initialise(
-		hostWorkspace: string,
+		sourceMount: string,
+		importer: string,
 		context: SandboxOpenContext
 	): Promise<void> {
 		context.reportRecovery(this.recovery);
@@ -252,7 +300,6 @@ class DockerBackend implements SandboxBackend {
 				'open'
 			);
 
-			const source = await realpath(hostWorkspace);
 			const copied = await this.#resources.job(
 				[
 					'--pull=never',
@@ -266,16 +313,16 @@ class DockerBackend implements SandboxBackend {
 					'--mount',
 					this.#mount(false),
 					'--mount',
-					mount([
-						'type=bind',
-						`source=${source}`,
-						'target=/source',
-						'readonly'
-					]),
-					'--entrypoint=/bin/sh',
+					sourceMount,
+					'--pids-limit=32',
+					'--memory=256m',
+					'--cpus=1',
+					'--log-driver=none',
+					'--entrypoint=/usr/local/bin/node',
 					DOCKER_IMAGE,
-					'-c',
-					'cp -a /source/. /workspace/ && chown -R 65534:65534 /workspace'
+					'--input-type=module-typescript',
+					'--eval',
+					importer
 				],
 				{
 					...context,
@@ -297,6 +344,13 @@ class DockerBackend implements SandboxBackend {
 			}
 
 			if (copied.exit.kind !== 'code' || copied.exit.code !== 0) {
+				const message =
+					copied.exit.kind === 'code' && copied.exit.code === 43
+						? 'The Docker workspace exceeds the snapshot import limits.'
+						: 'Docker could not read a stable copy of the workspace.';
+
+				context.reportDiagnostic({ level: 'warning', message });
+
 				throw new SandboxOperationError({
 					operation: 'open',
 					providerId: 'example.docker',
@@ -373,6 +427,7 @@ class DockerBackend implements SandboxBackend {
 			return this.#closing;
 		}
 
+		this.#onClose();
 		this.#lifetime.abort();
 		this.#closing = this.#dispose(context);
 
@@ -388,6 +443,97 @@ Pass a client factory to test daemon failures without allocating containers.
 export function createDockerProvider(
 	createClient?: (config: DockerConfig) => DockerClient
 ): SandboxProvider<DockerConfig> {
+	const active = new Map<
+		string,
+		{
+			backend: DockerBackend;
+			generationId: string;
+			sessionId: string;
+			socketPath: string;
+		}
+	>();
+
+	async function allocate(
+		request: SandboxOpenRequest<DockerConfig>,
+		context: SandboxOpenContext,
+		source?: ReviewSnapshotSource
+	) {
+		if (
+			request.policy.filesystemScope !== 'workspace-only' ||
+			request.policy.networkAccess !== 'denied' ||
+			(request.policy.workspaceRelationship !== undefined &&
+				request.policy.workspaceRelationship !== 'copied') ||
+			(request.policy.workspaceProtection?.length ?? 0) > 0 ||
+			(source !== undefined && request.policy.workspaceAccess !== 'read-only')
+		) {
+			throw new UnsupportedSandboxPolicyError({
+				operation: 'open',
+				providerId: 'example.docker'
+			});
+		}
+
+		const parent =
+			source?.kind === 'sandbox' ? active.get(source.backendId) : undefined;
+
+		if (
+			source?.kind === 'sandbox' &&
+			(parent === undefined ||
+				source.providerId !== 'example.docker' ||
+				source.generationId !== parent.generationId ||
+				parent.sessionId !== request.sessionId ||
+				parent.socketPath !== request.configuration.socketPath)
+		) {
+			throw new StaleSandboxHandleError({ operation: 'open' });
+		}
+
+		const client =
+			createClient?.(request.configuration) ??
+			new NodeDockerClient(request.configuration);
+		const [launcher, files, search, importer] = await Promise.all([
+			readFile(new URL('launcher.ts', import.meta.url), 'utf8'),
+			readFile(new URL('file-helper.ts', import.meta.url), 'utf8'),
+			readFile(new URL('search-helper.ts', import.meta.url), 'utf8'),
+			readFile(new URL('import-helper.ts', import.meta.url), 'utf8')
+		]);
+		const resources = new DockerResources(
+			client,
+			request.configuration.socketPath
+		);
+		const backend = new DockerBackend(
+			resources,
+			request.policy,
+			launcher,
+			client,
+			{ files, search },
+			() => {
+				active.delete(resources.volume);
+			}
+		);
+
+		if (parent === undefined) {
+			const host = await realpath(request.hostWorkspace);
+
+			await backend.initialise(
+				mount(['type=bind', `source=${host}`, 'target=/source', 'readonly']),
+				importer,
+				context
+			);
+		} else {
+			await parent.backend.copyInto(backend, importer, context);
+		}
+
+		if (source === undefined) {
+			active.set(backend.id, {
+				backend,
+				generationId: request.generationId,
+				sessionId: request.sessionId,
+				socketPath: request.configuration.socketPath
+			});
+		}
+
+		return backend;
+	}
+
 	return {
 		id: 'example.docker',
 		defaultPolicy: {
@@ -418,39 +564,8 @@ export function createDockerProvider(
 			networkAccess: ['denied']
 		},
 		validateConfig: dockerConfig,
-		async open(
-			request: SandboxOpenRequest<DockerConfig>,
-			context: SandboxOpenContext
-		) {
-			if (
-				request.policy.filesystemScope !== 'workspace-only' ||
-				request.policy.networkAccess !== 'denied'
-			) {
-				throw new UnsupportedSandboxPolicyError({
-					operation: 'open',
-					providerId: 'example.docker'
-				});
-			}
-
-			const client =
-				createClient?.(request.configuration) ??
-				new NodeDockerClient(request.configuration);
-			const [launcher, files, search] = await Promise.all([
-				readFile(new URL('launcher.ts', import.meta.url), 'utf8'),
-				readFile(new URL('file-helper.ts', import.meta.url), 'utf8'),
-				readFile(new URL('search-helper.ts', import.meta.url), 'utf8')
-			]);
-			const backend = new DockerBackend(
-				new DockerResources(client, request.configuration.socketPath),
-				request.policy,
-				launcher,
-				client,
-				{ files, search }
-			);
-
-			await backend.initialise(request.hostWorkspace, context);
-
-			return backend;
-		}
+		open: (request, context) => allocate(request, context),
+		openReviewSnapshot: (request, context) =>
+			allocate(request, context, request.source)
 	};
 }

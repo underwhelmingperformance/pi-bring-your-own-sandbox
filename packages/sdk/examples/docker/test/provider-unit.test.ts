@@ -124,8 +124,7 @@ class FakeDocker implements DockerClient {
 			const created = this.commands.findLast(
 				(entry) => entry.args[0] === 'create'
 			);
-			const isLauncher =
-				created?.args.includes('--entrypoint=/usr/local/bin/node') === true;
+			const isLauncher = created?.args.includes('--workdir=/') === true;
 
 			return result(
 				JSON.stringify({
@@ -164,7 +163,7 @@ class FakeDocker implements DockerClient {
 				(entry) => entry.args[0] === 'create'
 			);
 
-			if (created?.args.includes('--entrypoint=/usr/local/bin/node') === true) {
+			if (created?.args.includes('--workdir=/') === true) {
 				command.onOutput?.({
 					stream: 'stdout',
 					data: new TextEncoder().encode(

@@ -100,6 +100,29 @@ it('activates a provider without a configuration file and shares lazy resolution
 	});
 });
 
+it.each([true, false, undefined])(
+	'passes project trust %s to the provider configuration resolver',
+	async (trusted) => {
+		await fixture(async (pi, context) => {
+			const backend = new MemoryBackend();
+			const decisions: (boolean | undefined)[] = [];
+
+			registerSandboxProvider(pi, provider('active', backend), {
+				configure({ pi: session }) {
+					decisions.push(session.isProjectTrusted?.());
+
+					return { configuration: {} };
+				}
+			});
+			await getSandbox(pi, {
+				...context,
+				...(trusted !== undefined && { isProjectTrusted: () => trusted })
+			});
+			expect(decisions).toStrictEqual([trusted]);
+		});
+	}
+);
+
 it('rejects distinct activated providers before configuration or allocation', async () => {
 	await fixture(async (pi, context) => {
 		const backend = new MemoryBackend();

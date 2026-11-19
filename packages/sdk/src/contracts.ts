@@ -44,7 +44,8 @@ export interface SandboxHostOptions {
 Live Pi context required for generation identity and workspace paths. Pass the
 context supplied by Pi so its runtime validity checks remain active.
 */
-export type SandboxContext = Pick<ExtensionContext, 'cwd' | 'sessionManager'>;
+export type SandboxContext = Pick<ExtensionContext, 'cwd' | 'sessionManager'> &
+	Partial<Pick<ExtensionContext, 'isProjectTrusted'>>;
 
 /**
 Command languages that a provider can advertise independently of argv

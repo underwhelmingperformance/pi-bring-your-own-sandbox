@@ -251,6 +251,11 @@ extension loading and is shared across callers. Cancelling an acquisition does
 not cancel shared resolution. Shutdown cancels resolution, and failures remain
 errors for that runtime generation.
 
+In Pi, `context.pi.isProjectTrusted?.()` returns the effective project trust
+decision. Embedded hosts can omit the method. Pi can trust a project without a
+prompt, so a provider needs a separate configuration setting for features that
+require the user's consent.
+
 Configuration resolvers can call `reportDiagnostic` with a user-facing warning,
 including the configuration path and invalid field. Configuration and ordinary
 backend diagnostics share the runtime's bounded store. Status includes these

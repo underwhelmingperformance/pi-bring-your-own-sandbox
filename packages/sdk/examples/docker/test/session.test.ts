@@ -1,6 +1,11 @@
+import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { readFile, rm } from 'node:fs/promises';
+import { once } from 'node:events';
+import { constants } from 'node:fs';
+import { link, open, readFile, rm, writeFile } from 'node:fs/promises';
+import { connect, createServer } from 'node:net';
 import path from 'node:path';
+import { promisify } from 'node:util';
 
 import type {
 	AgentSessionRuntime,
@@ -168,6 +173,125 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				[],
 				'system-read-only'
 			);
+		}, 30_000);
+
+		it('keeps a host file unchanged when a hard link appears after opening', async () => {
+			await withDockerSession(async ({ sandbox, fixture }) => {
+				await link(fixture.outside, path.join(fixture.workspace, 'alias'));
+
+				const result = await sandbox.exec({
+					kind: 'argv',
+					executable: '/usr/local/bin/node',
+					args: [
+						'-e',
+						`
+const fs = require('node:fs');
+fs.writeFileSync('ordinary', 'edited');
+try {
+  fs.writeFileSync('alias', 'edited');
+} catch (error) {
+  if (!['EACCES', 'EPERM', 'EMLINK'].includes(error.code)) throw error;
+}
+`
+					]
+				});
+
+				expect({
+					exit: result.exit,
+					outside: await readFile(fixture.outside, 'utf8')
+				}).toStrictEqual({
+					exit: { kind: 'code', code: 0 },
+					outside: 'host-only'
+				});
+			});
+		}, 30_000);
+
+		it('isolates a host FIFO created in the workspace after opening', async () => {
+			await withDockerSession(async ({ sandbox, fixture }) => {
+				const channel = path.join(fixture.workspace, 'channel');
+
+				await promisify(execFile)('mkfifo', [channel]);
+
+				await using reader = await open(
+					channel,
+					constants.O_RDONLY | constants.O_NONBLOCK
+				);
+
+				const byte = Buffer.alloc(1);
+
+				await writeFile(channel, 'x');
+
+				const control = await reader.read(byte);
+
+				expect([control.bytesRead, byte.toString()]).toStrictEqual([1, 'x']);
+
+				const result = await sandbox.exec({
+					kind: 'argv',
+					executable: '/usr/local/bin/node',
+					args: [
+						'-e',
+						`
+const fs = require('node:fs');
+try {
+  const fd = fs.openSync('channel', fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
+  fs.writeSync(fd, 'y');
+  fs.closeSync(fd);
+} catch (error) {
+  if (!['ENOENT', 'EACCES', 'EPERM', 'ENXIO'].includes(error.code)) throw error;
+}
+`
+					]
+				});
+
+				const { bytesRead } = await reader.read(byte);
+
+				expect({ exit: result.exit, bytesRead }).toStrictEqual({
+					exit: { kind: 'code', code: 0 },
+					bytesRead: 0
+				});
+			});
+		}, 30_000);
+
+		it('isolates a host socket created in the workspace after opening', async () => {
+			await withDockerSession(async ({ sandbox, fixture }) => {
+				const socketPath = path.join(fixture.workspace, 's');
+				let connections = 0;
+				const listener = createServer((peer) => {
+					connections++;
+					peer.end();
+				});
+
+				try {
+					listener.listen(socketPath);
+					await once(listener, 'listening');
+
+					const control = connect(socketPath);
+
+					await once(control, 'close');
+
+					const result = await sandbox.exec({
+						kind: 'argv',
+						executable: '/usr/local/bin/node',
+						args: [
+							'-e',
+							`
+const socket = require('node:net').connect('/workspace/s');
+socket.on('connect', () => { process.exitCode = 1; });
+socket.on('error', error => {
+  if (!['ENOENT', 'EACCES', 'EPERM'].includes(error.code)) throw error;
+});
+`
+						]
+					});
+
+					expect({ exit: result.exit, connections }).toStrictEqual({
+						exit: { kind: 'code', code: 0 },
+						connections: 1
+					});
+				} finally {
+					await listener[Symbol.asyncDispose]();
+				}
+			});
 		}, 30_000);
 
 		it('routes an approved model Bash call through the isolated Docker target', async () => {

@@ -49,10 +49,25 @@ export interface SandboxProviderTestFixture {
 	process. Replace the source by rename so a stale open inode cannot pass.
 	*/
 	readonly visibility?: {
+		/**
+		Target path of the seeded regular file, relative to the workspace or absolute.
+		*/
 		readonly targetPath: string;
+		/**
+		Read complete bytes independently from the source workspace.
+		*/
 		readonly readSource: () => Promise<Uint8Array>;
+		/**
+		Replace the source file by atomic rename.
+		*/
 		readonly replaceSource: (bytes: Uint8Array) => Promise<void>;
+		/**
+		A successful process that writes only the complete target file to stdout.
+		*/
 		readonly readTarget: ProcessRequest;
+		/**
+		A successful process that replaces the target file with the supplied bytes.
+		*/
 		readonly writeTarget: (bytes: Uint8Array) => ProcessRequest;
 		/**
 		Write the bytes, emit "ready" on stdout, then emit the replacement

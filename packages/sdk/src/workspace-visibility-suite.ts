@@ -5,9 +5,13 @@ import { expect } from 'vitest';
 import type {
 	ProcessRequest,
 	SandboxBackend,
+	SandboxCapabilities,
+	SandboxCleanupBudgets,
 	SandboxOperationContext
 } from './contracts.js';
+import { OperationScope } from './lifecycle.js';
 import type { SandboxProviderTestFixture } from './provider-test-contracts.js';
+import { settleProcess } from './termination-scope.js';
 
 async function execute(
 	backend: SandboxBackend,
@@ -45,7 +49,9 @@ export async function checkWorkspaceVisibility(
 	relationship: 'shared' | 'copied',
 	fixture: SandboxProviderTestFixture,
 	backend: SandboxBackend,
-	context: SandboxOperationContext
+	context: SandboxOperationContext,
+	capabilities: SandboxCapabilities,
+	cleanup: SandboxCleanupBudgets
 ): Promise<void> {
 	expect(backend.workspace.relationship).toBe(relationship);
 
@@ -67,23 +73,32 @@ export async function checkWorkspaceVisibility(
 
 	const expected = relationship === 'shared' ? replaced : initial;
 
-	expect(await execute(backend, probe.readTarget, context)).toStrictEqual(
-		expected
-	);
+	expect(
+		await execute(backend, probe.readTarget, context),
+		'A target process must observe the negotiated workspace relationship.'
+	).toStrictEqual(expected);
 
-	const reader = backend.files?.read;
+	const reader = capabilities.operations.includes('files.read')
+		? backend.files?.read
+		: undefined;
 
-	if (reader !== undefined) {
-		expect(
-			Buffer.from(await reader.readFile(probe.targetPath, context))
-		).toStrictEqual(expected);
+	async function checkReader(bytes: Buffer) {
+		if (reader !== undefined && probe !== undefined) {
+			expect(
+				Buffer.from(await reader.readFile(probe.targetPath, context)),
+				'The file reader must observe the same contents as target processes.'
+			).toStrictEqual(bytes);
+		}
 	}
+
+	await checkReader(expected);
 
 	if (fixture.policy.workspaceAccess === 'read-only') {
 		return;
 	}
 
 	const written = randomBytes(24);
+	const observed = randomBytes(24);
 
 	if (relationship === 'shared') {
 		if (probe.waitForReplacement === undefined) {
@@ -94,14 +109,19 @@ export async function checkWorkspaceVisibility(
 
 		const ready = Promise.withResolvers<boolean>();
 		const controller = new AbortController();
-		const observed = randomBytes(24);
+		const window = Math.max(1, Math.floor(context.remainingMs() * 0.8));
+		const execution = new OperationScope(
+			{ operation: 'exec' },
+			context.signal,
+			{ signal: controller.signal },
+			window,
+			cleanup
+		);
+
 		const running = execute(
 			backend,
 			probe.waitForReplacement(written),
-			{
-				...context,
-				signal: AbortSignal.any([context.signal, controller.signal])
-			},
+			execution.context,
 			(output) => {
 				if (output.includes('ready')) {
 					ready.resolve(true);
@@ -116,22 +136,42 @@ export async function checkWorkspaceVisibility(
 			).toBe(true);
 			expect(Buffer.from(await probe.readSource())).toStrictEqual(written);
 			await probe.replaceSource(observed);
-			expect(await running).toStrictEqual(
-				Buffer.concat([Buffer.from('ready'), observed])
-			);
+
+			const result = await Promise.race([running, execution.whenCancelled()]);
+
+			expect(
+				result,
+				'The writer must observe the host replacement before its deadline.'
+			).toStrictEqual(Buffer.concat([Buffer.from('ready'), observed]));
 		} finally {
 			controller.abort();
-			await Promise.allSettled([running]);
+
+			try {
+				await settleProcess(
+					execution,
+					running,
+					backend.capabilities.terminationScope
+				);
+			} finally {
+				execution.dispose();
+			}
 		}
 	} else {
 		await execute(backend, probe.writeTarget(written), context);
 		expect(await execute(backend, probe.readTarget, context)).toStrictEqual(
 			written
 		);
-		expect(Buffer.from(await probe.readSource())).toStrictEqual(replaced);
+		expect(
+			Buffer.from(await probe.readSource()),
+			'A copied write must leave the source file unchanged.'
+		).toStrictEqual(replaced);
 	}
 
-	const writer = backend.files?.write;
+	await checkReader(relationship === 'shared' ? observed : written);
+
+	const writer = capabilities.operations.includes('files.write')
+		? backend.files?.write
+		: undefined;
 
 	if (writer === undefined) {
 		return;
@@ -140,6 +180,7 @@ export async function checkWorkspaceVisibility(
 	const content = randomBytes(32);
 
 	await writer.writeFile(probe.targetPath, content, context);
+	await checkReader(content);
 	expect(await execute(backend, probe.readTarget, context)).toStrictEqual(
 		content
 	);

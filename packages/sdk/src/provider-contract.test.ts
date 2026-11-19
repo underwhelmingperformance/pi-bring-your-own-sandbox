@@ -1,6 +1,11 @@
 import { expect, it, vi } from 'vitest';
 
-import type { SandboxBackend, SandboxPolicy } from './contracts.js';
+import type {
+	BackendProcessContext,
+	ProcessRequest,
+	SandboxBackend,
+	SandboxPolicy
+} from './contracts.js';
 import { SandboxCleanupError } from './errors.js';
 import { contractScenario } from './fixtures/provider-contract.js';
 import {
@@ -517,3 +522,103 @@ it.each(['confirmed cancellation', 'idempotent disposal'])(
 		}
 	}
 );
+
+it.each([
+	{
+		defect: 'a stale shared read',
+		relationship: 'shared',
+		expected: 'target process'
+	},
+	{
+		defect: 'a copied write leaking to the source',
+		relationship: 'copied',
+		expected: 'source file'
+	},
+	{
+		defect: 'a file reader stuck on the opening copy',
+		relationship: 'copied',
+		expected: 'file reader'
+	}
+] as const)('detects $defect', async ({ defect, relationship, expected }) => {
+	const base = contractScenario();
+	const open = base.provider.open;
+	let source = Buffer.from('seed');
+	let target = Buffer.from(source);
+	const readTarget = { kind: 'argv', executable: 'read', args: [] } as const;
+	const scenario = {
+		...base,
+		workspaceVisibility: relationship,
+		provider: {
+			...base.provider,
+			async open(...arguments_: Parameters<typeof open>) {
+				const backend = await open(...arguments_);
+
+				return {
+					...backend,
+					workspace: { ...backend.workspace, relationship },
+					files: {
+						...backend.files,
+						read: {
+							access: () => Promise.resolve(),
+							stat: () =>
+								Promise.resolve({ kind: 'file' as const, size: target.length }),
+							readFile: () =>
+								Promise.resolve(
+									defect === 'a file reader stuck on the opening copy'
+										? Buffer.from('seed')
+										: target
+								)
+						}
+					},
+					exec(request: ProcessRequest, context: BackendProcessContext) {
+						if (request.kind === 'argv' && request.executable === 'write') {
+							target = Buffer.from(request.args[0] ?? '', 'base64');
+
+							if (defect === 'a copied write leaking to the source') {
+								source = target;
+							}
+						} else {
+							context.onOutput({ stream: 'stdout', data: target });
+						}
+
+						return Promise.resolve({
+							kind: 'exited' as const,
+							exit: { kind: 'code' as const, code: 0 }
+						});
+					}
+				};
+			}
+		},
+		async createFixture() {
+			return {
+				...(await base.createFixture()),
+				visibility: {
+					targetPath: 'file',
+					readSource: () => Promise.resolve(source),
+					replaceSource: (bytes: Uint8Array) => {
+						source = Buffer.from(bytes);
+
+						return Promise.resolve();
+					},
+					readTarget,
+					writeTarget: (bytes: Uint8Array): ProcessRequest => ({
+						kind: 'argv',
+						executable: 'write',
+						args: [Buffer.from(bytes).toString('base64')]
+					})
+				}
+			};
+		}
+	};
+	const entry = providerContractCases(scenario).find(
+		(item) => item.label === `workspace visibility (${relationship})`
+	);
+
+	if (!entry) {
+		throw new Error('Missing workspace visibility scenario.');
+	}
+
+	await expect(usingProviderFixture(scenario, entry.run)).rejects.toThrow(
+		expected
+	);
+});

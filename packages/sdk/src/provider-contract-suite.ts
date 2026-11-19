@@ -369,7 +369,14 @@ export function providerContractCases<Config>(
 		cases.push({
 			label: `workspace visibility (${relationship})`,
 			run: (fixture, backend, context) =>
-				checkWorkspaceVisibility(relationship, fixture, backend, context)
+				checkWorkspaceVisibility(
+					relationship,
+					fixture,
+					backend,
+					context,
+					capabilities,
+					cleanup
+				)
 		});
 	}
 

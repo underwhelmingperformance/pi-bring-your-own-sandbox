@@ -1,5 +1,6 @@
+import { once } from 'node:events';
 import { constants } from 'node:fs';
-import { lstat, open, readdir } from 'node:fs/promises';
+import { open, readdir } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { GrepMatch } from 'pi-bring-your-own-sandbox/api';
@@ -15,114 +16,205 @@ const glob = options.get(operation === 'find' ? 'pattern' : 'glob');
 
 interface Entry {
 	readonly relative: string;
+	readonly filename: string;
+	readonly pinnedRoot?: true;
 	readonly kind: 'directory' | 'file' | 'other';
 }
 
-async function* walk(relative: string): AsyncGenerator<Entry> {
-	const entries = await readdir(path.join(root, relative), {
-		withFileTypes: true
-	});
+function wasRemoved(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		'code' in error &&
+		typeof error.code === 'string' &&
+		['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)
+	);
+}
 
-	const ordered = entries.toSorted((left, right) =>
-		left.name < right.name ? -1 : Number(left.name > right.name)
+async function* walk(
+	filename: string,
+	relative: string
+): AsyncGenerator<Entry> {
+	const directory = await open(
+		filename,
+		constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW
 	);
 
-	for (const entry of ordered) {
-		if (entry.name === '.git' || entry.name === 'node_modules') {
-			continue;
+	try {
+		const base = '/proc/self/fd/' + String(directory.fd);
+		const entries = await readdir(base, {
+			withFileTypes: true,
+			encoding: 'buffer'
+		});
+		const sorted = entries.toSorted((left, right) =>
+			left.name.compare(right.name)
+		);
+		const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+
+		for (const entry of sorted) {
+			const name = decoder.decode(entry.name);
+
+			if (name === '.git' || name === 'node_modules') {
+				continue;
+			}
+
+			const child = path.join(relative, name);
+			const pinnedChild = path.join(base, name);
+
+			yield {
+				relative: child,
+				filename: pinnedChild,
+				kind: entry.isDirectory()
+					? 'directory'
+					: entry.isFile()
+						? 'file'
+						: 'other'
+			};
+
+			if (entry.isDirectory()) {
+				try {
+					yield* walk(pinnedChild, child);
+				} catch (error) {
+					if (!wasRemoved(error)) {
+						throw error;
+					}
+				}
+			}
 		}
-
-		const child = path.join(relative, entry.name);
-
-		yield {
-			relative: child,
-			kind: entry.isDirectory()
-				? 'directory'
-				: entry.isFile()
-					? 'file'
-					: 'other'
-		};
-
-		if (entry.isDirectory()) {
-			yield* walk(child);
-		}
+	} finally {
+		await directory.close();
 	}
 }
 
 async function* candidates(): AsyncGenerator<Entry> {
-	const stat = await lstat(root);
+	// O_PATH pins the explicit root without opening a device. Child lookups use the parent's descriptor.
+	await using pinned = await open(root, 0o1000_0000);
+
+	const filename = '/proc/self/fd/' + String(pinned.fd);
+	const stat = await pinned.stat();
 
 	if (stat.isDirectory()) {
-		yield* walk('');
+		yield* walk(filename + '/.', '');
 
 		return;
 	}
 
 	if (operation === 'grep' && stat.isFile()) {
-		yield { relative: path.basename(root), kind: 'file' };
+		yield {
+			relative: path.basename(root),
+			filename,
+			pinnedRoot: true,
+			kind: 'file'
+		};
 
 		return;
 	}
 
-	throw new TypeError('The search root must be a directory or a regular file.');
+	throw new TypeError('The search root must be a directory or regular file.');
 }
 
-async function lines(filename: string): Promise<string[]> {
+async function contents(entry: Entry): Promise<string> {
 	const file = await open(
-		filename,
-		constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW
+		entry.filename,
+		constants.O_RDONLY |
+			constants.O_NONBLOCK |
+			(entry.pinnedRoot === true ? 0 : constants.O_NOFOLLOW)
 	);
 
 	try {
 		const stat = await file.stat();
 
-		if (!stat.isFile()) {
-			return [];
-		}
-
-		if (stat.size > maxBytes) {
-			throw new RangeError('A search input exceeds the file size limit.');
+		if (!stat.isFile() || stat.size > maxBytes) {
+			return '';
 		}
 
 		const chunks: Buffer[] = [];
 		let bytes = 0;
-
 		const stream = file.createReadStream({ autoClose: false });
 
 		for await (const chunk of stream) {
 			if (!Buffer.isBuffer(chunk)) {
-				throw new TypeError('Expected binary file input.');
+				throw new TypeError('Expected a binary input file.');
 			}
 
 			bytes += chunk.length;
 
-			if (bytes > maxBytes) {
-				throw new RangeError('A search input exceeds the file size limit.');
-			}
-
-			if (chunk.includes(0)) {
-				return [];
+			if (chunk.includes(0) || bytes > maxBytes) {
+				return '';
 			}
 
 			chunks.push(chunk);
 		}
 
-		const text = Buffer.concat(chunks).toString('utf8');
-
-		if (text.length === 0) {
-			return [];
-		}
-
-		const result = text.split(/\r?\n/u);
-
-		if (text.endsWith('\n')) {
-			result.pop();
-		}
-
-		return result;
+		return Buffer.concat(chunks).toString('utf8');
 	} finally {
 		await file.close();
 	}
+}
+
+function* textLines(input: string, start = 0) {
+	let offset = start;
+
+	while (offset < input.length) {
+		const newline = input.indexOf('\n', offset);
+		const end = newline === -1 ? input.length : newline;
+		const next = end + 1;
+
+		yield {
+			start: offset,
+			next,
+			text: input.slice(
+				offset,
+				newline !== -1 && end > offset && input[end - 1] === '\r'
+					? end - 1
+					: end
+			)
+		};
+		offset = next;
+	}
+}
+
+function adjacent(
+	input: string,
+	position: number,
+	count: number,
+	direction: 'before' | 'after'
+): string[] {
+	const lines: string[] = [];
+
+	if (count === 0) {
+		return lines;
+	}
+
+	let offset = position;
+
+	if (direction === 'before') {
+		for (let index = 0; index < count && offset > 0; index++) {
+			const previous = offset <= 1 ? -1 : input.lastIndexOf('\n', offset - 2);
+
+			offset = previous + 1;
+
+			if (index >= 65_536) {
+				throw new RangeError('Context exceeds the response limit.');
+			}
+		}
+	}
+
+	for (const line of textLines(input, offset)) {
+		if (
+			lines.length >= count ||
+			(direction === 'before' && line.start >= position)
+		) {
+			break;
+		}
+
+		if (lines.length >= 65_536) {
+			throw new RangeError('Context exceeds the response limit.');
+		}
+
+		lines.push(line.text);
+	}
+
+	return lines;
 }
 
 function isPathIncluded(relative: string): boolean {
@@ -152,29 +244,39 @@ async function* grep(): AsyncGenerator<GrepMatch> {
 		: new RegExp(pattern, isIgnoreCase ? 'iu' : 'u');
 	const needle = isIgnoreCase ? pattern.toLowerCase() : pattern;
 	const context = Number(options.get('context') ?? 0);
-	const target = await lstat(root);
 
-	for await (const { relative, kind } of candidates()) {
-		if (kind !== 'file' || !isPathIncluded(relative)) {
+	for await (const entry of candidates()) {
+		if (entry.kind !== 'file' || !isPathIncluded(entry.relative)) {
 			continue;
 		}
 
-		const content = await lines(
-			target.isFile() ? root : path.join(root, relative)
-		);
+		let content: string;
 
-		for (const [index, text] of content.entries()) {
-			const isFound =
-				regex?.test(text) ??
-				(isIgnoreCase ? text.toLowerCase() : text).includes(needle);
+		try {
+			content = await contents(entry);
+		} catch (error) {
+			if (wasRemoved(error)) {
+				continue;
+			}
 
-			if (isFound) {
+			throw error;
+		}
+
+		let number = 0;
+
+		for (const line of textLines(content)) {
+			number++;
+
+			if (
+				regex?.test(line.text) ??
+				(isIgnoreCase ? line.text.toLowerCase() : line.text).includes(needle)
+			) {
 				yield {
-					path: relative,
-					line: index + 1,
-					text,
-					before: content.slice(Math.max(0, index - context), index),
-					after: content.slice(index + 1, index + 1 + context)
+					path: entry.relative,
+					line: number,
+					text: line.text,
+					before: adjacent(content, line.start, context, 'before'),
+					after: adjacent(content, line.next, context, 'after')
 				};
 			}
 		}
@@ -185,32 +287,35 @@ async function collect<Value>(
 	source: AsyncIterable<Value>,
 	key: 'paths' | 'matches'
 ) {
-	const items: Value[] = [];
+	let count = 0;
 	let bytes = 0;
 	let isTruncated = false;
 
-	for await (const item of source) {
-		if (items.length === limit) {
-			isTruncated = true;
-			break;
-		}
-
-		bytes += Buffer.byteLength(JSON.stringify(item)) + 1;
+	async function output(text: string) {
+		bytes += Buffer.byteLength(text);
 
 		if (bytes > maxBytes) {
 			throw new RangeError('Search output exceeds the transfer limit.');
 		}
 
-		items.push(item);
+		if (!process.stdout.write(text)) {
+			await once(process.stdout, 'drain');
+		}
 	}
 
-	const result = JSON.stringify({ [key]: items, truncated: isTruncated });
+	await output('{"' + key + '":[');
 
-	if (Buffer.byteLength(result) > maxBytes) {
-		throw new RangeError('Search output exceeds the transfer limit.');
+	for await (const item of source) {
+		if (count === limit) {
+			isTruncated = true;
+			break;
+		}
+
+		await output((count === 0 ? '' : ',') + JSON.stringify(item));
+		count++;
 	}
 
-	process.stdout.write(result);
+	await output('],"truncated":' + String(isTruncated) + '}');
 }
 
 try {

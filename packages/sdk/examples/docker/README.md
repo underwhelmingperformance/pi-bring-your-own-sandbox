@@ -125,16 +125,18 @@ operations start with a fresh worker.
 
 Search runs in the file worker. Find uses Node's POSIX `path.matchesGlob`.
 Patterns containing a slash match paths relative to the search root. Other
-patterns match basenames. Both searches visit directories in depth-first order
+patterns match basenames. Wildcards skip leading dots unless the pattern
+explicitly matches them. Both searches visit directories in depth-first order
 with entries sorted by name. They skip `.git` and `node_modules` at every depth
 and ignore repository ignore files. Find reports directory symlinks as entries.
 Search does not descend through those links.
 
 Grep accepts JavaScript Unicode regular expressions or literal text. It searches
-regular files, skips files containing NUL bytes, and returns one result per
-matching line with the requested context. Each input file and encoded response
-has a 16 MiB limit. Both searches report truncation when another result exists
-beyond the requested count.
+regular files and skips files larger than 16 MiB or containing NUL bytes. Each
+match includes up to 65,536 requested context lines on each side. A response
+that exceeds this context limit or the 16 MiB transfer limit fails. Both
+searches report truncation when another result exists beyond the requested
+count.
 
 ## Cleanup and recovery
 

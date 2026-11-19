@@ -632,6 +632,41 @@ socket.on('error', error => {
 			30_000
 		);
 
+		it('searches dense text through a root symlink and skips oversized and binary files', async () => {
+			await withDockerSession(async ({ sandbox }) => {
+				const setup = await sandbox.exec({
+					kind: 'argv',
+					executable: '/usr/local/bin/node',
+					args: [
+						'-e',
+						`const fs=require('node:fs');fs.mkdirSync('tree');fs.symlinkSync('tree','view');fs.writeFileSync('tree/binary',Buffer.from('needle\\0'));fs.writeFileSync('tree/large','needle');fs.truncateSync('tree/large',17*1024*1024);fs.writeFileSync('tree/dense','before\\nneedle\\nafter\\n'+'\\n'.repeat(8000000));`
+					]
+				});
+
+				expect(setup.exit).toStrictEqual({ kind: 'code', code: 0 });
+				expect(
+					await sandbox.search.grep({
+						path: 'view',
+						pattern: 'needle',
+						literal: true,
+						context: 1,
+						limit: 1
+					})
+				).toStrictEqual({
+					matches: [
+						{
+							path: 'dense',
+							line: 2,
+							text: 'needle',
+							before: ['before'],
+							after: ['after']
+						}
+					],
+					truncated: false
+				});
+			});
+		}, 30_000);
+
 		it('bounds captured target output while draining the complete stream', async () => {
 			await withDockerSession(async ({ sandbox }) => {
 				let delivered = 0;

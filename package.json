@@ -43,7 +43,7 @@
 		"oxlint-tsgolint": "7.0.2006",
 		"prettier": "3.10.1",
 		"typescript": "npm:@typescript/typescript6@6.0.2",
-		"typescript-eslint": "8.72.2"
+		"typescript-eslint": "8.73.0"
 	},
 	"license": "MIT"
 }

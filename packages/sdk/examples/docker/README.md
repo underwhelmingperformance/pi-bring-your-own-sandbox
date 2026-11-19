@@ -1,8 +1,9 @@
 # Docker reference provider
 
 This example implements the public provider contract with a local Docker daemon.
-It supports argv, POSIX `sh`, Bash, and the `files.read`, `files.write` and
-`files.list` operations. Shell commands and file operations use the same volume.
+It supports argv, POSIX `sh`, Bash, and the file operations for reading, writing
+and listing. Shell commands, file operations, `search.find` and `search.grep`
+use the same workspace volume.
 
 The framework's runtime does not depend on Docker. Registering the example does
 not contact the daemon. Docker is required when a consumer acquires an
@@ -115,6 +116,19 @@ the received input before opening the destination. Directory listings report
 symlinks as entries. A read-only workspace rejects write-access checks, file
 writes and directory creation. Cancellation removes the worker so later
 operations start with a fresh worker.
+
+Search runs in the file worker. Find uses Node's POSIX `path.matchesGlob`.
+Patterns containing a slash match paths relative to the search root. Other
+patterns match basenames. Both searches visit directories in depth-first order
+with entries sorted by name. They skip `.git` and `node_modules` at every depth
+and ignore repository ignore files. Find reports directory symlinks as entries.
+Search does not descend through those links.
+
+Grep accepts JavaScript Unicode regular expressions or literal text. It searches
+regular files, skips files containing NUL bytes, and returns one result per
+matching line with the requested context. Each input file and encoded response
+has a 16 MiB limit. Both searches report truncation when another result exists
+beyond the requested count.
 
 ## Cleanup and recovery
 

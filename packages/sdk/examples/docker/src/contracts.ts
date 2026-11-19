@@ -59,7 +59,9 @@ export interface DockerCommand {
 		| 'access'
 		| 'writeFile'
 		| 'mkdir'
-		| 'listDirectory';
+		| 'listDirectory'
+		| 'find'
+		| 'grep';
 	/**
 	Recovery metadata for resources that may remain after a transport failure.
 	*/

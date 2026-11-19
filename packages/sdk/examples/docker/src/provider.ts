@@ -5,6 +5,7 @@ import type {
 	BackendFiles,
 	BackendProcessContext,
 	BackendProcessOutcome,
+	BackendSearch,
 	ProcessRequest,
 	SandboxBackend,
 	SandboxOpenContext,
@@ -50,6 +51,7 @@ class DockerBackend implements SandboxBackend {
 	#closing: Promise<void> | undefined;
 	readonly #worker: DockerFileWorker;
 	readonly files: BackendFiles;
+	readonly search: BackendSearch;
 	readonly id: string;
 	readonly workspace = {
 		root: '/workspace',
@@ -64,7 +66,14 @@ class DockerBackend implements SandboxBackend {
 		processKinds: ['argv', 'shell'],
 		terminationScope: 'workload',
 		exitStatus: 'guaranteed',
-		operations: ['exec', 'files.read', 'files.write', 'files.list'],
+		operations: [
+			'exec',
+			'files.read',
+			'files.write',
+			'files.list',
+			'search.find',
+			'search.grep'
+		],
 		shells: ['sh', 'bash']
 	} as const;
 	readonly policy: SandboxBackend['policy'];
@@ -77,7 +86,7 @@ class DockerBackend implements SandboxBackend {
 		policy: SandboxBackend['policy'],
 		launcher: string,
 		client: DockerClient,
-		helper: string
+		helpers: { readonly files: string; readonly search: string }
 	) {
 		this.#resources = resources;
 		this.#launcher = launcher;
@@ -90,9 +99,13 @@ class DockerBackend implements SandboxBackend {
 				mount: this.#mount(policy.workspaceAccess === 'read-only'),
 				readOnly: policy.workspaceAccess === 'read-only'
 			},
-			helper,
+			helpers,
 			this.#lifetime.signal
 		);
+		this.search = {
+			find: this.#worker.find.bind(this.#worker),
+			grep: this.#worker.grep.bind(this.#worker)
+		};
 		this.files = {
 			read: this.#worker,
 			list: this.#worker,
@@ -388,7 +401,14 @@ export function createDockerProvider(
 			processKinds: ['argv', 'shell'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			operations: ['exec', 'files.read', 'files.write', 'files.list'],
+			operations: [
+				'exec',
+				'files.read',
+				'files.write',
+				'files.list',
+				'search.find',
+				'search.grep'
+			],
 			shells: ['sh', 'bash']
 		},
 		policies: {
@@ -415,16 +435,17 @@ export function createDockerProvider(
 			const client =
 				createClient?.(request.configuration) ??
 				new NodeDockerClient(request.configuration);
-			const [launcher, helper] = await Promise.all([
+			const [launcher, files, search] = await Promise.all([
 				readFile(new URL('launcher.ts', import.meta.url), 'utf8'),
-				readFile(new URL('file-helper.ts', import.meta.url), 'utf8')
+				readFile(new URL('file-helper.ts', import.meta.url), 'utf8'),
+				readFile(new URL('search-helper.ts', import.meta.url), 'utf8')
 			]);
 			const backend = new DockerBackend(
 				new DockerResources(client, request.configuration.socketPath),
 				request.policy,
 				launcher,
 				client,
-				helper
+				{ files, search }
 			);
 
 			await backend.initialise(request.hostWorkspace, context);

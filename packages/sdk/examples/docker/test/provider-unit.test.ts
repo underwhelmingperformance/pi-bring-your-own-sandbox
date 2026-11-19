@@ -345,7 +345,14 @@ it('uses literal argv, isolated mounts and explicit target environment overrides
 			processKinds: ['argv', 'shell'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			operations: ['exec', 'files.read', 'files.write', 'files.list'],
+			operations: [
+				'exec',
+				'files.read',
+				'files.write',
+				'files.list',
+				'search.find',
+				'search.grep'
+			],
 			shells: ['sh', 'bash']
 		},
 		workspace: {

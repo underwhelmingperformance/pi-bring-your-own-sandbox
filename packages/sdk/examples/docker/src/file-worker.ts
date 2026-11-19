@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import type {
 	BackendFileReader,
+	FindRequest,
+	GrepRequest,
 	SandboxOperationContext
 } from 'pi-bring-your-own-sandbox/api';
 import {
@@ -38,8 +40,31 @@ const entrySchema = Type.Object({
 });
 const listValidator = Compile(Type.Array(entrySchema));
 
+const findSchema = Type.Object({
+	paths: Type.Array(Type.String()),
+	truncated: Type.Boolean()
+});
+const findValidator = Compile(findSchema);
+const matchSchema = Type.Object({
+	path: Type.String(),
+	line: Type.Integer({ minimum: 1 }),
+	text: Type.String(),
+	before: Type.Array(Type.String()),
+	after: Type.Array(Type.String())
+});
+const grepValidator = Compile(
+	Type.Object({ matches: Type.Array(matchSchema), truncated: Type.Boolean() })
+);
+
 type FileOperation =
-	'mkdir' | 'listDirectory' | 'writeFile' | 'readFile' | 'stat' | 'access';
+	| 'find'
+	| 'grep'
+	| 'mkdir'
+	| 'listDirectory'
+	| 'writeFile'
+	| 'readFile'
+	| 'stat'
+	| 'access';
 
 /**
 Serialises fixed filesystem operations in an unprivileged container. Removing
@@ -49,7 +74,7 @@ export class DockerFileWorker implements BackendFileReader {
 	readonly #resources: DockerResources;
 	readonly #client: DockerClient;
 	readonly #workspace: { readonly mount: string; readonly readOnly: boolean };
-	readonly #helper: string;
+	readonly #helpers: { readonly files: string; readonly search: string };
 	readonly #lifetime: AbortSignal;
 	#name: string | undefined;
 	#tail: Promise<unknown> = Promise.resolve();
@@ -61,13 +86,13 @@ export class DockerFileWorker implements BackendFileReader {
 		resources: DockerResources,
 		client: DockerClient,
 		workspace: { readonly mount: string; readonly readOnly: boolean },
-		helper: string,
+		helpers: { readonly files: string; readonly search: string },
 		lifetime: AbortSignal
 	) {
 		this.#resources = resources;
 		this.#client = client;
 		this.#workspace = workspace;
-		this.#helper = helper;
+		this.#helpers = helpers;
 		this.#lifetime = lifetime;
 	}
 
@@ -214,7 +239,9 @@ export class DockerFileWorker implements BackendFileReader {
 					'/usr/local/bin/node',
 					'--input-type=module-typescript',
 					'--eval',
-					this.#helper,
+					operation === 'find' || operation === 'grep'
+						? this.#helpers.search
+						: this.#helpers.files,
 					'--',
 					operation,
 					filename,
@@ -380,7 +407,7 @@ export class DockerFileWorker implements BackendFileReader {
 	}
 
 	async #json<Value>(
-		operation: 'listDirectory' | 'stat',
+		operation: 'listDirectory' | 'stat' | 'find' | 'grep',
 		filename: string,
 		context: SandboxOperationContext,
 		isValid: (value: unknown) => value is Value
@@ -408,6 +435,22 @@ export class DockerFileWorker implements BackendFileReader {
 				{ cause: error }
 			);
 		}
+	}
+
+	#searchOptions(request: FindRequest | GrepRequest): string {
+		const options = new URLSearchParams();
+
+		for (const [key, value] of Object.entries(request)) {
+			if (
+				typeof value === 'string' ||
+				typeof value === 'boolean' ||
+				typeof value === 'number'
+			) {
+				options.set(key, String(value));
+			}
+		}
+
+		return options.toString();
 	}
 
 	readFile(filename: string, context: SandboxOperationContext) {
@@ -454,6 +497,22 @@ export class DockerFileWorker implements BackendFileReader {
 	stat(filename: string, context: SandboxOperationContext) {
 		return this.#json('stat', filename, context, (value) =>
 			statValidator.Check(value)
+		);
+	}
+
+	find(request: FindRequest, context: SandboxOperationContext) {
+		const options = this.#searchOptions(request);
+
+		return this.#json('find', options, context, (value) =>
+			findValidator.Check(value)
+		);
+	}
+
+	grep(request: GrepRequest, context: SandboxOperationContext) {
+		const options = this.#searchOptions(request);
+
+		return this.#json('grep', options, context, (value) =>
+			grepValidator.Check(value)
 		);
 	}
 

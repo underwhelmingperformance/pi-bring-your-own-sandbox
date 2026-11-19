@@ -32,7 +32,7 @@ it('keeps the file worker while busy and replaces it after an idle interval', as
 		new DockerResources(client, '/example.sock'),
 		client,
 		{ mount: 'type=volume', readOnly: false },
-		'',
+		{ files: '', search: '' },
 		lifetime.signal
 	);
 
@@ -101,7 +101,7 @@ it('confirms an interrupted read and cancels a queued read before dispatch', asy
 		new DockerResources(client, '/example.sock'),
 		client,
 		{ mount: 'type=volume', readOnly: false },
-		'',
+		{ files: '', search: '' },
 		lifetime.signal
 	);
 	const active = new AbortController();
@@ -186,7 +186,7 @@ it.each([
 			resources,
 			client,
 			{ mount: 'type=volume', readOnly: false },
-			'',
+			{ files: '', search: '' },
 			lifetime.signal
 		);
 
@@ -235,7 +235,7 @@ it('accepts a full-size file with helper diagnostics and retries a failed idle r
 		new DockerResources(client, '/example.sock'),
 		client,
 		{ mount: 'type=volume', readOnly: false },
-		'',
+		{ files: '', search: '' },
 		lifetime.signal
 	);
 
@@ -291,7 +291,7 @@ it('sends only accepted write requests to the helper and validates directory res
 			resources,
 			client,
 			{ mount: 'type=volume', readOnly: isReadOnly },
-			'',
+			{ files: '', search: '' },
 			lifetime.signal
 		);
 	const writable = create(false);

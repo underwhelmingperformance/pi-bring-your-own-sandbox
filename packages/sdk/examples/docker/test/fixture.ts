@@ -337,6 +337,46 @@ export class DockerFixture {
 		return {
 			configuration: this.config,
 			hostWorkspace: this.workspace,
+			find: [
+				{
+					request: { pattern: '*.txt', limit: 1 },
+					result: { paths: ['source.txt'], truncated: false }
+				},
+				{
+					request: { pattern: '*', limit: 1 },
+					result: { paths: ['escape'], truncated: true }
+				},
+				{
+					request: { pattern: 'nested' },
+					result: { paths: ['nested/'], truncated: false }
+				}
+			],
+			grep: [
+				{
+					request: {
+						pattern: 'ORIGIN.L',
+						ignoreCase: true,
+						glob: '*.txt',
+						limit: 1
+					},
+					result: {
+						matches: [
+							{
+								path: 'source.txt',
+								line: 1,
+								text: 'original',
+								before: [],
+								after: []
+							}
+						],
+						truncated: false
+					}
+				},
+				{
+					request: { path: 'source.txt', pattern: '.', literal: true },
+					result: { matches: [], truncated: false }
+				}
+			],
 			write: {
 				directory: 'new/sub',
 				path: 'new/sub/file',

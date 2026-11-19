@@ -16,9 +16,11 @@ import {
 import {
 	closeSandboxSession,
 	getSandbox,
+	openReviewSnapshot,
 	registerSandboxProvider
 } from './api.js';
 import type {
+	ReviewSnapshotSource,
 	SandboxConfigContext,
 	SandboxHost,
 	SandboxProvider
@@ -500,5 +502,80 @@ it('attributes an unsupported configured relationship to the extension', async (
 			providerId: 'active',
 			configurationSource: 'extension'
 		});
+	});
+});
+
+it('opens independent review snapshots of a verified destination', async () => {
+	await fixture(async (pi, context) => {
+		const backend = new MemoryBackend();
+		const ordinary = provider('active', backend);
+		const capabilities = {
+			...backend.capabilities,
+			processKinds: ['argv', 'shell'] as const,
+			shells: ['sh'] as const
+		};
+		const sources: ReviewSnapshotSource[] = [];
+		const released: number[] = [];
+
+		registerSandboxProvider(pi, {
+			...ordinary,
+			capabilities,
+			policies: {
+				workspaceAccess: ['read-write', 'read-only'],
+				filesystemScope: ['provider-default', 'workspace-only'],
+				networkAccess: ['provider-default', 'denied'],
+				workspaceRelationship: ['copied', 'remote']
+			},
+			openReviewSnapshot(request) {
+				sources.push(request.source);
+
+				const index = sources.length;
+
+				return Promise.resolve({
+					id: 'review-' + String(index),
+					workspace: { ...backend.workspace, relationship: 'copied' as const },
+					policy: request.policy,
+					capabilities,
+					policyDescription: 'Review fixture',
+					recovery: backend.recovery,
+					...(backend.files && { files: backend.files }),
+					exec: backend.exec.bind(backend),
+					dispose: () => {
+						released.push(index);
+
+						return Promise.resolve();
+					}
+				});
+			}
+		});
+
+		const target = await getSandbox(pi, context);
+		const source = {
+			kind: 'sandbox' as const,
+			providerId: target.providerId,
+			generationId: target.generationId,
+			backendId: target.backendId
+		};
+		const first = await openReviewSnapshot(pi, context, source);
+		const abort = new AbortController();
+		const second = await openReviewSnapshot(pi, context, source, {
+			signal: abort.signal
+		});
+		const host = await openReviewSnapshot(pi, context, { kind: 'host' });
+
+		expect(sources).toStrictEqual([source, source, { kind: 'host' }]);
+		await first.close();
+		await expect(first.sandbox.files.readFile('file')).rejects.toMatchObject({
+			name: 'SandboxSessionClosingError'
+		});
+		expect(released).toStrictEqual([1]);
+		await expect(
+			openReviewSnapshot(pi, context, { ...source, generationId: 'stale' })
+		).rejects.toMatchObject({ name: 'StaleSandboxHandleError' });
+		abort.abort();
+		await second.close();
+		await closeSandboxSession(pi, context);
+		await expect(host.close()).resolves.toMatchObject({ confirmed: true });
+		expect(released.toSorted((a, b) => a - b)).toStrictEqual([1, 2, 3]);
 	});
 });

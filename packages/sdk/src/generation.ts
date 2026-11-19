@@ -15,6 +15,8 @@ import type { SessionIdentity } from './context.js';
 import { inspectContext } from './context.js';
 import type {
 	RecoveryDescriptor,
+	ReviewSnapshot,
+	ReviewSnapshotSource,
 	Sandbox,
 	SandboxAcquireOptions,
 	SandboxBackend,
@@ -23,6 +25,7 @@ import type {
 	SandboxErrorInfo,
 	SandboxOperation,
 	SandboxOperationContext,
+	SandboxOperationOptions,
 	SandboxPolicy,
 	SandboxRequirements
 } from './contracts.js';
@@ -35,7 +38,8 @@ import {
 	SandboxSessionClosingError,
 	SandboxStartupError,
 	StaleSandboxHandleError,
-	UnconfirmedSandboxTerminationError
+	UnconfirmedSandboxTerminationError,
+	UnsupportedSandboxCapabilityError
 } from './errors.js';
 import type { SandboxOwner } from './facade.js';
 import { createSandbox } from './facade.js';
@@ -64,6 +68,7 @@ import type {
 } from './protocol.js';
 import type { DiagnosticStore } from './provider-diagnostics.js';
 import { ProviderDiagnostics } from './provider-diagnostics.js';
+import { reviewRequirements, snapshotSource } from './review-requirements.js';
 import { callable, checker } from './schemas.js';
 import { isRecord, isRecovery, snapshotProviderInfo } from './validation.js';
 
@@ -118,6 +123,7 @@ export class SandboxGeneration {
 	#configurationSource: 'extension' | undefined;
 	#prepared: Promise<Prepared> | undefined;
 	readonly #slots = new Map<string, BackendSlot>();
+	readonly #reviews = new Set<ReviewSnapshot['close']>();
 	#failure: SandboxErrorInfo | undefined;
 	#closing: Promise<SandboxCloseReport> | undefined;
 	readonly #cleanupFailures: SandboxErrorInfo[] = [];
@@ -664,6 +670,11 @@ export class SandboxGeneration {
 					slot.opening === undefined ? [] : [slot.opening]
 				)
 			);
+
+			const reviews = await Promise.all(
+				this.#reviews.values().map((close) => close())
+			);
+
 			await this.#operations.drain();
 
 			const disposals = await Promise.all(
@@ -680,7 +691,20 @@ export class SandboxGeneration {
 			];
 
 			this.#state = 'closed';
-			pending.resolve(this.#closeReport(unconfirmed, failures));
+
+			const report = this.#closeReport(unconfirmed, failures);
+
+			const reports = [report, ...reviews];
+			const recoveries = reports.flatMap((child) => child.recoveries);
+			const cleanupFailures = reports.flatMap((child) => child.failures);
+
+			pending.resolve(
+				Object.freeze({
+					confirmed: reports.every((child) => child.confirmed),
+					recoveries: Object.freeze(recoveries),
+					failures: Object.freeze(cleanupFailures)
+				})
+			);
 		} catch (error) {
 			this.#state = 'closed';
 			pending.resolve(
@@ -776,6 +800,144 @@ export class SandboxGeneration {
 			checkRequirements(sandbox, options);
 
 			return sandbox;
+		} finally {
+			scope.dispose();
+		}
+	}
+
+	async openReviewSnapshot(
+		context: SandboxContext,
+		input: ReviewSnapshotSource,
+		options: SandboxOperationOptions = {}
+	): Promise<ReviewSnapshot> {
+		this.#assertContext(context, 'acquire');
+		this.#assertOpen('acquire');
+
+		const source = snapshotSource(input);
+		const scope = new OperationScope(
+			{ operation: 'acquire' },
+			this.#lifetime.signal,
+			options,
+			60_000,
+			this.#cleanup
+		);
+
+		try {
+			scope.check();
+
+			const ready = await Promise.race([
+				observe(this.#prepare()),
+				scope.whenCancelled()
+			]);
+
+			if (ready.kind === 'cancelled') {
+				throw scope.cancellationError('not-started');
+			}
+
+			if (ready.kind === 'rejected') {
+				throw ready.error;
+			}
+
+			scope.check();
+
+			const { provider, configured } = ready.value;
+			const open = configured.openReviewSnapshot;
+
+			if (typeof open !== 'function') {
+				throw new UnsupportedSandboxCapabilityError({
+					operation: 'acquire',
+					providerId: provider.id
+				});
+			}
+
+			if (source.kind === 'sandbox') {
+				const slots = this.#slots
+					.values()
+					.filter((slot) => slot.backend?.id === source.backendId)
+					.toArray();
+
+				if (
+					source.generationId !== this.#id ||
+					source.providerId !== provider.id ||
+					slots.length !== 1 ||
+					slots[0]?.state !== 'ready'
+				) {
+					throw new StaleSandboxHandleError({ operation: 'acquire' });
+				}
+			}
+
+			const policy = {
+				...reviewRequirements.policy,
+				...(this.#selection?.policy.workspaceProtection !== undefined && {
+					workspaceProtection: this.#selection.policy.workspaceProtection
+				})
+			};
+			const review = new SandboxGeneration(context, {
+				diagnostics: this.#diagnostics,
+				providers: () => [
+					{
+						...provider,
+						configure: () => ({
+							open: (request, opening) =>
+								open.call(configured, { ...request, source }, opening)
+						})
+					}
+				],
+				readConfig: () =>
+					Promise.resolve({
+						selection: { source: 'extension', providerId: provider.id, policy },
+						providerConfig: {},
+						cleanup: this.#cleanup,
+						requirements: this.#requirements
+					})
+			});
+
+			const close = async () => {
+				options.signal?.removeEventListener('abort', cancel);
+
+				const report = await review.close();
+
+				if (report.confirmed) {
+					this.#reviews.delete(close);
+				}
+
+				return report;
+			};
+
+			const cancel = () => {
+				void close();
+			};
+
+			this.#reviews.add(close);
+			options.signal?.addEventListener('abort', cancel, { once: true });
+
+			try {
+				const sandbox = await review.acquire(context, {
+					...reviewRequirements,
+					signal: scope.context.signal
+				});
+
+				scope.check();
+
+				return Object.freeze({ sandbox, close });
+			} catch (error) {
+				const report = await close();
+
+				if (!report.confirmed) {
+					throw new SandboxCleanupError(
+						{
+							operation: 'dispose',
+							providerId: provider.id,
+							...(report.recoveries[0] !== undefined && {
+								recovery: report.recoveries[0]
+							})
+						},
+						{ cause: error }
+					);
+				}
+
+				throw error;
+			}
 		} finally {
 			scope.dispose();
 		}

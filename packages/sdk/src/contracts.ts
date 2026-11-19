@@ -1040,6 +1040,17 @@ export interface SandboxProvider<Config> {
 	readonly validateConfig: (input: unknown) => Config;
 
 	/**
+	Copy the validated destination into a fresh read-only backend. Providers
+	must reject a changing source if they cannot obtain a consistent copy.
+	*/
+	readonly openReviewSnapshot?: (
+		request: SandboxOpenRequest<Config> & {
+			readonly source: ReviewSnapshotSource;
+		},
+		context: SandboxOpenContext
+	) => Promise<SandboxBackend>;
+
+	/**
 	Allocate one backend for the generation. Report recovery metadata before
 	allocation and clean up a failed or cancelled opening.
 	*/
@@ -1047,6 +1058,25 @@ export interface SandboxProvider<Config> {
 		request: SandboxOpenRequest<Config>,
 		context: SandboxOpenContext
 	) => Promise<SandboxBackend>;
+}
+
+/**
+The resolved destination of the proposed command. Use the identities from the
+live sandbox handle for commands that will execute in that sandbox.
+*/
+export type ReviewSnapshotSource =
+	| { readonly kind: 'host' }
+	| ({ readonly kind: 'sandbox' } & Pick<
+			Sandbox,
+			'providerId' | 'generationId' | 'backendId'
+	  >);
+
+/**
+A fresh read-only sandbox owned by one review. Close it when the review ends.
+*/
+export interface ReviewSnapshot {
+	readonly sandbox: Sandbox;
+	readonly close: () => Promise<SandboxCloseReport>;
 }
 
 /**

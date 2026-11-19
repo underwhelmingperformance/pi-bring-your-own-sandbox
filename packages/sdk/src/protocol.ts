@@ -1,4 +1,6 @@
 import type {
+	ReviewSnapshot,
+	ReviewSnapshotSource,
 	Sandbox,
 	SandboxAcquireOptions,
 	SandboxBackend,
@@ -9,6 +11,7 @@ import type {
 	SandboxErrorInfo,
 	SandboxOpenContext,
 	SandboxOpenRequest,
+	SandboxOperationOptions,
 	SandboxPolicy,
 	SandboxWorkspace,
 	ShellDialect,
@@ -87,6 +90,13 @@ Provider configuration captured in a closure after synchronous validation.
 Opening preserves the provider configuration type.
 */
 export interface ConfiguredProviderV1 {
+	readonly openReviewSnapshot?: (
+		request: Omit<SandboxOpenRequest, 'configuration'> & {
+			readonly source: ReviewSnapshotSource;
+		},
+		context: SandboxOpenContext
+	) => Promise<SandboxBackend>;
+
 	/**
 	Open using the captured typed configuration and supplied generation
 	request. Report recovery metadata before allocation.
@@ -319,6 +329,12 @@ Version 1 broker service discovered through Pi. A runtime has one service;
 session generations allocate a backend for each negotiated policy lazily.
 */
 export interface BrokerServiceV1 {
+	readonly openReviewSnapshot?: (
+		context: SandboxContext,
+		source: ReviewSnapshotSource,
+		options?: SandboxOperationOptions
+	) => Promise<ReviewSnapshot>;
+
 	/**
  Required guard enforcement contract for cooperating SDK copies.
  */

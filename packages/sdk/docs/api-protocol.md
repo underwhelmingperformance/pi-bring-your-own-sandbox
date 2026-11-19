@@ -588,3 +588,22 @@ ordinary handles or preparing outside execution.
 `SandboxProviderMismatchError` reports a mismatched expected ID. Existing typed
 capability and policy errors report unsupported guarantees. Diagnostics and
 cleanup remain available when requirements cannot be satisfied.
+
+## Review snapshots
+
+Call `openReviewSnapshot(pi, context, source, { signal })` once when a review
+first needs workspace evidence. For a host command, pass `{ kind: 'host' }`. For
+a sandbox command, pass `kind: 'sandbox'` and the `providerId`, `generationId`
+and `backendId` of its execution handle. The broker checks the identity against
+its ready backends before asking the provider to copy data.
+
+The returned `sandbox` supports file reads and POSIX shell commands in a
+read-only copy with external networking denied. Call `close()` when the review
+ends and inspect its cleanup report. Aborting the review signal or closing the
+session also disposes the snapshot. Concurrent reviews own separate allocations.
+
+Providers implement the optional `openReviewSnapshot` method to copy the source
+described by the broker. Report recovery before allocation, as for ordinary
+opening. A broker or provider without snapshot support rejects acquisition. Use
+transcript-only review when the execution destination is unknown or the snapshot
+cannot be acquired.

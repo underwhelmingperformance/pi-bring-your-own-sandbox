@@ -140,6 +140,9 @@ export function discoverBroker(events: EventBus): BrokerServiceV1 | undefined {
 
 		return Object.freeze({
 			guardVersion: service.guardVersion,
+			...(service.openReviewSnapshot !== undefined && {
+				openReviewSnapshot: service.openReviewSnapshot.bind(service)
+			}),
 			id,
 			acquire: service.acquire.bind(service),
 			negotiate: service.negotiate.bind(service),

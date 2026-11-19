@@ -145,7 +145,7 @@ export interface SandboxProviderTestFixture {
 		/**
 		Complete expected metadata of that directory.
 		*/
-		readonly stat: FileStat;
+		readonly stat: FileStat | (() => Promise<FileStat>);
 		/**
 		Immediate children before the test starts.
 		*/

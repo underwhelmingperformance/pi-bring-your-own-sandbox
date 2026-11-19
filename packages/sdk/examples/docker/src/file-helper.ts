@@ -1,7 +1,14 @@
 import { constants } from 'node:fs';
-import { access, open, stat } from 'node:fs/promises';
+import {
+	access,
+	mkdir,
+	open,
+	readdir,
+	stat,
+	writeFile
+} from 'node:fs/promises';
 
-const [operation, filename, limit] = process.argv.slice(1);
+const [operation, filename, limit, mode] = process.argv.slice(1);
 
 async function read(filename: string, limit: number): Promise<void> {
 	const file = await open(filename, constants.O_RDONLY | constants.O_NONBLOCK);
@@ -60,7 +67,10 @@ try {
 
 	switch (operation) {
 		case 'access': {
-			await access(filename, constants.R_OK);
+			await access(
+				filename,
+				mode === 'write' ? constants.W_OK : constants.R_OK
+			);
 			break;
 		}
 
@@ -76,6 +86,58 @@ try {
 							: 'other',
 					size: meta.size
 				})
+			);
+			break;
+		}
+
+		case 'mkdir': {
+			await mkdir(filename, { recursive: true });
+			break;
+		}
+
+		case 'writeFile': {
+			const length = Number(mode);
+			const chunks: Uint8Array[] = [];
+			let received = 0;
+
+			for await (const chunk of process.stdin) {
+				if (!(chunk instanceof Uint8Array)) {
+					throw new TypeError('Invalid input.');
+				}
+
+				received += chunk.byteLength;
+
+				if (received > length || received > Number(limit)) {
+					throw new RangeError('Input exceeds the transfer limit.');
+				}
+
+				chunks.push(chunk);
+			}
+
+			if (received !== length) {
+				throw new Error('Incomplete file input.');
+			}
+
+			await writeFile(filename, Buffer.concat(chunks));
+			break;
+		}
+
+		case 'listDirectory': {
+			const entries = await readdir(filename, { withFileTypes: true });
+
+			process.stdout.write(
+				JSON.stringify(
+					entries.map((entry) => ({
+						name: entry.name,
+						kind: entry.isSymbolicLink()
+							? 'symlink'
+							: entry.isDirectory()
+								? 'directory'
+								: entry.isFile()
+									? 'file'
+									: 'other'
+					}))
+				)
 			);
 			break;
 		}

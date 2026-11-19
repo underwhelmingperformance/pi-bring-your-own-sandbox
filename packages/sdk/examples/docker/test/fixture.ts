@@ -308,12 +308,58 @@ export class DockerFixture {
 		expect(await readFile(this.outside, 'utf8')).toBe('host-only');
 	}
 
+	async volumeFile(command: string, filename: string): Promise<string> {
+		const [volume] = this.allocations;
+
+		if (volume === undefined) {
+			throw new Error('Expected an open Docker workspace.');
+		}
+
+		return this.docker([
+			'run',
+			'--rm',
+			'--pull=never',
+			'--network=none',
+			'--read-only',
+			'--cap-drop=ALL',
+			'--mount',
+			`type=volume,source=${volume},target=/workspace,readonly`,
+			DOCKER_IMAGE,
+			command,
+			...(command === 'stat' ? ['-c', '%s'] : []),
+			'/workspace/' + filename
+		]);
+	}
+
 	contract(policy: SandboxPolicy): SandboxProviderTestFixture {
 		const cwd = '/workspace/nested';
 
 		return {
 			configuration: this.config,
 			hostWorkspace: this.workspace,
+			write: {
+				directory: 'new/sub',
+				path: 'new/sub/file',
+				read: async () =>
+					new Uint8Array(
+						Buffer.from(
+							await this.volumeFile('base64', 'new/sub/file'),
+							'base64'
+						)
+					)
+			},
+			list: {
+				path: '.',
+				stat: async () => ({
+					kind: 'directory' as const,
+					size: Number(await this.volumeFile('stat', '.'))
+				}),
+				entries: [
+					{ name: 'nested', kind: 'directory' },
+					{ name: 'source.txt', kind: 'file' },
+					{ name: 'escape', kind: 'symlink' }
+				]
+			},
 			read: {
 				path: 'source.txt',
 				bytes: encode('original'),

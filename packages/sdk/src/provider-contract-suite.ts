@@ -510,7 +510,8 @@ export function providerContractCases<Config>(
 					stat: await reader.stat(probe.path, context),
 					entries: entries.toSorted(compareEntries)
 				}).toStrictEqual({
-					stat: probe.stat,
+					stat:
+						typeof probe.stat === 'function' ? await probe.stat() : probe.stat,
 					entries: probe.entries.toSorted(compareEntries)
 				});
 			}

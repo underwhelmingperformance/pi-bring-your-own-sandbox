@@ -32,7 +32,14 @@ const statValidator = Compile(
 );
 const transferLimit = 16 * 1024 * 1024;
 
-type FileOperation = 'readFile' | 'stat' | 'access';
+const entrySchema = Type.Object({
+	name: Type.String(),
+	kind: Type.Enum(['file', 'directory', 'symlink', 'other'])
+});
+const listValidator = Compile(Type.Array(entrySchema));
+
+type FileOperation =
+	'mkdir' | 'listDirectory' | 'writeFile' | 'readFile' | 'stat' | 'access';
 
 /**
 Serialises fixed filesystem operations in an unprivileged container. Removing
@@ -41,7 +48,7 @@ the container cancels an individual call without affecting shell workloads.
 export class DockerFileWorker implements BackendFileReader {
 	readonly #resources: DockerResources;
 	readonly #client: DockerClient;
-	readonly #mount: string;
+	readonly #workspace: { readonly mount: string; readonly readOnly: boolean };
 	readonly #helper: string;
 	readonly #lifetime: AbortSignal;
 	#name: string | undefined;
@@ -53,13 +60,13 @@ export class DockerFileWorker implements BackendFileReader {
 	constructor(
 		resources: DockerResources,
 		client: DockerClient,
-		mount: string,
+		workspace: { readonly mount: string; readonly readOnly: boolean },
 		helper: string,
 		lifetime: AbortSignal
 	) {
 		this.#resources = resources;
 		this.#client = client;
-		this.#mount = mount;
+		this.#workspace = workspace;
 		this.#helper = helper;
 		this.#lifetime = lifetime;
 	}
@@ -91,7 +98,7 @@ export class DockerFileWorker implements BackendFileReader {
 				'--cpus=1',
 				'--log-driver=none',
 				'--mount',
-				this.#mount,
+				this.#workspace.mount,
 				'--entrypoint=/bin/sleep',
 				DOCKER_IMAGE,
 				'infinity'
@@ -133,7 +140,9 @@ export class DockerFileWorker implements BackendFileReader {
 	async #execute(
 		operation: FileOperation,
 		filename: string,
-		context: SandboxOperationContext
+		context: SandboxOperationContext,
+		input?: Uint8Array,
+		requiresWrite = false
 	): Promise<Uint8Array> {
 		if (this.#cleanupFailure !== undefined) {
 			throw this.#cleanupFailure;
@@ -184,6 +193,7 @@ export class DockerFileWorker implements BackendFileReader {
 			const result = await this.#client.command({
 				args: [
 					'exec',
+					...(input === undefined ? [] : ['--interactive']),
 					name,
 					'/usr/local/bin/node',
 					'--input-type=module-typescript',
@@ -192,9 +202,11 @@ export class DockerFileWorker implements BackendFileReader {
 					'--',
 					operation,
 					filename,
-					String(transferLimit)
+					String(transferLimit),
+					requiresWrite ? 'write' : String(input?.byteLength ?? 0)
 				],
 				context,
+				...(input !== undefined && { input }),
 				operation,
 				recovery: this.#resources.recovery,
 				onOutput(output) {
@@ -252,10 +264,25 @@ export class DockerFileWorker implements BackendFileReader {
 	#request(
 		operation: FileOperation,
 		filename: string,
-		context: SandboxOperationContext
+		context: SandboxOperationContext,
+		input?: Uint8Array,
+		requiresWrite = false
 	): Promise<Uint8Array> {
 		if (this.#lifetime.aborted) {
 			return Promise.reject(new SandboxSessionClosingError({ operation }));
+		}
+
+		if (
+			this.#workspace.readOnly &&
+			(operation === 'mkdir' || operation === 'writeFile' || requiresWrite)
+		) {
+			return Promise.reject(
+				new SandboxPermissionDeniedError({
+					operation,
+					providerId: 'example.docker',
+					backendId: this.#resources.volume
+				})
+			);
 		}
 
 		clearTimeout(this.#idle);
@@ -266,7 +293,13 @@ export class DockerFileWorker implements BackendFileReader {
 			await previous;
 
 			try {
-				return await this.#execute(operation, filename, context);
+				return await this.#execute(
+					operation,
+					filename,
+					context,
+					input,
+					requiresWrite
+				);
 			} finally {
 				this.#pending--;
 
@@ -293,6 +326,48 @@ export class DockerFileWorker implements BackendFileReader {
 
 	async access(filename: string, context: SandboxOperationContext) {
 		await this.#request('access', filename, context);
+	}
+
+	async writeFile(
+		filename: string,
+		content: Uint8Array,
+		context: SandboxOperationContext
+	) {
+		if (content.byteLength > transferLimit) {
+			throw new SandboxOperationError(
+				{ operation: 'writeFile', recovery: this.#resources.recovery },
+				{ cause: new RangeError('The file exceeds 16 MiB.') }
+			);
+		}
+
+		await this.#request(
+			'writeFile',
+			filename,
+			context,
+			new Uint8Array(content)
+		);
+	}
+
+	async writeAccess(filename: string, context: SandboxOperationContext) {
+		await this.#request('access', filename, context, undefined, true);
+	}
+
+	async mkdir(filename: string, context: SandboxOperationContext) {
+		await this.#request('mkdir', filename, context);
+	}
+
+	async listDirectory(filename: string, context: SandboxOperationContext) {
+		const data = await this.#request('listDirectory', filename, context);
+		const entries: unknown = JSON.parse(new TextDecoder().decode(data));
+
+		if (!listValidator.Check(entries)) {
+			throw new SandboxTransportError({
+				operation: 'listDirectory',
+				recovery: this.#resources.recovery
+			});
+		}
+
+		return entries;
 	}
 
 	async stat(filename: string, context: SandboxOperationContext) {

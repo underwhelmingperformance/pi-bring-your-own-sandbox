@@ -2,6 +2,7 @@ import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 
 import type {
+	BackendFiles,
 	BackendProcessContext,
 	BackendProcessOutcome,
 	ProcessRequest,
@@ -47,7 +48,8 @@ class DockerBackend implements SandboxBackend {
 	readonly #lifetime = new AbortController();
 	readonly #active = new Set<Promise<BackendProcessOutcome>>();
 	#closing: Promise<void> | undefined;
-	readonly files: { readonly read: DockerFileWorker };
+	readonly #worker: DockerFileWorker;
+	readonly files: BackendFiles;
 	readonly id: string;
 	readonly workspace = {
 		root: '/workspace',
@@ -62,7 +64,7 @@ class DockerBackend implements SandboxBackend {
 		processKinds: ['argv', 'shell'],
 		terminationScope: 'workload',
 		exitStatus: 'guaranteed',
-		operations: ['exec', 'files.read'],
+		operations: ['exec', 'files.read', 'files.write', 'files.list'],
 		shells: ['sh', 'bash']
 	} as const;
 	readonly policy: SandboxBackend['policy'];
@@ -81,14 +83,24 @@ class DockerBackend implements SandboxBackend {
 		this.#launcher = launcher;
 		this.id = resources.volume;
 		this.recovery = resources.recovery;
+		this.#worker = new DockerFileWorker(
+			resources,
+			client,
+			{
+				mount: this.#mount(policy.workspaceAccess === 'read-only'),
+				readOnly: policy.workspaceAccess === 'read-only'
+			},
+			helper,
+			this.#lifetime.signal
+		);
 		this.files = {
-			read: new DockerFileWorker(
-				resources,
-				client,
-				this.#mount(policy.workspaceAccess === 'read-only'),
-				helper,
-				this.#lifetime.signal
-			)
+			read: this.#worker,
+			list: this.#worker,
+			write: {
+				access: this.#worker.writeAccess.bind(this.#worker),
+				mkdir: this.#worker.mkdir.bind(this.#worker),
+				writeFile: this.#worker.writeFile.bind(this.#worker)
+			}
 		};
 		this.policy = { ...policy };
 	}
@@ -184,7 +196,7 @@ class DockerBackend implements SandboxBackend {
 
 		try {
 			await Promise.race([
-				Promise.allSettled([...this.#active, this.files.read.close()]),
+				Promise.allSettled([...this.#active, this.#worker.close()]),
 				expired.promise
 			]);
 		} finally {
@@ -376,7 +388,7 @@ export function createDockerProvider(
 			processKinds: ['argv', 'shell'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			operations: ['exec', 'files.read'],
+			operations: ['exec', 'files.read', 'files.write', 'files.list'],
 			shells: ['sh', 'bash']
 		},
 		policies: {

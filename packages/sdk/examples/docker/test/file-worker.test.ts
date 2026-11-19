@@ -30,7 +30,7 @@ it('keeps the file worker while busy and replaces it after an idle interval', as
 	const worker = new DockerFileWorker(
 		new DockerResources(client, '/example.sock'),
 		client,
-		'type=volume',
+		{ mount: 'type=volume', readOnly: false },
 		'',
 		lifetime.signal
 	);

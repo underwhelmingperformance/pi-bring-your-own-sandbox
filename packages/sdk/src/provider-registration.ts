@@ -8,6 +8,7 @@ import { isDiscoveryRequest } from './discovery.js';
 import {
 	InvalidSandboxConfigError,
 	InvalidSandboxDeclarationError,
+	InvalidSandboxRequestError,
 	isSandboxError,
 	UnsupportedSandboxPolicyError
 } from './errors.js';
@@ -52,11 +53,17 @@ export function registerSandboxProvider<Config, Input = Config>(
 		});
 	}
 
+	const configure = options?.configure;
+
+	if (configure !== undefined && typeof configure !== 'function') {
+		throw new InvalidSandboxRequestError({ operation: 'configure' });
+	}
+
 	registerProviderConfig(pi, provider.id, async (context) => {
 		const configured: SandboxProviderConfig<unknown> =
-			options?.configure === undefined
+			configure === undefined
 				? { configuration: {} }
-				: await options.configure(context);
+				: await configure(context);
 		const relationship = configured.policy?.workspaceRelationship;
 
 		if (
@@ -65,6 +72,7 @@ export function registerSandboxProvider<Config, Input = Config>(
 		) {
 			throw new UnsupportedSandboxPolicyError({
 				operation: 'configure',
+				configurationSource: 'extension',
 				providerId: provider.id
 			});
 		}

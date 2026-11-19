@@ -464,3 +464,41 @@ it('shares one diagnostic allowance between configuration and execution', async 
 		});
 	});
 });
+
+it('rejects a non-callable resolver at registration', async () => {
+	await fixture((pi) => {
+		expect(() => {
+			Reflect.apply(registerSandboxProvider, undefined, [
+				pi,
+				provider('active', new MemoryBackend()),
+				{ configure: false }
+			]);
+		}).toThrow(
+			expect.objectContaining({
+				name: 'InvalidSandboxRequestError',
+				operation: 'configure'
+			})
+		);
+
+		return Promise.resolve();
+	});
+});
+
+it('attributes an unsupported configured relationship to the extension', async () => {
+	await fixture(async (pi, context) => {
+		const backend = new MemoryBackend();
+
+		registerSandboxProvider(pi, provider('active', backend), {
+			configure: () => ({
+				configuration: {},
+				policy: { ...backend.policy, workspaceRelationship: 'copied' }
+			})
+		});
+		await expect(getSandbox(pi, context)).rejects.toMatchObject({
+			name: 'UnsupportedSandboxPolicyError',
+			operation: 'configure',
+			providerId: 'active',
+			configurationSource: 'extension'
+		});
+	});
+});

@@ -15,6 +15,7 @@ import { closeSandboxSession, getSandbox } from './client.js';
 import type {
 	SandboxBackend,
 	SandboxConfigContext,
+	SandboxOpenRequest,
 	SandboxProvider
 } from './contracts.js';
 import { ensureSandboxService } from './default-broker.js';
@@ -453,11 +454,15 @@ it.each(['normal', 'provider'] as const)(
 		const backend: SandboxBackend = {
 			...template,
 			capabilities: {
-				operations: ['exec'],
+				operations: ['exec', 'workspace.protection'],
 				processKinds: ['shell'],
 				shells: ['bash'],
 				terminationScope: 'workload',
 				exitStatus: 'guaranteed'
+			},
+			policy: {
+				...template.policy,
+				workspaceProtection: [{ kind: 'git-metadata' }]
 			},
 			exec: execute
 		};
@@ -468,7 +473,13 @@ it.each(['normal', 'provider'] as const)(
 				...backend.policy,
 				workspaceRelationship: backend.workspace.relationship
 			},
-			open: () => Promise.resolve(backend)
+			open: (request: SandboxOpenRequest) => {
+				expect(request.policy.workspaceProtection).toStrictEqual([
+					{ kind: 'git-metadata' }
+				]);
+
+				return Promise.resolve(backend);
+			}
 		};
 
 		await scenario({

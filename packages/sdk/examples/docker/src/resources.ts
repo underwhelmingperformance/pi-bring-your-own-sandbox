@@ -37,15 +37,16 @@ Uses the broker's cleanup deadline when cancellation has begun. The independent
 signal permits termination requests after foreground execution is aborted.
 */
 export function cleanupContext(
-	context: SandboxOperationContext,
+	context: Pick<SandboxOperationContext, 'reportDiagnostic' | 'operationId'> &
+		Partial<Pick<SandboxOperationContext, 'cleanup' | 'signal'>>,
 	operationId = `${context.operationId}:cleanup`,
 	monotonicNow: () => number = () => performance.now()
 ): DockerOperationContext {
 	const fallback = Date.now() + 5000;
 	const expiresAt = monotonicNow() + 5000;
 	const remainingMs = () =>
-		context.cleanup.remainingMs() ?? Math.max(0, expiresAt - monotonicNow());
-	const deadline = () => context.cleanup.deadline ?? fallback;
+		context.cleanup?.remainingMs() ?? Math.max(0, expiresAt - monotonicNow());
+	const deadline = () => context.cleanup?.deadline ?? fallback;
 
 	return {
 		remainingMs,
@@ -58,7 +59,7 @@ export function cleanupContext(
 		}),
 		operationId,
 		signal: new AbortController().signal,
-		deadlineChanged: context.signal,
+		...(context.signal !== undefined && { deadlineChanged: context.signal }),
 		get deadline() {
 			return deadline();
 		}
@@ -141,6 +142,9 @@ export class DockerResources {
 		return { kind: 'exited', exit: { kind: 'code', code: state.ExitCode } };
 	}
 
+	/**
+	Confirm removal by checking for a surviving container when the daemon rejects rm.
+	*/
 	async removeContainer(
 		name: string,
 		context: DockerOperationContext,

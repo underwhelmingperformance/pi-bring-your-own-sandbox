@@ -147,6 +147,8 @@ export class DockerFileWorker implements BackendFileReader {
 			context,
 			operation
 		);
+		context.signal.throwIfAborted();
+		this.#lifetime.throwIfAborted();
 		await this.#resources.checked(['start', name], context, operation);
 
 		return name;
@@ -163,7 +165,14 @@ export class DockerFileWorker implements BackendFileReader {
 		try {
 			await this.#resources.removeContainer(
 				this.#name,
-				cleanupContext(context),
+				cleanupContext(
+					operation === 'dispose'
+						? {
+								operationId: context.operationId,
+								reportDiagnostic: context.reportDiagnostic
+							}
+						: context
+				),
 				operation
 			);
 			this.#name = undefined;
@@ -187,6 +196,7 @@ export class DockerFileWorker implements BackendFileReader {
 		operation: FileOperation,
 		filename: string,
 		context: SandboxOperationContext,
+		onDispatch: () => void,
 		input?: Uint8Array,
 		requiresWrite = false
 	): Promise<Uint8Array> {
@@ -209,6 +219,7 @@ export class DockerFileWorker implements BackendFileReader {
 		const chunks: Uint8Array[] = [];
 		let bytes = 0;
 		let errorBytes = 0;
+		let limitFailure: RangeError | undefined;
 		let removal: Promise<void> | undefined;
 		let hasDispatched = false;
 		const cancel = () => {
@@ -229,6 +240,7 @@ export class DockerFileWorker implements BackendFileReader {
 				});
 			}
 
+			onDispatch();
 			hasDispatched = true;
 
 			const result = await this.#client.command({
@@ -257,9 +269,11 @@ export class DockerFileWorker implements BackendFileReader {
 						errorBytes += output.data.byteLength;
 
 						if (errorBytes > 64 * 1024) {
-							throw new RangeError(
+							limitFailure = new RangeError(
 								'Docker helper diagnostics exceeded 64 KiB.'
 							);
+
+							throw limitFailure;
 						}
 
 						return;
@@ -268,9 +282,11 @@ export class DockerFileWorker implements BackendFileReader {
 					bytes += output.data.byteLength;
 
 					if (bytes > transferLimit) {
-						throw new RangeError(
+						limitFailure = new RangeError(
 							'The file response exceeded the transfer limit.'
 						);
+
+						throw limitFailure;
 					}
 
 					chunks.push(new Uint8Array(output.data));
@@ -313,6 +329,13 @@ export class DockerFileWorker implements BackendFileReader {
 					},
 					{ cause: error }
 				);
+			}
+
+			if (limitFailure !== undefined) {
+				cancel();
+				await removal;
+
+				throw new SandboxOperationError(identity, { cause: limitFailure });
 			}
 
 			if (!(
@@ -374,19 +397,24 @@ export class DockerFileWorker implements BackendFileReader {
 			cancelQueued();
 		}
 
+		const onDispatch = () => {
+			signal.removeEventListener('abort', cancelQueued);
+		};
+
 		const task = (async () => {
 			await previous;
-			signal.removeEventListener('abort', cancelQueued);
 
 			try {
 				return await this.#execute(
 					operation,
 					filename,
 					context,
+					onDispatch,
 					input,
 					requiresWrite
 				);
 			} finally {
+				onDispatch();
 				this.#pending--;
 
 				if (

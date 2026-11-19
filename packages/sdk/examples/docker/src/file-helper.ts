@@ -1,12 +1,5 @@
 import { constants } from 'node:fs';
-import {
-	access,
-	mkdir,
-	open,
-	readdir,
-	stat,
-	writeFile
-} from 'node:fs/promises';
+import { access, mkdir, open, readdir, stat } from 'node:fs/promises';
 
 const [operation, filename, limit, mode] = process.argv.slice(1);
 
@@ -118,17 +111,36 @@ try {
 				throw new Error('Incomplete file input.');
 			}
 
-			await writeFile(filename, Buffer.concat(chunks));
+			await using target = await open(
+				filename,
+				constants.O_WRONLY | constants.O_NONBLOCK | constants.O_CREAT
+			);
+
+			const stat = await target.stat();
+
+			if (!stat.isFile()) {
+				throw new TypeError('The destination must be a regular file.');
+			}
+
+			await target.truncate(0);
+			await target.writeFile(Buffer.concat(chunks));
 			break;
 		}
 
 		case 'listDirectory': {
-			const entries = await readdir(filename, { withFileTypes: true });
+			const decoder = new TextDecoder('utf-8', {
+				fatal: true,
+				ignoreBOM: true
+			});
+			const entries = await readdir(filename, {
+				withFileTypes: true,
+				encoding: 'buffer'
+			});
 
 			process.stdout.write(
 				JSON.stringify(
 					entries.map((entry) => ({
-						name: entry.name,
+						name: decoder.decode(entry.name),
 						kind: entry.isSymbolicLink()
 							? 'symlink'
 							: entry.isDirectory()

@@ -160,7 +160,7 @@ it.each([
 	{ status: 125, error: 'SandboxTransportError' },
 	{ status: 0, error: 'SandboxTransportError' }
 ])(
-	'maps helper status $status and malformed stat output',
+	'reports $error for stat output with status $status',
 	async ({ status, error }) => {
 		const client: DockerClient = {
 			command(command) {
@@ -206,11 +206,11 @@ it.each([
 	}
 );
 
-it('accepts a full-size file with helper diagnostics and retries a failed idle removal', async () => {
+it('retries a failed idle removal with an independent cleanup deadline', async () => {
 	vi.useFakeTimers();
 
 	const calls: string[] = [];
-	const size = 16 * 1024 * 1024;
+	const budgets: number[] = [];
 	let shouldFail = true;
 	const client: DockerClient = {
 		command(command) {
@@ -218,9 +218,8 @@ it('accepts a full-size file with helper diagnostics and retries a failed idle r
 
 			calls.push(action);
 
-			if (action === 'exec') {
-				command.onOutput?.({ stream: 'stderr', data: Uint8Array.of(42) });
-				command.onOutput?.({ stream: 'stdout', data: new Uint8Array(size) });
+			if (action === 'rm') {
+				budgets.push(command.context.remainingMs());
 			}
 
 			return Promise.resolve({
@@ -240,10 +239,12 @@ it('accepts a full-size file with helper diagnostics and retries a failed idle r
 	);
 
 	try {
-		const bytes = await worker.readFile('large', operationContext());
-
-		expect(bytes.byteLength).toBe(size);
+		await worker.access('original', {
+			...operationContext(),
+			cleanup: { deadline: 0, remainingMs: () => 0 }
+		});
 		await vi.advanceTimersByTimeAsync(30_000);
+		expect(budgets).toStrictEqual([5000]);
 		shouldFail = false;
 		await worker.access('large', operationContext());
 		expect(calls).toStrictEqual([
@@ -262,6 +263,95 @@ it('accepts a full-size file with helper diagnostics and retries a failed idle r
 		await worker.close();
 		vi.useRealTimers();
 	}
+});
+
+it('delivers every byte of a full-size file alongside diagnostics', async () => {
+	const expected = Buffer.alloc(16 * 1024 * 1024, 197);
+	const client: DockerClient = {
+		command(command) {
+			if (command.args[0] === 'exec') {
+				command.onOutput?.({ stream: 'stderr', data: Uint8Array.of(42) });
+				command.onOutput?.({ stream: 'stdout', data: expected });
+			}
+
+			return Promise.resolve({
+				status: 0,
+				stdout: new Uint8Array(),
+				stderr: new Uint8Array()
+			});
+		}
+	};
+	const lifetime = new AbortController();
+	const worker = new DockerFileWorker(
+		new DockerResources(client, '/example.sock'),
+		client,
+		{ mount: 'type=volume', readOnly: false },
+		{ files: '', search: '' },
+		lifetime.signal
+	);
+
+	try {
+		const bytes = await worker.readFile('large', operationContext());
+
+		expect(expected.equals(bytes)).toBe(true);
+	} finally {
+		lifetime.abort();
+		await worker.close();
+	}
+});
+
+it('releases a cancelled caller while Docker is still creating the worker', async () => {
+	const creating = Promise.withResolvers<boolean>();
+	const release = Promise.withResolvers<boolean>();
+	const calls: string[] = [];
+	const client: DockerClient = {
+		async command(command) {
+			const action = command.args[0] ?? '';
+
+			calls.push(action);
+
+			if (action === 'create') {
+				creating.resolve(true);
+				await release.promise;
+			}
+
+			return { status: 0, stdout: new Uint8Array(), stderr: new Uint8Array() };
+		}
+	};
+	const lifetime = new AbortController();
+	const worker = new DockerFileWorker(
+		new DockerResources(client, '/example.sock'),
+		client,
+		{ mount: 'type=volume', readOnly: false },
+		{ files: '', search: '' },
+		lifetime.signal
+	);
+	const caller = new AbortController();
+
+	try {
+		const task = worker.readFile('file', {
+			...operationContext(),
+			signal: caller.signal
+		});
+
+		await creating.promise;
+		caller.abort();
+
+		const result = await Promise.race([
+			Promise.allSettled([task]),
+			new Promise((resolve) => setImmediate(resolve, 'still creating'))
+		]);
+
+		expect(result).toMatchObject([
+			{ status: 'rejected', reason: { completion: 'not-started' } }
+		]);
+	} finally {
+		release.resolve(true);
+		lifetime.abort();
+		await worker.close();
+	}
+
+	expect(calls).toStrictEqual(['create', 'rm']);
 });
 
 it('sends only accepted write requests to the helper and validates directory responses', async () => {
@@ -349,3 +439,62 @@ it('sends only accepted write requests to the helper and validates directory res
 		await Promise.all([writable.close(), readOnly.close()]);
 	}
 });
+
+it.each(['stdout', 'stderr'] as const)(
+	'treats an excessive %s response as an operation failure',
+	async (stream) => {
+		const calls: string[] = [];
+		const client: DockerClient = {
+			command(command) {
+				const action = command.args[0] ?? '';
+
+				calls.push(action);
+
+				if (action === 'exec' && !calls.includes('rm')) {
+					command.onOutput?.({
+						stream,
+						data: new Uint8Array(
+							stream === 'stdout' ? 16 * 1024 * 1024 + 1 : 65_537
+						)
+					});
+				}
+
+				return Promise.resolve({
+					status: 0,
+					stdout: new Uint8Array(),
+					stderr: new Uint8Array()
+				});
+			}
+		};
+		const lifetime = new AbortController();
+		const worker = new DockerFileWorker(
+			new DockerResources(client, '/example.sock'),
+			client,
+			{ mount: 'type=volume', readOnly: false },
+			{ files: '', search: '' },
+			lifetime.signal
+		);
+
+		try {
+			await expect(
+				worker.readFile('large', operationContext())
+			).rejects.toMatchObject({
+				name: 'SandboxOperationError',
+				operation: 'readFile'
+			});
+			await worker.access('next', operationContext());
+			expect(calls).toStrictEqual([
+				'create',
+				'start',
+				'exec',
+				'rm',
+				'create',
+				'start',
+				'exec'
+			]);
+		} finally {
+			lifetime.abort();
+			await worker.close();
+		}
+	}
+);

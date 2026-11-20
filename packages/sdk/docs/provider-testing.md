@@ -94,6 +94,12 @@ observe the replacement. Copied workspaces must isolate changes in both
 directions. When file methods are available the suite also compares their
 results with target process reads and independent source reads.
 
+Supply `visibility.stageSave` to test an editor that replaces a file by rename.
+The first target command writes a temporary file. The suite replaces the source
+file on the host before the second target command renames the temporary file.
+Independent reads check the final contents on both sides. The editor's save wins
+in a shared workspace. In a copied workspace the host keeps its own edit.
+
 In writable scenarios, grep searches the file at `visibility.targetPath` after a
 target process writes to the copy or the host replaces the shared file. It
 searches again after a file write. Supply an absent, searchable path under

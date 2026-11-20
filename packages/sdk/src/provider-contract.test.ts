@@ -527,6 +527,11 @@ it.each(['confirmed cancellation', 'idempotent disposal'])(
 
 it.each([
 	{
+		defect: 'a target discarding its prepared editor save',
+		relationship: 'copied',
+		expected: 'completed editor save'
+	},
+	{
 		defect: 'a shared writer that never reports readiness',
 		relationship: 'shared',
 		expected: 'writer must wait'
@@ -628,6 +633,9 @@ it.each([
 				...(await base.createFixture()),
 				visibility: {
 					targetPath: 'file',
+					...(defect === 'a target discarding its prepared editor save' && {
+						stageSave: () => ({ prepare: readTarget, commit: readTarget })
+					}),
 					readSource: () => Promise.resolve(source),
 					replaceSource: (bytes: Uint8Array) => {
 						source = Buffer.from(bytes);

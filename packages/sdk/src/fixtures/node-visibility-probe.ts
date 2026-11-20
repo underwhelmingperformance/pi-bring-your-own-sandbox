@@ -13,17 +13,11 @@ export function nodeVisibilityProbe(
 	const file = path.join(source, basename);
 	const processRequest = (
 		code: string,
-		...values: Uint8Array[]
+		...arguments_: string[]
 	): ProcessRequest => ({
 		kind: 'argv',
 		executable,
-		args: [
-			'--input-type=module',
-			'-e',
-			code,
-			basename,
-			...values.map((value) => Buffer.from(value).toString('base64'))
-		]
+		args: ['--input-type=module', '-e', code, basename, ...arguments_]
 	});
 	const write =
 		"import {readFile,writeFile,rename,rm} from 'node:fs/promises';import {randomUUID} from 'node:crypto';const temp=process.argv[1]+'.'+randomUUID();await writeFile(temp,Buffer.from(process.argv[2],'base64'),{flag:'wx'});try{await rename(temp,process.argv[1]);}finally{await rm(temp,{force:true});}";
@@ -41,7 +35,23 @@ export function nodeVisibilityProbe(
 		readTarget: processRequest(
 			"import { readFile } from 'node:fs/promises';process.stdout.write(await readFile(process.argv[1]));"
 		),
-		writeTarget: (bytes) => processRequest(write, bytes),
+		writeTarget: (bytes) =>
+			processRequest(write, Buffer.from(bytes).toString('base64')),
+		stageSave(bytes) {
+			const temporary = basename + '.' + randomUUID();
+
+			return {
+				prepare: processRequest(
+					"import {writeFile} from 'node:fs/promises'; await writeFile(process.argv[2], Buffer.from(process.argv[3], 'base64'), {flag: 'wx'});",
+					temporary,
+					Buffer.from(bytes).toString('base64')
+				),
+				commit: processRequest(
+					"import {rename} from 'node:fs/promises'; await rename(process.argv[2], process.argv[1]);",
+					temporary
+				)
+			};
+		},
 		waitForReplacement: (bytes) =>
 			processRequest(
 				write +
@@ -54,7 +64,7 @@ export function nodeVisibilityProbe(
 							}
 							await new Promise(resolve => setTimeout(resolve, 10));
 						}`,
-				bytes
+				Buffer.from(bytes).toString('base64')
 			)
 	};
 }

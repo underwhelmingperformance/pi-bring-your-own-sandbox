@@ -69,6 +69,26 @@ export async function checkWorkspaceVisibility(
 		initial
 	);
 
+	const saved = randomBytes(32);
+	const save =
+		fixture.policy.workspaceAccess === 'read-write'
+			? probe.stageSave?.(saved)
+			: undefined;
+
+	if (save !== undefined) {
+		await execute(backend, save.prepare, context);
+		expect(
+			{
+				target: await execute(backend, probe.readTarget, context),
+				source: Buffer.from(await probe.readSource())
+			},
+			'Preparing an editor save must leave the destination unchanged.'
+		).toStrictEqual({
+			target: initial,
+			source: initial
+		});
+	}
+
 	const replaced = randomBytes(24);
 
 	await probe.replaceSource(replaced);
@@ -106,6 +126,21 @@ export async function checkWorkspaceVisibility(
 
 	if (fixture.policy.workspaceAccess === 'read-only') {
 		return;
+	}
+
+	if (save !== undefined) {
+		await execute(backend, save.commit, context);
+		expect(
+			{
+				target: await execute(backend, probe.readTarget, context),
+				source: Buffer.from(await probe.readSource())
+			},
+			'A completed editor save must replace the file in the negotiated workspace.'
+		).toStrictEqual({
+			target: saved,
+			source: relationship === 'shared' ? saved : replaced
+		});
+		await checkReader(saved);
 	}
 
 	const written = Buffer.concat([randomBytes(24), Uint8Array.of(0, 255)]);

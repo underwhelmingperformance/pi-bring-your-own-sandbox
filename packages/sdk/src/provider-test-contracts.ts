@@ -133,6 +133,14 @@ export interface SandboxProviderTestFixture {
 		*/
 		readonly writeTarget: (bytes: Uint8Array) => ProcessRequest;
 		/**
+		Prepare an editor save in a temporary file and rename it over the seeded
+		file in a second process. The suite replaces the source between commands.
+		*/
+		readonly stageSave?: (bytes: Uint8Array) => {
+			readonly prepare: ProcessRequest;
+			readonly commit: ProcessRequest;
+		};
+		/**
 		Write the bytes, emit "ready" on stdout, then emit the replacement
 		bytes from the same path before exiting. Required for writable sharing.
 		*/

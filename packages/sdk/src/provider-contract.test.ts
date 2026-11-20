@@ -767,3 +767,107 @@ it('detects disposal that also closes a second allocation from the same source',
 		'The peer is closed.'
 	);
 });
+
+it('requires a peer job when checking concurrent cancellation', async () => {
+	const scenario = {
+		...contractScenario(),
+		verifyConcurrentCancellation: true
+	};
+	const entry = providerContractCases(scenario).find(
+		(item) => item.label === 'cancellation leaves a concurrent job running'
+	);
+
+	expect(entry).toBeDefined();
+
+	if (!entry) {
+		throw new Error('Missing concurrent cancellation scenario.');
+	}
+
+	await expect(usingProviderFixture(scenario, entry.run)).rejects.toThrow(
+		'Supply a concurrent job'
+	);
+});
+
+it.each([true, false])(
+	'checks whether a concurrent job survives cancellation (%s)',
+	async (survives) => {
+		const base = contractScenario();
+		const open = base.provider.open;
+		const gate = Promise.withResolvers<Uint8Array>();
+		const ready = Buffer.from('waiting');
+		const request = { kind: 'argv', executable: 'peer', args: [] } as const;
+		const scenario = {
+			...base,
+			verifyConcurrentCancellation: true,
+			async createFixture() {
+				return {
+					...(await base.createFixture()),
+					concurrentJob: {
+						request,
+						ready,
+						release: (bytes: Uint8Array) => {
+							gate.resolve(bytes);
+
+							return Promise.resolve();
+						}
+					}
+				};
+			},
+			provider: {
+				...base.provider,
+				async open(...arguments_: Parameters<typeof open>) {
+					const backend = await open(...arguments_);
+
+					return {
+						...backend,
+						async exec(
+							process: ProcessRequest,
+							context: BackendProcessContext
+						) {
+							if (process.kind !== 'argv' || process.executable !== 'peer') {
+								if (!survives) {
+									context.signal.addEventListener(
+										'abort',
+										() => {
+											gate.resolve(new Uint8Array());
+										},
+										{ once: true }
+									);
+								}
+
+								return backend.exec(process, context);
+							}
+
+							context.onOutput({ stream: 'stdout', data: ready });
+							context.onOutput({ stream: 'stdout', data: await gate.promise });
+
+							return {
+								kind: 'exited' as const,
+								exit: { kind: 'code' as const, code: 0 }
+							};
+						}
+					};
+				}
+			}
+		};
+		const entry = providerContractCases(scenario).find(
+			(item) => item.label === 'cancellation leaves a concurrent job running'
+		);
+
+		if (!entry) {
+			throw new Error('Missing concurrent cancellation scenario.');
+		}
+
+		const result = usingProviderFixture(scenario, entry.run);
+
+		if (survives) {
+			await result;
+
+			return;
+		}
+
+		await expect(result).rejects.toThrow(
+			'The same peer must return the response'
+		);
+	}
+);

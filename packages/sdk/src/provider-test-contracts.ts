@@ -191,6 +191,16 @@ export interface SandboxProviderTestFixture {
 	readonly peerProcess?: SandboxProcessProbe;
 
 	/**
+	A peer that emits its ready marker, waits for release, then emits exactly
+	the supplied bytes and exits successfully. Release the peer independently
+	of the backend under test.
+	*/
+	readonly concurrentJob?: {
+		readonly request: ProcessRequest;
+		readonly ready: Uint8Array;
+		readonly release: (bytes: Uint8Array) => Promise<void>;
+	};
+	/**
 	A long-running foreground job, including a descendant when supported.
 	*/
 	readonly cancellation: {
@@ -238,6 +248,11 @@ for different policy modes and backend capability subsets.
 @typeParam Config - Validated provider configuration.
 */
 export interface SandboxProviderTestOptions<Config> {
+	/**
+	Cancel one job while a peer on the same allocation waits for a response.
+	*/
+	readonly verifyConcurrentCancellation?: boolean;
+
 	/**
 	Open two allocations from the same source and verify the second one before
 	and after disposing the first.

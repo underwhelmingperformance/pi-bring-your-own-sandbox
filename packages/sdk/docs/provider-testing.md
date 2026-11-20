@@ -167,3 +167,9 @@ Set `verifyIndependentAllocations: true` to check two allocations from the same
 source. Supply a repeatable `peerProcess` probe. The suite checks its output and
 exit status on the second allocation before and after disposing the first.
 Fixture cleanup must account for both allocations.
+
+Use `verifyConcurrentCancellation` for providers that support concurrent jobs
+and confirmed termination. Supply a `concurrentJob` that emits a ready marker
+and waits. The suite cancels a second job on the same allocation, then sends
+fresh bytes through the fixture's independent `release` callback. The waiting
+job must return those bytes and exit successfully.

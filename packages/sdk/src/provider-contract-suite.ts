@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
@@ -8,6 +8,7 @@ import type {
 	BackendProcessOutcome,
 	DirectoryEntry,
 	SandboxBackend,
+	SandboxCleanupBudgets,
 	SandboxOperation,
 	SandboxOperationContext
 } from './contracts.js';
@@ -249,6 +250,166 @@ async function checkProcess(
 	});
 }
 
+async function cancelReadyJob(
+	fixture: SandboxProviderTestFixture,
+	backend: SandboxBackend,
+	context: SandboxOperationContext,
+	cleanup: SandboxCleanupBudgets
+): Promise<void> {
+	const probe = fixture.cancellation;
+
+	expect(probe.ready.byteLength).toBeGreaterThan(0);
+
+	const controller = new AbortController();
+	const execution = new OperationScope(
+		{ operation: 'exec' },
+		context.signal,
+		{
+			signal: controller.signal,
+			timeoutMs: Math.max(1, context.remainingMs())
+		},
+		10_000,
+		cleanup
+	);
+	const stdout: Uint8Array[] = [];
+	let outcome: BackendProcessOutcome;
+	const expectedTermination =
+		backend.capabilities.terminationScope === 'none'
+			? 'not-guaranteed'
+			: 'confirmed';
+
+	try {
+		const result = await settleProcess(
+			execution,
+			backend.exec(probe.request, {
+				...execution.context,
+				onOutput(output) {
+					if (output.stream !== 'stdout') {
+						return;
+					}
+
+					stdout.push(new Uint8Array(output.data));
+
+					if (Buffer.concat(stdout).includes(Buffer.from(probe.ready))) {
+						controller.abort();
+					}
+				}
+			}),
+			backend.capabilities.terminationScope
+		);
+
+		if (result.kind === 'rejected') {
+			throw result.error;
+		}
+
+		if (result.kind === 'abandoned') {
+			throw new Error(
+				'The provider did not confirm termination within its cleanup deadline.'
+			);
+		}
+
+		outcome = result.value;
+	} catch (error) {
+		if (
+			!isSandboxError(error, SandboxCancelledError) ||
+			error.completion !== expectedTermination
+		) {
+			throw error;
+		}
+
+		outcome = { kind: 'cancelled', termination: expectedTermination };
+	} finally {
+		execution.dispose();
+	}
+
+	expect({
+		hasStarted: controller.signal.aborted,
+		outcome
+	}).toStrictEqual({
+		hasStarted: true,
+		outcome: { kind: 'cancelled', termination: expectedTermination }
+	});
+}
+
+async function checkConcurrentCancellation(
+	fixture: SandboxProviderTestFixture,
+	backend: SandboxBackend,
+	context: SandboxOperationContext,
+	cleanup: SandboxCleanupBudgets
+): Promise<void> {
+	const peer = fixture.concurrentJob;
+
+	if (!peer || peer.ready.length === 0) {
+		throw new Error(
+			'Supply a concurrent job with a non-empty ready marker and an independent release.'
+		);
+	}
+
+	const response = randomBytes(32);
+	const ready = Promise.withResolvers<boolean>();
+	const controller = new AbortController();
+	const scope = new OperationScope(
+		{ operation: 'exec' },
+		context.signal,
+		{ signal: controller.signal },
+		Math.max(1, context.remainingMs()),
+		cleanup
+	);
+	const stdout: Uint8Array[] = [];
+	const stderr: Uint8Array[] = [];
+	const running = backend.exec(peer.request, {
+		...scope.context,
+		onOutput({ stream, data }) {
+			(stream === 'stdout' ? stdout : stderr).push(new Uint8Array(data));
+
+			if (
+				stream === 'stdout' &&
+				Buffer.concat(stdout).includes(Buffer.from(peer.ready))
+			) {
+				ready.resolve(true);
+			}
+		}
+	});
+
+	try {
+		expect(
+			await Promise.race([ready.promise, running, scope.whenCancelled()]),
+			'The peer must start and wait for release.'
+		).toBe(true);
+		await cancelReadyJob(fixture, backend, context, cleanup);
+		await peer.release(response);
+
+		const outcome = await Promise.race([running, scope.whenCancelled()]);
+		const exit =
+			backend.capabilities.exitStatus === 'optional' &&
+			outcome.kind === 'exited' &&
+			outcome.exit.kind === 'unavailable'
+				? outcome.exit
+				: { kind: 'code', code: 0 };
+
+		expect(
+			{ outcome, stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr) },
+			'The same peer must return the response sent after cancellation.'
+		).toStrictEqual({
+			outcome: { kind: 'exited', exit },
+			stdout: Buffer.concat([peer.ready, response]),
+			stderr: Buffer.alloc(0)
+		});
+	} finally {
+		controller.abort();
+
+		try {
+			await settleProcess(
+				scope,
+				running,
+				backend.capabilities.terminationScope
+			);
+		} finally {
+			scope.dispose();
+		}
+	}
+}
+
 export function providerContractCases<Config>(
 	options: SandboxProviderTestOptions<Config>
 ): readonly ContractCase[] {
@@ -256,7 +417,8 @@ export function providerContractCases<Config>(
 	const cleanup = resolveCleanupBudgets(options.cleanup);
 
 	if (
-		options.verifyRecoveryAfterCancellation &&
+		(options.verifyRecoveryAfterCancellation ||
+			options.verifyConcurrentCancellation) &&
 		capabilities.terminationScope === 'none'
 	) {
 		throw new Error('Continued use requires confirmed termination.');
@@ -293,77 +455,7 @@ export function providerContractCases<Config>(
 			run: async (fixture, backend, context) => {
 				const probe = fixture.cancellation;
 
-				expect(probe.ready.byteLength).toBeGreaterThan(0);
-
-				const controller = new AbortController();
-				const execution = new OperationScope(
-					{ operation: 'exec' },
-					context.signal,
-					{
-						signal: controller.signal,
-						timeoutMs: Math.max(1, context.remainingMs())
-					},
-					10_000,
-					cleanup
-				);
-				const stdout: Uint8Array[] = [];
-				let outcome: BackendProcessOutcome;
-				const expectedTermination =
-					backend.capabilities.terminationScope === 'none'
-						? 'not-guaranteed'
-						: 'confirmed';
-
-				try {
-					const result = await settleProcess(
-						execution,
-						backend.exec(probe.request, {
-							...execution.context,
-							onOutput(output) {
-								if (output.stream !== 'stdout') {
-									return;
-								}
-
-								stdout.push(new Uint8Array(output.data));
-
-								if (Buffer.concat(stdout).includes(Buffer.from(probe.ready))) {
-									controller.abort();
-								}
-							}
-						}),
-						backend.capabilities.terminationScope
-					);
-
-					if (result.kind === 'rejected') {
-						throw result.error;
-					}
-
-					if (result.kind === 'abandoned') {
-						throw new Error(
-							'The provider did not confirm termination within its cleanup deadline.'
-						);
-					}
-
-					outcome = result.value;
-				} catch (error) {
-					if (
-						!isSandboxError(error, SandboxCancelledError) ||
-						error.completion !== expectedTermination
-					) {
-						throw error;
-					}
-
-					outcome = { kind: 'cancelled', termination: expectedTermination };
-				} finally {
-					execution.dispose();
-				}
-
-				expect({
-					hasStarted: controller.signal.aborted,
-					outcome
-				}).toStrictEqual({
-					hasStarted: true,
-					outcome: { kind: 'cancelled', termination: expectedTermination }
-				});
+				await cancelReadyJob(fixture, backend, context, cleanup);
 
 				if (backend.capabilities.terminationScope === 'none') {
 					return;
@@ -404,6 +496,14 @@ export function providerContractCases<Config>(
 				)
 		}
 	];
+
+	if (options.verifyConcurrentCancellation) {
+		cases.push({
+			label: 'cancellation leaves a concurrent job running',
+			run: (fixture, backend, context) =>
+				checkConcurrentCancellation(fixture, backend, context, cleanup)
+		});
+	}
 
 	if (options.verifyIndependentAllocations) {
 		cases.push({

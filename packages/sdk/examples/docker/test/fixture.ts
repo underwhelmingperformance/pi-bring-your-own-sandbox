@@ -463,6 +463,48 @@ export class DockerFixture {
 					stderr: encode('error')
 				}
 			},
+			concurrentJob: {
+				request: {
+					kind: 'argv',
+					executable: '/usr/local/bin/node',
+					args: [
+						'--input-type=module',
+						'-e',
+						`import {existsSync,readFileSync} from 'node:fs';
+import {setTimeout} from 'node:timers/promises';
+process.stdout.write("ready");
+while (!existsSync("/tmp/response")) await setTimeout(10);
+process.stdout.write(readFileSync("/tmp/response"));`
+					]
+				},
+				ready: encode('ready'),
+				release: async (bytes) => {
+					const [allocation] = this.allocations;
+
+					if (allocation === undefined) {
+						throw new Error('The concurrent jobs have no Docker allocation.');
+					}
+
+					const running = await this.docker([
+						'ps',
+						'--filter',
+						`label=${ALLOCATION_LABEL}=${allocation}`,
+						'--format',
+						'{{.ID}}'
+					]);
+					const peer = running.trim();
+
+					expect(peer).toMatch(/^[0-9a-f]+$/);
+					await this.docker([
+						'exec',
+						peer,
+						'/usr/local/bin/node',
+						'-e',
+						'const fs=require("node:fs");fs.writeFileSync("/tmp/pending",Buffer.from(process.argv[1],"base64"));fs.renameSync("/tmp/pending","/tmp/response")',
+						Buffer.from(bytes).toString('base64')
+					]);
+				}
+			},
 			peerProcess: sourceRead,
 			cancellation: {
 				request: cancellationRequest,

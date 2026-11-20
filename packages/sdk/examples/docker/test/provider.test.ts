@@ -15,6 +15,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				workspaceVisibility: 'copied',
 				verifyRecoveryAfterCancellation: true,
 				verifyIndependentAllocations: true,
+				verifyConcurrentCancellation: true,
 				label: `Docker ${workspaceAccess}`,
 				provider: createDockerProvider(() => {
 					if (fixture === undefined) {

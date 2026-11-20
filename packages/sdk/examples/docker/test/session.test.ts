@@ -843,7 +843,7 @@ socket.on('error', error => {
 
 				await expect(
 					sandbox.files.writeFile(
-						'/opt/pi-byos/node_modules/re2js/index.js',
+						'/opt/pi-byos/node_modules/re2js/index.mjs',
 						Uint8Array.of(1)
 					)
 				).rejects.toMatchObject({ name: 'SandboxPermissionDeniedError' });

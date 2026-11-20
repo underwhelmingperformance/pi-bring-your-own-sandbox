@@ -229,6 +229,20 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 				host,
 				'node_modules/pi-bring-your-own-sandbox'
 			);
+			const matcher = new URL(import.meta.resolve('re2js'));
+			const dockerAssets = path.join(installed, 'examples/docker/dist');
+
+			const packedMatcher = await Promise.all([
+				readFile(path.join(dockerAssets, 're2js.mjs')),
+				readFile(path.join(dockerAssets, 'RE2JS-LICENSE'))
+			]);
+			const originalMatcher = await Promise.all([
+				readFile(matcher),
+				readFile(new URL('../LICENSE', matcher))
+			]);
+
+			expect(packedMatcher).toStrictEqual(originalMatcher);
+
 			const manifest: unknown = JSON.parse(
 				await readFile(path.join(installed, 'package.json'), 'utf8')
 			);

@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
 
 import type {
 	BackendFileReader,
@@ -163,20 +162,29 @@ export class DockerFileWorker implements BackendFileReader {
 			return;
 		}
 
-		const engine = await readFile(
-			createRequire(import.meta.url).resolve('re2js')
-		);
+		let engine: Uint8Array;
+
+		try {
+			engine = await readFile(new URL('../dist/re2js.mjs', import.meta.url));
+		} catch (error) {
+			throw new SandboxTransportError(this.#identity('grep'), {
+				cause: new Error(
+					'The Docker matcher is unavailable. Run pnpm build in the SDK checkout or install the packed SDK.',
+					{ cause: error }
+				)
+			});
+		}
 
 		await this.#resources.checked(
 			[
 				'exec',
 				'--interactive',
 				'--user=65533:65533',
-				'--workdir=/',
+				'--workdir=/opt/pi-byos/node_modules/re2js',
 				name,
 				'/bin/sh',
 				'-ec',
-				'umask 022; /bin/cat > /opt/pi-byos/node_modules/re2js/index.js'
+				'umask 022; /bin/cat > index.mjs && printf %s \'{"exports":"./index.mjs"}\' > package.json'
 			],
 			context,
 			'grep',

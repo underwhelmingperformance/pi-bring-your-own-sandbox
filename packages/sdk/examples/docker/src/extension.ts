@@ -1,4 +1,7 @@
-import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import type {
+	ExtensionAPI,
+	ExtensionContext
+} from '@earendil-works/pi-coding-agent';
 import { registerSandboxProvider } from 'pi-bring-your-own-sandbox/api';
 
 import type { DockerConfig } from './contracts.js';
@@ -13,34 +16,40 @@ export default function dockerExtension(pi: ExtensionAPI): void {
 		type: 'boolean'
 	});
 
-	let sessionTrust: { id: string; cwd: string; trusted: boolean } | undefined;
+	let activeSession: ExtensionContext | undefined;
+	let hasNotified = false;
 
 	pi.on('session_start', (_event, context) => {
-		sessionTrust = {
-			id: context.sessionManager.getSessionId(),
-			cwd: context.cwd,
-			trusted: context.isProjectTrusted()
-		};
+		activeSession = context;
 	});
 	pi.on('session_shutdown', () => {
-		sessionTrust = undefined;
+		activeSession = undefined;
+		hasNotified = false;
 	});
 
 	const provider = createDockerProvider({
 		notifyWorkspaceUnavailable(message) {
-			pi.sendMessage(
-				{ customType: 'byos-docker', display: true, content: message },
-				{ triggerTurn: false }
-			);
+			if (hasNotified) {
+				return;
+			}
+
+			if (activeSession?.hasUI === true) {
+				activeSession.ui.notify(message, 'warning');
+			} else {
+				process.stderr.write(message + '\n');
+			}
+
+			hasNotified = true;
 		}
 	});
 
 	registerSandboxProvider<DockerConfig, Partial<DockerConfig>>(pi, provider, {
 		configure({ pi: session }) {
 			const isTrusted =
-				sessionTrust?.id === session.sessionManager.getSessionId() &&
-				sessionTrust.cwd === session.cwd
-					? sessionTrust.trusted
+				activeSession?.sessionManager.getSessionId() ===
+					session.sessionManager.getSessionId() &&
+				activeSession.cwd === session.cwd
+					? activeSession.isProjectTrusted()
 					: session.isProjectTrusted?.() === true;
 			const isShared = isTrusted && pi.getFlag('byos-docker-copy') !== true;
 

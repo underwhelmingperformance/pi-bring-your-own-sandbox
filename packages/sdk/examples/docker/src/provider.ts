@@ -651,7 +651,15 @@ export function createDockerProvider(
 				message: sharedWorkspaceUnavailable
 			});
 			context.confirmCleanup();
-			notifyWorkspaceUnavailable?.(sharedWorkspaceUnavailable);
+
+			try {
+				notifyWorkspaceUnavailable?.(sharedWorkspaceUnavailable);
+			} catch {
+				context.reportDiagnostic({
+					level: 'warning',
+					message: 'The workspace notification could not be displayed.'
+				});
+			}
 
 			throw new UnsupportedSandboxPolicyError(
 				{ operation: 'open', providerId: 'example.docker' },

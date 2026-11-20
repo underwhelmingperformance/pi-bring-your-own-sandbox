@@ -46,11 +46,14 @@ currently supports private copies only. If an ordinary tool requests the trusted
 default, Pi displays the private-copy option and the open fails before Docker
 allocates resources.
 
-When Pi reports an untrusted project, or an embedding host omits
-`isProjectTrusted`, development uses a private copy. The extension selects the
-default once per runtime. SDK consumers can explicitly request
-`workspaceRelationship: 'copied'` at acquisition. Review snapshots always use
-fresh read-only copies.
+The extension selects the default once per runtime. It reads project trust from
+the matching Pi session, even when an SDK consumer passes only the session ID
+and working directory. An extension that acquires during an earlier
+`session_start` handler should pass its Pi context. Before the Docker extension
+receives that event, it can only use the acquisition context. A false or
+unavailable trust decision at configuration selects a private copy. SDK
+consumers can explicitly request `workspaceRelationship: 'copied'` at
+acquisition. Review snapshots always use fresh read-only copies.
 
 The profile preserves a narrower Pi tool selection. It checks every model tool
 call, including indirect calls and tools that another extension reactivates.

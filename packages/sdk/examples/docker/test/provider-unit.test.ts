@@ -1083,6 +1083,14 @@ it.each([
 										expect.stringContaining('--byos-docker-copy')
 									]);
 
+									await expect(
+										getSandbox(pi, context, {
+											policy: { workspaceAccess: 'read-only' }
+										})
+									).rejects.toMatchObject({
+										name: 'UnsupportedSandboxPolicyError'
+									});
+
 									const privateWorkspace = await getSandbox(pi, context, {
 										policy: { workspaceRelationship: 'copied' }
 									});
@@ -1126,27 +1134,111 @@ it.each([
 					);
 				}
 
+				const notifications: { message: string; type: string | undefined }[] =
+					[];
+				const runner = runtime.session.extensionRunner;
+
+				runner.setUIContext(
+					{
+						...runner.getUIContext(),
+						notify(message, type) {
+							notifications.push({ message, type });
+						}
+					},
+					'tui'
+				);
 				await runtime.session.prompt('/test-workspace');
 				expect(errors).toStrictEqual([]);
-				expect(
-					runtime.session.messages.flatMap((message) =>
-						message.role === 'custom' && message.customType === 'byos-docker'
-							? { content: message.content, display: message.display }
-							: []
-					)
-				).toStrictEqual(
+				expect(notifications).toStrictEqual(
 					shared
 						? [
 								{
-									content:
-										'This Docker provider supports private copies only. Start Pi with --byos-docker-copy to use a private workspace.',
-									display: true
+									type: 'warning',
+									message:
+										'This Docker provider supports private copies only. Start Pi with --byos-docker-copy to use a private workspace.'
 								}
 							]
 						: []
 				);
+				expect(
+					runtime.session.messages.filter(
+						(message) => message.role === 'custom'
+					)
+				).toStrictEqual([]);
 			},
 			{ ...(trusted !== undefined && { projectTrusted: trusted }) }
 		);
 	}
 );
+
+it('selects a copy if an earlier startup consumer supplies no trust decision', async () => {
+	const docker = new FakeDocker();
+
+	using cli = vi
+		.spyOn(NodeDockerClient.prototype, 'command')
+		.mockImplementation(docker.command.bind(docker));
+	await withPiRuntime(
+		[
+			{
+				name: 'early-consumer',
+				factory(pi) {
+					pi.on('session_start', async (_event, session) => {
+						const sandbox = await getSandbox(pi, {
+							cwd: session.cwd,
+							sessionManager: session.sessionManager
+						});
+
+						expect(sandbox.workspace.relationship).toBe('copied');
+					});
+				}
+			},
+			{ name: 'docker', factory: dockerExtension }
+		],
+		(_runtime, errors) => {
+			expect(errors).toStrictEqual([]);
+			expect(cli).toHaveBeenCalled();
+
+			return Promise.resolve();
+		}
+	);
+});
+
+it('preserves the policy error when the workspace notice cannot be delivered', async () => {
+	const provider = createDockerProvider({
+		notifyWorkspaceUnavailable() {
+			throw new Error('The UI is closed.');
+		}
+	});
+	const diagnostics: string[] = [];
+	const recovery = vi.fn();
+	const cleanup = vi.fn();
+
+	await expect(
+		provider.open(
+			{
+				...request,
+				configuration: {
+					...request.configuration,
+					defaultWorkspaceRelationship: 'shared'
+				}
+			},
+			{
+				...context(),
+				confirmCleanup: cleanup,
+				reportRecovery: recovery,
+				reportDiagnostic(diagnostic) {
+					diagnostics.push(diagnostic.message);
+				}
+			}
+		)
+	).rejects.toMatchObject({
+		name: 'UnsupportedSandboxPolicyError',
+		operation: 'open'
+	});
+	expect(cleanup).toHaveBeenCalledOnce();
+	expect(recovery).not.toHaveBeenCalled();
+	expect(diagnostics).toStrictEqual([
+		expect.stringContaining('--byos-docker-copy'),
+		'The workspace notification could not be displayed.'
+	]);
+});

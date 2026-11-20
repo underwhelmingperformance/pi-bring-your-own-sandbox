@@ -526,6 +526,11 @@ it.each(['confirmed cancellation', 'idempotent disposal'])(
 
 it.each([
 	{
+		defect: 'a shared writer that never reports readiness',
+		relationship: 'shared',
+		expected: 'writer must wait'
+	},
+	{
 		defect: 'a shared writer that exits before the host replaces the file',
 		relationship: 'shared',
 		expected: 'writer must wait'
@@ -559,6 +564,8 @@ it.each([
 	const scenario = {
 		...base,
 		workspaceVisibility: relationship,
+		timeoutMs: 500,
+		cleanup: { cancellationGraceMs: 5, disposalTimeoutMs: 100 },
 		capabilities: {
 			...base.provider.capabilities,
 			operations: ['exec', 'files.read'] as const
@@ -593,6 +600,10 @@ it.each([
 						}
 					},
 					exec(request: ProcessRequest, context: BackendProcessContext) {
+						if (request.kind === 'argv' && request.executable === 'wait') {
+							return Promise.withResolvers<never>().promise;
+						}
+
 						if (request.kind === 'argv' && request.executable === 'write') {
 							target = Buffer.from(request.args[0] ?? '', 'base64');
 
@@ -620,17 +631,17 @@ it.each([
 					replaceSource: (bytes: Uint8Array) => {
 						source = Buffer.from(bytes);
 
-						if (
-							defect ===
-							'a shared writer that exits before the host replaces the file'
-						) {
+						if (relationship === 'shared' && defect !== 'a stale shared read') {
 							target = source;
 						}
 
 						return Promise.resolve();
 					},
 					readTarget,
-					waitForReplacement: () => readTarget,
+					waitForReplacement: (): ProcessRequest =>
+						defect === 'a shared writer that never reports readiness'
+							? { kind: 'argv', executable: 'wait', args: [] }
+							: readTarget,
 					writeTarget: (bytes: Uint8Array): ProcessRequest => ({
 						kind: 'argv',
 						executable: 'write',
@@ -648,9 +659,18 @@ it.each([
 		throw new Error('Missing workspace visibility scenario.');
 	}
 
-	await expect(usingProviderFixture(scenario, entry.run)).rejects.toThrow(
-		expected
-	);
+	vi.useFakeTimers();
+
+	try {
+		await Promise.all([
+			expect(usingProviderFixture(scenario, entry.run)).rejects.toThrow(
+				expected
+			),
+			vi.advanceTimersByTimeAsync(1000)
+		]);
+	} finally {
+		vi.useRealTimers();
+	}
 });
 
 it.each(['successful', 'missing', 'wrong output'] as const)(

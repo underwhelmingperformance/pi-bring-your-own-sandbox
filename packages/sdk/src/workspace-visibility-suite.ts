@@ -142,7 +142,7 @@ export async function checkWorkspaceVisibility(
 
 		try {
 			expect(
-				await Promise.race([ready.promise, running]),
+				await Promise.race([ready.promise, running, execution.whenCancelled()]),
 				'The writer must wait for the host replacement.'
 			).toBe(true);
 			expect(Buffer.from(await probe.readSource())).toStrictEqual(written);

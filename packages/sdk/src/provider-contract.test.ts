@@ -910,9 +910,9 @@ it.each([
 	}
 );
 
-it.each([false, true])(
+it.each(['blocked', 'connected', 'invalid file expectation'] as const)(
 	'observes listener connections independently of the denied exit status (%s)',
-	async (connected) => {
+	async (mode) => {
 		const base = contractScenario();
 		const open = base.provider.open;
 		let connections = 1;
@@ -930,7 +930,7 @@ it.each([false, true])(
 						policy: { ...backend.policy, networkAccess: 'denied' },
 						exec(request, context) {
 							if (
-								connected &&
+								mode === 'connected' &&
 								request.kind === 'argv' &&
 								request.executable === 'probe'
 							) {
@@ -963,6 +963,9 @@ it.each([false, true])(
 									stderr: Buffer.alloc(0)
 								},
 								denied,
+								...(mode === 'invalid file expectation' && {
+									file: { path: 'sample', error: 'unsupported-file' as const }
+								}),
 								observe: () =>
 									Promise.resolve({ kind: 'listener', connections })
 							})
@@ -980,9 +983,17 @@ it.each([false, true])(
 
 		const result = usingProviderFixture(scenario, entry.run);
 
-		if (connected) {
+		if (mode === 'connected') {
 			await expect(result).rejects.toThrow(
 				'The denied process changed the protected resource.'
+			);
+
+			return;
+		}
+
+		if (mode === 'invalid file expectation') {
+			await expect(result).rejects.toThrow(
+				'The unsupported-file error applies only to a read of a late special file.'
 			);
 
 			return;
@@ -1035,9 +1046,10 @@ it('waits for a cancelled scenario to release its active job before disposal', a
 				throw new Error('The cancelled operation stopped.');
 			}
 		);
-		const rejected = expect(run).rejects.toThrow(
-			'The provider contract operation exceeded its deadline.'
-		);
+		const rejected = expect(run).rejects.toMatchObject({
+			message: 'The provider contract operation exceeded its deadline.',
+			cause: { message: 'The cancelled operation stopped.' }
+		});
 
 		await vi.advanceTimersByTimeAsync(200);
 		await rejected;

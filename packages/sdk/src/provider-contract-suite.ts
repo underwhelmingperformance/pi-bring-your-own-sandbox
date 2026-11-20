@@ -84,13 +84,13 @@ async function bounded<Value>(
 		]);
 
 		if (result.kind === 'cancelled' || scope.reason !== undefined) {
-			if (options.drainOnTimeout) {
-				await settleOperation(scope, running);
-			}
+			const stopped = options.drainOnTimeout
+				? await settleOperation(scope, running)
+				: result;
 
 			throw new Error(
 				'The provider contract operation exceeded its deadline.',
-				result.kind === 'rejected' ? { cause: result.error } : undefined
+				stopped.kind === 'rejected' ? { cause: stopped.error } : undefined
 			);
 		}
 
@@ -302,6 +302,15 @@ async function checkPolicyEffects(
 
 	const probe = await prepare(backend);
 
+	if (
+		scenario !== 'late-special-file' &&
+		probe.file?.error === 'unsupported-file'
+	) {
+		throw new Error(
+			'The unsupported-file error applies only to a read of a late special file.'
+		);
+	}
+
 	if (backend.capabilities.exitStatus === 'guaranteed') {
 		expect(probe.permitted.exit).toStrictEqual({ kind: 'code', code: 0 });
 		expect(probe.denied.exit.kind).toBe('code');
@@ -357,12 +366,6 @@ async function checkPolicyEffects(
 	}
 
 	const { path, error } = probe.file;
-
-	if (error === 'unsupported-file' && !isRead) {
-		throw new Error(
-			'The unsupported-file error applies only to a read of a late special file.'
-		);
-	}
 
 	const expected =
 		error === 'absent'

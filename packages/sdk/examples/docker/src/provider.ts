@@ -9,6 +9,7 @@ import type {
 	ProcessRequest,
 	ReviewSnapshotSource,
 	SandboxBackend,
+	SandboxCapabilities,
 	SandboxOpenContext,
 	SandboxOpenRequest,
 	SandboxOperationContext,
@@ -45,6 +46,32 @@ function mount(fields: readonly string[]): string {
 	return fields.map((field) => `"${field.replaceAll('"', '""')}"`).join(',');
 }
 
+function targetCommand(
+	request: ProcessRequest
+): Pick<TargetInvocation, 'executable' | 'args'> {
+	if (request.kind === 'argv') {
+		return { executable: request.executable, args: request.args };
+	}
+
+	if (request.dialect === 'powershell') {
+		return {
+			executable: '/opt/powershell/pwsh',
+			args: [
+				'-NoLogo',
+				'-NoProfile',
+				'-NonInteractive',
+				'-Command',
+				request.command
+			]
+		};
+	}
+
+	return {
+		executable: request.dialect === 'bash' ? '/bin/bash' : '/bin/sh',
+		args: ['-c', request.command]
+	};
+}
+
 const copiedWorkspace = {
 	root: '/workspace',
 	pathFlavor: 'posix',
@@ -55,11 +82,35 @@ const copiedWorkspace = {
 		'The host workspace is copied on opening. Changes remain in a generation-owned Docker volume until disposal.'
 } as const;
 
+const defaultCapabilities = {
+	processKinds: ['argv', 'shell'],
+	terminationScope: 'workload',
+	exitStatus: 'guaranteed',
+	operations: [
+		'exec',
+		'files.read',
+		'files.write',
+		'files.list',
+		'search.find',
+		'search.grep'
+	],
+	shells: ['sh', 'bash']
+} as const;
+
+interface DockerProviderOptions {
+	readonly createClient?: (config: DockerConfig) => DockerClient;
+	/**
+	Immutable ID of the optional trusted image with /opt/powershell/pwsh.
+	*/
+	readonly powerShellImage?: string;
+}
+
 class DockerBackend implements SandboxBackend {
 	readonly #resources: DockerResources;
 	readonly #onClose: () => void;
 	readonly #snapshots = new Set<Promise<void>>();
 	readonly #launcher: string;
+	readonly #image: string;
 	readonly #lifetime = new AbortController();
 	readonly #active = new Set<Promise<BackendProcessOutcome>>();
 	#closing: Promise<void> | undefined;
@@ -69,20 +120,7 @@ class DockerBackend implements SandboxBackend {
 	readonly id: string;
 	readonly workspace: SandboxBackend['workspace'];
 
-	readonly capabilities = {
-		processKinds: ['argv', 'shell'],
-		terminationScope: 'workload',
-		exitStatus: 'guaranteed',
-		operations: [
-			'exec',
-			'files.read',
-			'files.write',
-			'files.list',
-			'search.find',
-			'search.grep'
-		],
-		shells: ['sh', 'bash']
-	} as const;
+	readonly capabilities: SandboxCapabilities;
 	readonly policy: SandboxBackend['policy'];
 	readonly recovery: SandboxBackend['recovery'];
 	readonly policyDescription =
@@ -95,6 +133,7 @@ class DockerBackend implements SandboxBackend {
 		client: DockerClient,
 		helpers: { readonly files: string; readonly search: string },
 		onClose: () => void,
+		toolchain: { image: string; capabilities: SandboxCapabilities },
 		source?: ReviewSnapshotSource
 	) {
 		this.workspace =
@@ -108,6 +147,8 @@ class DockerBackend implements SandboxBackend {
 								: 'Read-only snapshot of the proposed command’s Docker workspace.'
 					};
 		this.#onClose = onClose;
+		this.#image = toolchain.image;
+		this.capabilities = toolchain.capabilities;
 		this.#resources = resources;
 		this.#launcher = launcher;
 		this.id = resources.volume;
@@ -153,13 +194,7 @@ class DockerBackend implements SandboxBackend {
 		context: BackendProcessContext
 	): Promise<BackendProcessOutcome> {
 		const invocation: TargetInvocation = {
-			executable:
-				request.kind === 'argv'
-					? request.executable
-					: request.dialect === 'bash'
-						? '/bin/bash'
-						: '/bin/sh',
-			args: request.kind === 'argv' ? request.args : ['-c', request.command],
+			...targetCommand(request),
 			cwd: path.posix.resolve('/workspace', request.cwd ?? '.'),
 			env: request.env ?? {}
 		};
@@ -185,7 +220,7 @@ class DockerBackend implements SandboxBackend {
 				'--mount',
 				this.#mount(this.policy.workspaceAccess === 'read-only'),
 				'--entrypoint=/usr/local/bin/node',
-				DOCKER_IMAGE,
+				this.#image,
 				'--input-type=module-typescript',
 				'--eval',
 				this.#launcher,
@@ -405,6 +440,39 @@ class DockerBackend implements SandboxBackend {
 					{ cause: new Error(message) }
 				);
 			}
+
+			if (this.capabilities.shells.includes('powershell')) {
+				const probe = await this.#run(
+					{
+						kind: 'shell',
+						dialect: 'powershell',
+						command: 'if ($PSVersionTable.PSVersion.Major -lt 7) { exit 1 }'
+					},
+					{
+						...context,
+						onOutput() {
+							return;
+						}
+					}
+				);
+
+				if (probe.kind === 'cancelled') {
+					throw new SandboxCancelledError({
+						operation: 'open',
+						reason: 'caller',
+						completion:
+							probe.termination === 'confirmed' ? 'confirmed' : 'unknown',
+						recovery: this.recovery
+					});
+				}
+
+				if (probe.exit.kind !== 'code' || probe.exit.code !== 0) {
+					throw new UnsupportedSandboxCapabilityError({
+						operation: 'open',
+						providerId: 'example.docker'
+					});
+				}
+			}
 		} catch (error) {
 			try {
 				await this.#resources.dispose(
@@ -448,8 +516,7 @@ class DockerBackend implements SandboxBackend {
 
 		if (
 			request.kind === 'shell' &&
-			request.dialect !== 'sh' &&
-			request.dialect !== 'bash'
+			!this.capabilities.shells.includes(request.dialect)
 		) {
 			return Promise.reject(
 				new UnsupportedSandboxCapabilityError({
@@ -489,8 +556,31 @@ opening allocates a copied workspace volume on a local Unix-socket daemon.
 Pass a client factory to test daemon failures without allocating containers.
 */
 export function createDockerProvider(
-	createClient?: (config: DockerConfig) => DockerClient
+	options: DockerProviderOptions | ((config: DockerConfig) => DockerClient) = {}
 ): SandboxProvider<DockerConfig> {
+	const { createClient, powerShellImage } =
+		typeof options === 'function'
+			? { createClient: options, powerShellImage: undefined }
+			: options;
+
+	if (
+		powerShellImage !== undefined &&
+		!/^sha256:[a-f0-9]{64}$/u.test(powerShellImage)
+	) {
+		throw new TypeError(
+			'Select the PowerShell runtime by its immutable Docker image ID.'
+		);
+	}
+
+	const capabilities: SandboxCapabilities =
+		powerShellImage === undefined
+			? defaultCapabilities
+			: {
+					...defaultCapabilities,
+					shells: [...defaultCapabilities.shells, 'powershell']
+				};
+	const toolchain = { image: powerShellImage ?? DOCKER_IMAGE, capabilities };
+
 	const active = new Map<
 		string,
 		{
@@ -556,6 +646,7 @@ export function createDockerProvider(
 			() => {
 				active.delete(resources.volume);
 			},
+			toolchain,
 			source
 		);
 
@@ -592,20 +683,7 @@ export function createDockerProvider(
 		},
 		label: 'Docker reference provider',
 		protocolVersion: 1,
-		capabilities: {
-			processKinds: ['argv', 'shell'],
-			terminationScope: 'workload',
-			exitStatus: 'guaranteed',
-			operations: [
-				'exec',
-				'files.read',
-				'files.write',
-				'files.list',
-				'search.find',
-				'search.grep'
-			],
-			shells: ['sh', 'bash']
-		},
+		capabilities,
 		policies: {
 			workspaceRelationship: ['copied'],
 			workspaceAccess: ['read-only', 'read-write'],

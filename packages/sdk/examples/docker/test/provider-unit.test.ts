@@ -820,3 +820,18 @@ it.each(['session', 'socket', 'provider', 'generation', 'backend'])(
 		}
 	}
 );
+
+it('advertises PowerShell only for a trusted image selected by immutable ID', () => {
+	const image = 'sha256:' + 'a'.repeat(64);
+
+	expect(
+		createDockerProvider({ powerShellImage: image }).capabilities.shells
+	).toStrictEqual(['sh', 'bash', 'powershell']);
+	expect(createDockerProvider().capabilities.shells).toStrictEqual([
+		'sh',
+		'bash'
+	]);
+	expect(() =>
+		createDockerProvider({ powerShellImage: 'local:latest' })
+	).toThrow('immutable Docker image ID');
+});

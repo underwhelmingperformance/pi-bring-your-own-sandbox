@@ -64,12 +64,30 @@ unsupported filesystem or network policies before allocation. An extension can
 also call `registerSandboxDiagnostics(pi)` to expose `/byos status`.
 
 SDK consumers use the selected provider automatically. The example supplies `sh`
-for user commands and Bash for the model `bash` tool. PowerShell is unsupported.
-Load `/pi-tools` separately to route supported Pi shell hooks. See the
-[integration coverage table][coverage] for those hooks and the upstream
-file/search gaps.
+for user commands and Bash for the model `bash` tool. The optional image
+described below adds PowerShell. Load `/pi-tools` separately to route supported
+Pi shell hooks. See the [integration coverage table][coverage] for those hooks
+and the upstream file/search gaps.
 
 [coverage]: ../../docs/pi-integration.md
+
+## Optional PowerShell image
+
+Build the reference toolchain once from `packages/sdk`. Docker verifies the
+PowerShell archive for the daemon's architecture before it unpacks the runtime.
+
+```sh
+docker build --iidfile /tmp/byos-powershell-image examples/docker/src/powershell
+```
+
+In your trusted extension, pass the full image ID from that file to
+`createDockerProvider({ powerShellImage })` when registering the provider. The
+provider runs a PowerShell startup check on opening. Shell and argv jobs use the
+selected image and the same workspace. PowerShell starts without profiles and
+runs non-interactively. File operations continue to use the pinned Node helper
+image. To include the PowerShell conformance scenario, set
+`BYOS_DOCKER_POWERSHELL_IMAGE` to the image ID when running
+`pnpm test:provider`.
 
 ## Workspace and process behaviour
 

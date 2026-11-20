@@ -36,5 +36,63 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				}
 			});
 		}
+
+		const powerShellImage = process.env['BYOS_DOCKER_POWERSHELL_IMAGE'];
+
+		if (powerShellImage === undefined) {
+			return;
+		}
+
+		let prepared: DockerFixture | undefined;
+		const provider = createDockerProvider({
+			powerShellImage,
+			createClient() {
+				if (!prepared) {
+					throw new Error('The PowerShell fixture has not been prepared.');
+				}
+
+				return prepared.providerClient();
+			}
+		});
+
+		defineSandboxProviderTests({
+			label: 'optional PowerShell image',
+			provider,
+			timeoutMs: 30_000,
+			capabilities: {
+				...provider.capabilities,
+				operations: ['exec'],
+				processKinds: ['shell'],
+				shells: ['powershell']
+			},
+			async createFixture() {
+				const fixture = await DockerFixture.create();
+
+				prepared = fixture;
+
+				const base = fixture.contract({
+					workspaceAccess: 'read-only',
+					filesystemScope: 'workspace-only',
+					networkAccess: 'denied'
+				});
+
+				return {
+					...base,
+					shells: {
+						powershell: {
+							request: {
+								kind: 'shell',
+								dialect: 'powershell',
+								command:
+									'[Console]::Write((Get-Content -Raw source.txt)); exit 7'
+							},
+							exit: { kind: 'code', code: 7 },
+							stdout: new TextEncoder().encode('original'),
+							stderr: new Uint8Array()
+						}
+					}
+				};
+			}
+		});
 	}
 );

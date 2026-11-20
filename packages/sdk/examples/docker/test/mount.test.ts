@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { link, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -17,7 +18,7 @@ it.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 		const fixture = await DockerFixture.create();
 		const allocation = 'byos-mount-' + randomUUID();
 		const label = ALLOCATION_LABEL + '=' + allocation;
-		const binary = path.join(fixture.workspace, 'mount-check');
+		const binary = path.join(fixture.workspace, '..', 'mount-check');
 
 		fixture.allocations.add(allocation);
 
@@ -68,6 +69,8 @@ it.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				'--name',
 				allocation,
 				...common,
+				'--mount',
+				'type=bind,source=' + fixture.workspace + ',target=/backing,readonly',
 				DOCKER_IMAGE,
 				'serve'
 			]);
@@ -101,6 +104,12 @@ it.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				throw new TypeError('Docker did not return its security options.');
 			}
 
+			await writeFile(
+				path.join(fixture.workspace, 'source.txt'),
+				'after service startup'
+			);
+			await link(fixture.outside, path.join(fixture.workspace, 'alias'));
+
 			const output = await fixture.docker([
 				'run',
 				'--rm',
@@ -123,7 +132,8 @@ it.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 const status = Object.fromEntries(readFileSync('/proc/self/status', 'utf8')
   .split(String.fromCharCode(10)).map(line => line.split(':').map(value => value.trim())));
 console.log(JSON.stringify({
-  file: readFileSync('/workspace/probe', 'utf8'),
+  file: readFileSync('/workspace/source.txt', 'utf8'),
+  backing: existsSync('/backing/source.txt'), alias: existsSync('/workspace/alias'),
   ids: [status.Uid, status.Gid].map(ids => ids.split(/\\s+/).map(Number)), groups: status.Groups,
   device: existsSync('/dev/fuse'), socket: existsSync('/control/service'),
   privileges: Object.fromEntries(['CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb', 'NoNewPrivs']
@@ -133,7 +143,9 @@ console.log(JSON.stringify({
 			const zero = '0000000000000000';
 
 			expect(JSON.parse(output)).toStrictEqual({
-				file: 'mediated\n',
+				file: 'after service startup',
+				backing: false,
+				alias: false,
 				ids: [
 					Array.from({ length: 4 }, () => 65_534),
 					Array.from({ length: 4 }, () => 65_534)

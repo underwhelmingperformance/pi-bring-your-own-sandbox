@@ -20,6 +20,6 @@ profile byos-mount-probe flags=(attach_disconnected,mediate_deleted) {
   /dev/fuse rw,
   /control/service rw,
   /workspace/ r,
-  /workspace/probe r,
+  /workspace/{source.txt,alias} r,
   @{PROC}/@{pid}/status r,
 }

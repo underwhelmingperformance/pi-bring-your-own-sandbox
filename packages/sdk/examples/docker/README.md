@@ -219,8 +219,9 @@ profile with `sudo apparmor_parser -r test/mount/apparmor` from the Docker
 example directory. The profile permits a FUSE mount at `/workspace` and removal
 of the control mount at `/control`.
 
-A trusted bootstrap mounts a synthetic filesystem. A separate service handles
-its requests. The workload reads a file through the mount as UID and GID 65534.
-The test inspects the workload's Linux capability sets and checks that the FUSE
-device and management socket are inaccessible. The production provider still
-uses a copied workspace.
+A trusted bootstrap mounts a read-only filesystem. Only the filesystem service
+gets a bind mount of the host checkout. The workload reads updated host contents
+through FUSE as UID and GID 65534. The service checks file types before opening
+them and denies access to files with multiple hard links. The test inspects the
+workload's Linux capability sets and checks that the FUSE device and management
+socket are inaccessible. The production provider still uses a copied workspace.

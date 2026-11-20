@@ -66,7 +66,10 @@ func (w *workspaceWriter) current() (unix.Stat_t, error) {
 	if entry.Nlink != 1 || opened.Nlink != 1 {
 		return entry, unix.EACCES
 	}
-	return entry, nil
+	if entry.Ctim != opened.Ctim || entry.Size != opened.Size || entry.Mode != opened.Mode || entry.Uid != opened.Uid || entry.Gid != opened.Gid {
+		return opened, errSourceChanged
+	}
+	return opened, nil
 }
 
 func (w *workspaceWriter) replace(data []byte, offset int64, resize bool) error {

@@ -254,3 +254,27 @@ write can produce several requests and the host can see each replacement.
 Filesystems that cannot preserve the source file's extended attributes can
 reject writes. A concurrent host replacement can occur between the final
 identity check and the rename.
+
+## Measuring a copied workspace
+
+From `packages/sdk`, run the benchmark against a local daemon with the pinned
+image already present. Set `BYOS_DOCKER_EXECUTABLE` and `BYOS_DOCKER_SOCKET` if
+the daemon uses different paths.
+
+```sh
+BYOS_DOCKER_BENCHMARK=1 pnpm exec vitest run --config vitest.provider.config.ts examples/docker/test/benchmark.test.ts
+```
+
+The fixture imports 100 JavaScript modules of about 1 KiB each. The first read
+starts the file worker. Twenty sequential reads of the same file reuse it. Grep
+searches all 100 modules. A separate job builds and writes an npm package
+archive offline. The benchmark checks the bytes, match count, exit status and
+archive size.
+
+| Local arm64 daemon           | Fresh open | First read | 20 warm reads |   Grep | Package build |
+| ---------------------------- | ---------: | ---------: | ------------: | -----: | ------------: |
+| OrbStack on macOS            |    1124 ms |     310 ms |       1998 ms | 167 ms |        941 ms |
+| Docker in an Ubuntu 24.04 VM |     356 ms |     197 ms |       1719 ms | 120 ms |        599 ms |
+
+Each row reports one run with the image cached. The open time includes workspace
+import. The warm-read time includes the checks on the returned bytes.

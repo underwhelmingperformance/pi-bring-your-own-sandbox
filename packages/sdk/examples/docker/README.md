@@ -335,14 +335,14 @@ overwrite the new host file.
 ### Authorising saves on the host
 
 A host filesystem check can see the object selected for a rename or unlink. The
-[macOS test][darwin-mutations] starts a child process under Seatbelt in an
-ordinary checkout. The profile permits writes to workspace files with a single
-name and denies writes to a protected subtree. The host replaces a file, the
-child reads the new contents and saves by rename, and the host checks the
-result. The test also checks an absent protected file, renaming its parent,
-creating a hard link and modifying a file through an existing hard link. Apple's
-`com.apple.SubmitDiagInfo.sb` uses the same `has-multiple-names` filter for
-writes.
+[macOS test][darwin-mutations] starts a child process under Seatbelt in a
+temporary host directory. The profile permits writes to workspace files with a
+single name and denies writes to a protected subtree. The host replaces a file,
+the child reads the new contents and saves by rename, and the host checks the
+result. The test also checks an absent protected file, renaming an ancestor of
+the protected directory, creating a hard link and modifying a file through an
+existing hard link. Apple's `com.apple.SubmitDiagInfo.sb` uses the same
+`has-multiple-names` filter for writes.
 
 The [Linux probe][linux-mutations] attaches two deny-only checks to the kernel's
 authorisation of rename and unlink. The checks inspect the source and target

@@ -119,9 +119,10 @@ second argument to the factory. Pi reports this path on the selected tool.
 Load the routing extension before the permission gate so the router can record
 the pending call. An unknown call, an overridden tool or a forwarded request
 requires transcript-only review. The default shell destination uses its active
-backend. If a later tool hook changes the reviewed command or its destination,
-BYOS rejects execution. The built-in normal outside destination uses the host
-checkout. Custom outside executors require their own destination resolver.
-Opening a snapshot does not approve or execute the proposed command.
+backend. Once the reviewer opens a snapshot, BYOS rejects execution if a later
+tool hook changes the reviewed command or its destination. The built-in normal
+outside destination uses the host checkout. Custom outside executors require
+their own destination resolver. Opening a snapshot does not approve or execute
+the proposed command.
 
 [review-protocol]: api-protocol.md

@@ -9,7 +9,8 @@ import {
 	StaleSandboxHandleError,
 	UnsupportedSandboxCapabilityError
 } from './errors.js';
-import { getOutsideSandboxExecutor } from './outside-execution.js';
+import { boundedApproval } from './execution-approval.js';
+import { OperationScope } from './lifecycle.js';
 import { rethrowSnapshotError } from './review-requirements.js';
 import { openReviewSnapshot } from './review-snapshot.js';
 import { runtimeSettings } from './runtime-settings.js';
@@ -143,18 +144,27 @@ export class ShellReviewRoutes {
 		let destination: BoundDestination;
 
 		if (route.isOutside) {
-			const executor = await getOutsideSandboxExecutor(pi, route.context, {
-				signal
-			});
+			const settings = runtimeSettings(pi);
+			const scope = new OperationScope(
+				{ operation: 'acquire' },
+				settings.lifetime,
+				{ signal },
+				60_000
+			);
 
-			if (
-				executor.destination.kind !== 'normal' ||
-				runtimeSettings(pi).normalExecutor !== undefined ||
-				executor.destination.workspace.root !== route.context.cwd
-			) {
-				throw new UnsupportedSandboxCapabilityError({
-					operation: 'acquire'
-				});
+			try {
+				const config = await boundedApproval(scope, () =>
+					settings.read(route.context)
+				);
+
+				if (
+					config.outsideSandbox?.destination === 'provider' ||
+					settings.normalExecutor !== undefined
+				) {
+					throw new UnsupportedSandboxCapabilityError({ operation: 'acquire' });
+				}
+			} finally {
+				scope.dispose();
 			}
 
 			destination = { kind: 'host' };

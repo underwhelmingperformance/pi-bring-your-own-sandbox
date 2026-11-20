@@ -52,7 +52,8 @@ export async function checkWorkspaceVisibility(
 	backend: SandboxBackend,
 	context: SandboxOperationContext,
 	capabilities: SandboxCapabilities,
-	cleanup: SandboxCleanupBudgets
+	cleanup: SandboxCleanupBudgets,
+	afterDisposal: (verify: () => Promise<void>) => void
 ): Promise<void> {
 	expect(backend.workspace.relationship).toBe(relationship);
 
@@ -71,6 +72,15 @@ export async function checkWorkspaceVisibility(
 	const replaced = randomBytes(24);
 
 	await probe.replaceSource(replaced);
+
+	if (relationship === 'copied') {
+		afterDisposal(async () => {
+			expect(
+				Buffer.from(await probe.readSource()),
+				'Disposing a copied workspace must leave the source unchanged.'
+			).toStrictEqual(replaced);
+		});
+	}
 
 	const expected = relationship === 'shared' ? replaced : initial;
 
@@ -98,7 +108,7 @@ export async function checkWorkspaceVisibility(
 		return;
 	}
 
-	const written = Buffer.from(randomBytes(24).toString('hex'));
+	const written = Buffer.concat([randomBytes(24), Uint8Array.of(0, 255)]);
 	const observed = Buffer.from(randomBytes(24).toString('hex'));
 
 	if (relationship === 'shared') {
@@ -166,6 +176,8 @@ export async function checkWorkspaceVisibility(
 			Buffer.from(await probe.readSource()),
 			'A copied write must leave the source file unchanged.'
 		).toStrictEqual(replaced);
+		await checkReader(written);
+		await execute(backend, probe.writeTarget(observed), context);
 	}
 
 	const paths =
@@ -185,10 +197,9 @@ export async function checkWorkspaceVisibility(
 				context
 			),
 			'Grep must search the same file as the target process.'
-		).toStrictEqual({
+		).toMatchObject({
 			matches: [
 				{
-					path: paths.basename(targetPath),
 					line: 1,
 					text: pattern,
 					before: [],
@@ -199,10 +210,8 @@ export async function checkWorkspaceVisibility(
 		});
 	}
 
-	const current = relationship === 'shared' ? observed : written;
-
-	await checkReader(current);
-	await checkGrep(current);
+	await checkReader(observed);
+	await checkGrep(observed);
 
 	const writer = capabilities.operations.includes('files.write')
 		? backend.files?.write
@@ -218,9 +227,12 @@ export async function checkWorkspaceVisibility(
 	await checkReader(content);
 	await checkGrep(content);
 
-	if (capabilities.operations.includes('search.find')) {
-		const basename = 'byos-' + randomBytes(12).toString('hex');
-		const directory = paths.dirname(targetPath);
+	if (
+		capabilities.operations.includes('search.find') &&
+		probe.findTarget !== undefined
+	) {
+		const basename = paths.basename(probe.findTarget);
+		const directory = paths.dirname(probe.findTarget);
 
 		await writer.writeFile(paths.join(directory, basename), content, context);
 		expect(

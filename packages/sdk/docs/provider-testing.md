@@ -94,6 +94,13 @@ observe the replacement. Copied workspaces must isolate changes in both
 directions. When file methods are available the suite also compares their
 results with target process reads and independent source reads.
 
+In writable scenarios, grep searches the seed after a target process writes to
+the copy or the host replaces the shared file. It searches again after a file
+write. Supply an absent, searchable path under `visibility.findTarget` to check
+whether find sees a newly created file. The fixture controls the path so it can
+account for the provider's ignore rules. The suite reads the copied workspace's
+source file again after disposal.
+
 ## Verify effects at the target
 
 Provider contexts expose synchronous `reportDiagnostic` for warnings outside
@@ -114,14 +121,6 @@ networking includes relays through host services. Network namespaces and
 read-only mounts alone do not establish socket denial. A provider must reject
 restrictions that it cannot enforce.
 
-In a writable visibility scenario, grep must find a random line written through
-the process and file interfaces. Find must return a new file created through the
-file writer. These checks use the search operations selected for the suite.
-
-Set `verifyRecoveryAfterCancellation: true` and supply a successful process
-probe under `cancellation.after` to verify continued use. The suite runs the
-probe on the same allocation after the independent termination check.
-
 For `process-group` and `workload`, `verifyStopped` must independently establish
 termination within the advertised scope. Include a waiting parent with a child
 that creates another session in runtime-specific tests. A workload provider must
@@ -132,6 +131,10 @@ For `none`, omit `verifyStopped`; the suite requests cancellation and verifies
 or the backend returning a confirmed result, is insufficient evidence.
 `verifyDisposed` should inspect allocations through the runtime's management
 interface or another independent observer.
+
+Set `verifyRecoveryAfterCancellation: true` and supply a successful process
+probe under `cancellation.after` to verify continued use. The suite runs the
+probe on the same allocation after the independent termination check.
 
 In-memory and message-based test doubles verify protocol behaviour, not OS
 isolation. Real host execution also does not establish sandbox isolation. An

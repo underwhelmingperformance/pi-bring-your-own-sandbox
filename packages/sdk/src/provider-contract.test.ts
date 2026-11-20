@@ -4,6 +4,7 @@ import type {
 	BackendProcessContext,
 	ProcessRequest,
 	SandboxBackend,
+	SandboxOperationContext,
 	SandboxPolicy
 } from './contracts.js';
 import { SandboxCleanupError } from './errors.js';
@@ -535,6 +536,11 @@ it.each([
 		expected: 'target process'
 	},
 	{
+		defect: 'a copy written back on disposal',
+		relationship: 'copied',
+		expected: 'Disposing a copied workspace'
+	},
+	{
 		defect: 'a copied write leaking to the source',
 		relationship: 'copied',
 		expected: 'source file'
@@ -553,6 +559,10 @@ it.each([
 	const scenario = {
 		...base,
 		workspaceVisibility: relationship,
+		capabilities: {
+			...base.provider.capabilities,
+			operations: ['exec', 'files.read'] as const
+		},
 		provider: {
 			...base.provider,
 			async open(...arguments_: Parameters<typeof open>) {
@@ -560,6 +570,13 @@ it.each([
 
 				return {
 					...backend,
+					async dispose(context: SandboxOperationContext) {
+						await backend.dispose(context);
+
+						if (defect === 'a copy written back on disposal') {
+							source = target;
+						}
+					},
 					workspace: { ...backend.workspace, relationship },
 					files: {
 						...backend.files,
@@ -634,4 +651,66 @@ it.each([
 	await expect(usingProviderFixture(scenario, entry.run)).rejects.toThrow(
 		expected
 	);
+});
+
+it.each(['successful', 'missing', 'wrong output'] as const)(
+	'checks a %s follow-up probe after confirmed cancellation',
+	async (mode) => {
+		const base = contractScenario();
+		const scenario = {
+			...base,
+			verifyRecoveryAfterCancellation: true,
+			async createFixture() {
+				const fixture = await base.createFixture();
+
+				return {
+					...fixture,
+					cancellation: {
+						...fixture.cancellation,
+						...(mode !== 'missing' && {
+							after: {
+								request: { kind: 'argv' as const, executable: 'pwd', args: [] },
+								stdout: Buffer.from(
+									mode === 'successful' ? '/remote/project\n' : 'wrong'
+								),
+								stderr: new Uint8Array(),
+								exit: { kind: 'code' as const, code: 0 }
+							}
+						})
+					}
+				};
+			}
+		};
+		const entry = providerContractCases(scenario).find(
+			(item) => item.label === 'confirmed cancellation and continued use'
+		);
+
+		if (!entry) {
+			throw new Error('Missing cancellation recovery scenario.');
+		}
+
+		const run = usingProviderFixture(scenario, entry.run);
+
+		if (mode === 'successful') {
+			await run;
+
+			return;
+		}
+
+		await expect(run).rejects.toThrow(
+			mode === 'missing' ? 'Supply a process' : undefined
+		);
+	}
+);
+
+it('rejects a recovery scenario without a termination guarantee before opening', () => {
+	const base = contractScenario();
+
+	expect(() =>
+		providerContractCases({
+			...base,
+			capabilities: { ...base.provider.capabilities, terminationScope: 'none' },
+			verifyRecoveryAfterCancellation: true
+		})
+	).toThrow('Continued use requires confirmed termination.');
 });

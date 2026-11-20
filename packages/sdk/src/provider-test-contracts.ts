@@ -54,6 +54,12 @@ export interface SandboxProviderTestFixture {
 		*/
 		readonly targetPath: string;
 		/**
+		An absent target file in an existing searchable directory. Choose a
+		basename without glob metacharacters that the ignore rules include.
+		Supply this path to test whether find observes a file created by writeFile.
+		*/
+		readonly findTarget?: string;
+		/**
 		Read complete bytes independently from the source workspace.
 		*/
 		readonly readSource: () => Promise<Uint8Array>;
@@ -196,8 +202,8 @@ export interface SandboxProviderTestFixture {
 		*/
 		readonly verifyStopped?: () => Promise<void>;
 		/**
- Successful operation on the same allocation after confirmed termination.
- */
+		Successful operation on the same allocation after confirmed termination.
+		*/
 		readonly after?: SandboxProcessProbe;
 	};
 	/**
@@ -233,8 +239,9 @@ export interface SandboxProviderTestOptions<Config> {
 	readonly verifyRecoveryAfterCancellation?: boolean;
 
 	/**
- Run bidirectional file visibility checks on the selected workspace relationship.
- */
+	Supply a visibility probe to check host edits from a target process. Writable
+	workspaces also exercise changes from the target.
+	*/
 	readonly workspaceVisibility?: 'shared' | 'copied';
 
 	/**

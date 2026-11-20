@@ -26,10 +26,11 @@ export function nodeVisibilityProbe(
 		]
 	});
 	const write =
-		"import {readFile,writeFile,rename} from 'node:fs/promises';import {randomUUID} from 'node:crypto';const temp=process.argv[1]+'.'+randomUUID();await writeFile(temp,Buffer.from(process.argv[2],'base64'),{flag:'wx'});await rename(temp,process.argv[1]);";
+		"import {readFile,writeFile,rename,rm} from 'node:fs/promises';import {randomUUID} from 'node:crypto';const temp=process.argv[1]+'.'+randomUUID();await writeFile(temp,Buffer.from(process.argv[2],'base64'),{flag:'wx'});try{await rename(temp,process.argv[1]);}finally{await rm(temp,{force:true});}";
 
 	return {
 		targetPath: basename,
+		findTarget: 'searchable-file',
 		readSource: () => readFile(file),
 		async replaceSource(bytes) {
 			const temporary = path.join(source, randomUUID());

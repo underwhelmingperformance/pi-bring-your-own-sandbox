@@ -42,7 +42,8 @@ function compareEntries(left: DirectoryEntry, right: DirectoryEntry): number {
 type ContractRun = (
 	fixture: SandboxProviderTestFixture,
 	backend: SandboxBackend,
-	context: SandboxOperationContext
+	context: SandboxOperationContext,
+	afterDisposal: (verify: () => Promise<void>) => void
 ) => Promise<void>;
 
 interface ContractCase {
@@ -100,6 +101,7 @@ export async function usingProviderFixture<Config>(
 	const fixture = await options.createFixture();
 	let backend: SandboxBackend | undefined;
 	let isCleanupConfirmed = false;
+	const afterDisposal: (() => Promise<void>)[] = [];
 	const failures: unknown[] = [];
 
 	try {
@@ -158,8 +160,13 @@ export async function usingProviderFixture<Config>(
 
 		const opened = backend;
 
-		await bounded(deadlines, (context) => run(fixture, opened, context));
+		await bounded(deadlines, (context) =>
+			run(fixture, opened, context, (verify) => {
+				afterDisposal.push(verify);
+			})
+		);
 	} catch (error) {
+		afterDisposal.length = 0;
 		failures.push(error);
 	}
 
@@ -172,6 +179,10 @@ export async function usingProviderFixture<Config>(
 				async (context) => {
 					await closing.dispose(context);
 					await fixture.verifyDisposed();
+
+					for (const verify of afterDisposal) {
+						await verify();
+					}
 				},
 				'dispose'
 			);
@@ -224,8 +235,8 @@ async function checkProcess(
 		stderr: new Uint8Array(Buffer.concat(stderr))
 	}).toStrictEqual({
 		outcome: { kind: 'exited', exit: probe.exit },
-		stdout: probe.stdout,
-		stderr: probe.stderr
+		stdout: new Uint8Array(probe.stdout),
+		stderr: new Uint8Array(probe.stderr)
 	});
 }
 
@@ -234,6 +245,14 @@ export function providerContractCases<Config>(
 ): readonly ContractCase[] {
 	const capabilities = options.capabilities ?? options.provider.capabilities;
 	const cleanup = resolveCleanupBudgets(options.cleanup);
+
+	if (
+		options.verifyRecoveryAfterCancellation &&
+		capabilities.terminationScope === 'none'
+	) {
+		throw new Error('Continued use requires confirmed termination.');
+	}
+
 	const cases: ContractCase[] = [
 		{
 			label: 'metadata and policy',
@@ -338,10 +357,6 @@ export function providerContractCases<Config>(
 				});
 
 				if (backend.capabilities.terminationScope === 'none') {
-					if (options.verifyRecoveryAfterCancellation) {
-						throw new Error('Continued use requires confirmed termination.');
-					}
-
 					return;
 				}
 
@@ -386,14 +401,15 @@ export function providerContractCases<Config>(
 	if (relationship !== undefined) {
 		cases.push({
 			label: `workspace visibility (${relationship})`,
-			run: (fixture, backend, context) =>
+			run: (fixture, backend, context, afterDisposal) =>
 				checkWorkspaceVisibility(
 					relationship,
 					fixture,
 					backend,
 					context,
 					capabilities,
-					cleanup
+					cleanup,
+					afterDisposal
 				)
 		});
 	}

@@ -92,3 +92,50 @@ export default function sandboxTools(pi: ExtensionAPI): void {
 	registerUserShell(pi);
 	registerShellIntegrationDiagnostics(pi.events);
 }
+
+/**
+Expose the routed Bash tool when Pi's loadout selects it. Check each call
+because Pi can invoke deferred tools indirectly after they leave the loadout.
+*/
+export function registerShellOnlyTools(pi: ExtensionAPI): void {
+	const bash = shellDefinition(pi, 'bash');
+
+	pi.registerTool(bash);
+	registerUserShell(pi);
+	registerShellIntegrationDiagnostics(pi.events);
+
+	const isRegisteredBash = () =>
+		pi
+			.getAllTools()
+			.some(
+				(tool) => tool.name === 'bash' && tool.parameters === bash.parameters
+			);
+	const select = () => {
+		const selected = pi.getActiveTools();
+		const allowed = selected.filter(
+			(name) => name === 'bash' && isRegisteredBash()
+		);
+
+		if (allowed.length !== selected.length) {
+			pi.setActiveTools(allowed);
+		}
+	};
+
+	pi.on('session_start', select);
+	pi.on('before_agent_start', select);
+	pi.on('tool_call', (event) => {
+		if (
+			event.toolName === 'bash' &&
+			pi.getActiveTools().includes('bash') &&
+			isRegisteredBash()
+		) {
+			return;
+		}
+
+		return {
+			block: true,
+			reason:
+				'The shell-only profile permits calls to the selected BYOS Bash tool.'
+		};
+	});
+}

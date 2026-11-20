@@ -32,6 +32,17 @@ From this checkout, load the provider:
 pi --no-extensions -e ./examples/docker/src/index.ts
 ```
 
+For development with only the BYOS Bash tool, load the shell profile from
+`packages/sdk`. The profile routes Pi's interactive shell through Docker too.
+
+```sh
+pi --no-extensions --tools bash -e ./examples/docker/src/shell-profile.ts
+```
+
+The profile preserves a narrower Pi tool selection. It checks every model tool
+call, including indirect calls and tools that another extension reactivates.
+Bash can request outside execution through BYOS's configured approval policy.
+
 For another project, copy `examples/docker/src` into `.pi/extensions/docker`. Pi
 loads its `index.ts`, which re-exports the extension factory. Keep the launcher
 file beside the provider modules. The example uses public imports from

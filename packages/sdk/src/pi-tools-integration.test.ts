@@ -23,7 +23,7 @@ import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { ScriptedModel } from './fixtures/scripted-model.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import { createShellOperations } from './pi-shell-operations.js';
-import sandboxTools from './pi-tools.js';
+import sandboxTools, { registerShellOnlyTools } from './pi-tools.js';
 import { isRecord } from './validation.js';
 
 function provider(backend: SandboxBackend): InlineExtension {
@@ -771,3 +771,135 @@ it.each(['bash', 'powershell'])(
 		);
 	}
 );
+
+it.each([
+	{ tools: ['bash', 'read', 'codemode'], active: ['bash'] },
+	{ tools: ['read'], active: [] }
+])(
+	'restricts a Pi loadout of $tools to its selected routed shell',
+	async ({ tools, active }) => {
+		const { backend } = shellBackend();
+
+		await withPiRuntime(
+			[
+				provider(backend),
+				{ name: 'shell-only', factory: registerShellOnlyTools }
+			],
+			(runtime) => {
+				expect(runtime.session.getActiveToolNames()).toStrictEqual(active);
+
+				return Promise.resolve();
+			},
+			{ includeBuiltins: true, tools, prepare }
+		);
+	}
+);
+
+it('blocks a reactivated tool before it can dispatch a nested host call', async () => {
+	const { backend, requests } = shellBackend();
+	const nested = vi.fn();
+	const model = new ScriptedModel([
+		{
+			type: 'toolCall',
+			id: 'outer',
+			name: 'outer',
+			arguments: { command: 'do not run' }
+		},
+		{
+			type: 'toolCall',
+			id: 'allowed',
+			name: 'bash',
+			arguments: { command: 'target command' }
+		}
+	]);
+	const extension: InlineExtension = {
+		name: 'late-loadout',
+		factory(pi) {
+			pi.registerTool({
+				name: 'outer',
+				label: 'Outer',
+				description: 'Calls the native read tool.',
+				parameters: createBashToolDefinition('/unused').parameters,
+				async execute(_id, _input, _signal, _update, context) {
+					nested();
+
+					const outcome = await context.executeTool('read', {
+						path: 'source.txt'
+					});
+
+					return { ...outcome.result, details: undefined };
+				}
+			});
+			pi.on('before_agent_start', () => {
+				pi.setActiveTools(['bash', 'outer', 'read']);
+			});
+		}
+	};
+
+	await withPiRuntime(
+		[
+			provider(backend),
+			{ name: 'shell-only', factory: registerShellOnlyTools },
+			extension,
+			model.extension
+		],
+		async (runtime, errors) => {
+			const selected = runtime.session.modelRuntime.getModel(
+				'scripted',
+				'scripted'
+			);
+
+			if (!selected) {
+				throw new Error('The scripted model was not registered.');
+			}
+
+			await runtime.session.setModel(selected);
+			await runtime.session.prompt('Run both tools.');
+
+			const results = model.requests
+				.at(1)
+				?.messages.filter((message) => message.role === 'toolResult')
+				.map((message) => ({
+					tool: message.toolName,
+					error: message.isError,
+					text: message.content
+				}));
+
+			expect({
+				results,
+				nested: nested.mock.calls,
+				requests,
+				errors
+			}).toStrictEqual({
+				results: [
+					{
+						tool: 'outer',
+						error: true,
+						text: [
+							{
+								type: 'text',
+								text: 'The shell-only profile permits calls to the selected BYOS Bash tool.'
+							}
+						]
+					},
+					{
+						tool: 'bash',
+						error: false,
+						text: [{ type: 'text', text: 'target output' }]
+					}
+				],
+				nested: [],
+				requests: [
+					{
+						kind: 'shell',
+						dialect: 'bash',
+						command: 'target command',
+						cwd: '/remote/project'
+					}
+				],
+				errors: []
+			});
+		},
+		{ includeBuiltins: true, tools: ['bash', 'read', 'outer'], prepare }
+	);
+});

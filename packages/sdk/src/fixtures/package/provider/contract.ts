@@ -47,7 +47,7 @@ defineSandboxProviderTests({
 						observe: () =>
 							Promise.resolve({
 								kind: 'file',
-								content: new TextEncoder().encode(state.sample),
+								content: Buffer.from(state.sample),
 								mode: 0o444,
 								links: 1
 							})

@@ -1,7 +1,6 @@
-import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { once } from 'node:events';
 import {
-	lstat,
 	mkdir,
 	mkdtemp,
 	readFile,
@@ -10,9 +9,9 @@ import {
 	symlink,
 	writeFile
 } from 'node:fs/promises';
+import { connect, createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { promisify } from 'node:util';
 
 import type {
 	ProcessRequest,
@@ -116,6 +115,7 @@ export class DockerFixture {
 
 	readonly #directory: string;
 	readonly #client: NodeDockerClient;
+	#localListener: Server | undefined;
 	readonly allocations = new Set<string>();
 	readonly workspace: string;
 	readonly outside: string;
@@ -553,7 +553,7 @@ process.stdout.write(readFileSync("/tmp/response"));`
 								kind: 'file',
 								mode: Number.parseInt(mode, 8),
 								links: Number(links),
-								content: new Uint8Array(Buffer.from(bytes, 'base64'))
+								content: Buffer.from(bytes, 'base64')
 							};
 						}
 					}),
@@ -591,34 +591,38 @@ process.stdout.write(readFileSync("/tmp/response"));`
 					};
 				},
 				'late-special-file': async () => {
-					const fifo = path.join(this.workspace, 'late-pipe');
+					const endpoint = path.join(this.workspace, 's');
+					let connections = 0;
+					const server = createServer((peer) => {
+						connections++;
+						peer.end();
+					});
 
-					await promisify(execFile)('mkfifo', [fifo]);
+					this.#localListener = server;
+					server.listen(endpoint);
+					await once(server, 'listening');
+
+					const control = connect(endpoint);
+
+					await once(control, 'close');
 
 					return {
 						permitted: sourceRead,
 						denied: {
 							request: {
-								kind: 'shell',
-								dialect: 'sh',
-								command: 'cat late-pipe 2>/dev/null'
+								kind: 'argv',
+								executable: '/usr/local/bin/node',
+								args: [
+									'-e',
+									"const peer = require('node:net').connect('/workspace/s'); peer.on('error', error => { if (!['ENOENT','EPERM','EACCES'].includes(error.code)) throw error; process.exitCode=1; });"
+								]
 							},
 							exit: { kind: 'code', code: 1 },
 							stdout: encode(''),
 							stderr: encode('')
 						},
-						file: { path: '/workspace/late-pipe', error: 'absent' },
-						observe: async () => {
-							const metadata = await lstat(fifo);
-
-							expect(metadata.isFIFO()).toBe(true);
-
-							return {
-								kind: 'special',
-								mode: metadata.mode,
-								links: metadata.nlink
-							};
-						}
+						file: { path: '/workspace/s', error: 'absent' },
+						observe: () => Promise.resolve({ kind: 'listener', connections })
 					};
 				}
 			},
@@ -637,6 +641,8 @@ process.stdout.write(readFileSync("/tmp/response"));`
 
 	async cleanup(): Promise<void> {
 		try {
+			await this.#localListener?.[Symbol.asyncDispose]();
+
 			if (this.hasServer) {
 				await this.docker(['rm', '--force', this.server]);
 			}

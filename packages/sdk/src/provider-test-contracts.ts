@@ -60,7 +60,12 @@ export type SandboxPolicyEvidence =
 			readonly links: number;
 	  }
 	| { readonly kind: 'absent' }
-	| { readonly kind: 'special'; readonly mode: number; readonly links: number }
+	| {
+			readonly kind: 'special';
+			readonly bytesReceived: number;
+			readonly mode: number;
+			readonly links: number;
+	  }
 	| { readonly kind: 'listener'; readonly connections: number };
 
 /**
@@ -75,7 +80,7 @@ export interface SandboxPolicyProbe {
 	*/
 	readonly file?: {
 		readonly path: string;
-		readonly error: 'absent' | 'denied';
+		readonly error: 'absent' | 'denied' | 'unsupported-file';
 	};
 }
 

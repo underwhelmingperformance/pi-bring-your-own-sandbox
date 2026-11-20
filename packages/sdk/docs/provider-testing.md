@@ -186,7 +186,7 @@ and introduce resources after startup.
 | `read-only`         | Read the protected bytes, mode and link count from the backing workspace, or confirm that a protected path remains absent.                        |
 | `protected-path`    | Observe the protected resource while the target attempts a direct mutation.                                                                       |
 | `protected-alias`   | Direct the mutation at an alias and observe the original protected resource.                                                                      |
-| `late-special-file` | Create a socket or FIFO after opening. Observe its metadata or count connections at the listener.                                                 |
+| `late-special-file` | Create a socket or FIFO after opening. Count bytes received at the FIFO or connections at the listener.                                           |
 | `denied-network`    | Connect an independent control client to the listener before the target attempts a connection. Return the listener's cumulative connection count. |
 
 Supply a permitted process, a denied process and an `observe` function. The

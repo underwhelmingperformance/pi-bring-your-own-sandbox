@@ -15,6 +15,7 @@ import type {
 import {
 	isSandboxError,
 	SandboxCancelledError,
+	SandboxOperationError,
 	SandboxPathNotFoundError,
 	SandboxPermissionDeniedError
 } from './errors.js';
@@ -307,13 +308,17 @@ async function checkPolicyEffects(
 		}
 	} else if (scenario === 'late-special-file') {
 		expect(['special', 'listener']).toContain(before.kind);
+
+		if (before.kind === 'listener') {
+			expect(before.connections).toBeGreaterThan(0);
+		}
 	} else {
 		expect(['absent', 'file']).toContain(before.kind);
 	}
 
 	await checkProcess(backend, probe.denied, context);
 	expect(
-		await probe.observe(),
+		structuredClone(await probe.observe()),
 		'The denied process changed the protected resource.'
 	).toStrictEqual(before);
 
@@ -336,7 +341,9 @@ async function checkPolicyEffects(
 	const expected =
 		error === 'absent'
 			? SandboxPathNotFoundError
-			: SandboxPermissionDeniedError;
+			: error === 'unsupported-file' && isRead
+				? SandboxOperationError
+				: SandboxPermissionDeniedError;
 	const files = backend.files;
 	const outcome = isRead
 		? files?.read?.readFile(path, context)
@@ -348,7 +355,7 @@ async function checkPolicyEffects(
 
 	await expect(outcome).rejects.toMatchObject({ name: expected.errorName });
 	expect(
-		await probe.observe(),
+		structuredClone(await probe.observe()),
 		'The denied file operation changed the protected resource.'
 	).toStrictEqual(before);
 }

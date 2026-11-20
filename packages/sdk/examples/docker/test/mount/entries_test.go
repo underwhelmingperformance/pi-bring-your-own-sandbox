@@ -28,9 +28,10 @@ func TestCreateWithExistingDirectory(t *testing.T) {
 	node := &workspaceNode{backing: &backing{root: fd, writable: true}, relative: "."}
 	fs.NewNodeFS(node, &fs.Options{})
 	for _, access := range []uint32{unix.O_RDONLY, unix.O_WRONLY, unix.O_RDWR, unix.O_RDONLY | unix.O_TRUNC} {
-		_, _, _, errno := node.Create(context.Background(), "existing", unix.O_CREAT|access, 0600, &fuse.EntryOut{})
-		if errno != syscall.EISDIR {
-			t.Errorf("create flags %#x returned %v, want EISDIR", unix.O_CREAT|access, errno)
+		flags := uint32(unix.O_CREAT) | access
+		inode, handle, fuseFlags, errno := node.Create(context.Background(), "existing", flags, 0600, &fuse.EntryOut{})
+		if inode != nil || handle != nil || fuseFlags != 0 || errno != syscall.EISDIR {
+			t.Errorf("create flags %#x returned (%v, %v, %#x, %v), want (nil, nil, 0, EISDIR)", flags, inode, handle, fuseFlags, errno)
 		}
 	}
 }

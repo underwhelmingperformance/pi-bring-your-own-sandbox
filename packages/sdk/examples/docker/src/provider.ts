@@ -670,12 +670,15 @@ export function createDockerProvider(
 
 			const output = new TextDecoder();
 			const missing = 'No such image: ' + powerShellImage;
-			const message = output.decode(inspected.stderr).trim();
+			const messages = output.decode(inspected.stderr).split(/\r?\n/);
 
 			if (
 				inspected.status !== 0 &&
-				(message === 'Error response from daemon: ' + missing ||
-					message === 'Error: ' + missing)
+				messages.some(
+					(line) =>
+						line === 'Error response from daemon: ' + missing ||
+						line === 'Error: ' + missing
+				)
 			) {
 				context.reportDiagnostic({
 					level: 'warning',
@@ -689,14 +692,26 @@ export function createDockerProvider(
 				});
 			}
 
-			if (
-				inspected.status !== 0 ||
-				output.decode(inspected.stdout).trim() !== powerShellImage
-			) {
-				throw new SandboxTransportError({
-					operation: 'open',
-					providerId: 'example.docker'
-				});
+			const reportedId = output.decode(inspected.stdout).trim();
+
+			if (reportedId !== powerShellImage || inspected.status !== 0) {
+				const reason =
+					inspected.status === 0
+						? /^sha256:[0-9a-f]{64}$/.test(reportedId)
+							? 'Docker reported image ' +
+								reportedId +
+								' for ' +
+								powerShellImage +
+								'.'
+							: 'Docker image inspect returned an invalid image ID.'
+						: 'Docker image inspect failed with status ' +
+							String(inspected.status) +
+							'.';
+
+				throw new SandboxTransportError(
+					{ operation: 'open', providerId: 'example.docker' },
+					{ cause: new Error(reason) }
+				);
 			}
 		}
 

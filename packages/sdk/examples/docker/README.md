@@ -74,8 +74,9 @@ and the upstream file/search gaps.
 ## Optional PowerShell image
 
 Build the reference toolchain once from `packages/sdk` with BuildKit on amd64 or
-arm64. Use the pinned Debian 12 Node base image. The Dockerfile requires support
-for `ADD --checksum`. Docker verifies the PowerShell archive for the daemon's
+arm64. The launcher uses Node from the pinned Debian 12 image, and PowerShell
+uses the Debian 12 package `libicu72`. The Dockerfile requires support for
+`ADD --checksum`. Docker verifies the PowerShell archive for the daemon's
 architecture before it unpacks the runtime.
 
 ```sh

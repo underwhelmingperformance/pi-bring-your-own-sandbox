@@ -37,7 +37,7 @@ class FakeDocker implements DockerClient {
 	hasLostRemoval = false;
 	status = 0;
 	bootstrapStatus = 0;
-	imageFailure: 'missing image' | 'daemon unavailable' | undefined;
+	imageInspection?: DockerCommandResult;
 	runtimeError = '';
 	launchFailure: 'not-found' | 'permission-denied' | 'start-failed' | undefined;
 	lostCreation: 'volume' | 'container' | undefined;
@@ -75,15 +75,13 @@ class FakeDocker implements DockerClient {
 		if (operation === 'image') {
 			const id = arguments_.at(-1) ?? '';
 
-			return Promise.resolve({
-				status: this.imageFailure === undefined ? 0 : 1,
-				stdout: new TextEncoder().encode(this.imageFailure ? '' : id),
-				stderr: new TextEncoder().encode(
-					this.imageFailure === 'missing image'
-						? 'Error response from daemon: No such image: ' + id
-						: 'Daemon connection refused'
-				)
-			});
+			return Promise.resolve(
+				this.imageInspection ?? {
+					status: 0,
+					stdout: Buffer.from(id),
+					stderr: Buffer.alloc(0)
+				}
+			);
 		}
 
 		const result = (stdout = '') =>
@@ -861,6 +859,8 @@ it('advertises PowerShell only for a trusted image selected by immutable ID', ()
 
 it.each([
 	'missing image',
+	'missing image with warning',
+	'id mismatch',
 	'daemon unavailable',
 	'start-failed',
 	'runtime failure',
@@ -873,10 +873,6 @@ it.each([
 	async (mode) => {
 		const docker = new FakeDocker();
 
-		docker.imageFailure =
-			mode === 'missing image' || mode === 'daemon unavailable'
-				? mode
-				: undefined;
 		docker.runtimeError =
 			mode === 'runtime failure' ? 'Failed to start OCI runtime' : '';
 		docker.launchFailure =
@@ -888,6 +884,29 @@ it.each([
 		docker.status = mode === 'nonzero' ? 7 : 0;
 
 		const powerShellImage = 'sha256:' + 'a'.repeat(64);
+		const isMissing =
+			mode === 'missing image' || mode === 'missing image with warning';
+		const isTransport = mode === 'daemon unavailable' || mode === 'id mismatch';
+		const otherId = 'sha256:' + 'b'.repeat(64);
+
+		if (isMissing || isTransport) {
+			const messages = {
+				'missing image':
+					'Error response from daemon: No such image: ' + powerShellImage,
+				'missing image with warning':
+					'WARNING: Could not load Docker config.\nError: No such image: ' +
+					powerShellImage,
+				'daemon unavailable': 'Daemon connection refused',
+				'id mismatch': ''
+			};
+
+			docker.imageInspection = {
+				status: mode === 'id mismatch' ? 0 : 1,
+				stdout: Buffer.from(mode === 'id mismatch' ? otherId : ''),
+				stderr: Buffer.from(messages[mode])
+			};
+		}
+
 		const provider = createDockerProvider({
 			createClient: () => docker,
 			powerShellImage
@@ -908,30 +927,44 @@ it.each([
 
 		if (mode !== 'available') {
 			await expect(pending).rejects.toMatchObject({
-				name:
-					mode === 'daemon unavailable'
-						? 'SandboxTransportError'
-						: mode === 'start-failed' || mode === 'runtime failure'
-							? 'SandboxOperationError'
-							: 'UnsupportedSandboxCapabilityError',
+				name: isTransport
+					? 'SandboxTransportError'
+					: mode === 'start-failed' || mode === 'runtime failure'
+						? 'SandboxOperationError'
+						: 'UnsupportedSandboxCapabilityError',
 				operation: 'open'
 			});
+
+			if (isTransport) {
+				const cause =
+					mode === 'id mismatch'
+						? 'Docker reported image ' +
+							otherId +
+							' for ' +
+							powerShellImage +
+							'.'
+						: 'Docker image inspect failed with status 1.';
+
+				await expect(pending).rejects.toMatchObject({
+					cause: { message: cause }
+				});
+			}
+
 			expect(docker.isVolumePresent).toBe(false);
 
-			const diagnostic =
-				mode === 'missing image'
-					? 'Build the configured PowerShell image on the selected Docker daemon before opening the workspace.'
-					: mode === 'not-found' ||
-						  mode === 'permission-denied' ||
-						  mode === 'nonzero'
-						? 'The selected Docker toolchain must provide executable PowerShell 7 or later at /opt/powershell/pwsh.'
-						: undefined;
+			const diagnostic = isMissing
+				? 'Build the configured PowerShell image on the selected Docker daemon before opening the workspace.'
+				: mode === 'not-found' ||
+					  mode === 'permission-denied' ||
+					  mode === 'nonzero'
+					? 'The selected Docker toolchain must provide executable PowerShell 7 or later at /opt/powershell/pwsh.'
+					: undefined;
 
 			expect(diagnostics).toStrictEqual(
 				diagnostic ? [{ level: 'warning', message: diagnostic }] : []
 			);
 
-			if (mode === 'missing image') {
+			if (isMissing) {
 				expect(docker.commands.map((command) => command.args)).toStrictEqual([
 					['image', 'inspect', '--format', '{{.Id}}', powerShellImage]
 				]);

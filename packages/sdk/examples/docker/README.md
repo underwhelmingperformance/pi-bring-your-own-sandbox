@@ -302,8 +302,8 @@ extends it with zero bytes and checks that a resize beyond 16 MiB fails with
 
 A second mount runs the provider's file helper. A host read verifies the new
 contents after a writable save. On a read-only mount the helper returns its
-permission-denied status and the host file keeps its original contents. Both
-mounts use a prototype FUSE service. The production provider copies the
+permission-denied status and the host file keeps its original contents. The
+mount tests use a prototype FUSE service. The production provider copies the
 workspace into a volume.
 
 The prototype stages each FUSE write request separately. A large application

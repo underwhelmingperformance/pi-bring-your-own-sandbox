@@ -271,18 +271,23 @@ async function* grep(): AsyncGenerator<() => GrepMatch> {
 		for (const line of textLines(content)) {
 			number++;
 
-			if (
+			const isMatches =
 				regex?.test(line.text) ??
-				(isIgnoreCase ? line.text.toLowerCase() : line.text).includes(needle)
-			) {
-				yield () => ({
-					path: entry.relative,
-					line: number,
-					text: line.text,
-					before: adjacent(content, line.start, context, 'before'),
-					after: adjacent(content, line.next, context, 'after')
-				});
+				(isIgnoreCase ? line.text.toLowerCase() : line.text).includes(needle);
+
+			if (!isMatches) {
+				continue;
 			}
+
+			const lineNumber = number;
+
+			yield () => ({
+				path: entry.relative,
+				line: lineNumber,
+				text: line.text,
+				before: adjacent(content, line.start, context, 'before'),
+				after: adjacent(content, line.next, context, 'after')
+			});
 		}
 	}
 }

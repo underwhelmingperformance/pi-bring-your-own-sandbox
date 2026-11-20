@@ -751,6 +751,7 @@ socket.on('error', error => {
 				]);
 			});
 		}, 30_000);
+
 		it('bounds captured target output while draining the complete stream', async () => {
 			await withDockerSession(async ({ sandbox }) => {
 				let delivered = 0;

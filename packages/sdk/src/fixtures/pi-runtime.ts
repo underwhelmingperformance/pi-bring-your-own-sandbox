@@ -7,8 +7,10 @@ import {
 	InMemoryModelsStore
 } from '@earendil-works/pi-ai';
 import type {
+	AgentSession,
 	AgentSessionRuntime,
 	CreateAgentSessionRuntimeFactory,
+	ExtensionUIContext,
 	InlineExtension
 } from '@earendil-works/pi-coding-agent';
 import {
@@ -28,6 +30,7 @@ interface RuntimeOptions {
 	) => void | Promise<void>;
 	readonly includeBuiltins?: boolean;
 	readonly projectTrusted?: boolean;
+	readonly notify?: ExtensionUIContext['notify'];
 	readonly tools?: readonly string[];
 }
 
@@ -114,20 +117,24 @@ export async function withPiRuntime(
 			sessionManager: SessionManager.inMemory(directory)
 		});
 
-		runtime.setRebindSession((session) =>
+		const bind = (session: AgentSession) =>
 			session.bindExtensions({
-				onError: (error) => {
-					errors.push(error);
-				}
-			})
-		);
-
-		try {
-			await runtime.session.bindExtensions({
+				...(fixtureOptions?.notify !== undefined && {
+					mode: 'tui',
+					uiContext: {
+						...session.extensionRunner.getUIContext(),
+						notify: fixtureOptions.notify
+					}
+				}),
 				onError: (error) => {
 					errors.push(error);
 				}
 			});
+
+		runtime.setRebindSession(bind);
+
+		try {
+			await bind(runtime.session);
 			await execute(runtime, errors);
 		} finally {
 			await runtime.dispose();

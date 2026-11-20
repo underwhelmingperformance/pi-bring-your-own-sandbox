@@ -1203,7 +1203,7 @@ it('selects a copy if an earlier startup consumer supplies no trust decision', a
 	);
 });
 
-it('uses the UI of an earlier startup consumer for a refused shared workspace', async () => {
+it('displays an early refusal after Pi binds the Docker session UI', async () => {
 	const notify = vi.fn();
 
 	using cli = vi
@@ -1221,9 +1221,7 @@ it('uses the UI of an earlier startup consumer for a refused shared workspace', 
 						const context = {
 							cwd: session.cwd,
 							sessionManager: session.sessionManager,
-							isProjectTrusted: () => session.isProjectTrusted(),
-							hasUI: true,
-							ui: { ...session.ui, notify }
+							isProjectTrusted: () => session.isProjectTrusted()
 						};
 
 						await expect(getSandbox(pi, context)).rejects.toMatchObject({
@@ -1242,7 +1240,8 @@ it('uses the UI of an earlier startup consumer for a refused shared workspace', 
 			]);
 
 			return Promise.resolve();
-		}
+		},
+		{ notify }
 	);
 });
 

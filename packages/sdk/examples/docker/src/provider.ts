@@ -37,9 +37,11 @@ import type {
 	TargetInvocation
 } from './contracts.js';
 import { DeadlineTimer } from './deadline.js';
+import type { DockerFileHelpers } from './file-worker.js';
 import { DockerFileWorker } from './file-worker.js';
 import { LaunchFrames } from './frames.js';
 import { DOCKER_IMAGE } from './image.js';
+import { readDockerMatcher } from './matcher.js';
 import {
 	ALLOCATION_LABEL,
 	cleanupContext,
@@ -148,7 +150,7 @@ class DockerBackend implements SandboxBackend {
 		policy: SandboxBackend['policy'],
 		launcher: string,
 		client: DockerClient,
-		helpers: { readonly files: string; readonly search: string },
+		helpers: DockerFileHelpers,
 		onClose: () => void,
 		toolchain: { image: string; capabilities: SandboxCapabilities },
 		source?: ReviewSnapshotSource
@@ -753,11 +755,12 @@ export function createDockerProvider(
 			}
 		}
 
-		const [launcher, files, search, importer] = await Promise.all([
+		const [launcher, files, search, importer, matcher] = await Promise.all([
 			readFile(new URL('launcher.ts', import.meta.url), 'utf8'),
 			readFile(new URL('file-helper.ts', import.meta.url), 'utf8'),
 			readFile(new URL('search-helper.ts', import.meta.url), 'utf8'),
-			readFile(new URL('import-helper.ts', import.meta.url), 'utf8')
+			readFile(new URL('import-helper.ts', import.meta.url), 'utf8'),
+			readDockerMatcher()
 		]);
 		const resources = new DockerResources(
 			client,
@@ -768,7 +771,7 @@ export function createDockerProvider(
 			request.policy,
 			launcher,
 			client,
-			{ files, search },
+			{ files, search, matcher },
 			() => {
 				active.delete(resources.volume);
 			},

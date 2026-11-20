@@ -841,12 +841,14 @@ socket.on('error', error => {
 					name: 'SandboxOperationError'
 				});
 
-				await expect(
-					sandbox.files.writeFile(
-						'/opt/pi-byos/node_modules/re2js/index.mjs',
-						Uint8Array.of(1)
-					)
-				).rejects.toMatchObject({ name: 'SandboxPermissionDeniedError' });
+				for (const asset of ['index.mjs', 'package.json']) {
+					await expect(
+						sandbox.files.writeFile(
+							'/opt/pi-byos/node_modules/re2js/' + asset,
+							Uint8Array.of(1)
+						)
+					).rejects.toMatchObject({ name: 'SandboxPermissionDeniedError' });
+				}
 
 				expect(
 					await sandbox.search.grep({

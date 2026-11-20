@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
 	copyFile,
+	cp,
 	mkdir,
 	mkdtemp,
 	readFile,
@@ -242,6 +243,20 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 			]);
 
 			expect(packedMatcher).toStrictEqual(originalMatcher);
+
+			const extension = path.join(host, '.pi/extensions/docker');
+
+			await cp(path.join(installed, 'examples/docker/src'), extension, {
+				recursive: true
+			});
+
+			const copiedMatcher = await run(extension, process.execPath, [
+				'--input-type=module',
+				'-e',
+				"import { readDockerMatcher } from './matcher.ts'; process.stdout.write(await readDockerMatcher());"
+			]);
+
+			expect(copiedMatcher.stdout).toBe(originalMatcher[0].toString('utf8'));
 
 			const manifest: unknown = JSON.parse(
 				await readFile(path.join(installed, 'package.json'), 'utf8')

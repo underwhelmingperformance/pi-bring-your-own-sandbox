@@ -6,6 +6,8 @@ import { DockerResources } from '../src/resources.js';
 
 import { operationContext } from './fixture.js';
 
+const helpers = { files: '', search: '', matcher: new Uint8Array() };
+
 it('keeps the file worker while busy and replaces it after an idle interval', async () => {
 	vi.useFakeTimers();
 
@@ -32,7 +34,7 @@ it('keeps the file worker while busy and replaces it after an idle interval', as
 		new DockerResources(client, '/example.sock'),
 		client,
 		{ mount: 'type=volume', readOnly: false },
-		{ files: '', search: '' },
+		helpers,
 		lifetime.signal
 	);
 
@@ -101,7 +103,7 @@ it('confirms an interrupted read and cancels a queued read before dispatch', asy
 		new DockerResources(client, '/example.sock'),
 		client,
 		{ mount: 'type=volume', readOnly: false },
-		{ files: '', search: '' },
+		helpers,
 		lifetime.signal
 	);
 	const active = new AbortController();
@@ -186,7 +188,7 @@ it.each([
 			resources,
 			client,
 			{ mount: 'type=volume', readOnly: false },
-			{ files: '', search: '' },
+			helpers,
 			lifetime.signal
 		);
 
@@ -234,7 +236,7 @@ it('retries a failed idle removal with an independent cleanup deadline', async (
 		new DockerResources(client, '/example.sock'),
 		client,
 		{ mount: 'type=volume', readOnly: false },
-		{ files: '', search: '' },
+		helpers,
 		lifetime.signal
 	);
 
@@ -286,7 +288,7 @@ it('delivers every byte of a full-size file alongside diagnostics', async () => 
 		new DockerResources(client, '/example.sock'),
 		client,
 		{ mount: 'type=volume', readOnly: false },
-		{ files: '', search: '' },
+		helpers,
 		lifetime.signal
 	);
 
@@ -323,7 +325,7 @@ it('releases a cancelled caller while Docker is still creating the worker', asyn
 		new DockerResources(client, '/example.sock'),
 		client,
 		{ mount: 'type=volume', readOnly: false },
-		{ files: '', search: '' },
+		helpers,
 		lifetime.signal
 	);
 	const caller = new AbortController();
@@ -381,7 +383,7 @@ it('sends only accepted write requests to the helper and validates directory res
 			resources,
 			client,
 			{ mount: 'type=volume', readOnly: isReadOnly },
-			{ files: '', search: '' },
+			helpers,
 			lifetime.signal
 		);
 	const writable = create(false);
@@ -471,7 +473,7 @@ it.each(['stdout', 'stderr'] as const)(
 			new DockerResources(client, '/example.sock'),
 			client,
 			{ mount: 'type=volume', readOnly: false },
-			{ files: '', search: '' },
+			helpers,
 			lifetime.signal
 		);
 

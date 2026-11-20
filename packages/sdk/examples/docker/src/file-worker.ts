@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
 
 import type {
 	BackendFileReader,
@@ -57,6 +56,12 @@ const grepValidator = Compile(
 	Type.Object({ matches: Type.Array(matchSchema), truncated: Type.Boolean() })
 );
 
+export interface DockerFileHelpers {
+	readonly files: string;
+	readonly search: string;
+	readonly matcher: Uint8Array;
+}
+
 type FileOperation =
 	| 'find'
 	| 'grep'
@@ -75,7 +80,7 @@ export class DockerFileWorker implements BackendFileReader {
 	readonly #resources: DockerResources;
 	readonly #client: DockerClient;
 	readonly #workspace: { readonly mount: string; readonly readOnly: boolean };
-	readonly #helpers: { readonly files: string; readonly search: string };
+	readonly #helpers: DockerFileHelpers;
 	readonly #lifetime: AbortSignal;
 	#name: string | undefined;
 	#matcherWorker: string | undefined;
@@ -88,7 +93,7 @@ export class DockerFileWorker implements BackendFileReader {
 		resources: DockerResources,
 		client: DockerClient,
 		workspace: { readonly mount: string; readonly readOnly: boolean },
-		helpers: { readonly files: string; readonly search: string },
+		helpers: DockerFileHelpers,
 		lifetime: AbortSignal
 	) {
 		this.#resources = resources;
@@ -162,19 +167,6 @@ export class DockerFileWorker implements BackendFileReader {
 			return;
 		}
 
-		let engine: Uint8Array;
-
-		try {
-			engine = await readFile(new URL('../dist/re2js.mjs', import.meta.url));
-		} catch (error) {
-			throw new SandboxTransportError(this.#identity('grep'), {
-				cause: new Error(
-					'The Docker matcher is unavailable. Run pnpm build in the SDK checkout or install the packed SDK.',
-					{ cause: error }
-				)
-			});
-		}
-
 		await this.#resources.checked(
 			[
 				'exec',
@@ -188,7 +180,7 @@ export class DockerFileWorker implements BackendFileReader {
 			],
 			context,
 			'grep',
-			engine
+			this.#helpers.matcher
 		);
 		this.#matcherWorker = name;
 	}

@@ -1,3 +1,4 @@
+import { isUtf8 } from 'node:buffer';
 import { constants } from 'node:fs';
 import { access, mkdir, open, readdir, stat } from 'node:fs/promises';
 
@@ -128,10 +129,6 @@ try {
 		}
 
 		case 'listDirectory': {
-			const decoder = new TextDecoder('utf-8', {
-				fatal: true,
-				ignoreBOM: true
-			});
 			const entries = await readdir(filename, {
 				withFileTypes: true,
 				encoding: 'buffer'
@@ -139,16 +136,18 @@ try {
 
 			process.stdout.write(
 				JSON.stringify(
-					entries.map((entry) => ({
-						name: decoder.decode(entry.name),
-						kind: entry.isSymbolicLink()
-							? 'symlink'
-							: entry.isDirectory()
-								? 'directory'
-								: entry.isFile()
-									? 'file'
-									: 'other'
-					}))
+					entries
+						.filter((entry) => isUtf8(entry.name))
+						.map((entry) => ({
+							name: entry.name.toString('utf8'),
+							kind: entry.isSymbolicLink()
+								? 'symlink'
+								: entry.isDirectory()
+									? 'directory'
+									: entry.isFile()
+										? 'file'
+										: 'other'
+						}))
 				)
 			);
 			break;

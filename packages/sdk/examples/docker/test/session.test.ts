@@ -680,6 +680,44 @@ socket.on('error', error => {
 			});
 		}, 30_000);
 
+		it('searches representable filenames and truncates before reading omitted context', async () => {
+			await withDockerSession(async ({ sandbox }) => {
+				const setup = await sandbox.exec({
+					kind: 'argv',
+					executable: '/usr/local/bin/node',
+					args: [
+						'-e',
+						`const fs=require('node:fs');fs.mkdirSync('scope');fs.writeFileSync('scope/a','hit\\n');fs.writeFileSync('scope/b','hit\\n'+'\\n'.repeat(65537));fs.writeFileSync(Buffer.concat([Buffer.from('scope/'),Buffer.from([255])]),'hit');`
+					]
+				});
+
+				expect(setup.exit).toStrictEqual({ kind: 'code', code: 0 });
+				expect(
+					await sandbox.search.grep({
+						path: 'scope',
+						pattern: 'hit',
+						literal: true,
+						context: 65_537,
+						limit: 1
+					})
+				).toStrictEqual({
+					matches: [{ path: 'a', line: 1, text: 'hit', before: [], after: [] }],
+					truncated: true
+				});
+				expect(
+					await sandbox.search.find({ path: 'scope', pattern: '*' })
+				).toStrictEqual({ paths: ['a', 'b'], truncated: false });
+
+				const listed = await sandbox.files.listDirectory('scope');
+
+				expect(
+					listed.toSorted((a, b) => a.name.localeCompare(b.name))
+				).toStrictEqual([
+					{ name: 'a', kind: 'file' },
+					{ name: 'b', kind: 'file' }
+				]);
+			});
+		}, 30_000);
 		it('bounds captured target output while draining the complete stream', async () => {
 			await withDockerSession(async ({ sandbox }) => {
 				let delivered = 0;

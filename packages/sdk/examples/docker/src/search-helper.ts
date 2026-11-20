@@ -1,3 +1,4 @@
+import { isUtf8 } from 'node:buffer';
 import { once } from 'node:events';
 import { constants } from 'node:fs';
 import { open, readdir } from 'node:fs/promises';
@@ -48,10 +49,13 @@ async function* walk(
 		const sorted = entries.toSorted((left, right) =>
 			left.name.compare(right.name)
 		);
-		const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 		for (const entry of sorted) {
-			const name = decoder.decode(entry.name);
+			if (!isUtf8(entry.name)) {
+				continue;
+			}
+
+			const name = entry.name.toString('utf8');
 
 			if (name === '.git' || name === 'node_modules') {
 				continue;
@@ -235,7 +239,7 @@ async function* find(): AsyncGenerator<string> {
 	}
 }
 
-async function* grep(): AsyncGenerator<GrepMatch> {
+async function* grep(): AsyncGenerator<() => GrepMatch> {
 	const pattern = options.get('pattern') ?? '';
 	const isIgnoreCase = options.get('ignoreCase') === 'true';
 	const isLiteral = options.get('literal') === 'true';
@@ -271,20 +275,20 @@ async function* grep(): AsyncGenerator<GrepMatch> {
 				regex?.test(line.text) ??
 				(isIgnoreCase ? line.text.toLowerCase() : line.text).includes(needle)
 			) {
-				yield {
+				yield () => ({
 					path: entry.relative,
 					line: number,
 					text: line.text,
 					before: adjacent(content, line.start, context, 'before'),
 					after: adjacent(content, line.next, context, 'after')
-				};
+				});
 			}
 		}
 	}
 }
 
-async function collect<Value>(
-	source: AsyncIterable<Value>,
+async function collect(
+	source: AsyncIterable<string | (() => GrepMatch)>,
 	key: 'paths' | 'matches'
 ) {
 	let count = 0;
@@ -311,7 +315,10 @@ async function collect<Value>(
 			break;
 		}
 
-		await output((count === 0 ? '' : ',') + JSON.stringify(item));
+		await output(
+			(count === 0 ? '' : ',') +
+				JSON.stringify(typeof item === 'string' ? item : item())
+		);
 		count++;
 	}
 

@@ -141,12 +141,15 @@ patterns match basenames. Wildcards skip leading dots unless the pattern
 explicitly matches them. Both searches visit directories in depth-first order
 with entries sorted by name. They skip `.git` and `node_modules` at every depth
 and ignore repository ignore files. Find reports directory symlinks as entries.
-Search does not descend through those links.
+An explicit search root can be a symlink. Below the root, search skips directory
+symlinks. Directory listings and searches skip entries whose names cannot be
+represented as UTF-8.
 
 Grep accepts JavaScript Unicode regular expressions or literal text. It searches
 regular files and skips files larger than 16 MiB or containing NUL bytes. Each
-match includes up to 65,536 requested context lines on each side. A response
-that exceeds this context limit or the 16 MiB transfer limit fails. Both
+returned match can include up to 65,536 context lines on either side. A larger
+context request fails only when that many additional lines exist around a
+returned match. Both find and grep reject encoded responses over 16 MiB. Both
 searches report truncation when another result exists beyond the requested
 count.
 

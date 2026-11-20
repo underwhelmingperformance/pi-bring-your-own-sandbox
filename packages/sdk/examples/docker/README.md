@@ -1,9 +1,9 @@
 # Docker reference provider
 
 This example implements the public provider contract with a local Docker daemon.
-It supports argv, POSIX `sh`, Bash, and the file operations for reading, writing
-and listing. Shell commands, file operations, `search.find` and `search.grep`
-use the same workspace volume.
+It supports argv, POSIX `sh`, Bash, optional PowerShell, and the file operations
+for reading, writing and listing. Shell commands, file operations, `search.find`
+and `search.grep` use the same workspace volume.
 
 The framework's runtime does not depend on Docker. Registering the example does
 not contact the daemon. Docker is required when a consumer acquires an
@@ -73,21 +73,23 @@ and the upstream file/search gaps.
 
 ## Optional PowerShell image
 
-Build the reference toolchain once from `packages/sdk`. Docker verifies the
+Build the reference toolchain once from `packages/sdk` with BuildKit on amd64 or
+arm64. The Dockerfile requires support for `ADD --checksum`. Docker verifies the
 PowerShell archive for the daemon's architecture before it unpacks the runtime.
 
 ```sh
-docker build --iidfile /tmp/byos-powershell-image examples/docker/src/powershell
+image=$(node --input-type=module -e 'import { DOCKER_IMAGE } from "./examples/docker/src/image.ts"; process.stdout.write(DOCKER_IMAGE)')
+docker build --build-arg NODE_IMAGE="$image" --iidfile /tmp/byos-powershell-image examples/docker/src/powershell
 ```
 
 In your trusted extension, pass the full image ID from that file to
 `createDockerProvider({ powerShellImage })` when registering the provider. The
 provider runs a PowerShell startup check on opening. Shell and argv jobs use the
 selected image and the same workspace. PowerShell starts without profiles and
-runs non-interactively. File operations continue to use the pinned Node helper
-image. To include the PowerShell conformance scenario, set
-`BYOS_DOCKER_POWERSHELL_IMAGE` to the image ID when running
-`pnpm test:provider`.
+runs non-interactively with the same 128 MiB memory and 64-process limits as
+other jobs. File operations continue to use the pinned Node helper image. To
+include the PowerShell conformance scenario, set `BYOS_DOCKER_POWERSHELL_IMAGE`
+to the image ID when running `pnpm test:provider`.
 
 ## Workspace and process behaviour
 

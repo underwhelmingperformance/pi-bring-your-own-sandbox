@@ -16,9 +16,12 @@ import type {
 	SandboxProvider
 } from 'pi-bring-your-own-sandbox/api';
 import {
+	isSandboxError,
 	SandboxCancelledError,
 	SandboxCleanupError,
 	SandboxOperationError,
+	SandboxPathNotFoundError,
+	SandboxPermissionDeniedError,
 	SandboxSessionClosingError,
 	StaleSandboxHandleError,
 	UnsupportedSandboxCapabilityError,
@@ -97,7 +100,7 @@ const defaultCapabilities = {
 	shells: ['sh', 'bash']
 } as const;
 
-interface DockerProviderOptions {
+export interface DockerProviderOptions {
 	readonly createClient?: (config: DockerConfig) => DockerClient;
 	/**
 	Immutable ID of the optional trusted image with /opt/powershell/pwsh.
@@ -187,6 +190,62 @@ class DockerBackend implements SandboxBackend {
 			'volume-nocopy',
 			...(isReadOnly ? ['readonly'] : [])
 		]);
+	}
+
+	#powerShellFailure(context: SandboxOpenContext, cause?: unknown) {
+		context.reportDiagnostic({
+			level: 'warning',
+			message:
+				'The selected Docker toolchain must provide executable PowerShell 7 or later at /opt/powershell/pwsh.'
+		});
+
+		return new UnsupportedSandboxCapabilityError(
+			{ operation: 'open', providerId: 'example.docker' },
+			{ cause }
+		);
+	}
+
+	async #checkPowerShell(context: SandboxOpenContext) {
+		let probe: BackendProcessOutcome;
+
+		try {
+			probe = await this.#run(
+				{
+					kind: 'shell',
+					dialect: 'powershell',
+					command: 'if ($PSVersionTable.PSVersion.Major -lt 7) { exit 1 }'
+				},
+				{
+					...context,
+					onOutput() {
+						return;
+					}
+				}
+			);
+		} catch (error) {
+			if (
+				!isSandboxError(error, SandboxPathNotFoundError) &&
+				!isSandboxError(error, SandboxPermissionDeniedError) &&
+				!isSandboxError(error, SandboxOperationError)
+			) {
+				throw error;
+			}
+
+			throw this.#powerShellFailure(context, error);
+		}
+
+		if (probe.kind === 'cancelled') {
+			throw new SandboxCancelledError({
+				operation: 'open',
+				reason: 'caller',
+				completion: probe.termination === 'confirmed' ? 'confirmed' : 'unknown',
+				recovery: this.recovery
+			});
+		}
+
+		if (probe.exit.kind !== 'code' || probe.exit.code !== 0) {
+			throw this.#powerShellFailure(context);
+		}
 	}
 
 	async #run(
@@ -442,36 +501,7 @@ class DockerBackend implements SandboxBackend {
 			}
 
 			if (this.capabilities.shells.includes('powershell')) {
-				const probe = await this.#run(
-					{
-						kind: 'shell',
-						dialect: 'powershell',
-						command: 'if ($PSVersionTable.PSVersion.Major -lt 7) { exit 1 }'
-					},
-					{
-						...context,
-						onOutput() {
-							return;
-						}
-					}
-				);
-
-				if (probe.kind === 'cancelled') {
-					throw new SandboxCancelledError({
-						operation: 'open',
-						reason: 'caller',
-						completion:
-							probe.termination === 'confirmed' ? 'confirmed' : 'unknown',
-						recovery: this.recovery
-					});
-				}
-
-				if (probe.exit.kind !== 'code' || probe.exit.code !== 0) {
-					throw new UnsupportedSandboxCapabilityError({
-						operation: 'open',
-						providerId: 'example.docker'
-					});
-				}
+				await this.#checkPowerShell(context);
 			}
 		} catch (error) {
 			try {
@@ -553,7 +583,7 @@ class DockerBackend implements SandboxBackend {
 /**
 Creates the optional Docker example provider. Connection validation is synchronous;
 opening allocates a copied workspace volume on a local Unix-socket daemon.
-Pass a client factory to test daemon failures without allocating containers.
+Use an immutable image ID to add PowerShell, or supply a client factory for tests.
 */
 export function createDockerProvider(
 	options: DockerProviderOptions | ((config: DockerConfig) => DockerClient) = {}
@@ -627,6 +657,29 @@ export function createDockerProvider(
 		const client =
 			createClient?.(request.configuration) ??
 			new NodeDockerClient(request.configuration);
+
+		if (powerShellImage !== undefined) {
+			const inspected = await client.command({
+				args: ['image', 'inspect', '--format', '{{.Id}}', powerShellImage],
+				context,
+				operation: 'open',
+				recovery: { kind: 'none' }
+			});
+
+			if (inspected.status !== 0) {
+				context.reportDiagnostic({
+					level: 'warning',
+					message:
+						'Build the configured PowerShell image on the selected Docker daemon before opening the workspace.'
+				});
+
+				throw new UnsupportedSandboxCapabilityError({
+					operation: 'open',
+					providerId: 'example.docker'
+				});
+			}
+		}
+
 		const [launcher, files, search, importer] = await Promise.all([
 			readFile(new URL('launcher.ts', import.meta.url), 'utf8'),
 			readFile(new URL('file-helper.ts', import.meta.url), 'utf8'),

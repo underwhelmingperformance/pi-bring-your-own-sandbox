@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+
 import type {
 	BackendProcessContext,
 	SandboxOpenRequest,
@@ -35,6 +37,8 @@ class FakeDocker implements DockerClient {
 	hasLostRemoval = false;
 	status = 0;
 	bootstrapStatus = 0;
+	imageStatus = 0;
+	launchFailure: 'not-found' | 'permission-denied' | undefined;
 	lostCreation: 'volume' | 'container' | undefined;
 	readonly pendingAllocations: (() => void)[] = [];
 
@@ -65,6 +69,14 @@ class FakeDocker implements DockerClient {
 			return Promise.reject(
 				new SandboxTransportError({ operation: command.operation })
 			);
+		}
+
+		if (operation === 'image') {
+			return Promise.resolve({
+				status: this.imageStatus,
+				stdout: new Uint8Array(),
+				stderr: new Uint8Array()
+			});
 		}
 
 		const result = (stdout = '') =>
@@ -167,10 +179,14 @@ class FakeDocker implements DockerClient {
 				command.onOutput?.({
 					stream: 'stdout',
 					data: new TextEncoder().encode(
-						JSON.stringify({
-							kind: 'exited',
-							exit: { kind: 'code', code: this.status }
-						}) + '\n'
+						JSON.stringify(
+							this.launchFailure
+								? { kind: this.launchFailure }
+								: {
+										kind: 'exited',
+										exit: { kind: 'code', code: this.status }
+									}
+						) + '\n'
 					)
 				});
 			}
@@ -834,4 +850,103 @@ it('advertises PowerShell only for a trusted image selected by immutable ID', ()
 	expect(() =>
 		createDockerProvider({ powerShellImage: 'local:latest' })
 	).toThrow('immutable Docker image ID');
+});
+
+it.each([
+	'missing image',
+	'not-found',
+	'permission-denied',
+	'nonzero',
+	'available'
+] as const)(
+	'checks the optional Docker PowerShell runtime during open: %s',
+	async (mode) => {
+		const docker = new FakeDocker();
+
+		docker.imageStatus = mode === 'missing image' ? 1 : 0;
+		docker.launchFailure =
+			mode === 'not-found' || mode === 'permission-denied' ? mode : undefined;
+		docker.status = mode === 'nonzero' ? 7 : 0;
+
+		const powerShellImage = 'sha256:' + 'a'.repeat(64);
+		const provider = createDockerProvider({
+			createClient: () => docker,
+			powerShellImage
+		});
+		const pending = provider.open(request, {
+			...context(),
+			reportRecovery() {
+				return;
+			},
+			confirmCleanup() {
+				return;
+			}
+		});
+
+		if (mode !== 'available') {
+			await expect(pending).rejects.toMatchObject({
+				name: 'UnsupportedSandboxCapabilityError',
+				operation: 'open'
+			});
+			expect(docker.isVolumePresent).toBe(false);
+
+			if (mode === 'missing image') {
+				expect(docker.commands.map((command) => command.args)).toStrictEqual([
+					['image', 'inspect', '--format', '{{.Id}}', powerShellImage]
+				]);
+			}
+
+			return;
+		}
+
+		const backend = await pending;
+
+		try {
+			await backend.exec(
+				{ kind: 'shell', dialect: 'powershell', command: 'exit 0' },
+				{
+					...context(),
+					onOutput() {
+						return;
+					}
+				}
+			);
+
+			const jobs = docker.commands
+				.filter(
+					(command) =>
+						command.args[0] === 'create' &&
+						command.args.includes(powerShellImage)
+				)
+				.map((command) => JSON.parse(command.args.at(-1) ?? 'null') as unknown);
+
+			expect(jobs).toStrictEqual(
+				['if ($PSVersionTable.PSVersion.Major -lt 7) { exit 1 }', 'exit 0'].map(
+					(command) => ({
+						cwd: '/workspace',
+						env: {},
+						executable: '/opt/powershell/pwsh',
+						args: [
+							'-NoLogo',
+							'-NoProfile',
+							'-NonInteractive',
+							'-Command',
+							command
+						]
+					})
+				)
+			);
+		} finally {
+			await backend.dispose(context());
+		}
+	}
+);
+
+it('builds the optional toolchain on the pinned Docker job image by default', async () => {
+	const dockerfile = await readFile(
+		new URL('../src/powershell/Dockerfile', import.meta.url),
+		'utf8'
+	);
+
+	expect(dockerfile.split('\n')).toContain('ARG NODE_IMAGE=' + DOCKER_IMAGE);
 });

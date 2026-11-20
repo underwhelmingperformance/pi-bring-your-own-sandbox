@@ -1,5 +1,6 @@
 ARG TARGETARCH
-FROM node@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c AS runtime
+ARG NODE_IMAGE=node@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c
+FROM ${NODE_IMAGE} AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgssapi-krb5-2 libicu72 libssl3 && rm -rf /var/lib/apt/lists/*
 
@@ -13,4 +14,5 @@ FROM archive-${TARGETARCH} AS unpack
 RUN mkdir -p /opt/powershell && tar -xzf /tmp/powershell.tar.gz -C /opt/powershell && chmod 0755 /opt/powershell/pwsh
 
 FROM runtime
+ENV POWERSHELL_TELEMETRY_OPTOUT=1 POWERSHELL_UPDATECHECK=Off
 COPY --from=unpack /opt/powershell /opt/powershell

@@ -487,7 +487,12 @@ socket.on('error', error => {
 						});
 					},
 					[
-						{ name: 'sandbox-tools', factory: sandboxTools },
+						{
+							name: 'sandbox-tools',
+							factory: (pi) => {
+								sandboxTools(pi, '<inline:sandbox-tools>');
+							}
+						},
 						model.extension,
 						{
 							name: 'fake-approver',

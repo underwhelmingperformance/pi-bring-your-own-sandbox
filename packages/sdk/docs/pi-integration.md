@@ -103,9 +103,13 @@ The shell extension answers synchronous queries on Pi's
 `pi-byos:review:tool-call:v1` event channel. A reviewer can send
 `{ kind: 'available', reply }` to discover whether Pi has a routed shell. For a
 local permission request, send `{ sessionId, toolName, toolCallId, reply }`
-during the pending tool call. Require exactly one synchronous reply. The reply
-supplies a function that takes the review's abort signal and opens a fresh
-[review snapshot][review-protocol]. Close the snapshot when the review ends.
+during the pending tool call. That request requires exactly one synchronous
+reply. The reply supplies a function that takes the review's abort signal and
+opens a fresh [review snapshot][review-protocol]. Close the snapshot when the
+review ends.
+
+When an extension wraps the routing factory, pass its own Pi entry path as the
+second argument to the factory. Pi reports this path on the selected tool.
 
 Load the routing extension before the permission gate so the router can record
 the pending call. An unknown call, an overridden tool or a forwarded request

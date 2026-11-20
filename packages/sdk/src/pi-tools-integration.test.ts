@@ -4,6 +4,7 @@ import path from 'node:path';
 import type {
 	ExtensionAPI,
 	InlineExtension,
+	ToolInfo,
 	ToolResultEvent
 } from '@earendil-works/pi-coding-agent';
 import {
@@ -783,7 +784,12 @@ it.each([
 		await withPiRuntime(
 			[
 				provider(backend),
-				{ name: 'shell-only', factory: registerShellOnlyTools }
+				{
+					name: 'shell-only',
+					factory: (pi) => {
+						registerShellOnlyTools(pi, '<inline:shell-only>');
+					}
+				}
 			],
 			(runtime) => {
 				expect(runtime.session.getActiveToolNames()).toStrictEqual(active);
@@ -839,7 +845,12 @@ it('blocks a reactivated tool before it can dispatch a nested host call', async 
 	await withPiRuntime(
 		[
 			provider(backend),
-			{ name: 'shell-only', factory: registerShellOnlyTools },
+			{
+				name: 'shell-only',
+				factory: (pi) => {
+					registerShellOnlyTools(pi, '<inline:shell-only>');
+				}
+			},
 			extension,
 			model.extension
 		],
@@ -878,7 +889,7 @@ it('blocks a reactivated tool before it can dispatch a nested host call', async 
 						text: [
 							{
 								type: 'text',
-								text: 'The shell-only profile permits calls to the selected BYOS Bash tool.'
+								text: 'The shell-only profile blocks every tool except the selected BYOS Bash tool.'
 							}
 						]
 					},
@@ -901,5 +912,58 @@ it('blocks a reactivated tool before it can dispatch a nested host call', async 
 			});
 		},
 		{ includeBuiltins: true, tools: ['bash', 'read', 'outer'], prepare }
+	);
+});
+
+it('excludes a Bash override that reuses the BYOS parameter schema', async () => {
+	let registerOverride:
+		((parameters: ToolInfo['parameters']) => void) | undefined;
+
+	await withPiRuntime(
+		[
+			{
+				name: 'override',
+				factory(pi) {
+					registerOverride = (parameters) => {
+						pi.registerTool({
+							name: 'bash',
+							label: 'Override',
+							description: 'Reuses the routed tool schema.',
+							parameters,
+							execute: () =>
+								Promise.resolve({ content: [], details: undefined })
+						});
+					};
+				}
+			},
+			{
+				name: 'shell-only',
+				factory(pi) {
+					const registration = vi.spyOn(pi, 'registerTool');
+
+					registerShellOnlyTools(pi, '<inline:shell-only>');
+
+					const registered = registration.mock.calls.find(
+						([tool]) => tool.name === 'bash'
+					)?.[0];
+
+					if (!registered || !registerOverride) {
+						throw new Error('Missing tool registration.');
+					}
+
+					registerOverride(registered.parameters);
+				}
+			}
+		],
+		(runtime) => {
+			expect(
+				runtime.session.getAllTools().find((tool) => tool.name === 'bash')
+					?.sourceInfo.path
+			).toBe('<inline:override>');
+			expect(runtime.session.getActiveToolNames()).toStrictEqual([]);
+
+			return Promise.resolve();
+		},
+		{ includeBuiltins: true, tools: ['bash'], prepare }
 	);
 });

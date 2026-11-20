@@ -59,14 +59,7 @@ function isReviewQuery(message: unknown): message is ReviewQuery {
 export class ShellReviewRoutes {
 	readonly #routes = new Map<string, Route>();
 
-	constructor(pi: ExtensionAPI, toolName: string, parameters: object) {
-		const isSelected = () =>
-			pi
-				.getAllTools()
-				.some(
-					(tool) => tool.name === toolName && tool.parameters === parameters
-				);
-
+	constructor(pi: ExtensionAPI, toolName: string, isSelected: () => boolean) {
 		pi.on('tool_call', (event, context) => {
 			if (event.toolName !== toolName || !isSelected()) {
 				return;

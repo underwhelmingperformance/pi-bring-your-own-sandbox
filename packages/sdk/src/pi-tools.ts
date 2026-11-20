@@ -14,7 +14,11 @@ import { createShellOperations } from './pi-shell-operations.js';
 import { ShellReviewRoutes } from './shell-review-routes.js';
 import { registerUserShell } from './user-shell.js';
 
-function shellDefinition(pi: ExtensionAPI, dialect: 'bash' | 'powershell') {
+function shellDefinition(
+	pi: ExtensionAPI,
+	dialect: 'bash' | 'powershell',
+	extensionPath: string
+) {
 	const create =
 		dialect === 'bash'
 			? createBashToolDefinition
@@ -45,9 +49,18 @@ function shellDefinition(pi: ExtensionAPI, dialect: 'bash' | 'powershell') {
 		{ additionalProperties: false }
 	);
 
-	const reviews = new ShellReviewRoutes(pi, dialect, parameters);
+	const isSelected = () =>
+		pi
+			.getAllTools()
+			.some(
+				(tool) =>
+					tool.name === dialect &&
+					tool.sourceInfo.path === extensionPath &&
+					tool.parameters === parameters
+			);
+	const reviews = new ShellReviewRoutes(pi, dialect, isSelected);
 
-	return defineTool({
+	const tool = defineTool({
 		...base,
 		defaultActive: false,
 		parameters,
@@ -94,6 +107,8 @@ function shellDefinition(pi: ExtensionAPI, dialect: 'bash' | 'powershell') {
 			return tool.execute(id, input, signal, update, context);
 		}
 	});
+
+	return { tool, isSelected };
 }
 
 /**
@@ -101,34 +116,35 @@ Connects Pi's bash, PowerShell and user-shell operation hooks to the selected
 sandbox. Load this entry explicitly. Pi retains tool execution and rendering;
 file and search tools remain outside this integration's supported paths.
 */
-export default function sandboxTools(pi: ExtensionAPI): void {
-	pi.registerTool(shellDefinition(pi, 'bash'));
-	pi.registerTool(shellDefinition(pi, 'powershell'));
+export default function sandboxTools(
+	pi: ExtensionAPI,
+	extensionPath = import.meta.filename
+): void {
+	pi.registerTool(shellDefinition(pi, 'bash', extensionPath).tool);
+	pi.registerTool(shellDefinition(pi, 'powershell', extensionPath).tool);
 	registerUserShell(pi);
 	registerShellIntegrationDiagnostics(pi.events);
 }
 
 /**
-Expose the routed Bash tool when Pi's loadout selects it. Check each call
-because Pi can invoke deferred tools indirectly after they leave the loadout.
+Keep the selected BYOS Bash tool at session start and before each prompt.
+Block direct and nested calls to tools outside that selection. Pass the Pi
+extension entry path so an override cannot claim the routed tool.
 */
-export function registerShellOnlyTools(pi: ExtensionAPI): void {
-	const bash = shellDefinition(pi, 'bash');
+export function registerShellOnlyTools(
+	pi: ExtensionAPI,
+	extensionPath: string
+): void {
+	const bash = shellDefinition(pi, 'bash', extensionPath);
 
-	pi.registerTool(bash);
+	pi.registerTool(bash.tool);
 	registerUserShell(pi);
 	registerShellIntegrationDiagnostics(pi.events);
 
-	const isRegisteredBash = () =>
-		pi
-			.getAllTools()
-			.some(
-				(tool) => tool.name === 'bash' && tool.parameters === bash.parameters
-			);
 	const select = () => {
 		const selected = pi.getActiveTools();
 		const allowed = selected.filter(
-			(name) => name === 'bash' && isRegisteredBash()
+			(name) => name === 'bash' && bash.isSelected()
 		);
 
 		if (allowed.length !== selected.length) {
@@ -142,7 +158,7 @@ export function registerShellOnlyTools(pi: ExtensionAPI): void {
 		if (
 			event.toolName === 'bash' &&
 			pi.getActiveTools().includes('bash') &&
-			isRegisteredBash()
+			bash.isSelected()
 		) {
 			return;
 		}
@@ -150,7 +166,7 @@ export function registerShellOnlyTools(pi: ExtensionAPI): void {
 		return {
 			block: true,
 			reason:
-				'The shell-only profile permits calls to the selected BYOS Bash tool.'
+				'The shell-only profile blocks every tool except the selected BYOS Bash tool.'
 		};
 	});
 }

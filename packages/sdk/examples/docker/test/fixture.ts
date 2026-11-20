@@ -473,8 +473,9 @@ export class DockerFixture {
 					args: [
 						'--input-type=module',
 						'-e',
-						`import {existsSync,readFileSync} from 'node:fs';
+						`import {existsSync,readFileSync,writeFileSync} from 'node:fs';
 import {setTimeout} from 'node:timers/promises';
+writeFileSync("/tmp/peer-ready","");
 process.stdout.write("ready");
 while (!existsSync("/tmp/response")) await setTimeout(10);
 process.stdout.write(readFileSync("/tmp/response"));`
@@ -495,15 +496,36 @@ process.stdout.write(readFileSync("/tmp/response"));`
 						'--format',
 						'{{.ID}}'
 					]);
-					const peer = running.trim();
+					const candidates = running.trim().split('\n').filter(Boolean);
+					const peers = [];
 
-					expect(peer).toMatch(/^[0-9a-f]+$/);
+					for (const id of candidates) {
+						const marked = await this.docker([
+							'exec',
+							id,
+							'/bin/sh',
+							'-c',
+							'if [ -f /tmp/peer-ready ]; then printf ready; fi'
+						]);
+
+						if (marked === 'ready') {
+							peers.push(id);
+						}
+					}
+
+					const [peer] = peers;
+
+					if (!peer || peers.length !== 1) {
+						throw new Error('Expected one waiting Docker peer.');
+					}
+
 					await this.docker([
 						'exec',
 						peer,
-						'/usr/local/bin/node',
-						'-e',
-						'const fs=require("node:fs");fs.writeFileSync("/tmp/pending",Buffer.from(process.argv[1],"base64"));fs.renameSync("/tmp/pending","/tmp/response")',
+						'/bin/sh',
+						'-ec',
+						'printf %s "$1" | base64 -d > /tmp/pending && mv /tmp/pending /tmp/response',
+						'release',
 						Buffer.from(bytes).toString('base64')
 					]);
 				}

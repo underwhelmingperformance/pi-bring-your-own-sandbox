@@ -24,7 +24,7 @@ import {
 	isFindResult,
 	isGrepResult
 } from './file-result.js';
-import { OperationScope } from './lifecycle.js';
+import { OperationScope, settleOperation } from './lifecycle.js';
 import type {
 	SandboxPolicyScenario,
 	SandboxProcessProbe,
@@ -55,7 +55,10 @@ interface ContractCase {
 }
 
 async function bounded<Value>(
-	options: Pick<SandboxProviderTestOptions<unknown>, 'timeoutMs' | 'cleanup'>,
+	options: Pick<
+		SandboxProviderTestOptions<unknown>,
+		'timeoutMs' | 'cleanup'
+	> & { readonly drainOnTimeout?: boolean },
 	run: (context: SandboxOperationContext) => Promise<Value>,
 	operation: SandboxOperation = 'exec'
 ): Promise<Value> {
@@ -72,14 +75,20 @@ async function bounded<Value>(
 		cleanup
 	);
 
+	const running = Promise.try(() => run(scope.context));
+
 	async function expired(): Promise<never> {
 		await scope.whenCancelled();
+
+		if (options.drainOnTimeout) {
+			await settleOperation(scope, running);
+		}
 
 		throw new Error('The provider contract operation exceeded its deadline.');
 	}
 
 	try {
-		const result = await Promise.race([run(scope.context), expired()]);
+		const result = await Promise.race([running, expired()]);
 
 		scope.check('unknown');
 
@@ -172,7 +181,7 @@ export async function usingProviderFixture<Config>(
 
 		const opened = backend;
 
-		await bounded(deadlines, (context) =>
+		await bounded({ ...deadlines, drainOnTimeout: true }, (context) =>
 			run(fixture, opened, context, (verify) => {
 				afterDisposal.push(verify);
 			})
@@ -487,7 +496,8 @@ async function checkConcurrentCancellation(
 			'The peer must start and wait for release.'
 		).toBe(true);
 		await cancelReadyJob(fixture, backend, context, cleanup);
-		await peer.release(response);
+		await Promise.race([peer.release(response), scope.whenCancelled()]);
+		scope.check();
 
 		const outcome = await Promise.race([running, scope.whenCancelled()]);
 		const exit =

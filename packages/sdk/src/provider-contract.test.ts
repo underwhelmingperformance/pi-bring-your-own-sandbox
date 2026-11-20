@@ -788,9 +788,9 @@ it('requires a peer job when checking concurrent cancellation', async () => {
 	);
 });
 
-it.each([true, false])(
+it.each(['survives', 'exits early', 'cancelled'] as const)(
 	'checks whether a concurrent job survives cancellation (%s)',
-	async (survives) => {
+	async (mode) => {
 		const base = contractScenario();
 		const open = base.provider.open;
 		const gate = Promise.withResolvers<Uint8Array>();
@@ -825,7 +825,7 @@ it.each([true, false])(
 							context: BackendProcessContext
 						) {
 							if (process.kind !== 'argv' || process.executable !== 'peer') {
-								if (!survives) {
+								if (mode !== 'survives') {
 									context.signal.addEventListener(
 										'abort',
 										() => {
@@ -839,7 +839,17 @@ it.each([true, false])(
 							}
 
 							context.onOutput({ stream: 'stdout', data: ready });
-							context.onOutput({ stream: 'stdout', data: await gate.promise });
+
+							const bytes = await gate.promise;
+
+							if (mode === 'cancelled') {
+								return {
+									kind: 'cancelled' as const,
+									termination: 'confirmed' as const
+								};
+							}
+
+							context.onOutput({ stream: 'stdout', data: bytes });
 
 							return {
 								kind: 'exited' as const,
@@ -860,7 +870,7 @@ it.each([true, false])(
 
 		const result = usingProviderFixture(scenario, entry.run);
 
-		if (survives) {
+		if (mode === 'survives') {
 			await result;
 
 			return;
@@ -977,3 +987,54 @@ it.each([false, true])(
 		await result;
 	}
 );
+
+it('waits for a cancelled scenario to release its active job before disposal', async () => {
+	vi.useFakeTimers();
+
+	const base = contractScenario();
+	let isPending = false;
+	const events: string[] = [];
+
+	try {
+		const run = usingProviderFixture(
+			{
+				...base,
+				timeoutMs: 50,
+				cleanup: { cancellationGraceMs: 100 },
+				provider: {
+					...base.provider,
+					async open(...arguments_) {
+						const backend = await base.provider.open(...arguments_);
+
+						return {
+							...backend,
+							async dispose(context) {
+								events.push(isPending ? 'disposed while running' : 'disposed');
+								await backend.dispose(context);
+							}
+						};
+					}
+				}
+			},
+			async (_fixture, _backend, context) => {
+				isPending = true;
+				await new Promise<void>((resolve) => {
+					context.signal.addEventListener(
+						'abort',
+						() => setTimeout(resolve, 25),
+						{ once: true }
+					);
+				});
+				isPending = false;
+				events.push('stopped');
+			}
+		);
+		const rejected = expect(run).rejects.toThrow();
+
+		await vi.advanceTimersByTimeAsync(200);
+		await rejected;
+		expect(events).toStrictEqual(['stopped', 'disposed']);
+	} finally {
+		vi.useRealTimers();
+	}
+});

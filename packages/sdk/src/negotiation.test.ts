@@ -580,12 +580,17 @@ it('shares equivalent protection sets while separating different resources', asy
 
 		const status = await generation.status();
 
-		expect(
-			status.backends?.map((backend) => backend.effectivePolicy)
-		).toStrictEqual([
-			{ ...first.policy, workspaceRelationship: 'remote' },
-			{ ...other.policy, workspaceRelationship: 'remote' }
-		]);
+		expect(status.backends).toStrictEqual(
+			[first, other].map((sandbox) => ({
+				policy: sandbox.policy,
+				backendId: sandbox.backendId,
+				state: 'ready',
+				effectivePolicy: {
+					...sandbox.policy,
+					workspaceRelationship: sandbox.workspace.relationship
+				}
+			}))
+		);
 
 		expect({
 			shared: first.backendId === repeated.backendId,

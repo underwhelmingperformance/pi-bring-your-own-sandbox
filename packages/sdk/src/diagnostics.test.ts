@@ -82,7 +82,7 @@ it('distinguishes the default policy from an explicitly acquired protected works
 			'Requested policy: workspace read-write; filesystem provider-default; network provider-default; protected resources: none',
 			'User shell: provider default (not opened)',
 			'Additional backend "review" (ready)',
-			'Effective policy: workspace read-only (copied); filesystem provider-default; network provider-default; protected resources: Git metadata, "policy\\nfile\\u{202e}\\u{200b}\\u{e0001}"'
+			'Effective policy: workspace read-only (copied); filesystem provider-default; network provider-default; protected resources: Git metadata, "policy\\nfile\\u202e\\u200b\\udb40\\udc01"'
 		].join('\n')
 	);
 });

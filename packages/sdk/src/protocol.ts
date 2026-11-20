@@ -243,8 +243,9 @@ export interface SandboxStatus {
 	readonly capabilities?: SandboxCapabilities;
 
 	/**
-	Effective protections after backend validation. Before startup, only the
-	requested policy in `selection` is available.
+	Effective base policy after backend validation, including the workspace
+	relationship. Older brokers may report the relationship only in `workspace`.
+	Before startup, only the requested policy in `selection` is available.
 	*/
 	readonly policy?: SandboxPolicy;
 

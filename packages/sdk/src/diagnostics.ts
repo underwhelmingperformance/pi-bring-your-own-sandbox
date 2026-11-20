@@ -10,7 +10,14 @@ function list(values: readonly string[]): string {
 function quoted(value: string): string {
 	return JSON.stringify(value).replaceAll(
 		/[\p{Control}\p{Format}\p{Line_Separator}\p{Paragraph_Separator}]/gu,
-		(character) => '\\u{' + (character.codePointAt(0) ?? 0).toString(16) + '}'
+		(character) =>
+			character
+				.split('')
+				.map(
+					(unit) =>
+						'\\u' + (unit.codePointAt(0) ?? 0).toString(16).padStart(4, '0')
+				)
+				.join('')
 	);
 }
 
@@ -103,6 +110,22 @@ export function formatStatus(status: SandboxStatus): string {
 		lines.push(`Failure: ${status.failure.name}: ${status.failure.message}`);
 	}
 
+	for (const backend of additional) {
+		const id =
+			backend.backendId === undefined ? '' : ' ' + quoted(backend.backendId);
+		const state =
+			status.state === 'closing' || status.state === 'closed'
+				? 'last state: ' + backend.state
+				: backend.state;
+
+		lines.push(
+			`Additional backend${id} (${state})`,
+			backend.effectivePolicy === undefined
+				? `Requested policy: ${policy(backend.policy)}`
+				: `Effective policy: ${policy(backend.effectivePolicy)}`
+		);
+	}
+
 	const report = status.closeReport;
 
 	lines.push(...formatProviderDiagnostics(status));
@@ -119,22 +142,6 @@ export function formatStatus(status: SandboxStatus): string {
 				failures: [],
 				recoveries: [status.failure.recovery]
 			})
-		);
-	}
-
-	for (const backend of additional) {
-		const id =
-			backend.backendId === undefined ? '' : ' ' + quoted(backend.backendId);
-		const state =
-			status.state === 'closing' || status.state === 'closed'
-				? 'last state: ' + backend.state
-				: backend.state;
-
-		lines.push(
-			`Additional backend${id} (${state})`,
-			backend.effectivePolicy === undefined
-				? `Requested policy: ${policy(backend.policy)}`
-				: `Effective policy: ${policy(backend.effectivePolicy)}`
 		);
 	}
 

@@ -112,12 +112,15 @@ requirement.
 performs the same checks without opening a backend. It resolves to
 `{ ok: true, policy }` or `{ ok: false, error }`, where `error` is the typed
 error that acquisition would throw. Status includes one entry under `backends`
-for each distinct negotiated policy that an acquisition has requested. Each
-entry includes the opening state. After a backend opens, its entry includes the
-backend ID and `effectivePolicy`. The effective policy includes the actual
+for each distinct negotiated policy that an acquisition has requested. An entry
+can be `opening`, `ready` or `failed`. After a backend opens, its entry includes
+the backend ID and `effectivePolicy`. The effective policy includes the actual
 workspace relationship and any additional restrictions that the backend
-enforces. Older brokers may omit `effectivePolicy`. The top-level backend fields
-describe the allocation for the base policy.
+enforces. The top-level `policy` reports the same information for the base
+allocation. Older brokers can omit `effectivePolicy` and the relationship in the
+top-level policy. The acquired sandbox exposes the provider's policy as
+`sandbox.policy` and the actual relationship as
+`sandbox.workspace.relationship`.
 
 `WorkspaceProtection` is either `{ kind: 'git-metadata' }` or
 `{ kind: 'path', path: string }`. `SandboxPolicy.workspaceProtection` is an

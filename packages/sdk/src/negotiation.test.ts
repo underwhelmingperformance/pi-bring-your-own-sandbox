@@ -292,8 +292,11 @@ it('keeps other backends usable after one fails to open', async () => {
 	await generation.close();
 });
 
-it('lists every open backend in status', async () => {
-	const { generation, context } = fixture();
+it('lists negotiated and effective policies for every open backend', async () => {
+	const { generation, context } = fixture({
+		open: (policy) =>
+			Promise.resolve(new PolicyBackend({ ...policy, networkAccess: 'denied' }))
+	});
 
 	await generation.acquire(context);
 	await generation.acquire(context, { policy: RESTRICTED });
@@ -303,11 +306,17 @@ it('lists every open backend in status', async () => {
 	expect(status.backends).toStrictEqual([
 		{
 			policy: PERSONAL,
+			effectivePolicy: {
+				...PERSONAL,
+				networkAccess: 'denied',
+				workspaceRelationship: 'remote'
+			},
 			state: 'ready',
-			backendId: 'memory:read-write:provider-default'
+			backendId: 'memory:read-write:denied'
 		},
 		{
 			policy: RESTRICTED,
+			effectivePolicy: { ...RESTRICTED, workspaceRelationship: 'remote' },
 			state: 'ready',
 			backendId: 'memory:read-only:denied'
 		}

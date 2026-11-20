@@ -1,9 +1,18 @@
 import { formatCleanupReport } from './cleanup-report.js';
 import type { SandboxPolicy } from './contracts.js';
+import { policyKey } from './negotiation.js';
 import type { ProviderInfo, SandboxStatus } from './protocol.js';
 
 function list(values: readonly string[]): string {
 	return values.length === 0 ? 'none' : values.join(', ');
+}
+
+function quoted(value: string): string {
+	return JSON.stringify(value).replaceAll(
+		/[\p{Control}\p{Bidi_Control}\p{Line_Separator}\p{Paragraph_Separator}]/gu,
+		(character) =>
+			'\\u' + (character.codePointAt(0) ?? 0).toString(16).padStart(4, '0')
+	);
 }
 
 function policy(value: SandboxPolicy): string {
@@ -12,7 +21,12 @@ function policy(value: SandboxPolicy): string {
 			? ''
 			: ` (${value.workspaceRelationship})`;
 
-	return `workspace ${value.workspaceAccess}${relationship}; filesystem ${value.filesystemScope}; network ${value.networkAccess}`;
+	const protectedResources = (value.workspaceProtection ?? []).map(
+		(resource) =>
+			resource.kind === 'git-metadata' ? 'Git metadata' : quoted(resource.path)
+	);
+
+	return `workspace ${value.workspaceAccess}${relationship}; filesystem ${value.filesystemScope}; network ${value.networkAccess}; protected resources: ${list(protectedResources)}`;
 }
 
 function userShell(status: SandboxStatus): string {
@@ -32,6 +46,11 @@ function userShell(status: SandboxStatus): string {
 
 export function formatStatus(status: SandboxStatus): string {
 	const selection = status.selection;
+	const baseKey =
+		selection === undefined ? undefined : policyKey(selection.policy);
+	const additional = (status.backends ?? []).filter(
+		(backend) => policyKey(backend.policy) !== baseKey
+	);
 	const lines = [
 		selection === undefined
 			? 'Provider: unavailable'
@@ -46,7 +65,9 @@ export function formatStatus(status: SandboxStatus): string {
 
 	lines.push(
 		status.workspace === undefined
-			? 'Target: not opened'
+			? additional.length === 0
+				? 'Target: not opened'
+				: 'Default target: not opened'
 			: `Target: ${status.workspace.root} (${status.workspace.relationship})`
 	);
 
@@ -67,6 +88,22 @@ export function formatStatus(status: SandboxStatus): string {
 	}
 
 	lines.push(`User shell: ${userShell(status)}`);
+
+	for (const backend of additional) {
+		const id =
+			backend.backendId === undefined ? '' : ' ' + quoted(backend.backendId);
+		const state =
+			status.state === 'closed'
+				? 'last state: ' + backend.state
+				: backend.state;
+
+		lines.push(
+			`Additional backend${id} (${state})`,
+			backend.effectivePolicy === undefined
+				? `Requested policy: ${policy(backend.policy)}`
+				: `Effective policy: ${policy(backend.effectivePolicy)}`
+		);
+	}
 
 	if (status.providerLabel !== undefined) {
 		lines.push(`Provider description: ${status.providerLabel}`);

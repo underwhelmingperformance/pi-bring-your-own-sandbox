@@ -992,7 +992,13 @@ export class SandboxGeneration {
 				Object.freeze({
 					policy: slot.policy,
 					state: slot.state,
-					...(slot.backend !== undefined && { backendId: slot.backend.id })
+					...(slot.backend !== undefined && {
+						backendId: slot.backend.id,
+						effectivePolicy: Object.freeze({
+							...slot.backend.policy,
+							workspaceRelationship: slot.backend.workspace.relationship
+						})
+					})
 				})
 			)
 			.toArray();

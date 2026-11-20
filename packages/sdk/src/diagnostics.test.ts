@@ -31,12 +31,58 @@ it('shows a configured shell that the ready backend does not support', () => {
 			'Generation: generation',
 			'Backend: memory',
 			'Target: /remote/project (remote)',
-			'Effective policy: workspace read-write; filesystem provider-default; network provider-default',
+			'Effective policy: workspace read-write; filesystem provider-default; network provider-default; protected resources: none',
 			'Operations: exec, files.read, files.write, files.list',
 			'Termination scope: workload',
 			'Shells: none',
 			'User shell: powershell (configured; unavailable on this backend)',
 			'Boundary: In-memory test fixture; no OS isolation.'
+		].join('\n')
+	);
+});
+
+it('distinguishes the default policy from an explicitly acquired protected workspace', () => {
+	const backend = new MemoryBackend();
+	const requested = {
+		...backend.policy,
+		workspaceAccess: 'read-only' as const
+	};
+
+	expect(
+		formatStatus({
+			generationId: 'generation',
+			state: 'idle',
+			selection: {
+				providerId: 'fixture',
+				source: 'extension',
+				policy: backend.policy
+			},
+			backends: [
+				{
+					backendId: 'review',
+					state: 'ready',
+					policy: requested,
+					effectivePolicy: {
+						...requested,
+						workspaceRelationship: 'copied',
+						workspaceProtection: [
+							{ kind: 'git-metadata' },
+							{ kind: 'path', path: 'policy\nfile\u{202E}' }
+						]
+					}
+				}
+			]
+		})
+	).toBe(
+		[
+			'Provider: fixture (extension)',
+			'State: idle',
+			'Generation: generation',
+			'Default target: not opened',
+			'Requested policy: workspace read-write; filesystem provider-default; network provider-default; protected resources: none',
+			'User shell: provider default (not opened)',
+			'Additional backend "review" (ready)',
+			'Effective policy: workspace read-only (copied); filesystem provider-default; network provider-default; protected resources: Git metadata, "policy\\nfile\\u202e"'
 		].join('\n')
 	);
 });
@@ -73,7 +119,7 @@ it('shows allocation recovery instructions and expiry when cleanup is incomplete
 			'State: closed',
 			'Generation: generation',
 			'Target: not opened',
-			'Requested policy: workspace read-write; filesystem provider-default; network provider-default',
+			'Requested policy: workspace read-write; filesystem provider-default; network provider-default; protected resources: none',
 			'User shell: provider default (not opened)',
 			'Cleanup: incomplete',
 			'Recovery: allocation (lease lease; expires 2099-01-01T00:00:00Z)',
@@ -143,7 +189,7 @@ it('describes arbitrary providers through declaration metadata', () => {
 			'State: idle',
 			'Generation: generation',
 			'Target: not opened',
-			'Requested policy: workspace read-write; filesystem provider-default; network provider-default',
+			'Requested policy: workspace read-write; filesystem provider-default; network provider-default; protected resources: none',
 			'User shell: provider default (not opened)',
 			'Provider description: Custom execution boundary'
 		].join('\n')

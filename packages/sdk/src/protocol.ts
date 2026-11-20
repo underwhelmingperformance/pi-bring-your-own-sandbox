@@ -275,6 +275,12 @@ export interface SandboxBackendStatus {
 	readonly policy: SandboxPolicy;
 
 	/**
+	Policy after backend validation, including the actual workspace relationship.
+	Available for allocations that opened successfully.
+	*/
+	readonly effectivePolicy?: SandboxPolicy;
+
+	/**
 	Whether the backend is starting, usable or persistently failed.
 	*/
 	readonly state: 'opening' | 'ready' | 'failed';

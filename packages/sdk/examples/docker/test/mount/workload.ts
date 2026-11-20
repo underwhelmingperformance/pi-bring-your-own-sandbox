@@ -2,6 +2,7 @@ import {
 	closeSync,
 	existsSync,
 	fstatSync,
+	ftruncateSync,
 	openSync,
 	readdirSync,
 	readFileSync,
@@ -25,7 +26,19 @@ function isRefused(operation: () => unknown, errno: number) {
 }
 
 async function writeAndInspect() {
-	writeFileSync('/workspace/truncate.txt', '');
+	const resize = openSync('/workspace/truncate.txt', 'w+');
+	let isOversizedDenied: boolean;
+
+	try {
+		writeSync(resize, 'abcdef');
+		ftruncateSync(resize, 2);
+		ftruncateSync(resize, 4);
+		isOversizedDenied = isRefused(() => {
+			ftruncateSync(resize, 16 * 1024 * 1024 + 1);
+		}, constants.errno.EFBIG);
+	} finally {
+		closeSync(resize);
+	}
 
 	const reader = openSync(file, 'r');
 	const fd = openSync(file, 'w+');
@@ -46,7 +59,11 @@ async function writeAndInspect() {
 					constants.errno.ESTALE
 				);
 
-				return { denied: isDenied, sizes: { truncated, written, readerSize } };
+				return {
+					denied: isDenied,
+					oversizedDenied: isOversizedDenied,
+					sizes: { truncated, written, readerSize }
+				};
 			}
 
 			await delay(10);

@@ -46,7 +46,7 @@ func (n *workspaceNode) openWriter(flags uint32) (fs.FileHandle, uint32, syscall
 	return w, fuse.FOPEN_DIRECT_IO, 0
 }
 
-func (w *workspaceWriter) replace(data []byte, offset int64, truncate bool) error {
+func (w *workspaceWriter) replace(data []byte, offset int64, resize bool) error {
 	w.mutations.Lock()
 	defer w.mutations.Unlock()
 	var source unix.Stat_t
@@ -56,7 +56,7 @@ func (w *workspaceWriter) replace(data []byte, offset int64, truncate bool) erro
 	if source.Nlink != 1 || source.Mode&07000 != 0 || int(source.Uid) != os.Geteuid() || int(source.Gid) != os.Getegid() {
 		return unix.EACCES
 	}
-	if offset < 0 || offset > maxWriteSize-int64(len(data)) || (!truncate && source.Size > maxWriteSize) {
+	if offset < 0 || offset > maxWriteSize-int64(len(data)) || (!resize && source.Size > maxWriteSize) {
 		return unix.EFBIG
 	}
 
@@ -72,8 +72,15 @@ func (w *workspaceWriter) replace(data []byte, offset int64, truncate bool) erro
 			unix.Unlinkat(w.root, stage, 0)
 		}
 	}()
-	if !truncate {
-		if _, err := io.CopyN(staged, io.NewSectionReader(w.file, 0, source.Size), source.Size); err != nil {
+	preserve := source.Size
+	if resize {
+		preserve = min(source.Size, offset)
+	}
+	if _, err := io.CopyN(staged, io.NewSectionReader(w.file, 0, preserve), preserve); err != nil {
+		return err
+	}
+	if resize && offset > preserve {
+		if err := staged.Truncate(offset); err != nil {
 			return err
 		}
 	}
@@ -102,6 +109,32 @@ func (w *workspaceWriter) replace(data []byte, offset int64, truncate bool) erro
 	previous := w.file
 	w.file = staged
 	return previous.Close()
+}
+
+func (n *workspaceNode) Setattr(ctx context.Context, handle fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
+	if !n.writable {
+		return syscall.EROFS
+	}
+	size, resize := in.GetSize()
+	writer, ok := handle.(*workspaceWriter)
+	const truncateFlags = fuse.FATTR_SIZE | fuse.FATTR_FH | fuse.FATTR_LOCKOWNER | fuse.FATTR_KILL_SUIDGID
+	if !ok || !resize || in.Valid&^truncateFlags != 0 {
+		return syscall.ENOTSUP
+	}
+	if size > maxWriteSize {
+		return syscall.EFBIG
+	}
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	if err := writer.replace(nil, int64(size), true); err != nil {
+		return fs.ToErrno(err)
+	}
+	var stat syscall.Stat_t
+	if err := syscall.Fstat(int(writer.file.Fd()), &stat); err != nil {
+		return fs.ToErrno(err)
+	}
+	n.attributes(&stat, &out.Attr)
+	return 0
 }
 
 func (w *workspaceWriter) Write(ctx context.Context, data []byte, off int64) (uint32, syscall.Errno) {

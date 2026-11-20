@@ -14,6 +14,7 @@ profile byos-mount-probe flags=(attach_disconnected,mediate_deleted) {
 
   /mount-check rix,
   /usr/bin/setpriv rix,
+  /usr/bin/dash rix,
   /usr/local/bin/node mrix,
   /usr/lib/** mr,
   /etc/{passwd,group,nsswitch.conf} r,

@@ -173,7 +173,7 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 			);
 			await link(fixture.outside, path.join(fixture.workspace, 'alias'));
 
-			const workload = fixture.docker([
+			const mounted = [
 				'run',
 				'--rm',
 				...common,
@@ -188,7 +188,10 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 				'--tmpfs=/workspace:rw,nosuid,nodev',
 				DOCKER_IMAGE,
 				'mount',
-				mode,
+				mode
+			];
+			const workload = fixture.docker([
+				...mounted,
 				'/usr/local/bin/node',
 				'--input-type=module-typescript',
 				'-e',
@@ -241,13 +244,39 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 			const output = job.value;
 
 			if (mode === 'read-write') {
-				const truncated = await stat(
+				const truncated = await readFile(
 					path.join(fixture.workspace, 'truncate.txt')
 				);
 
-				expect(truncated.size).toBe(0);
+				expect(truncated).toStrictEqual(Buffer.from([97, 98, 0, 0]));
 				expect(await readFile(retained, 'utf8')).toBe('workload edit');
 			}
+
+			const helper = await readFile(
+				new URL('../src/file-helper.ts', import.meta.url),
+				'utf8'
+			);
+			const sourcePath = '/workspace/source.txt';
+			const result = await fixture.docker([
+				...mounted,
+				'/bin/sh',
+				'-ec',
+				`status=0
+printf %s "$3" | /usr/local/bin/node --input-type=module-typescript --eval "$1" -- writeFile "$2" 1024 "\${#3}" || status=$?
+printf '%s\n' "$status"
+/usr/local/bin/node --input-type=module-typescript --eval "$1" -- readFile "$2" 1024`,
+				'helper',
+				helper,
+				sourcePath,
+				'tool edit'
+			]);
+			const expected =
+				mode === 'read-write' ? 'tool edit' : 'after service startup';
+
+			expect({ result, host: await readFile(source, 'utf8') }).toStrictEqual({
+				result: (mode === 'read-write' ? '0' : '41') + '\n' + expected,
+				host: expected
+			});
 
 			const zero = '0000000000000000';
 
@@ -257,6 +286,7 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 				listedStage: false,
 				denied: true,
 				...(mode === 'read-write' && {
+					oversizedDenied: true,
 					sizes: {
 						truncated: 0,
 						written: Buffer.byteLength('workload edit'),

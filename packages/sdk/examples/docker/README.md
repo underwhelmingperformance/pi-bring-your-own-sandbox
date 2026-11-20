@@ -290,8 +290,11 @@ observes the write while the workload still has the file open, then links the
 file outside the workspace and replaces the workspace entry by rename. The
 workload reads the replacement. A write on the old descriptor fails and the
 retained host file keeps its contents. The read-only mount rejects the first
-write. The mount tests use a prototype FUSE service. The production provider
-copies the workspace into a volume.
+write. A second mount runs the provider's file helper. On the writable mount, a
+host read verifies that the helper truncated the file and wrote the new
+contents. On the read-only mount the helper reports a permission error. The
+mount tests use a prototype FUSE service. The production provider copies the
+workspace into a volume.
 
 The prototype stages each FUSE write request separately. A large application
 write can produce several requests and the host can see each intermediate

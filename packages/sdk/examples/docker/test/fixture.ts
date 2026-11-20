@@ -41,6 +41,16 @@ process.exitCode = 1;
 `;
 
 const encode = (text: string) => new TextEncoder().encode(text);
+const sourceRead = {
+	request: {
+		kind: 'argv',
+		executable: '/bin/cat',
+		args: ['source.txt']
+	},
+	exit: { kind: 'code', code: 0 },
+	stdout: encode('original'),
+	stderr: new Uint8Array()
+} as const;
 
 export function operationContext(): SandboxOperationContext {
 	return {
@@ -453,18 +463,10 @@ export class DockerFixture {
 					stderr: encode('error')
 				}
 			},
+			peerProcess: sourceRead,
 			cancellation: {
 				request: cancellationRequest,
-				after: {
-					request: {
-						kind: 'argv',
-						executable: '/bin/cat',
-						args: ['source.txt']
-					},
-					exit: { kind: 'code', code: 0 },
-					stdout: encode('original'),
-					stderr: new Uint8Array()
-				},
+				after: sourceRead,
 				ready: encode('ready'),
 				verifyStopped: () => this.noJobContainers()
 			},

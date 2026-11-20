@@ -86,6 +86,32 @@ async function bounded<Value>(
 	}
 }
 
+function openFixture<Config>(
+	options: SandboxProviderTestOptions<Config>,
+	fixture: SandboxProviderTestFixture,
+	context: SandboxOperationContext,
+	confirmCleanup: () => void
+): Promise<SandboxBackend> {
+	const config = options.provider.validateConfig(fixture.configuration);
+
+	return options.provider.open(
+		{
+			generationId: randomUUID(),
+			sessionId: randomUUID(),
+			hostWorkspace: fixture.hostWorkspace,
+			policy: fixture.policy,
+			configuration: config
+		},
+		{
+			...context,
+			confirmCleanup,
+			reportRecovery: (recovery) => {
+				expect(isRecovery(recovery)).toBe(true);
+			}
+		}
+	);
+}
+
 export async function usingProviderFixture<Config>(
 	options: SandboxProviderTestOptions<Config>,
 	run: ContractRun
@@ -108,27 +134,10 @@ export async function usingProviderFixture<Config>(
 		expect(isProviderInfo(options.provider)).toBe(true);
 		expect(options.provider.protocolVersion).toBe(1);
 
-		const config = options.provider.validateConfig(fixture.configuration);
-
 		backend = await bounded(deadlines, (context) =>
-			options.provider.open(
-				{
-					generationId: randomUUID(),
-					sessionId: randomUUID(),
-					hostWorkspace: fixture.hostWorkspace,
-					policy: fixture.policy,
-					configuration: config
-				},
-				{
-					...context,
-					confirmCleanup: () => {
-						isCleanupConfirmed = true;
-					},
-					reportRecovery: (recovery) => {
-						expect(isRecovery(recovery)).toBe(true);
-					}
-				}
-			)
+			openFixture(options, fixture, context, () => {
+				isCleanupConfirmed = true;
+			})
 		);
 		expect(isCleanupConfirmed).toBe(false);
 		validateBackend(backend, options.provider, fixture.policy);
@@ -395,6 +404,44 @@ export function providerContractCases<Config>(
 				)
 		}
 	];
+
+	if (options.verifyIndependentAllocations) {
+		cases.push({
+			label: 'independent disposal of allocations from the same source',
+			run: async (fixture, first, context) => {
+				const probe = fixture.peerProcess;
+
+				if (probe === undefined) {
+					throw new Error(
+						'Supply a repeatable process for the second allocation.'
+					);
+				}
+
+				let isConfirmed = false;
+				const second = await openFixture(options, fixture, context, () => {
+					isConfirmed = true;
+				});
+
+				try {
+					expect(isConfirmed).toBe(false);
+					validateBackend(second, options.provider, fixture.policy);
+					await checkProcess(second, probe, context);
+					await bounded(
+						options,
+						(closing) => first.dispose(closing),
+						'dispose'
+					);
+					await checkProcess(second, probe, context);
+				} finally {
+					await bounded(
+						options,
+						(closing) => second.dispose(closing),
+						'dispose'
+					);
+				}
+			}
+		});
+	}
 
 	const relationship = options.workspaceVisibility;
 

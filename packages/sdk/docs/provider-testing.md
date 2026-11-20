@@ -162,3 +162,8 @@ in [workspace protection][workspace-protection]. The test kit requires the
 probe; it cannot establish runtime enforcement from a capability declaration.
 
 [workspace-protection]: workspace-protection.md
+
+Set `verifyIndependentAllocations: true` to check two allocations from the same
+source. Supply a repeatable `peerProcess` probe. The suite checks its output and
+exit status on the second allocation before and after disposing the first.
+Fixture cleanup must account for both allocations.

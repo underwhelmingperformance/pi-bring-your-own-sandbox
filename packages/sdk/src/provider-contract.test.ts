@@ -714,3 +714,56 @@ it('rejects a recovery scenario without a termination guarantee before opening',
 		})
 	).toThrow('Continued use requires confirmed termination.');
 });
+
+it('detects disposal that also closes a second allocation from the same source', async () => {
+	const base = contractScenario();
+	const { open } = base.provider;
+	let isClosed = false;
+	const options = {
+		...base,
+		verifyIndependentAllocations: true,
+		provider: {
+			...base.provider,
+			async open(...arguments_: Parameters<typeof open>) {
+				const backend = await open(...arguments_);
+
+				return {
+					...backend,
+					async exec(request: ProcessRequest, context: BackendProcessContext) {
+						if (isClosed) {
+							throw new Error('The peer is closed.');
+						}
+
+						return backend.exec(request, context);
+					},
+					async dispose(context: SandboxOperationContext) {
+						isClosed = true;
+						await backend.dispose(context);
+					}
+				};
+			}
+		},
+		async createFixture() {
+			const fixture = await base.createFixture();
+			const peerProcess = fixture.processes?.[0];
+
+			if (peerProcess === undefined) {
+				throw new Error('Missing fixture process.');
+			}
+
+			return { ...fixture, peerProcess };
+		}
+	};
+	const scenario = providerContractCases(options).find(
+		(entry) =>
+			entry.label === 'independent disposal of allocations from the same source'
+	);
+
+	if (scenario === undefined) {
+		throw new Error('Missing allocation disposal scenario.');
+	}
+
+	await expect(usingProviderFixture(options, scenario.run)).rejects.toThrow(
+		'The peer is closed.'
+	);
+});

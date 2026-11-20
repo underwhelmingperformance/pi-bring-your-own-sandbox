@@ -185,6 +185,12 @@ export interface SandboxProviderTestFixture {
 		readonly result: GrepResult;
 	}[];
 	/**
+	A repeatable process on a second allocation from the same source. Required
+	for the independent disposal scenario.
+	*/
+	readonly peerProcess?: SandboxProcessProbe;
+
+	/**
 	A long-running foreground job, including a descendant when supported.
 	*/
 	readonly cancellation: {
@@ -232,6 +238,12 @@ for different policy modes and backend capability subsets.
 @typeParam Config - Validated provider configuration.
 */
 export interface SandboxProviderTestOptions<Config> {
+	/**
+	Open two allocations from the same source and verify the second one before
+	and after disposing the first.
+	*/
+	readonly verifyIndependentAllocations?: boolean;
+
 	/**
 	Run another process after independently confirming cancellation. Supply
 	`cancellation.after` for this scenario.

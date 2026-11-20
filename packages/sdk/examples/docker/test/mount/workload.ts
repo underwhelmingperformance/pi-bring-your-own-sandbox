@@ -7,6 +7,7 @@ import {
 	readdirSync,
 	readFileSync,
 	rmdirSync,
+	truncateSync,
 	unlinkSync,
 	writeFileSync,
 	writeSync
@@ -69,10 +70,13 @@ async function writeAndInspect() {
 	const reader = openSync(file, 'r');
 	const save = '/workspace/editor-save';
 	const editor = openSync(save, 'wx+');
+	const linked = openSync('/workspace/formatter.txt', 'r+');
 	const fd = openSync(file, 'w+');
 
 	try {
 		writeSync(editor, 'workload replacement');
+		writeSync(linked, 'formatted');
+		ftruncateSync(linked, 9);
 
 		const truncated = fstatSync(fd).size;
 
@@ -100,6 +104,25 @@ async function writeAndInspect() {
 				return {
 					denied: isDenied,
 					renamedDenied: isRenamedDenied,
+					renamedTruncateDenied: isRefused(() => {
+						ftruncateSync(editor, 0);
+					}, constants.errno.ESTALE),
+					replacedTruncateDenied: isRefused(() => {
+						ftruncateSync(fd, 0);
+					}, constants.errno.ESTALE),
+					linkedWriteDenied: isRefused(
+						() => writeSync(linked, '!'),
+						constants.errno.EACCES
+					),
+					linkedTruncateDenied: isRefused(() => {
+						ftruncateSync(linked, 0);
+					}, constants.errno.EACCES),
+					aliasWriteDenied: isRefused(() => {
+						writeFileSync('/workspace/settings-alias', '!');
+					}, constants.errno.EACCES),
+					aliasTruncateDenied: isRefused(() => {
+						truncateSync('/workspace/settings-alias', 0);
+					}, constants.errno.EACCES),
 					previousSave,
 					oversizedDenied: isOversizedDenied,
 					createChecks: checkCreates(),
@@ -112,6 +135,7 @@ async function writeAndInspect() {
 
 		throw new Error('The host did not replace the file.');
 	} finally {
+		closeSync(linked);
 		closeSync(editor);
 		closeSync(fd);
 		closeSync(reader);

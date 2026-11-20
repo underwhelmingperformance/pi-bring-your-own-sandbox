@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -20,6 +21,8 @@ import (
 
 const maxWriteSize = 16 << 20
 const stagePrefix = ".pi-byos-write-"
+
+var errSourceChanged = errors.New("file metadata changed while staging a write")
 
 type workspaceWriter struct {
 	mu   sync.Mutex
@@ -46,17 +49,44 @@ func (n *workspaceNode) openWriter(flags uint32) (fs.FileHandle, uint32, syscall
 	return w, fuse.FOPEN_DIRECT_IO, 0
 }
 
+func (w *workspaceWriter) current() (unix.Stat_t, error) {
+	var entry, opened unix.Stat_t
+	if err := unix.Fstatat(w.root, w.name, &entry, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		if err == unix.ENOENT {
+			return entry, unix.ESTALE
+		}
+		return entry, err
+	}
+	if err := unix.Fstat(int(w.file.Fd()), &opened); err != nil {
+		return entry, err
+	}
+	if entry.Dev != opened.Dev || entry.Ino != opened.Ino {
+		return entry, unix.ESTALE
+	}
+	if entry.Nlink != 1 || opened.Nlink != 1 {
+		return entry, unix.EACCES
+	}
+	return entry, nil
+}
+
 func (w *workspaceWriter) replace(data []byte, offset int64, resize bool) error {
 	w.mutations.Lock()
 	defer w.mutations.Unlock()
-	var source unix.Stat_t
-	if err := unix.Fstat(int(w.file.Fd()), &source); err != nil {
+	for attempt := 0; attempt < 2; attempt++ {
+		err := w.stage(data, offset, resize)
+		if err != errSourceChanged {
+			return err
+		}
+	}
+	return unix.ESTALE
+}
+
+func (w *workspaceWriter) stage(data []byte, offset int64, resize bool) error {
+	source, err := w.current()
+	if err != nil {
 		return err
 	}
-	if source.Nlink == 0 {
-		return unix.ESTALE
-	}
-	if source.Nlink != 1 || source.Mode&07000 != 0 || int(source.Uid) != os.Geteuid() || int(source.Gid) != os.Getegid() {
+	if source.Mode&07000 != 0 || int(source.Uid) != os.Geteuid() || int(source.Gid) != os.Getegid() {
 		return unix.EACCES
 	}
 	if offset < 0 || offset > maxWriteSize-int64(len(data)) || (!resize && source.Size > maxWriteSize) {
@@ -98,15 +128,12 @@ func (w *workspaceWriter) replace(data []byte, offset int64, resize bool) error 
 	if err := preserveAttributes(int(w.file.Fd()), int(staged.Fd())); err != nil {
 		return err
 	}
-	var current unix.Stat_t
-	if err := unix.Fstatat(w.root, w.name, &current, unix.AT_SYMLINK_NOFOLLOW); err != nil {
-		if err == unix.ENOENT {
-			return unix.ESTALE
-		}
+	current, err := w.current()
+	if err != nil {
 		return err
 	}
-	if current.Ino != source.Ino || current.Dev != source.Dev || current.Ctim != source.Ctim || current.Nlink != 1 {
-		return unix.ESTALE
+	if current.Ctim != source.Ctim {
+		return errSourceChanged
 	}
 	if err := unix.Renameat(w.root, stage, w.root, w.name); err != nil {
 		return err

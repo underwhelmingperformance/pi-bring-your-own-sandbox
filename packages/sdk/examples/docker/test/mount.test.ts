@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
 	link,
+	mkdir,
 	readFile,
 	rename,
 	stat,
@@ -163,6 +164,19 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 			if (mode === 'read-write') {
 				const oversized = path.join(fixture.workspace, 'truncate.txt');
 
+				await mkdir(path.join(fixture.workspace, '.pi'));
+				await writeFile(
+					path.join(fixture.workspace, '.pi/settings'),
+					'protected'
+				);
+				await link(
+					path.join(fixture.workspace, '.pi/settings'),
+					path.join(fixture.workspace, 'settings-alias')
+				);
+				await writeFile(
+					path.join(fixture.workspace, 'formatter.txt'),
+					'unformatted source'
+				);
 				await writeFile(oversized, '');
 				await writeFile(
 					path.join(fixture.workspace, 'concurrent.txt'),
@@ -215,6 +229,16 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 						await rename(
 							path.join(fixture.workspace, 'editor-save'),
 							path.join(fixture.workspace, 'renamed-save')
+						);
+						expect(
+							await readFile(
+								path.join(fixture.workspace, 'formatter.txt'),
+								'utf8'
+							)
+						).toBe('formatted');
+						await link(
+							path.join(fixture.workspace, 'formatter.txt'),
+							path.join(fixture.workspace, '.pi/held')
 						);
 						await link(source, retained);
 						await rename(replacement, source);
@@ -269,6 +293,14 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 
 				expect({
 					directory: directory.isDirectory(),
+					settings: await readFile(
+						path.join(fixture.workspace, '.pi/settings'),
+						'utf8'
+					),
+					held: await readFile(
+						path.join(fixture.workspace, '.pi/held'),
+						'utf8'
+					),
 					retained: await readFile(retained, 'utf8'),
 					concurrent: await readFile(
 						path.join(fixture.workspace, 'concurrent.txt'),
@@ -278,6 +310,8 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 					mode: attributes.mode & 0o777
 				}).toStrictEqual({
 					directory: true,
+					settings: 'protected',
+					held: 'formatted',
 					retained: 'workload edit',
 					concurrent: 'workload replacement',
 					renamed: 'workload replacement',
@@ -321,6 +355,12 @@ printf '%s\n' "$status"
 				...(mode === 'read-only' && { createDenied: true }),
 				...(mode === 'read-write' && {
 					renamedDenied: true,
+					renamedTruncateDenied: true,
+					replacedTruncateDenied: true,
+					linkedWriteDenied: true,
+					linkedTruncateDenied: true,
+					aliasWriteDenied: true,
+					aliasTruncateDenied: true,
 					previousSave: 'host contents',
 					createChecks: {
 						limit: true,

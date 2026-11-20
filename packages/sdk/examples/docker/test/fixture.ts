@@ -221,8 +221,10 @@ export class DockerFixture {
 		return new TextDecoder().decode(result.stdout);
 	}
 
-	async noJobContainers(): Promise<void> {
-		for (const allocation of this.allocations) {
+	async noJobContainers(
+		allocations: ReadonlySet<string> = this.allocations
+	): Promise<void> {
+		for (const allocation of allocations) {
 			expect(
 				await this.docker([
 					'container',
@@ -237,10 +239,12 @@ export class DockerFixture {
 		}
 	}
 
-	async verifyDisposed(): Promise<void> {
-		await this.noJobContainers();
+	async verifyDisposed(
+		allocations: ReadonlySet<string> = this.allocations
+	): Promise<void> {
+		await this.noJobContainers(allocations);
 
-		for (const allocation of this.allocations) {
+		for (const allocation of allocations) {
 			expect(
 				await this.docker([
 					'volume',
@@ -649,6 +653,8 @@ process.stdout.write(readFileSync("/tmp/response"));`
 				}
 			},
 			peerProcess: sourceRead,
+			verifyAllocationDisposed: (backend) =>
+				this.verifyDisposed(new Set([backend.id])),
 			cancellation: {
 				request: cancellationRequest,
 				after: sourceRead,

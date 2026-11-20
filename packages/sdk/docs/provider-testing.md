@@ -165,7 +165,9 @@ probe; it cannot establish runtime enforcement from a capability declaration.
 
 Set `verifyIndependentAllocations: true` to check two allocations from the same
 source. Supply a repeatable `peerProcess` probe. The suite checks its output and
-exit status on the second allocation before and after disposing the first.
+exit status on the second allocation before and after disposing the first. The
+fixture must implement `verifyAllocationDisposed(backend)` to check the first
+allocation against the runtime while the second allocation is still open.
 Fixture cleanup must account for both allocations.
 
 Use `verifyConcurrentCancellation` for providers that support concurrent jobs

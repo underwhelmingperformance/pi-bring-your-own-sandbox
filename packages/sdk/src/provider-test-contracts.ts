@@ -293,6 +293,13 @@ export interface SandboxProviderTestFixture {
 	*/
 	readonly verifyDisposed: () => Promise<void>;
 	/**
+    Check that the first allocation has released its resources while its peer
+    remains open. Required for the independent allocation scenario.
+    */
+	readonly verifyAllocationDisposed?: (
+		backend: SandboxBackend
+	) => Promise<void>;
+	/**
 	Always release fixture resources, including allocations left by failed
 	opening or disposal. This callback must also work before opening succeeds.
 	*/

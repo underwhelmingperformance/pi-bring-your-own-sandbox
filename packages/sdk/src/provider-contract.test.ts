@@ -751,7 +751,11 @@ it('detects disposal that also closes a second allocation from the same source',
 				throw new Error('Missing fixture process.');
 			}
 
-			return { ...fixture, peerProcess };
+			return {
+				...fixture,
+				peerProcess,
+				verifyAllocationDisposed: fixture.verifyDisposed
+			};
 		}
 	};
 	const scenario = providerContractCases(options).find(
@@ -1037,4 +1041,67 @@ it('waits for a cancelled scenario to release its active job before disposal', a
 	} finally {
 		vi.useRealTimers();
 	}
+});
+
+it('checks the first allocation was released before disposing the second', async () => {
+	const base = contractScenario();
+	const active = new Set<string>();
+	const options: SandboxProviderTestOptions<undefined> = {
+		...base,
+		verifyIndependentAllocations: true,
+		provider: {
+			...base.provider,
+			async open(...arguments_) {
+				const backend = await base.provider.open(...arguments_);
+				const id = arguments_[0].generationId;
+
+				active.add(id);
+
+				return {
+					...backend,
+					id,
+					async dispose(context) {
+						if (active.size === 1) {
+							active.delete(id);
+						}
+
+						await backend.dispose(context);
+					}
+				};
+			}
+		},
+		async createFixture() {
+			const fixture = await base.createFixture();
+			const peerProcess = fixture.processes?.[0];
+
+			if (!peerProcess) {
+				throw new Error('Missing peer process.');
+			}
+
+			return {
+				...fixture,
+				peerProcess,
+				verifyAllocationDisposed(backend: SandboxBackend) {
+					expect(
+						active.has(backend.id),
+						'The disposed allocation still exists.'
+					).toBe(false);
+
+					return Promise.resolve();
+				}
+			};
+		}
+	};
+	const entry = providerContractCases(options).find(
+		(test) =>
+			test.label === 'independent disposal of allocations from the same source'
+	);
+
+	if (!entry) {
+		throw new Error('Missing independent disposal case.');
+	}
+
+	await expect(usingProviderFixture(options, entry.run)).rejects.toThrow(
+		'The disposed allocation still exists.'
+	);
 });

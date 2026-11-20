@@ -647,6 +647,14 @@ export function providerContractCases<Config>(
 					);
 				}
 
+				const verify = fixture.verifyAllocationDisposed;
+
+				if (verify === undefined) {
+					throw new Error(
+						'Supply an independent disposal check for each allocation.'
+					);
+				}
+
 				let isConfirmed = false;
 				const second = await openFixture(options, fixture, context, () => {
 					isConfirmed = true;
@@ -658,7 +666,10 @@ export function providerContractCases<Config>(
 					await checkProcess(second, probe, context);
 					await bounded(
 						options,
-						(closing) => first.dispose(closing),
+						async (closing) => {
+							await first.dispose(closing);
+							await verify(first);
+						},
 						'dispose'
 					);
 					await checkProcess(second, probe, context);

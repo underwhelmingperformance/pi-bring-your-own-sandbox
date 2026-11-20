@@ -120,9 +120,10 @@ the backend enforces.
 
 The top-level backend fields describe the allocation for the base policy. The
 top-level `policy` includes the actual relationship. Older brokers can omit
-`effectivePolicy` and the relationship in the top-level policy. The acquired
-sandbox exposes the backend's effective policy as `sandbox.policy` and the
-actual relationship as `sandbox.workspace.relationship`.
+`effectivePolicy` and the relationship in the top-level policy. On an acquired
+sandbox, `sandbox.policy` is a snapshot of `backend.policy`. A backend can omit
+`workspaceRelationship` from this policy. `sandbox.workspace.relationship`
+always gives the actual relationship.
 
 `WorkspaceProtection` is either `{ kind: 'git-metadata' }` or
 `{ kind: 'path', path: string }`. `SandboxPolicy.workspaceProtection` is an

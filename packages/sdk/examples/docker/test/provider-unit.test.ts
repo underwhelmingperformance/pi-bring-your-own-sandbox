@@ -31,6 +31,7 @@ import dockerExtension from '../src/extension.js';
 import { DOCKER_IMAGE } from '../src/image.js';
 import { createDockerProvider } from '../src/provider.js';
 import { cleanupContext } from '../src/resources.js';
+import dockerShellProfile from '../src/shell-profile.js';
 
 class FakeDocker implements DockerClient {
 	readonly commands: DockerCommand[] = [];
@@ -1038,12 +1039,13 @@ it('builds the optional toolchain on the pinned Docker job image by default', as
 
 it.each([
 	{ trusted: true, copy: false, shared: true },
+	{ trusted: true, copy: false, shared: true, profile: true },
 	{ trusted: true, copy: true, shared: false },
 	{ trusted: false, copy: false, shared: false },
-	{ trusted: undefined, copy: false, shared: false }
+	{ trusted: undefined, copy: false, shared: true }
 ])(
 	'selects the development workspace for Pi trust $trusted and explicit copy $copy',
-	async ({ trusted, copy, shared }) => {
+	async ({ trusted, copy, shared, profile }) => {
 		const docker = new FakeDocker();
 
 		using cli = vi
@@ -1054,16 +1056,13 @@ it.each([
 				{
 					name: 'docker',
 					factory(pi) {
-						dockerExtension(pi);
+						(profile === true ? dockerShellProfile : dockerExtension)(pi);
 						pi.registerCommand('test-workspace', {
 							description: 'Check the active Docker workspace.',
 							async handler(_arguments, session) {
 								const context = {
 									cwd: session.cwd,
-									sessionManager: session.sessionManager,
-									...(trusted !== undefined && {
-										isProjectTrusted: () => trusted
-									})
+									sessionManager: session.sessionManager
 								};
 								const opened = getSandbox(pi, context);
 
@@ -1129,7 +1128,25 @@ it.each([
 
 				await runtime.session.prompt('/test-workspace');
 				expect(errors).toStrictEqual([]);
-			}
+				expect(
+					runtime.session.messages.flatMap((message) =>
+						message.role === 'custom' && message.customType === 'byos-docker'
+							? { content: message.content, display: message.display }
+							: []
+					)
+				).toStrictEqual(
+					shared
+						? [
+								{
+									content:
+										'This Docker provider supports private copies only. Start Pi with --byos-docker-copy to use a private workspace.',
+									display: true
+								}
+							]
+						: []
+				);
+			},
+			{ ...(trusted !== undefined && { projectTrusted: trusted }) }
 		);
 	}
 );

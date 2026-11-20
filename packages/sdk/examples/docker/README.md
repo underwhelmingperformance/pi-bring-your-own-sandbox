@@ -29,22 +29,26 @@ pnpm build
 From this checkout, load the provider:
 
 ```sh
-pi --no-extensions -e ./examples/docker/src/index.ts
+pi --no-extensions -e ./examples/docker/src/index.ts --byos-docker-copy
 ```
 
 For development with only the BYOS Bash tool, load the shell profile from
 `packages/sdk`. The profile routes Pi's interactive shell through Docker too.
 
 ```sh
-pi --no-extensions --tools bash -e ./examples/docker/src/shell-profile.ts
+pi --no-extensions --tools bash -e ./examples/docker/src/shell-profile.ts --byos-docker-copy
 ```
 
-Both entry points use project trust to select the development workspace. An
-untrusted project or a host without a trust decision uses a private copy. A
-trusted project requests mediated host editing. This version only supports
-private copies, so opening the trusted development workspace fails before Docker
-allocates resources. Add `--byos-docker-copy` to the Pi invocation to work in a
-private copy. An SDK consumer can also explicitly request
+These commands select a private copy explicitly. Without the flag, both entry
+points request mediated host editing when Pi reports a trusted project. Pi can
+trust a project without a saved trust decision. The production provider
+currently supports private copies only. If an ordinary tool requests the trusted
+default, Pi displays the private-copy option and the open fails before Docker
+allocates resources.
+
+When Pi reports an untrusted project, or an embedding host omits
+`isProjectTrusted`, development uses a private copy. The extension selects the
+default once per runtime. SDK consumers can explicitly request
 `workspaceRelationship: 'copied'` at acquisition. Review snapshots always use
 fresh read-only copies.
 
@@ -61,9 +65,9 @@ dependency.
 Pi supplies TypeBox at runtime. Add `typebox` as a development dependency to
 type-check the copied example outside Pi.
 
-Loading the example activates `example.docker` with default Docker settings and
-read-write workspace access. To customise the provider, write an extension
-factory that calls `registerSandboxProvider` with the declaration returned by
+Loading the example selects `example.docker`. Its development copies allow reads
+and writes. To customise the provider, write an extension factory that calls
+`registerSandboxProvider` with the declaration returned by
 `createDockerProvider` and a `configure` callback. Return raw Docker input under
 `configuration`, and provide a complete policy or use the declaration's default.
 The callback can read your extension's own settings.

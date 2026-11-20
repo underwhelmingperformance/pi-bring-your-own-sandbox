@@ -18,6 +18,19 @@ it('validates explicit local paths and supplies Linux defaults without allocatin
 	});
 });
 
+it.each(['shared', 'copied'] as const)(
+	'accepts the %s development default',
+	(relationship) => {
+		expect(
+			dockerConfig({ defaultWorkspaceRelationship: relationship })
+		).toStrictEqual({
+			executable: '/usr/bin/docker',
+			socketPath: '/var/run/docker.sock',
+			defaultWorkspaceRelationship: relationship
+		});
+	}
+);
+
 it.each([
 	undefined,
 	[],

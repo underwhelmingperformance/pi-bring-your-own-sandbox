@@ -27,6 +27,7 @@ interface RuntimeOptions {
 		agentDirectory: string
 	) => void | Promise<void>;
 	readonly includeBuiltins?: boolean;
+	readonly projectTrusted?: boolean;
 	readonly tools?: readonly string[];
 }
 
@@ -75,7 +76,14 @@ export async function withPiRuntime(
 				cwd: options.cwd,
 				agentDir: options.agentDir,
 				modelRuntime,
-				settingsManager: SettingsManager.inMemory(),
+				settingsManager: SettingsManager.inMemory(
+					{},
+					{
+						...(fixtureOptions?.projectTrusted !== undefined && {
+							projectTrusted: fixtureOptions.projectTrusted
+						})
+					}
+				),
 				resourceLoaderOptions: {
 					noExtensions: true,
 					noSkills: true,

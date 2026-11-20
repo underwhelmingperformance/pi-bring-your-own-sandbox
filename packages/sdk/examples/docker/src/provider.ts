@@ -101,7 +101,20 @@ const defaultCapabilities = {
 	shells: ['sh', 'bash']
 } as const;
 
+export const dockerDefaultPolicy = Object.freeze({
+	workspaceAccess: 'read-write',
+	filesystemScope: 'workspace-only',
+	networkAccess: 'denied'
+} as const);
+
+const sharedWorkspaceUnavailable =
+	'This Docker provider supports private copies only. Start Pi with --byos-docker-copy to use a private workspace.';
+
 export interface DockerProviderOptions {
+	/**
+	Display the recovery instruction when the configured workspace cannot open.
+	*/
+	readonly notifyWorkspaceUnavailable?: (message: string) => void;
 	readonly createClient?: (config: DockerConfig) => DockerClient;
 	/**
 	Immutable ID of the optional trusted image with /opt/powershell/pwsh.
@@ -590,10 +603,8 @@ Use an immutable image ID to add PowerShell, or supply a client factory for test
 export function createDockerProvider(
 	options: DockerProviderOptions | ((config: DockerConfig) => DockerClient) = {}
 ): SandboxProvider<DockerConfig> {
-	const { createClient, powerShellImage } =
-		typeof options === 'function'
-			? { createClient: options, powerShellImage: undefined }
-			: options;
+	const { createClient, powerShellImage, notifyWorkspaceUnavailable } =
+		typeof options === 'function' ? { createClient: options } : options;
 
 	if (
 		powerShellImage !== undefined &&
@@ -635,15 +646,16 @@ export function createDockerProvider(
 				: 'copied');
 
 		if (relationship === 'shared') {
-			const message =
-				'This Docker provider supports private copies only. Start Pi with --byos-docker-copy to use a private workspace.';
-
-			context.reportDiagnostic({ level: 'warning', message });
+			context.reportDiagnostic({
+				level: 'warning',
+				message: sharedWorkspaceUnavailable
+			});
 			context.confirmCleanup();
+			notifyWorkspaceUnavailable?.(sharedWorkspaceUnavailable);
 
 			throw new UnsupportedSandboxPolicyError(
 				{ operation: 'open', providerId: 'example.docker' },
-				{ cause: new Error(message) }
+				{ cause: new Error(sharedWorkspaceUnavailable) }
 			);
 		}
 
@@ -782,11 +794,7 @@ export function createDockerProvider(
 
 	return {
 		id: 'example.docker',
-		defaultPolicy: {
-			workspaceAccess: 'read-write',
-			filesystemScope: 'workspace-only',
-			networkAccess: 'denied'
-		},
+		defaultPolicy: dockerDefaultPolicy,
 		label: 'Docker reference provider',
 		protocolVersion: 1,
 		capabilities,

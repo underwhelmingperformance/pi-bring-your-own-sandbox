@@ -134,6 +134,19 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
 
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: packages/sdk/examples/docker/test/mount/go.mod
+          cache-dependency-path: packages/sdk/examples/docker/test/mount/go.sum
+
+      - name: Prepare the mount test
+        working-directory: packages/sdk/examples/docker/test/mount
+        run: |
+          go mod download
+          if docker info --format '{{json .SecurityOptions}}' | jq -e 'index("name=apparmor") != null'; then
+            sudo apparmor_parser -r apparmor
+          fi
+
       - run: pnpm install --frozen-lockfile
       - name: Prepare the local Docker daemon and pinned image
         run: |

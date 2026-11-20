@@ -179,9 +179,9 @@ from the recovery descriptor. Do not remove other Docker resources.
 ## Run the real-provider gate
 
 The deterministic gate, `pnpm check`, visibly skips daemon-backed cases. The
-separate `pnpm test:provider` gate requires the local daemon and pinned image
-and fails if either is unavailable. GitHub Actions runs this gate in a dedicated
-Linux job.
+separate `pnpm test:provider` gate requires the mount test prerequisites below,
+the local daemon and the pinned image and fails if either is unavailable. GitHub
+Actions runs this gate in a dedicated Linux job.
 
 For a non-default installation:
 
@@ -212,6 +212,12 @@ The real Docker suite includes a mount test for Linux Docker and OrbStack. It
 requires a Go toolchain, the pinned Node image and a daemon that can provide
 `/dev/fuse`. Run `pnpm test:provider` to build the test binary for the daemon's
 architecture and run the workload.
+
+The first build needs access to the Go modules pinned in `test/mount/go.sum` or
+a populated Go module cache. On AppArmor-enabled Docker hosts, install the test
+profile with `sudo apparmor_parser -r test/mount/apparmor` from the Docker
+example directory. The profile permits a FUSE mount at `/workspace` and removal
+of the control mount at `/control`.
 
 A trusted bootstrap mounts a synthetic filesystem. A separate service handles
 its requests. The workload reads a file through the mount as UID and GID 65534.

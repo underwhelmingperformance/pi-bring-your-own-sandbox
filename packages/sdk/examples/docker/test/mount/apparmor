@@ -1,0 +1,25 @@
+#include <tunables/global>
+
+profile byos-mount-probe flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  capability sys_admin,
+  capability setpcap,
+  capability setuid,
+  capability setgid,
+  network unix seqpacket,
+
+  mount fstype=fuse -> /workspace/,
+  umount /control/,
+
+  /mount-check rix,
+  /usr/bin/setpriv rix,
+  /usr/local/bin/node mrix,
+  /usr/lib/** mr,
+  /etc/{passwd,group,nsswitch.conf} r,
+  /dev/fuse rw,
+  /control/service rw,
+  /workspace/ r,
+  /workspace/probe r,
+  @{PROC}/@{pid}/status r,
+}

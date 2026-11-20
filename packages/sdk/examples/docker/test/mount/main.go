@@ -24,7 +24,11 @@ func (root *fixture) Lookup(ctx context.Context, name string, out *fuse.EntryOut
 	if name != "probe" {
 		return nil, syscall.ENOENT
 	}
-	return root.NewInode(ctx, &fs.MemRegularFile{Data: []byte("mediated\n"), Attr: fuse.Attr{Mode: syscall.S_IFREG | 0444}}, fs.StableAttr{Mode: syscall.S_IFREG}), 0
+	file := &fs.MemRegularFile{
+		Data: []byte("mediated\n"),
+		Attr: fuse.Attr{Mode: syscall.S_IFREG | 0444},
+	}
+	return root.NewInode(ctx, file, fs.StableAttr{Mode: syscall.S_IFREG}), 0
 }
 
 func serve() error {
@@ -52,6 +56,7 @@ func serve() error {
 		}
 	}
 }
+
 func attach(c *net.UnixConn) error {
 	var b [1]byte
 	control := make([]byte, unix.CmsgSpace(4))
@@ -63,18 +68,24 @@ func attach(c *net.UnixConn) error {
 	if err != nil {
 		return err
 	}
-	if n != 1 || b[0] != 1 || flags&unix.MSG_CTRUNC != 0 || len(messages) != 1 {
-		return fmt.Errorf("invalid mount request")
+	var fds []int
+	for _, message := range messages {
+		if message.Header.Level == unix.SOL_SOCKET && message.Header.Type == unix.SCM_RIGHTS {
+			rights, err := unix.ParseUnixRights(&message)
+			if err != nil {
+				for _, fd := range fds {
+					unix.Close(fd)
+				}
+				return err
+			}
+			fds = append(fds, rights...)
+		}
 	}
-	fds, err := unix.ParseUnixRights(&messages[0])
-	if err != nil {
-		return err
-	}
-	if len(fds) != 1 {
+	if n != 1 || b[0] != 1 || flags&(unix.MSG_CTRUNC|unix.MSG_TRUNC) != 0 || len(messages) != 1 || len(fds) != 1 {
 		for _, fd := range fds {
 			unix.Close(fd)
 		}
-		return fmt.Errorf("expected one descriptor")
+		return fmt.Errorf("invalid mount request")
 	}
 	opts := &fs.Options{MountOptions: fuse.MountOptions{Name: "byos", DisableXAttrs: true}}
 	raw := fs.NewNodeFS(&fixture{}, opts)
@@ -84,12 +95,10 @@ func attach(c *net.UnixConn) error {
 		return err
 	}
 	go server.Serve()
-	if err := server.WaitMount(); err != nil {
-		return err
-	}
 	_, err = c.Write([]byte{1})
 	return err
 }
+
 func mount() error {
 	fd, err := unix.Open("/dev/fuse", unix.O_RDWR|unix.O_CLOEXEC, 0)
 	if err != nil {
@@ -129,7 +138,9 @@ func mount() error {
 	args := []string{"setpriv", "--reuid=65534", "--regid=65534", "--clear-groups", "--no-new-privs", "--bounding-set=-all", "--inh-caps=-all", "--ambient-caps=-all", "--"}
 	return unix.Exec("/usr/bin/setpriv", append(args, os.Args[2:]...), os.Environ())
 }
+
 func main() {
+	log.SetOutput(os.Stdout)
 	var err error
 	switch {
 	case len(os.Args) == 2 && os.Args[1] == "serve":

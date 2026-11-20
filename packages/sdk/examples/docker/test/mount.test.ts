@@ -52,7 +52,7 @@ it.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				'--cap-drop=ALL',
 				'--security-opt=no-new-privileges',
 				'--pids-limit=32',
-				'--memory=64m',
+				'--memory=128m',
 				'--label',
 				label,
 				'--mount',
@@ -71,20 +71,43 @@ it.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				DOCKER_IMAGE,
 				'serve'
 			]);
-			await fixture.docker([
-				'exec',
-				allocation,
-				'/usr/bin/timeout',
-				'5',
-				'/bin/sh',
-				'-c',
-				'while [ ! -S /control/service ]; do sleep 0.05; done'
+
+			try {
+				await fixture.docker([
+					'exec',
+					allocation,
+					'/usr/bin/timeout',
+					'5',
+					'/bin/sh',
+					'-c',
+					'while [ ! -S /control/service ]; do sleep 0.05; done'
+				]);
+			} catch (error) {
+				const logs = await fixture.docker(['logs', allocation]);
+
+				throw new Error('The mount service did not start. ' + logs, {
+					cause: error
+				});
+			}
+
+			const security = await fixture.docker([
+				'info',
+				'--format',
+				'{{json .SecurityOptions}}'
 			]);
+			const options: unknown = JSON.parse(security);
+
+			if (!Array.isArray(options)) {
+				throw new TypeError('Docker did not return its security options.');
+			}
 
 			const output = await fixture.docker([
 				'run',
 				'--rm',
 				...common,
+				...(options.includes('name=apparmor')
+					? ['--security-opt=apparmor=byos-mount-probe']
+					: []),
 				'--device=/dev/fuse',
 				'--cap-add=SYS_ADMIN',
 				'--cap-add=SETPCAP',
@@ -101,7 +124,7 @@ const status = Object.fromEntries(readFileSync('/proc/self/status', 'utf8')
   .split(String.fromCharCode(10)).map(line => line.split(':').map(value => value.trim())));
 console.log(JSON.stringify({
   file: readFileSync('/workspace/probe', 'utf8'),
-  uid: process.getuid(), gid: process.getgid(), groups: process.getgroups(),
+  ids: [status.Uid, status.Gid].map(ids => ids.split(/\\s+/).map(Number)), groups: status.Groups,
   device: existsSync('/dev/fuse'), socket: existsSync('/control/service'),
   privileges: Object.fromEntries(['CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb', 'NoNewPrivs']
     .map(key => [key, status[key]]))
@@ -111,9 +134,11 @@ console.log(JSON.stringify({
 
 			expect(JSON.parse(output)).toStrictEqual({
 				file: 'mediated\n',
-				uid: 65_534,
-				gid: 65_534,
-				groups: [65_534],
+				ids: [
+					Array.from({ length: 4 }, () => 65_534),
+					Array.from({ length: 4 }, () => 65_534)
+				],
+				groups: '',
 				device: false,
 				socket: false,
 				privileges: {

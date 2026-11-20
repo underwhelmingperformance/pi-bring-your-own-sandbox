@@ -23,11 +23,11 @@ in that order.
 
 Additional test commands run specific suites:
 
-| Command                 | Purpose                                                      | Requirements                          |
-| ----------------------- | ------------------------------------------------------------ | ------------------------------------- |
-| `pnpm test:integration` | Real Pi sessions, CLI/RPC approval and consumer integration. | Local fixtures; no model credentials. |
-| `pnpm test:package`     | Packed archives, exports and independent SDK copies.         | Dependency installation access.       |
-| `pnpm test:provider`    | Real Docker execution, isolation and cleanup.                | Local Docker daemon and pinned image. |
+| Command                 | Purpose                                                      | Requirements                                                                  |
+| ----------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `pnpm test:integration` | Real Pi sessions, CLI/RPC approval and consumer integration. | Local fixtures; no model credentials.                                         |
+| `pnpm test:package`     | Packed archives, exports and independent SDK copies.         | Dependency installation access.                                               |
+| `pnpm test:provider`    | Real Docker execution, isolation and cleanup.                | Local Docker daemon, pinned image and [mount test prerequisites][mount-test]. |
 
 Package tests compile every source export in an isolated consumer with
 `noPropertyAccessFromIndexSignature` enabled. Source and compiled consumers use
@@ -89,3 +89,4 @@ installation.
 [spec]: specification.md
 [api]: api-protocol.md
 [pi]: pi-integration.md
+[mount-test]: ../examples/docker/README.md#verify-fuse-mount-privileges

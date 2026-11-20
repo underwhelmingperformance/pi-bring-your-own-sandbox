@@ -4,6 +4,7 @@ export default defineConfig({
 	test: {
 		include: [
 			'examples/docker/test/provider.test.ts',
+			'examples/docker/test/mount.test.ts',
 			'examples/docker/test/session.test.ts'
 		],
 		env: { BYOS_DOCKER_TESTS: '1' },

@@ -205,3 +205,16 @@ image repository][node-image] documents the official runtime image.
 
 [removal]: https://docs.docker.com/reference/cli/docker/container/rm/
 [node-image]: https://github.com/nodejs/docker-node
+
+## Verify FUSE mount privileges
+
+The real Docker suite includes a mount test for Linux Docker and OrbStack. It
+requires a Go toolchain, the pinned Node image and a daemon that can provide
+`/dev/fuse`. Run `pnpm test:provider` to build the test binary for the daemon's
+architecture and run the workload.
+
+A trusted bootstrap mounts a synthetic filesystem. A separate service handles
+its requests. The workload reads a file through the mount as UID and GID 65534.
+The test inspects the workload's Linux capability sets and checks that the FUSE
+device and management socket are inaccessible. The production provider still
+uses a copied workspace.

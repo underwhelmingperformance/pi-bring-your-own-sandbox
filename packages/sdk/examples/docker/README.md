@@ -332,6 +332,64 @@ attributes can reject writes. A concurrent host replacement can occur between
 the final identity check and the rename. In that case the staged write can
 overwrite the new host file.
 
+### Authorising saves on the host
+
+A host filesystem check can see the object selected for a rename or unlink. The
+[macOS test][darwin-mutations] starts a child process under Seatbelt in an
+ordinary checkout. The profile permits writes to workspace files with a single
+name and denies writes to a protected subtree. The host replaces a file, the
+child reads the new contents and saves by rename, and the host checks the
+result. The test also checks a protected file, an absent protected path and a
+hard-link alias. Apple's `com.apple.SubmitDiagInfo.sb` uses the same
+`has-multiple-names` filter for writes.
+
+The [Linux probe][linux-mutations] attaches two deny-only checks to the kernel's
+authorisation of rename and unlink. The checks inspect the source and target
+entries for a single test process. The loader drops its root credentials before
+editing. Run the probe as an ordinary user in a disposable native Linux VM with
+Clang, a C compiler, bpftool, libbpf development headers and sudo. From the
+Docker example directory, run:
+
+```sh
+sh test/mount/linux-mutations/verify.sh
+```
+
+The probe passed on arm64 Ubuntu 24.04 with kernel 6.8.0-147 and its default
+security modules. It requires kernel BTF and support for attaching BPF programs
+to both authorisation functions. In [Linux 6.8][linux-rename], the parent
+directories are locked at the rename check, but the kernel locks the file inodes
+afterwards. The check sees which entries the rename will use. A link count
+observed there does not establish that the count will remain the same until the
+rename completes. The probe tests aliases that already exist.
+
+A check in the Docker VM cannot establish the same guarantee for files backed by
+another operating system.
+
+In a one-off OrbStack test on macOS 27.0.1, SSHFS mounted the host checkout at
+`/workspace` for an unprivileged workload. The container had networking
+disabled. SSHFS used
+`-o passive,direct_io,dir_cache=no,attr_timeout=0,entry_timeout=0,negative_timeout=0`
+to communicate with Apple's `/usr/libexec/sftp-server` over [standard input and
+output][passive]. The host used the [test Seatbelt profile][write-profile] with
+one extra grant for writes to `/dev/null`, which the server opens at startup.
+The server log confirmed that SSHFS used the OpenSSH POSIX rename extension. The
+workload read a host editor's replacement and saved a temporary file by rename.
+The host saw the new contents. Renames over a protected file and a hard-link
+alias returned `EACCES`.
+
+The macOS profile only restricts writes. The Linux probe checks rename and
+unlink. It does not check opens for writing, truncation, or creation of links. A
+production host service must also confine reads, handle open file descriptors
+across host replacements, enforce protected directories and Git metadata, and
+release the mount when the session closes.
+
+[darwin-mutations]: test/darwin-mutations.test.ts
+[write-profile]: test/mount/darwin-mutations.sb
+[linux-mutations]: test/mount/linux-mutations/verify.sh
+[linux-rename]:
+  https://github.com/torvalds/linux/blob/v6.8/fs/namei.c#L4543-L4575
+[passive]: https://github.com/libfuse/sshfs/blob/master/sshfs.rst
+
 ## Measuring a copied workspace
 
 From `packages/sdk`, run the benchmark against a local daemon with the pinned

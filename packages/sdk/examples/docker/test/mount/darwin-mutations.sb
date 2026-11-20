@@ -1,0 +1,7 @@
+(version 1)
+(allow default)
+(deny file-write*)
+(allow file-write*
+    (require-all (subpath (param "WORKSPACE"))
+                 (require-not (file-attribute has-multiple-names))))
+(deny file-write* (subpath (param "PROTECTED")))

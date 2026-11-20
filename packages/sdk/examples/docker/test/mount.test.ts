@@ -1,6 +1,13 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { link, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import {
+	link,
+	readFile,
+	rename,
+	stat,
+	truncate,
+	writeFile
+} from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -118,6 +125,25 @@ it
 				});
 			}
 
+			await fixture.docker([
+				'exec',
+				'--user=65534:65534',
+				allocation,
+				'/usr/bin/timeout',
+				'5',
+				'/usr/bin/perl',
+				'-MSocket',
+				'-e',
+				`socket(my $peer, AF_UNIX, SOCK_SEQPACKET, 0) or die $!;
+connect($peer, sockaddr_un("/control/service")) or die $!;
+shutdown($peer, 1);
+my $count = sysread($peer, my $reply, 1);
+die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
+			]);
+			expect(await fixture.docker(['logs', allocation])).toContain(
+				'mount request from uid 65534: permission denied'
+			);
+
 			const security = await fixture.docker([
 				'info',
 				'--format',
@@ -132,6 +158,18 @@ it
 			await writeFile(
 				path.join(fixture.workspace, 'source.txt'),
 				'after service startup'
+			);
+
+			if (mode === 'read-write') {
+				const oversized = path.join(fixture.workspace, 'truncate.txt');
+
+				await writeFile(oversized, '');
+				await truncate(oversized, 16 * 1024 * 1024 + 1);
+			}
+
+			await writeFile(
+				path.join(fixture.workspace, '.pi-byos-write-fixture'),
+				'host file'
 			);
 			await link(fixture.outside, path.join(fixture.workspace, 'alias'));
 
@@ -203,6 +241,11 @@ it
 			const output = job.value;
 
 			if (mode === 'read-write') {
+				const truncated = await stat(
+					path.join(fixture.workspace, 'truncate.txt')
+				);
+
+				expect(truncated.size).toBe(0);
 				expect(await readFile(retained, 'utf8')).toBe('workload edit');
 			}
 
@@ -210,7 +253,16 @@ it
 
 			expect(JSON.parse(output)).toStrictEqual({
 				initial: 'after service startup',
+				listedSource: true,
+				listedStage: false,
 				denied: true,
+				...(mode === 'read-write' && {
+					sizes: {
+						truncated: 0,
+						written: Buffer.byteLength('workload edit'),
+						readerSize: Buffer.byteLength('after service startup')
+					}
+				}),
 				file:
 					mode === 'read-write' ? 'host replacement' : 'after service startup',
 				backing: false,
@@ -235,5 +287,5 @@ it
 			await fixture.cleanup();
 		}
 	},
-	150_000
+	210_000
 );

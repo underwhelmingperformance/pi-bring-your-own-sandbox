@@ -285,10 +285,11 @@ write. The mount tests use a prototype FUSE service. The production provider
 copies the workspace into a volume.
 
 The prototype stages each FUSE write request separately. A large application
-write can produce several requests and the host can see each replacement.
-Filesystems that cannot preserve the source file's extended attributes can
-reject writes. A concurrent host replacement can occur between the final
-identity check and the rename.
+write can produce several requests and the host can see each intermediate
+version of the file. Filesystems that cannot preserve the source file's extended
+attributes can reject writes. A concurrent host replacement can occur between
+the final identity check and the rename. In that case the staged write can
+overwrite the new host file.
 
 ## Measuring a copied workspace
 

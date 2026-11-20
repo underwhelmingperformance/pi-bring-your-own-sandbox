@@ -40,10 +40,10 @@ func serve(writable bool) error {
 			return err
 		}
 		err = attach(conn, workspace)
-		conn.Close()
 		if err != nil {
 			log.Print(err)
 		}
+		conn.Close()
 	}
 }
 
@@ -63,7 +63,7 @@ func attach(c *net.UnixConn, workspace *backing) error {
 		return peerErr
 	}
 	if cred.Uid != 0 {
-		return unix.EACCES
+		return fmt.Errorf("mount request from uid %d: %w", cred.Uid, unix.EACCES)
 	}
 	var b [1]byte
 	control := make([]byte, unix.CmsgSpace(4))

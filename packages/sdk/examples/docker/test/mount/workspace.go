@@ -125,13 +125,42 @@ func (n *workspaceNode) open(kind uint32, flags int) (int, syscall.Errno) {
 	return opened, fs.ToErrno(err)
 }
 
-func (n *workspaceNode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
+type workspaceDir struct{ entries fs.DirStream }
+
+func (n *workspaceNode) OpendirHandle(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	fd, errno := n.open(syscall.S_IFDIR, unix.O_RDONLY|unix.O_DIRECTORY)
 	if errno != 0 {
-		return nil, errno
+		return nil, 0, errno
 	}
-	return fs.NewLoopbackDirStreamFd(fd)
+	entries, errno := fs.NewLoopbackDirStreamFd(fd)
+	if errno != 0 {
+		unix.Close(fd)
+		return nil, 0, errno
+	}
+	return &workspaceDir{entries}, 0, 0
 }
+
+func (d *workspaceDir) Readdirent(ctx context.Context) (*fuse.DirEntry, syscall.Errno) {
+	for d.entries.HasNext() {
+		entry, errno := d.entries.Next()
+		if errno != 0 {
+			return nil, errno
+		}
+		if !strings.HasPrefix(entry.Name, stagePrefix) {
+			return &entry, 0
+		}
+	}
+	return nil, 0
+}
+
+func (d *workspaceDir) Seekdir(ctx context.Context, off uint64) syscall.Errno {
+	if seeker, ok := d.entries.(fs.FileSeekdirer); ok {
+		return seeker.Seekdir(ctx, off)
+	}
+	return syscall.ENOTSUP
+}
+
+func (d *workspaceDir) Releasedir(ctx context.Context, flags uint32) { d.entries.Close() }
 
 func (n *workspaceNode) Readlink(ctx context.Context) ([]byte, syscall.Errno) {
 	fd, _, errno := n.pin()

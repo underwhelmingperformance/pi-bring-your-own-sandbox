@@ -21,6 +21,7 @@ profile byos-mount-probe flags=(attach_disconnected,mediate_deleted) {
   /control/service rw,
   /workspace/ r,
   /workspace/source.txt rw,
+  /workspace/truncate.txt rw,
   /workspace/alias r,
   /workspace/host-ready r,
   @{PROC}/@{pid}/status r,

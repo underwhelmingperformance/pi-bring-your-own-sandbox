@@ -3,6 +3,7 @@ import {
 	existsSync,
 	fstatSync,
 	openSync,
+	readdirSync,
 	readFileSync,
 	writeFileSync,
 	writeSync
@@ -23,26 +24,29 @@ function isRefused(operation: () => unknown, errno: number) {
 	}
 }
 
-async function isStaleWriteRefused() {
+async function writeAndInspect() {
+	writeFileSync('/workspace/truncate.txt', '');
+
+	const reader = openSync(file, 'r');
 	const fd = openSync(file, 'w+');
 
 	try {
-		if (fstatSync(fd).size > 0) {
-			throw new Error('Truncate left an incorrect descriptor size.');
-		}
+		const truncated = fstatSync(fd).size;
 
 		writeSync(fd, 'workload edit');
 
-		if (fstatSync(fd).size !== 13) {
-			throw new Error('Write left an incorrect descriptor size.');
-		}
+		const written = fstatSync(fd).size;
+		const readerSize = fstatSync(reader).size;
+		const deadline = performance.now() + 45_000;
 
-		for (let attempt = 0; attempt < 500; attempt++) {
+		while (performance.now() < deadline) {
 			if (existsSync('/workspace/host-ready')) {
-				return isRefused(
+				const isDenied = isRefused(
 					() => writeSync(fd, 'unexpected', 0),
 					constants.errno.ESTALE
 				);
+
+				return { denied: isDenied, sizes: { truncated, written, readerSize } };
 			}
 
 			await delay(10);
@@ -51,15 +55,18 @@ async function isStaleWriteRefused() {
 		throw new Error('The host did not replace the file.');
 	} finally {
 		closeSync(fd);
+		closeSync(reader);
 	}
 }
 
-const isDenied =
+const result =
 	process.argv[1] === 'read-write'
-		? await isStaleWriteRefused()
-		: isRefused(() => {
-				writeFileSync(file, 'unexpected');
-			}, constants.errno.EROFS);
+		? await writeAndInspect()
+		: {
+				denied: isRefused(() => {
+					writeFileSync(file, 'unexpected');
+				}, constants.errno.EROFS)
+			};
 const status = new Map<string, string>();
 
 for (const line of readFileSync('/proc/self/status', 'utf8').split('\n')) {
@@ -76,10 +83,14 @@ const privileges = Object.fromEntries(
 	)
 );
 
+const entries = readdirSync('/workspace');
+
 process.stdout.write(
 	JSON.stringify({
 		initial,
-		denied: isDenied,
+		listedSource: entries.includes('source.txt'),
+		listedStage: entries.includes('.pi-byos-write-fixture'),
+		...result,
 		file: readFileSync(file, 'utf8'),
 		backing: existsSync('/backing/source.txt'),
 		alias: existsSync('/workspace/alias'),

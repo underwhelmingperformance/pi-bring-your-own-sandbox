@@ -47,10 +47,12 @@ import {
 	cleanupContext,
 	DockerResources
 } from './resources.js';
-
-function mount(fields: readonly string[]): string {
-	return fields.map((field) => `"${field.replaceAll('"', '""')}"`).join(',');
-}
+import {
+	type DockerMountService,
+	type DockerWorkspaceMount,
+	mount,
+	workspaceCommand
+} from './workspace-mount.js';
 
 function targetCommand(
 	request: ProcessRequest
@@ -126,7 +128,8 @@ export interface DockerProviderOptions {
 
 class DockerBackend implements SandboxBackend {
 	readonly #resources: DockerResources;
-	readonly #onClose: () => void;
+	readonly #workspaceMount: DockerWorkspaceMount;
+	readonly #onClose: (() => void) | undefined;
 	readonly #snapshots = new Set<Promise<void>>();
 	readonly #launcher: string;
 	readonly #image: string;
@@ -142,8 +145,7 @@ class DockerBackend implements SandboxBackend {
 	readonly capabilities: SandboxCapabilities;
 	readonly policy: SandboxBackend['policy'];
 	readonly recovery: SandboxBackend['recovery'];
-	readonly policyDescription =
-		'Jobs use a copied workspace, a read-only Debian image, private scratch space, UID 65534 and no network. Host files outside the copied workspace are not mounted.';
+	readonly policyDescription: string;
 
 	constructor(
 		resources: DockerResources,
@@ -151,20 +153,15 @@ class DockerBackend implements SandboxBackend {
 		launcher: string,
 		client: DockerClient,
 		helpers: DockerFileHelpers,
-		onClose: () => void,
+		onClose: (() => void) | undefined,
 		toolchain: { image: string; capabilities: SandboxCapabilities },
-		source?: ReviewSnapshotSource
+		workspace: SandboxBackend['workspace'],
+		service?: DockerMountService
 	) {
-		this.workspace =
-			source === undefined
-				? copiedWorkspace
-				: {
-						...copiedWorkspace,
-						description:
-							source.kind === 'host'
-								? 'Read-only snapshot of the host checkout.'
-								: 'Read-only snapshot of the proposed command’s Docker workspace.'
-					};
+		this.policyDescription = service
+			? 'Jobs access the host checkout through the workspace filesystem service.'
+			: 'Jobs use a copied workspace, a read-only Debian image, private scratch space, UID 65534 and no network. Host files outside the copied workspace are not mounted.';
+		this.workspace = workspace;
 		this.#onClose = onClose;
 		this.#image = toolchain.image;
 		this.capabilities = toolchain.capabilities;
@@ -172,13 +169,17 @@ class DockerBackend implements SandboxBackend {
 		this.#launcher = launcher;
 		this.id = resources.volume;
 		this.recovery = resources.recovery;
+
+		const isReadOnly = policy.workspaceAccess === 'read-only';
+
+		this.#workspaceMount = {
+			mount: service ?? this.#mount(isReadOnly),
+			readOnly: isReadOnly
+		};
 		this.#worker = new DockerFileWorker(
 			resources,
 			client,
-			{
-				mount: this.#mount(policy.workspaceAccess === 'read-only'),
-				readOnly: policy.workspaceAccess === 'read-only'
-			},
+			this.#workspaceMount,
 			helpers,
 			this.#lifetime.signal
 		);
@@ -293,15 +294,19 @@ class DockerBackend implements SandboxBackend {
 				'--user=0:0',
 				'--workdir=/',
 				'--tmpfs=/tmp:rw,nosuid,nodev,size=16m',
-				'--mount',
-				this.#mount(this.policy.workspaceAccess === 'read-only'),
-				'--entrypoint=/usr/local/bin/node',
-				this.#image,
-				'--input-type=module-typescript',
-				'--eval',
-				this.#launcher,
-				'--',
-				JSON.stringify(invocation)
+				...workspaceCommand(
+					this.#workspaceMount,
+					'launcher',
+					this.#image,
+					'/usr/local/bin/node',
+					[
+						'--input-type=module-typescript',
+						'--eval',
+						this.#launcher,
+						'--',
+						JSON.stringify(invocation)
+					]
+				)
 			],
 			{
 				...context,
@@ -589,12 +594,52 @@ class DockerBackend implements SandboxBackend {
 			return this.#closing;
 		}
 
-		this.#onClose();
+		this.#onClose?.();
 		this.#lifetime.abort();
 		this.#closing = this.#dispose(context);
 
 		return this.#closing;
 	}
+}
+
+async function readCommands() {
+	const [launcher, files, search, matcher] = await Promise.all([
+		readFile(new URL('launcher.ts', import.meta.url), 'utf8'),
+		readFile(new URL('file-helper.ts', import.meta.url), 'utf8'),
+		readFile(new URL('search-helper.ts', import.meta.url), 'utf8'),
+		readDockerMatcher()
+	]);
+
+	return { launcher, helpers: { files, search, matcher } };
+}
+
+export async function attachDockerWorkspace(
+	resources: DockerResources,
+	client: DockerClient,
+	workspaceAccess: 'read-only' | 'read-write',
+	service: DockerMountService
+): Promise<SandboxBackend> {
+	const { launcher, helpers } = await readCommands();
+
+	return new DockerBackend(
+		resources,
+		{
+			...dockerDefaultPolicy,
+			workspaceAccess,
+			workspaceRelationship: 'shared'
+		},
+		launcher,
+		client,
+		helpers,
+		undefined,
+		{ image: DOCKER_IMAGE, capabilities: defaultCapabilities },
+		{
+			...copiedWorkspace,
+			relationship: 'shared',
+			description: 'Files are served from the host checkout.'
+		},
+		service
+	);
 }
 
 /**
@@ -755,12 +800,9 @@ export function createDockerProvider(
 			}
 		}
 
-		const [launcher, files, search, importer, matcher] = await Promise.all([
-			readFile(new URL('launcher.ts', import.meta.url), 'utf8'),
-			readFile(new URL('file-helper.ts', import.meta.url), 'utf8'),
-			readFile(new URL('search-helper.ts', import.meta.url), 'utf8'),
-			readFile(new URL('import-helper.ts', import.meta.url), 'utf8'),
-			readDockerMatcher()
+		const [{ launcher, helpers }, importer] = await Promise.all([
+			readCommands(),
+			readFile(new URL('import-helper.ts', import.meta.url), 'utf8')
 		]);
 		const resources = new DockerResources(
 			client,
@@ -771,12 +813,20 @@ export function createDockerProvider(
 			request.policy,
 			launcher,
 			client,
-			{ files, search, matcher },
+			helpers,
 			() => {
 				active.delete(resources.volume);
 			},
 			toolchain,
-			source
+			source === undefined
+				? copiedWorkspace
+				: {
+						...copiedWorkspace,
+						description:
+							source.kind === 'host'
+								? 'Read-only snapshot of the host checkout.'
+								: 'Read-only snapshot of the proposed command’s Docker workspace.'
+					}
 		);
 
 		if (parent === undefined) {

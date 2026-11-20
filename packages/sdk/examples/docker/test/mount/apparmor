@@ -14,6 +14,7 @@ profile byos-mount-probe flags=(attach_disconnected,mediate_deleted) {
 
   /mount-check rix,
   /usr/bin/setpriv rix,
+  /usr/bin/sleep rix,
   /usr/bin/dash rix,
   /usr/local/bin/node mrix,
   /usr/lib/** mr,
@@ -30,4 +31,5 @@ profile byos-mount-probe flags=(attach_disconnected,mediate_deleted) {
   /workspace/alias r,
   /workspace/host-ready r,
   @{PROC}/@{pid}/status r,
+  @{PROC}/1/comm r,
 }

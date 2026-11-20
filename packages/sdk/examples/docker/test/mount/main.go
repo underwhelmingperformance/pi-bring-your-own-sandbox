@@ -125,7 +125,7 @@ func attach(c *net.UnixConn, workspace *backing) error {
 	return err
 }
 
-func mount(writable bool) error {
+func mount(writable, launcher bool) error {
 	fd, err := unix.Open("/dev/fuse", unix.O_RDWR|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return err
@@ -166,7 +166,26 @@ func mount(writable bool) error {
 		return err
 	}
 	args := []string{"setpriv", "--reuid=65534", "--regid=65534", "--clear-groups", "--no-new-privs", "--bounding-set=-all", "--inh-caps=-all", "--ambient-caps=-all", "--"}
+	if launcher {
+		args = []string{"setpriv", "--clear-groups", "--no-new-privs", "--bounding-set=-all,+setuid,+setgid", "--inh-caps=-all", "--ambient-caps=-all", "--"}
+	}
 	return unix.Exec("/usr/bin/setpriv", append(args, os.Args[3:]...), os.Environ())
+}
+
+func waitWorker() error {
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		var stat unix.Statfs_t
+		command, err := os.ReadFile("/proc/1/comm")
+		if err != nil {
+			return err
+		}
+		if string(command) == "sleep\n" && unix.Statfs("/workspace", &stat) == nil && stat.Type == unix.FUSE_SUPER_MAGIC {
+			return nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return unix.ETIMEDOUT
 }
 
 func main() {
@@ -180,8 +199,10 @@ func main() {
 		err = serve(true, true)
 	case len(os.Args) == 2 && os.Args[1] == "host-channel":
 		err = hostChannel()
-	case len(os.Args) > 3 && os.Args[1] == "mount":
-		err = mount(os.Args[2] == "read-write")
+	case len(os.Args) > 3 && (os.Args[1] == "mount" || os.Args[1] == "mount-launcher"):
+		err = mount(os.Args[2] == "read-write", os.Args[1] == "mount-launcher")
+	case len(os.Args) == 2 && os.Args[1] == "wait-worker":
+		err = waitWorker()
 	default:
 		log.Fatal("expected serve or mount with a workload command")
 	}

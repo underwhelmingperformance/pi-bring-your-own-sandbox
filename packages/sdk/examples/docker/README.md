@@ -319,11 +319,21 @@ removals. Linux resolves the operands of these operations by name, so a host
 process can substitute an entry after the service has checked it. Enabling them
 in a shared workspace requires enforcement at the point of mutation.
 
-A second mount runs the provider's file helper. A host read verifies the new
-contents after a writable save. On a read-only mount the helper returns its
-permission-denied status and the host file keeps its original contents. The
-mount tests use a prototype FUSE service. The production provider copies the
-workspace into a volume.
+The SDK file worker and shell jobs attach separate mounts to the same service.
+The integration test writes through `sandbox.files.writeFile` and reads the
+result through `sandbox.exec` and on the host. The host then replaces the file.
+The next `sandbox.files.readFile` reads the editor's version. On a read-only
+mount, an SDK write returns a permission error. The production provider still
+uses a copied workspace.
+
+On macOS the service stages each write outside the checkout and asks a
+Seatbelt-restricted host process to rename the staged file. The host process
+accepts only regular files in the checkout root. After the rename, the service
+waits for the old directory entry to disappear from the VM's view. A subsequent
+write or truncate checks the open descriptor against the current entry. The
+formatter test covers a host replacement, a host rename, and an open file for
+which the host adds a hard link under `.pi`. The host reads the protected
+contents independently after the formatter exits.
 
 The prototype stages each FUSE write request separately. A large application
 write can produce several requests and the host can see each intermediate
@@ -361,7 +371,14 @@ to both authorisation functions. In [Linux 6.8][linux-rename], the parent
 directories are locked at the rename check, but the kernel locks the file inodes
 afterwards. The check sees which entries the rename will use. A link count
 observed there does not establish that the count will remain the same until the
-rename completes. The probe tests aliases that already exist.
+rename completes. After locking the files, the VFS checks delegations and calls
+the filesystem's rename method. Neither Linux 6.8 nor the inspected [upstream
+implementation][linux-mainline-rename] calls a second rename authorisation hook
+between the inode locks and the filesystem operation. The probe tests aliases
+that already exist.
+
+[linux-mainline-rename]:
+  https://github.com/torvalds/linux/blob/65e4fd942f72a9dba0e4e257290c4fa1aa756854/fs/namei.c#L5799-L5869
 
 For a checkout on macOS, a check in the Docker VM only sees the guest's view of
 the directory entries.
@@ -385,11 +402,10 @@ hard-link alias returned `EACCES`. This experiment used a fixed workload and did
 not test confinement of arbitrary SFTP clients or access to the FUSE device from
 the workload.
 
-The macOS profile restricts writes and hard-link creation. The Linux probe
-checks rename and unlink. It does not check opens for writing, truncation, or
-creation of links. A production host service must also confine reads, handle
-open file descriptors across host replacements, enforce protected directories
-and Git metadata, and release the mount when the session closes.
+The macOS replacement service handles regular files in the checkout root. A
+production shared workspace also needs nested writes, editor renames, removals
+and protection for Git metadata. The Linux probe covers rename and unlink.
+Shared sessions require host enforcement for content changes as well.
 
 [darwin-mutations]: test/darwin-mutations.test.ts
 [write-profile]: test/mount/darwin-mutations.sb

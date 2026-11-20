@@ -25,6 +25,10 @@ import {
 	cleanupContext,
 	DockerResources
 } from './resources.js';
+import {
+	type DockerWorkspaceMount,
+	workspaceCommand
+} from './workspace-mount.js';
 
 const statValidator = Compile(
 	Type.Object({
@@ -79,7 +83,7 @@ the container cancels an individual call without affecting shell workloads.
 export class DockerFileWorker implements BackendFileReader {
 	readonly #resources: DockerResources;
 	readonly #client: DockerClient;
-	readonly #workspace: { readonly mount: string; readonly readOnly: boolean };
+	readonly #workspace: DockerWorkspaceMount;
 	readonly #helpers: DockerFileHelpers;
 	readonly #lifetime: AbortSignal;
 	#name: string | undefined;
@@ -92,7 +96,7 @@ export class DockerFileWorker implements BackendFileReader {
 	constructor(
 		resources: DockerResources,
 		client: DockerClient,
-		workspace: { readonly mount: string; readonly readOnly: boolean },
+		workspace: DockerWorkspaceMount,
 		helpers: DockerFileHelpers,
 		lifetime: AbortSignal
 	) {
@@ -139,18 +143,24 @@ export class DockerFileWorker implements BackendFileReader {
 				'--read-only',
 				'--cap-drop=ALL',
 				'--security-opt=no-new-privileges',
-				'--user=65534:65534',
-				'--workdir=/workspace',
+				typeof this.#workspace.mount === 'string'
+					? '--user=65534:65534'
+					: '--user=0:0',
+				typeof this.#workspace.mount === 'string'
+					? '--workdir=/workspace'
+					: '--workdir=/',
 				'--tmpfs=/opt/pi-byos/node_modules/re2js:rw,noexec,nosuid,nodev,size=1m,mode=0755,uid=65533,gid=65533',
 				'--pids-limit=32',
 				'--memory=128m',
 				'--cpus=1',
 				'--log-driver=none',
-				'--mount',
-				this.#workspace.mount,
-				'--entrypoint=/bin/sleep',
-				DOCKER_IMAGE,
-				'infinity'
+				...workspaceCommand(
+					this.#workspace,
+					'worker',
+					DOCKER_IMAGE,
+					'/bin/sleep',
+					['infinity']
+				)
 			],
 			context,
 			operation
@@ -158,6 +168,14 @@ export class DockerFileWorker implements BackendFileReader {
 		context.signal.throwIfAborted();
 		this.#lifetime.throwIfAborted();
 		await this.#resources.checked(['start', name], context, operation);
+
+		if (typeof this.#workspace.mount !== 'string') {
+			await this.#resources.checked(
+				['exec', '--user=65534:65534', name, '/mount-check', 'wait-worker'],
+				context,
+				operation
+			);
+		}
 
 		return name;
 	}
@@ -285,8 +303,9 @@ export class DockerFileWorker implements BackendFileReader {
 			const result = await this.#client.command({
 				args: [
 					'exec',
-					...(isSearch ? ['--workdir=/opt/pi-byos'] : []),
 					...(input === undefined ? [] : ['--interactive']),
+					'--user=65534:65534',
+					isSearch ? '--workdir=/opt/pi-byos' : '--workdir=/workspace',
 					name,
 					'/usr/local/bin/node',
 					'--input-type=module-typescript',

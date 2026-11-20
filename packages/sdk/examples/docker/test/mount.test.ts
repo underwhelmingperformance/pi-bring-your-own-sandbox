@@ -1,5 +1,4 @@
 import { execFile } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
 import {
 	link,
 	mkdir,
@@ -14,21 +13,27 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
+import { SandboxPermissionDeniedError } from 'pi-bring-your-own-sandbox/api';
 import { expect, it } from 'vitest';
 
+import { createSandbox } from '../../../src/facade.js';
+import { TestBackendOwner } from '../../../src/fixtures/backend-owner.js';
 import { connectHostReplacements } from '../src/host-replacements.js';
 import { DOCKER_IMAGE } from '../src/image.js';
-import { ALLOCATION_LABEL } from '../src/resources.js';
+import { attachDockerWorkspace } from '../src/provider.js';
+import { ALLOCATION_LABEL, DockerResources } from '../src/resources.js';
 
-import { DockerFixture } from './fixture.js';
+import { DockerFixture, operationContext } from './fixture.js';
 
 it
 	.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')
-	.each(['read-only', 'read-write'])(
+	.each(['read-only', 'read-write'] as const)(
 	'serves a %s host workspace after dropping mount privileges and closing the control channel',
 	async (mode) => {
 		const fixture = await DockerFixture.create();
-		const allocation = 'byos-mount-' + randomUUID();
+		const client = fixture.providerClient();
+		const resources = new DockerResources(client, fixture.config.socketPath);
+		const allocation = resources.volume;
 		const label = ALLOCATION_LABEL + '=' + allocation;
 		const binary = path.join(fixture.workspace, '..', 'mount-check');
 
@@ -352,31 +357,54 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 				});
 			}
 
-			const helper = await readFile(
-				new URL('../src/file-helper.ts', import.meta.url),
-				'utf8'
-			);
-			const sourcePath = '/workspace/source.txt';
-			const result = await fixture.docker([
-				...mounted,
-				'/bin/sh',
-				'-ec',
-				`status=0
-printf %s "$3" | /usr/local/bin/node --input-type=module-typescript --eval "$1" -- writeFile "$2" 1024 "\${#3}" || status=$?
-printf '%s\n' "$status"
-/usr/local/bin/node --input-type=module-typescript --eval "$1" -- readFile "$2" 1024`,
-				'helper',
-				helper,
-				sourcePath,
-				'tool edit'
-			]);
-			const expected =
-				mode === 'read-write' ? 'tool edit' : 'after service startup';
-
-			expect({ result, host: await readFile(source, 'utf8') }).toStrictEqual({
-				result: (mode === 'read-write' ? '0' : '41') + '\n' + expected,
-				host: expected
+			const backend = await attachDockerWorkspace(resources, client, mode, {
+				controlVolume: allocation,
+				bootstrap: binary,
+				hasAppArmor: options.includes('name=apparmor')
 			});
+			const sandbox = createSandbox(new TestBackendOwner(backend));
+
+			try {
+				const edit = Buffer.from('tool edit');
+
+				if (mode === 'read-write') {
+					await sandbox.files.writeFile('source.txt', edit);
+					await expect(
+						sandbox.files.writeFile('settings-alias', edit)
+					).rejects.toBeInstanceOf(SandboxPermissionDeniedError);
+				} else {
+					await expect(
+						sandbox.files.writeFile('source.txt', edit)
+					).rejects.toBeInstanceOf(SandboxPermissionDeniedError);
+				}
+
+				const shell = await sandbox.exec({
+					kind: 'shell',
+					dialect: 'sh',
+					command: 'IFS= read -r input < source.txt || :; printf %s "$input"'
+				});
+				const expected =
+					mode === 'read-write' ? 'tool edit' : 'after service startup';
+
+				expect({ ...shell, durationMs: 0 }).toStrictEqual({
+					exit: { kind: 'code', code: 0 },
+					stdout: new TextEncoder().encode(expected),
+					stderr: new Uint8Array(),
+					omittedBytes: { stdout: 0, stderr: 0 },
+					durationMs: 0
+				});
+				expect(await readFile(source, 'utf8')).toBe(expected);
+
+				const replacement = path.join(fixture.workspace, 'editor-update');
+
+				await writeFile(replacement, 'next editor save');
+				await rename(replacement, source);
+				expect(
+					new TextDecoder().decode(await sandbox.files.readFile('source.txt'))
+				).toBe('next editor save');
+			} finally {
+				await backend.dispose(operationContext());
+			}
 
 			const zero = '0000000000000000';
 

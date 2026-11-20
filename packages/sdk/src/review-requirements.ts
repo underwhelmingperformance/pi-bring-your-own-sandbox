@@ -2,9 +2,11 @@ import { Type } from 'typebox';
 
 import type {
 	ReviewSnapshotSource,
-	SandboxAcquireOptions
+	SandboxAcquireOptions,
+	SandboxCloseReport,
+	SandboxErrorContext
 } from './contracts.js';
-import { InvalidSandboxRequestError } from './errors.js';
+import { InvalidSandboxRequestError, SandboxCleanupError } from './errors.js';
 import { checker, nonEmptyStringSchema } from './schemas.js';
 
 export const reviewRequirements = {
@@ -42,4 +44,21 @@ export function snapshotSource(input: unknown): ReviewSnapshotSource {
 	}
 
 	return Object.freeze({ ...input });
+}
+
+export function rethrowSnapshotError(
+	error: unknown,
+	report: SandboxCloseReport,
+	identity: SandboxErrorContext
+): never {
+	if (!report.confirmed) {
+		const [recovery] = report.recoveries;
+
+		throw new SandboxCleanupError(
+			{ ...identity, ...(recovery !== undefined && { recovery }) },
+			{ cause: error }
+		);
+	}
+
+	throw error;
 }

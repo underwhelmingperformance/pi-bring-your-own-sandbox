@@ -10,7 +10,11 @@ import type {
 import { ensureSandboxService } from './default-broker.js';
 import { UnsupportedSandboxCapabilityError } from './errors.js';
 import { operationOptions } from './file-input.js';
-import { reviewRequirements, snapshotSource } from './review-requirements.js';
+import {
+	rethrowSnapshotError,
+	reviewRequirements,
+	snapshotSource
+} from './review-requirements.js';
 
 /**
 Open a fresh read-only copy of the proposed command's workspace. An unavailable
@@ -42,8 +46,10 @@ export async function openReviewSnapshot(
 
 		return snapshot;
 	} catch (error) {
-		await snapshot.close();
-
-		throw error;
+		rethrowSnapshotError(error, await snapshot.close(), {
+			operation: 'dispose',
+			providerId: snapshot.sandbox.providerId,
+			backendId: snapshot.sandbox.backendId
+		});
 	}
 }

@@ -4,7 +4,7 @@ import { Type } from 'typebox';
 
 import { acquireOptions, checkRequirements } from './acquire-options.js';
 import { snapshotBackend, snapshotRecovery } from './backend-snapshot.js';
-import { validateBackend } from './backend-validation.js';
+import { isPolicySatisfied, validateBackend } from './backend-validation.js';
 import {
 	DEFAULT_CLEANUP_BUDGETS,
 	resolveCleanupBudgets
@@ -39,7 +39,8 @@ import {
 	SandboxStartupError,
 	StaleSandboxHandleError,
 	UnconfirmedSandboxTerminationError,
-	UnsupportedSandboxCapabilityError
+	UnsupportedSandboxCapabilityError,
+	UnsupportedSandboxPolicyError
 } from './errors.js';
 import type { SandboxOwner } from './facade.js';
 import { createSandbox } from './facade.js';
@@ -68,7 +69,11 @@ import type {
 } from './protocol.js';
 import type { DiagnosticStore } from './provider-diagnostics.js';
 import { ProviderDiagnostics } from './provider-diagnostics.js';
-import { reviewRequirements, snapshotSource } from './review-requirements.js';
+import {
+	rethrowSnapshotError,
+	reviewRequirements,
+	snapshotSource
+} from './review-requirements.js';
 import { callable, checker } from './schemas.js';
 import { isRecord, isRecovery, snapshotProviderInfo } from './validation.js';
 
@@ -872,6 +877,20 @@ export class SandboxGeneration {
 					workspaceProtection: this.#selection.policy.workspaceProtection
 				})
 			};
+
+			if (
+				this.#requirements.some(
+					(requirement) =>
+						requirement.policy !== undefined &&
+						!isPolicySatisfied(policy, requirement.policy)
+				)
+			) {
+				throw new UnsupportedSandboxPolicyError({
+					operation: 'acquire',
+					providerId: provider.id
+				});
+			}
+
 			const review = new SandboxGeneration(context, {
 				diagnostics: this.#diagnostics,
 				providers: () => [
@@ -921,22 +940,10 @@ export class SandboxGeneration {
 
 				return Object.freeze({ sandbox, close });
 			} catch (error) {
-				const report = await close();
-
-				if (!report.confirmed) {
-					throw new SandboxCleanupError(
-						{
-							operation: 'dispose',
-							providerId: provider.id,
-							...(report.recoveries[0] !== undefined && {
-								recovery: report.recoveries[0]
-							})
-						},
-						{ cause: error }
-					);
-				}
-
-				throw error;
+				rethrowSnapshotError(error, await close(), {
+					operation: 'dispose',
+					providerId: provider.id
+				});
 			}
 		} finally {
 			scope.dispose();

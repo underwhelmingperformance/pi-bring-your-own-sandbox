@@ -601,6 +601,10 @@ The returned `sandbox` supports file reads and POSIX shell commands in a
 read-only copy with external networking denied. Call `close()` when the review
 ends and inspect its cleanup report. Aborting the review signal or closing the
 session also disposes the snapshot. Concurrent reviews own separate allocations.
+Session-wide requirements also apply to reviews. Set the ordinary workspace's
+write access or shared relationship in the provider configuration or on the
+ordinary acquisition. A session-wide requirement for either conflicts with a
+read-only copied snapshot and rejects the review before allocation.
 
 Providers implement the optional `openReviewSnapshot` method to copy the source
 described by the broker. Report recovery before allocation, as for ordinary

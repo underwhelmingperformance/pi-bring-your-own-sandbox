@@ -532,6 +532,16 @@ it.each([
 		expected: 'completed editor save'
 	},
 	{
+		defect: 'an editor replacing the target during preparation',
+		relationship: 'copied',
+		expected: 'Preparing an editor save'
+	},
+	{
+		defect: 'a completed shared editor save missing from the source',
+		relationship: 'shared',
+		expected: 'completed editor save'
+	},
+	{
 		defect: 'a shared writer that never reports readiness',
 		relationship: 'shared',
 		expected: 'writer must wait'
@@ -567,6 +577,11 @@ it.each([
 	let source = Buffer.from('seed');
 	let target = Buffer.from(source);
 	const readTarget = { kind: 'argv', executable: 'read', args: [] } as const;
+	const writeTarget = (bytes: Uint8Array): ProcessRequest => ({
+		kind: 'argv',
+		executable: 'write',
+		args: [Buffer.from(bytes).toString('base64')]
+	});
 	const scenario = {
 		...base,
 		workspaceVisibility: relationship,
@@ -636,6 +651,20 @@ it.each([
 					...(defect === 'a target discarding its prepared editor save' && {
 						stageSave: () => ({ prepare: readTarget, commit: readTarget })
 					}),
+					...(defect ===
+						'an editor replacing the target during preparation' && {
+						stageSave: (bytes: Uint8Array) => ({
+							prepare: writeTarget(bytes),
+							commit: readTarget
+						})
+					}),
+					...(defect ===
+						'a completed shared editor save missing from the source' && {
+						stageSave: (bytes: Uint8Array) => ({
+							prepare: readTarget,
+							commit: writeTarget(bytes)
+						})
+					}),
 					readSource: () => Promise.resolve(source),
 					replaceSource: (bytes: Uint8Array) => {
 						source = Buffer.from(bytes);
@@ -651,11 +680,7 @@ it.each([
 						defect === 'a shared writer that never reports readiness'
 							? { kind: 'argv', executable: 'wait', args: [] }
 							: readTarget,
-					writeTarget: (bytes: Uint8Array): ProcessRequest => ({
-						kind: 'argv',
-						executable: 'write',
-						args: [Buffer.from(bytes).toString('base64')]
-					})
+					writeTarget
 				}
 			};
 		}

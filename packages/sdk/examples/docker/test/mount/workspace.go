@@ -87,11 +87,26 @@ func (n *workspaceNode) Lookup(ctx context.Context, name string, out *fuse.Entry
 }
 
 func (n *workspaceNode) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
-	fd, stat, errno := n.pin()
-	if errno != 0 {
-		return errno
+	var stat syscall.Stat_t
+	switch handle := f.(type) {
+	case *reader:
+		if err := syscall.Fstat(handle.fd, &stat); err != nil {
+			return fs.ToErrno(err)
+		}
+	case *workspaceWriter:
+		handle.mu.Lock()
+		defer handle.mu.Unlock()
+		if err := syscall.Fstat(int(handle.file.Fd()), &stat); err != nil {
+			return fs.ToErrno(err)
+		}
+	default:
+		fd, pinned, errno := n.pin()
+		if errno != 0 {
+			return errno
+		}
+		unix.Close(fd)
+		stat = pinned
 	}
-	unix.Close(fd)
 	n.attributes(&stat, &out.Attr)
 	return 0
 }

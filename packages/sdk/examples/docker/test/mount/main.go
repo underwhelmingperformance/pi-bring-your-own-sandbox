@@ -48,6 +48,23 @@ func serve(writable bool) error {
 }
 
 func attach(c *net.UnixConn, workspace *backing) error {
+	socket, err := c.SyscallConn()
+	if err != nil {
+		return err
+	}
+	var cred *unix.Ucred
+	var peerErr error
+	if err = socket.Control(func(fd uintptr) {
+		cred, peerErr = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
+	}); err != nil {
+		return err
+	}
+	if peerErr != nil {
+		return peerErr
+	}
+	if cred.Uid != 0 {
+		return unix.EACCES
+	}
 	var b [1]byte
 	control := make([]byte, unix.CmsgSpace(4))
 	n, size, flags, _, err := c.ReadMsgUnix(b[:], control)

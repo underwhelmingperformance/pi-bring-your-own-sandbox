@@ -56,7 +56,7 @@ func (w *workspaceWriter) replace(data []byte, offset int64, truncate bool) erro
 	if source.Nlink != 1 || source.Mode&07000 != 0 || int(source.Uid) != os.Geteuid() || int(source.Gid) != os.Getegid() {
 		return unix.EACCES
 	}
-	if offset < 0 || offset > maxWriteSize-int64(len(data)) || source.Size > maxWriteSize {
+	if offset < 0 || offset > maxWriteSize-int64(len(data)) || (!truncate && source.Size > maxWriteSize) {
 		return unix.EFBIG
 	}
 

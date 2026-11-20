@@ -1,6 +1,7 @@
 import {
 	closeSync,
 	existsSync,
+	fstatSync,
 	openSync,
 	readFileSync,
 	writeFileSync,
@@ -26,10 +27,18 @@ async function isStaleWriteRefused() {
 	const fd = openSync(file, 'w+');
 
 	try {
+		if (fstatSync(fd).size > 0) {
+			throw new Error('Truncate left an incorrect descriptor size.');
+		}
+
 		writeSync(fd, 'workload edit');
 
+		if (fstatSync(fd).size !== 13) {
+			throw new Error('Write left an incorrect descriptor size.');
+		}
+
 		for (let attempt = 0; attempt < 500; attempt++) {
-			if (readFileSync(file, 'utf8') === 'host replacement') {
+			if (existsSync('/workspace/host-ready')) {
 				return isRefused(
 					() => writeSync(fd, 'unexpected', 0),
 					constants.errno.ESTALE

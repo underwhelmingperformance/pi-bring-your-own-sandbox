@@ -160,13 +160,19 @@ it
 			const source = path.join(fixture.workspace, 'source.txt');
 			const retained = path.join(fixture.workspace, '..', 'retained');
 			const observe = async () => {
-				for (let attempt = 0; attempt < 500; attempt++) {
+				const deadline = Date.now() + 45_000;
+
+				while (Date.now() < deadline) {
 					if ((await readFile(source, 'utf8')) === 'workload edit') {
 						const replacement = path.join(fixture.workspace, 'replacement');
 
 						await writeFile(replacement, 'host replacement');
 						await link(source, retained);
 						await rename(replacement, source);
+						await writeFile(
+							path.join(fixture.workspace, 'host-ready'),
+							'ready'
+						);
 
 						return;
 					}

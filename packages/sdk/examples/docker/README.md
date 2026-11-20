@@ -246,4 +246,11 @@ observes the write while the workload still has the file open, then links the
 file outside the workspace and replaces the workspace entry by rename. The
 workload reads the replacement. A write on the old descriptor fails and the
 retained host file keeps its contents. The read-only mount rejects the first
-write. The mount tests use a prototype. The production provider uses a copy.
+write. The mount tests use a prototype FUSE service. The production provider
+copies the workspace into a volume.
+
+The prototype stages each FUSE write request separately. A large application
+write can produce several requests and the host can see each replacement.
+Filesystems that cannot preserve the source file's extended attributes can
+reject writes. A concurrent host replacement can occur between the final
+identity check and the rename.

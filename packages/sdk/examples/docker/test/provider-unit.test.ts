@@ -1203,6 +1203,42 @@ it('selects a copy if an earlier startup consumer supplies no trust decision', a
 	);
 });
 
+it('uses the UI of an earlier startup consumer for a refused shared workspace', async () => {
+	const notify = vi.fn();
+
+	await withPiRuntime(
+		[
+			{
+				name: 'early-consumer',
+				factory(pi) {
+					pi.on('session_start', async (_event, session) => {
+						const context = {
+							cwd: session.cwd,
+							sessionManager: session.sessionManager,
+							isProjectTrusted: () => session.isProjectTrusted(),
+							hasUI: true,
+							ui: { ...session.ui, notify }
+						};
+
+						await expect(getSandbox(pi, context)).rejects.toMatchObject({
+							name: 'UnsupportedSandboxPolicyError'
+						});
+					});
+				}
+			},
+			{ name: 'docker', factory: dockerExtension }
+		],
+		(_runtime, errors) => {
+			expect(errors).toStrictEqual([]);
+			expect(notify.mock.calls).toStrictEqual([
+				[expect.stringContaining('--byos-docker-copy'), 'warning']
+			]);
+
+			return Promise.resolve();
+		}
+	);
+});
+
 it('preserves the policy error when the workspace notice cannot be delivered', async () => {
 	const provider = createDockerProvider({
 		notifyWorkspaceUnavailable() {

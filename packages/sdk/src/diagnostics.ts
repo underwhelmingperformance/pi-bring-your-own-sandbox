@@ -110,6 +110,20 @@ export function formatStatus(status: SandboxStatus): string {
 		lines.push(`Failure: ${status.failure.name}: ${status.failure.message}`);
 	}
 
+	if (
+		status.closeReport === undefined &&
+		status.state === 'failed' &&
+		status.failure?.recovery?.kind === 'allocation'
+	) {
+		lines.push(
+			formatCleanupReport({
+				confirmed: false,
+				failures: [],
+				recoveries: [status.failure.recovery]
+			})
+		);
+	}
+
 	for (const backend of additional) {
 		const id =
 			backend.backendId === undefined ? '' : ' ' + quoted(backend.backendId);
@@ -132,17 +146,6 @@ export function formatStatus(status: SandboxStatus): string {
 
 	if (report !== undefined) {
 		lines.push(formatCleanupReport(report));
-	} else if (
-		status.state === 'failed' &&
-		status.failure?.recovery?.kind === 'allocation'
-	) {
-		lines.push(
-			formatCleanupReport({
-				confirmed: false,
-				failures: [],
-				recoveries: [status.failure.recovery]
-			})
-		);
 	}
 
 	return lines.join('\n');

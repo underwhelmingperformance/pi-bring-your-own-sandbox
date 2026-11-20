@@ -172,6 +172,7 @@ it('shows allocation recovery instructions and expiry when cleanup is incomplete
 });
 
 it('shows recovery from an opening that failed before returning a backend', () => {
+	const base = new MemoryBackend().policy;
 	const failure = new SandboxStartupError(
 		{
 			operation: 'open',
@@ -186,18 +187,39 @@ it('shows recovery from an opening that failed before returning a backend', () =
 	);
 
 	expect(
-		formatStatus({ generationId: 'generation', state: 'failed', failure })
+		formatStatus({
+			generationId: 'generation',
+			state: 'failed',
+			failure,
+			selection: { providerId: 'fixture', source: 'extension', policy: base },
+			backends: [
+				{ policy: base, state: 'failed' },
+				{ policy: { ...base, workspaceAccess: 'read-only' }, state: 'opening' }
+			],
+			diagnostics: [
+				{
+					operation: 'open',
+					operationId: 'first',
+					level: 'warning',
+					message: 'Base opening failed.'
+				}
+			]
+		})
 	).toBe(
 		[
-			'Provider: unavailable',
+			'Provider: fixture (extension)',
 			'State: failed',
 			'Generation: generation',
-			'Target: not opened',
+			'Default target: not opened',
+			'Requested policy: workspace read-write; filesystem provider-default; network provider-default; protected resources: none',
 			'User shell: provider default (not opened)',
 			`Failure: ${failure.name}: ${failure.message}`,
 			'Cleanup: incomplete',
 			'Recovery: orphan-volume-123 (lease manual cleanup)',
-			'Remove orphan-volume-123.'
+			'Remove orphan-volume-123.',
+			'Additional backend (opening)',
+			'Requested policy: workspace read-only; filesystem provider-default; network provider-default; protected resources: none',
+			'Warning (open, first): Base opening failed.'
 		].join('\n')
 	);
 });

@@ -580,15 +580,23 @@ it('shares equivalent protection sets while separating different resources', asy
 
 		const status = await generation.status();
 
+		const expectedPolicies = [
+			{
+				...PERSONAL,
+				workspaceProtection: [
+					{ kind: 'path', path: '.a' },
+					{ kind: 'path', path: '.b' }
+				]
+			},
+			{ ...PERSONAL, workspaceProtection: [{ kind: 'path', path: '.c' }] }
+		];
+
 		expect(status.backends).toStrictEqual(
-			[first, other].map((sandbox) => ({
-				policy: sandbox.policy,
-				backendId: sandbox.backendId,
+			expectedPolicies.map((policy) => ({
+				policy,
+				backendId: 'memory:read-write:provider-default',
 				state: 'ready',
-				effectivePolicy: {
-					...sandbox.policy,
-					workspaceRelationship: sandbox.workspace.relationship
-				}
+				effectivePolicy: { ...policy, workspaceRelationship: 'remote' }
 			}))
 		);
 
@@ -598,16 +606,7 @@ it('shares equivalent protection sets while separating different resources', asy
 			other: other.policy
 		}).toStrictEqual({
 			shared: true,
-			policies: [
-				{
-					...PERSONAL,
-					workspaceProtection: [
-						{ kind: 'path', path: '.a' },
-						{ kind: 'path', path: '.b' }
-					]
-				},
-				{ ...PERSONAL, workspaceProtection: [{ kind: 'path', path: '.c' }] }
-			],
+			policies: expectedPolicies,
 			other: {
 				...PERSONAL,
 				workspaceProtection: [{ kind: 'path', path: '.c' }]

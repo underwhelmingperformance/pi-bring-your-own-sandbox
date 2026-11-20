@@ -311,18 +311,22 @@ async function checkPolicyEffects(
 
 	if (scenario === 'denied-network') {
 		expect(before.kind).toBe('listener');
-
-		if (before.kind === 'listener') {
-			expect(before.connections).toBeGreaterThan(0);
-		}
 	} else if (scenario === 'late-special-file') {
 		expect(['special', 'listener']).toContain(before.kind);
-
-		if (before.kind === 'listener') {
-			expect(before.connections).toBeGreaterThan(0);
-		}
 	} else {
 		expect(['absent', 'file']).toContain(before.kind);
+	}
+
+	if (before.kind === 'listener') {
+		expect(
+			before.connections,
+			'Connect an independent control client to the listener first.'
+		).toBeGreaterThan(0);
+	} else if (before.kind === 'special') {
+		expect(
+			before.bytesReceived,
+			'Send bytes from an independent control writer to the FIFO first.'
+		).toBeGreaterThan(0);
 	}
 
 	await checkProcess(backend, probe.denied, context);
@@ -347,10 +351,17 @@ async function checkPolicyEffects(
 	}
 
 	const { path, error } = probe.file;
+
+	if (error === 'unsupported-file' && !isRead) {
+		throw new Error(
+			'The unsupported-file error applies only to a read of a late special file.'
+		);
+	}
+
 	const expected =
 		error === 'absent'
 			? SandboxPathNotFoundError
-			: error === 'unsupported-file' && isRead
+			: error === 'unsupported-file'
 				? SandboxOperationError
 				: SandboxPermissionDeniedError;
 	const files = backend.files;

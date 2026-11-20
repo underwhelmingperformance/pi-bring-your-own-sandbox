@@ -76,7 +76,7 @@ export interface SandboxPolicyProbe {
 	readonly denied: SandboxProcessProbe;
 	readonly observe: () => Promise<SandboxPolicyEvidence>;
 	/**
-	Supply the target path and expected error when the backend offers the corresponding file operation.
+	Supply the target path and expected error when the backend offers the corresponding file operation. Use `unsupported-file` for a read that fails because of the special file type.
 	*/
 	readonly file?: {
 		readonly path: string;

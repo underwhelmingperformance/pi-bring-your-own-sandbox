@@ -621,7 +621,7 @@ process.stdout.write(readFileSync("/tmp/response"));`
 					let connections = 0;
 					const server = createServer((peer) => {
 						connections++;
-						peer.end();
+						peer.destroy();
 					});
 
 					this.#localListener = server;
@@ -669,8 +669,6 @@ process.stdout.write(readFileSync("/tmp/response"));`
 
 	async cleanup(): Promise<void> {
 		try {
-			await this.#localListener?.[Symbol.asyncDispose]();
-
 			if (this.hasServer) {
 				await this.docker(['rm', '--force', this.server]);
 			}
@@ -706,7 +704,11 @@ process.stdout.write(readFileSync("/tmp/response"));`
 				}
 			}
 		} finally {
-			await rm(this.#directory, { recursive: true, force: true });
+			try {
+				await this.#localListener?.[Symbol.asyncDispose]();
+			} finally {
+				await rm(this.#directory, { recursive: true, force: true });
+			}
 		}
 	}
 }

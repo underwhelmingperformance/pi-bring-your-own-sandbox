@@ -7,7 +7,7 @@ import type {
 	SandboxOperationContext,
 	SandboxPolicy
 } from './contracts.js';
-import { SandboxCleanupError } from './errors.js';
+import { SandboxCleanupError, SandboxOperationError } from './errors.js';
 import { contractScenario } from './fixtures/provider-contract.js';
 import {
 	providerContractCases,
@@ -1105,3 +1105,91 @@ it('checks the first allocation was released before disposing the second', async
 		'The disposed allocation still exists.'
 	);
 });
+
+it.each([
+	{ kind: 'special', count: 0, succeeds: false },
+	{ kind: 'listener', count: 0, succeeds: false },
+	{ kind: 'special', count: 1, succeeds: true }
+] as const)(
+	'verifies the independent control for a late $kind with count $count',
+	async ({ kind, count, succeeds }) => {
+		const base = contractScenario();
+		const options: SandboxProviderTestOptions<undefined> = {
+			...base,
+			policyEffects: ['late-special-file'],
+			provider: {
+				...base.provider,
+				async open(...arguments_) {
+					const backend = await base.provider.open(...arguments_);
+					const read = backend.files?.read;
+
+					if (!read) {
+						throw new Error('Missing read fixture.');
+					}
+
+					return {
+						...backend,
+						files: {
+							...backend.files,
+							read: {
+								...read,
+								readFile: () =>
+									Promise.reject(
+										new SandboxOperationError({ operation: 'readFile' })
+									)
+							}
+						}
+					};
+				}
+			},
+			async createFixture() {
+				const fixture = await base.createFixture();
+				const denied = fixture.processes?.[0];
+
+				if (!denied) {
+					throw new Error('Missing denied command fixture.');
+				}
+
+				return {
+					...fixture,
+					policyEffects: {
+						'late-special-file': () =>
+							Promise.resolve({
+								permitted: {
+									request: { kind: 'argv', executable: 'pwd', args: [] },
+									exit: { kind: 'code', code: 0 },
+									stdout: Buffer.from('/remote/project\n'),
+									stderr: Buffer.alloc(0)
+								},
+								denied,
+								file: { path: 'late', error: 'unsupported-file' },
+								observe: () =>
+									Promise.resolve(
+										kind === 'listener'
+											? { kind, connections: count }
+											: { kind, bytesReceived: count, links: 1, mode: 0o600 }
+									)
+							})
+					}
+				};
+			}
+		};
+		const entry = providerContractCases(options).find(
+			(test) => test.label === 'policy effects (late-special-file)'
+		);
+
+		if (!entry) {
+			throw new Error('Missing late special file scenario.');
+		}
+
+		const result = usingProviderFixture(options, entry.run);
+
+		if (succeeds) {
+			await result;
+
+			return;
+		}
+
+		await expect(result).rejects.toThrow('independent control');
+	}
+);

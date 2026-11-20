@@ -183,19 +183,21 @@ Supply a fixture function under the same key in `fixture.policyEffects`. The
 function receives the open backend so the fixture can identify the allocation
 and introduce resources after startup.
 
-| Case                | Independent observation                                                                                                                           |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `read-only`         | Read the protected bytes, mode and link count from the backing workspace, or confirm that a protected path remains absent.                        |
-| `protected-path`    | Observe the protected resource while the target attempts a direct mutation.                                                                       |
-| `protected-alias`   | Direct the mutation at an alias and observe the original protected resource.                                                                      |
-| `late-special-file` | Create a socket or FIFO after opening. Count bytes received at the FIFO or connections at the listener.                                           |
-| `denied-network`    | Connect an independent control client to the listener before the target attempts a connection. Return the listener's cumulative connection count. |
+| Case                | Independent observation                                                                                                                                               |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `read-only`         | Read the protected bytes, mode and link count from the backing workspace, or confirm that a protected path remains absent.                                            |
+| `protected-path`    | Observe the protected resource while the target attempts a direct mutation.                                                                                           |
+| `protected-alias`   | Direct the mutation at an alias and observe the original protected resource.                                                                                          |
+| `late-special-file` | Create a socket or FIFO after opening. Use an independent client to connect to the socket or write bytes to the FIFO. Return the cumulative connection or byte count. |
+| `denied-network`    | Connect an independent control client to the listener before the target attempts a connection. Return the listener's cumulative connection count.                     |
 
 Supply a permitted process, a denied process and an `observe` function. The
 suite checks both process outcomes and compares independent observations before
 and after each denial. With guaranteed exit status the permitted process must
 exit successfully and the denied process must exit with a positive error code.
 When the backend provides file operations, supply the target path and expected
-error for a write, or for a read of a late special file. Inspect the backing
-resource directly through the fixture. Reading it through the backend would test
-the same boundary twice.
+error for a write, or for a read of a late special file. Use `absent` if the
+target cannot see the path and `denied` for a permission error. A read of a
+special file can also specify `unsupported-file` for `SandboxOperationError`.
+Inspect the backing resource directly through the fixture. Reading it through
+the backend would test the same boundary twice.

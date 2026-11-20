@@ -26,6 +26,7 @@ it.each([
 	{ executable: 'docker' },
 	{ executable: '/docker\0other' },
 	{ socketPath: '/docker\0other' },
+	{ defaultWorkspaceRelationship: 'host' },
 	{ extra: true }
 ])('rejects malformed or remote connection settings: %j', (input) => {
 	expect(() => dockerConfig(input)).toThrow(

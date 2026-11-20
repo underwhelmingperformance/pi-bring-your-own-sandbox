@@ -47,7 +47,8 @@ export const dockerConfigSchema = Type.Object(
 		socketPath: Type.Refine(localPathSchema, (value) =>
 			path.posix.isAbsolute(value)
 		),
-		executable: Type.Refine(localPathSchema, (value) => path.isAbsolute(value))
+		executable: Type.Refine(localPathSchema, (value) => path.isAbsolute(value)),
+		defaultWorkspaceRelationship: Type.Optional(Type.Enum(['shared', 'copied']))
 	},
 	{ additionalProperties: false }
 );

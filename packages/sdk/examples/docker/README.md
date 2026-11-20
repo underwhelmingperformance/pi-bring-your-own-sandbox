@@ -39,6 +39,15 @@ For development with only the BYOS Bash tool, load the shell profile from
 pi --no-extensions --tools bash -e ./examples/docker/src/shell-profile.ts
 ```
 
+Both entry points use project trust to select the development workspace. An
+untrusted project or a host without a trust decision uses a private copy. A
+trusted project requests mediated host editing. This version only supports
+private copies, so opening the trusted development workspace fails before Docker
+allocates resources. Add `--byos-docker-copy` to the Pi invocation to work in a
+private copy. An SDK consumer can also explicitly request
+`workspaceRelationship: 'copied'` at acquisition. Review snapshots always use
+fresh read-only copies.
+
 The profile preserves a narrower Pi tool selection. It checks every model tool
 call, including indirect calls and tools that another extension reactivates.
 Bash can request outside execution through BYOS's configured approval policy.

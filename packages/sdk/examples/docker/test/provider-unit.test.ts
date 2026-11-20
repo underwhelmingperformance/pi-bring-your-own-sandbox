@@ -9,21 +9,25 @@ import {
 	closeSandboxSession,
 	getSandbox,
 	initialiseSandboxHost,
+	openReviewSnapshot,
 	SandboxTransportError
 } from 'pi-bring-your-own-sandbox/api';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 
+import { discoverBroker } from '../../../src/discovery.js';
 import { FakeClock } from '../../../src/fixtures/clock.js';
 import { FixtureConfig } from '../../../src/fixtures/config.js';
 import { withPiRuntime } from '../../../src/fixtures/pi-runtime.js';
 import { remainingBudget } from '../../../src/fixtures/remaining-budget.js';
 import { OperationScope } from '../../../src/lifecycle.js';
+import { NodeDockerClient } from '../src/client.js';
 import type {
 	DockerClient,
 	DockerCommand,
 	DockerCommandResult,
 	DockerConfig
 } from '../src/contracts.js';
+import dockerExtension from '../src/extension.js';
 import { DOCKER_IMAGE } from '../src/image.js';
 import { createDockerProvider } from '../src/provider.js';
 import { cleanupContext } from '../src/resources.js';
@@ -1031,3 +1035,101 @@ it('builds the optional toolchain on the pinned Docker job image by default', as
 
 	expect(dockerfile.split('\n')).toContain('ARG NODE_IMAGE=' + DOCKER_IMAGE);
 });
+
+it.each([
+	{ trusted: true, copy: false, shared: true },
+	{ trusted: true, copy: true, shared: false },
+	{ trusted: false, copy: false, shared: false },
+	{ trusted: undefined, copy: false, shared: false }
+])(
+	'selects the development workspace for Pi trust $trusted and explicit copy $copy',
+	async ({ trusted, copy, shared }) => {
+		const docker = new FakeDocker();
+
+		using cli = vi
+			.spyOn(NodeDockerClient.prototype, 'command')
+			.mockImplementation(docker.command.bind(docker));
+		await withPiRuntime(
+			[
+				{
+					name: 'docker',
+					factory(pi) {
+						dockerExtension(pi);
+						pi.registerCommand('test-workspace', {
+							description: 'Check the active Docker workspace.',
+							async handler(_arguments, session) {
+								const context = {
+									cwd: session.cwd,
+									sessionManager: session.sessionManager,
+									...(trusted !== undefined && {
+										isProjectTrusted: () => trusted
+									})
+								};
+								const opened = getSandbox(pi, context);
+
+								if (shared) {
+									await expect(opened).rejects.toMatchObject({
+										name: 'UnsupportedSandboxPolicyError',
+										operation: 'open'
+									});
+									expect(cli.mock.calls).toStrictEqual([]);
+
+									const status = await discoverBroker(pi.events)?.status(
+										context
+									);
+
+									expect(
+										status?.diagnostics?.map((entry) => entry.message)
+									).toStrictEqual([
+										expect.stringContaining('--byos-docker-copy')
+									]);
+
+									const privateWorkspace = await getSandbox(pi, context, {
+										policy: { workspaceRelationship: 'copied' }
+									});
+
+									expect(privateWorkspace.workspace.relationship).toBe(
+										'copied'
+									);
+								} else {
+									const ordinary = await opened;
+
+									expect(ordinary.workspace.relationship).toBe('copied');
+								}
+
+								const review = await openReviewSnapshot(pi, context, {
+									kind: 'host'
+								});
+
+								expect({
+									relationship: review.sandbox.workspace.relationship,
+									access: review.sandbox.policy.workspaceAccess,
+									network: review.sandbox.policy.networkAccess
+								}).toStrictEqual({
+									relationship: 'copied',
+									access: 'read-only',
+									network: 'denied'
+								});
+								expect(await review.close()).toMatchObject({ confirmed: true });
+								expect(await closeSandboxSession(pi, context)).toMatchObject({
+									confirmed: true
+								});
+							}
+						});
+					}
+				}
+			],
+			async (runtime, errors) => {
+				if (copy) {
+					runtime.session.extensionRunner.setFlagValue(
+						'byos-docker-copy',
+						true
+					);
+				}
+
+				await runtime.session.prompt('/test-workspace');
+				expect(errors).toStrictEqual([]);
+			}
+		);
+	}
+);

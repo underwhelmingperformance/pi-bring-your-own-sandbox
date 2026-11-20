@@ -628,11 +628,29 @@ export function createDockerProvider(
 		context: SandboxOpenContext,
 		source?: ReviewSnapshotSource
 	) {
+		const relationship =
+			request.policy.workspaceRelationship ??
+			(source === undefined
+				? request.configuration.defaultWorkspaceRelationship
+				: 'copied');
+
+		if (relationship === 'shared') {
+			const message =
+				'This Docker provider supports private copies only. Start Pi with --byos-docker-copy to use a private workspace.';
+
+			context.reportDiagnostic({ level: 'warning', message });
+			context.confirmCleanup();
+
+			throw new UnsupportedSandboxPolicyError(
+				{ operation: 'open', providerId: 'example.docker' },
+				{ cause: new Error(message) }
+			);
+		}
+
 		if (
 			request.policy.filesystemScope !== 'workspace-only' ||
 			request.policy.networkAccess !== 'denied' ||
-			(request.policy.workspaceRelationship !== undefined &&
-				request.policy.workspaceRelationship !== 'copied') ||
+			(relationship !== undefined && relationship !== 'copied') ||
 			(request.policy.workspaceProtection?.length ?? 0) > 0 ||
 			(source !== undefined && request.policy.workspaceAccess !== 'read-only')
 		) {

@@ -18,6 +18,11 @@ export interface DockerConfig {
 	Absolute path of the Docker CLI executable.
 	*/
 	readonly executable: string;
+	/**
+	Workspace for ordinary opens when the consumer omits the relationship.
+	Review snapshots always use private copies.
+	*/
+	readonly defaultWorkspaceRelationship?: 'shared' | 'copied';
 }
 
 /**

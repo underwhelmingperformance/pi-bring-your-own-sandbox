@@ -302,8 +302,8 @@ BYOS_DOCKER_BENCHMARK=1 pnpm exec vitest run --config vitest.provider.config.ts 
 The fixture imports 100 JavaScript modules of about 1 KiB each. The first read
 starts the file worker. Twenty sequential reads of the same file reuse it. Grep
 searches all 100 modules. A separate job builds and writes an npm package
-archive offline. The benchmark checks the bytes, match count, exit status and
-archive size.
+archive offline. The benchmark checks the bytes, every search match, the exit
+status and the presence of a non-empty archive.
 
 | Local arm64 daemon           | Fresh open | First read | 20 warm reads |   Grep | Package build |
 | ---------------------------- | ---------: | ---------: | ------------: | -----: | ------------: |

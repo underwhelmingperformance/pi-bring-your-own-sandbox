@@ -8,7 +8,10 @@ import { createDockerProvider } from '../src/provider.js';
 
 import { DockerFixture, operationContext } from './fixture.js';
 
-it.skipIf(process.env['BYOS_DOCKER_BENCHMARK'] !== '1')(
+it.skipIf(
+	process.env['BYOS_DOCKER_TESTS'] !== '1' ||
+		process.env['BYOS_DOCKER_BENCHMARK'] !== '1'
+)(
 	'measures a copied workspace with the local Docker daemon',
 	async () => {
 		const fixture = await DockerFixture.create();
@@ -101,7 +104,22 @@ it.skipIf(process.env['BYOS_DOCKER_BENCHMARK'] !== '1')(
 					)
 				);
 
-				expect(found.matches).toHaveLength(100);
+				const byPath = (left: { path: string }, right: { path: string }) =>
+					left.path.localeCompare(right.path);
+
+				expect({
+					...found,
+					matches: found.matches.toSorted(byPath)
+				}).toStrictEqual({
+					matches: Array.from({ length: 100 }, (_, index) => ({
+						path: String(index) + '.mjs',
+						line: 1,
+						text: source.trimEnd(),
+						before: [],
+						after: []
+					})).toSorted(byPath),
+					truncated: false
+				});
 
 				const build = await measure('packageBuildMs', () =>
 					backend.exec(
@@ -134,7 +152,10 @@ it.skipIf(process.env['BYOS_DOCKER_BENCHMARK'] !== '1')(
 					operationContext()
 				);
 
-				expect(artifact.size).toBeGreaterThan(0);
+				expect({
+					kind: artifact.kind,
+					hasContent: artifact.size > 0
+				}).toStrictEqual({ kind: 'file', hasContent: true });
 				process.stdout.write(JSON.stringify(times) + '\n');
 			} finally {
 				await backend.dispose(operationContext());

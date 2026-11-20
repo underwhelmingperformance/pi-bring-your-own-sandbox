@@ -111,9 +111,13 @@ requirement.
 `negotiate(context, options)` on the broker, exposed as `negotiateSandbox`,
 performs the same checks without opening a backend. It resolves to
 `{ ok: true, policy }` or `{ ok: false, error }`, where `error` is the typed
-error that acquisition would throw. Status lists every started backend under
-`backends`, with its negotiated policy, state and backend ID; the top-level
-backend fields describe the backend for the base policy.
+error that acquisition would throw. Status includes one entry under `backends`
+for each distinct negotiated policy that an acquisition has requested. Each
+entry includes the opening state. After a backend opens, its entry includes the
+backend ID and `effectivePolicy`. The effective policy includes the actual
+workspace relationship and any additional restrictions that the backend
+enforces. Older brokers may omit `effectivePolicy`. The top-level backend fields
+describe the allocation for the base policy.
 
 `WorkspaceProtection` is either `{ kind: 'git-metadata' }` or
 `{ kind: 'path', path: string }`. `SandboxPolicy.workspaceProtection` is an

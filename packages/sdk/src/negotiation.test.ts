@@ -303,6 +303,11 @@ it('lists negotiated and effective policies for every open backend', async () =>
 
 	const status = await generation.status();
 
+	expect(status.policy).toStrictEqual({
+		...PERSONAL,
+		networkAccess: 'denied',
+		workspaceRelationship: 'remote'
+	});
 	expect(status.backends).toStrictEqual([
 		{
 			policy: PERSONAL,
@@ -572,6 +577,15 @@ it('shares equivalent protection sets while separating different resources', asy
 		const other = await generation.acquire(context, {
 			policy: { workspaceProtection: [{ kind: 'path', path: '.c' }] }
 		});
+
+		const status = await generation.status();
+
+		expect(
+			status.backends?.map((backend) => backend.effectivePolicy)
+		).toStrictEqual([
+			{ ...first.policy, workspaceRelationship: 'remote' },
+			{ ...other.policy, workspaceRelationship: 'remote' }
+		]);
 
 		expect({
 			shared: first.backendId === repeated.backendId,

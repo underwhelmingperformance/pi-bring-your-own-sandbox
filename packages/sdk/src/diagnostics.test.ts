@@ -31,7 +31,7 @@ it('shows a configured shell that the ready backend does not support', () => {
 			'Generation: generation',
 			'Backend: memory',
 			'Target: /remote/project (remote)',
-			'Effective policy: workspace read-write; filesystem provider-default; network provider-default; protected resources: none',
+			'Effective policy: workspace read-write (remote); filesystem provider-default; network provider-default; protected resources: none',
 			'Operations: exec, files.read, files.write, files.list',
 			'Termination scope: workload',
 			'Shells: none',
@@ -67,7 +67,7 @@ it('distinguishes the default policy from an explicitly acquired protected works
 						workspaceRelationship: 'copied',
 						workspaceProtection: [
 							{ kind: 'git-metadata' },
-							{ kind: 'path', path: 'policy\nfile\u{202E}' }
+							{ kind: 'path', path: 'policy\nfile\u{202E}\u{200B}\u{E0001}' }
 						]
 					}
 				}
@@ -82,10 +82,53 @@ it('distinguishes the default policy from an explicitly acquired protected works
 			'Requested policy: workspace read-write; filesystem provider-default; network provider-default; protected resources: none',
 			'User shell: provider default (not opened)',
 			'Additional backend "review" (ready)',
-			'Effective policy: workspace read-only (copied); filesystem provider-default; network provider-default; protected resources: Git metadata, "policy\\nfile\\u202e"'
+			'Effective policy: workspace read-only (copied); filesystem provider-default; network provider-default; protected resources: Git metadata, "policy\\nfile\\u{202e}\\u{200b}\\u{e0001}"'
 		].join('\n')
 	);
 });
+
+it.each(['closing', 'closed'] as const)(
+	'keeps the base boundary with the base backend while %s',
+	(state) => {
+		const backend = new MemoryBackend();
+		const requested = {
+			...backend.policy,
+			workspaceAccess: 'read-only' as const
+		};
+		const status = formatStatus({
+			generationId: 'generation',
+			state,
+			selection: {
+				providerId: 'fixture',
+				source: 'extension',
+				policy: backend.policy
+			},
+			backendId: backend.id,
+			workspace: backend.workspace,
+			policy: backend.policy,
+			policyDescription: 'Base boundary.',
+			backends: [
+				{ policy: backend.policy, state: 'ready', backendId: backend.id },
+				{ policy: requested, state: 'opening' }
+			]
+		});
+
+		expect(status).toBe(
+			[
+				'Provider: fixture (extension)',
+				'State: ' + state,
+				'Generation: generation',
+				'Backend: memory',
+				'Target: /remote/project (remote)',
+				'Effective policy: workspace read-write (remote); filesystem provider-default; network provider-default; protected resources: none',
+				'User shell: unavailable',
+				'Boundary: Base boundary.',
+				'Additional backend (last state: opening)',
+				'Requested policy: workspace read-only; filesystem provider-default; network provider-default; protected resources: none'
+			].join('\n')
+		);
+	}
+);
 
 it('shows allocation recovery instructions and expiry when cleanup is incomplete', () => {
 	const backend = new MemoryBackend();

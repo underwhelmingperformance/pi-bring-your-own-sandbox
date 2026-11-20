@@ -9,17 +9,17 @@ function list(values: readonly string[]): string {
 
 function quoted(value: string): string {
 	return JSON.stringify(value).replaceAll(
-		/[\p{Control}\p{Bidi_Control}\p{Line_Separator}\p{Paragraph_Separator}]/gu,
-		(character) =>
-			'\\u' + (character.codePointAt(0) ?? 0).toString(16).padStart(4, '0')
+		/[\p{Control}\p{Format}\p{Line_Separator}\p{Paragraph_Separator}]/gu,
+		(character) => '\\u{' + (character.codePointAt(0) ?? 0).toString(16) + '}'
 	);
 }
 
-function policy(value: SandboxPolicy): string {
+function policy(
+	value: SandboxPolicy,
+	workspaceRelationship = value.workspaceRelationship
+): string {
 	const relationship =
-		value.workspaceRelationship === undefined
-			? ''
-			: ` (${value.workspaceRelationship})`;
+		workspaceRelationship === undefined ? '' : ` (${workspaceRelationship})`;
 
 	const protectedResources = (value.workspaceProtection ?? []).map(
 		(resource) =>
@@ -72,7 +72,9 @@ export function formatStatus(status: SandboxStatus): string {
 	);
 
 	if (status.policy !== undefined) {
-		lines.push(`Effective policy: ${policy(status.policy)}`);
+		lines.push(
+			`Effective policy: ${policy(status.policy, status.workspace?.relationship)}`
+		);
 	}
 
 	if (selection !== undefined && status.policy === undefined) {
@@ -88,22 +90,6 @@ export function formatStatus(status: SandboxStatus): string {
 	}
 
 	lines.push(`User shell: ${userShell(status)}`);
-
-	for (const backend of additional) {
-		const id =
-			backend.backendId === undefined ? '' : ' ' + quoted(backend.backendId);
-		const state =
-			status.state === 'closed'
-				? 'last state: ' + backend.state
-				: backend.state;
-
-		lines.push(
-			`Additional backend${id} (${state})`,
-			backend.effectivePolicy === undefined
-				? `Requested policy: ${policy(backend.policy)}`
-				: `Effective policy: ${policy(backend.effectivePolicy)}`
-		);
-	}
 
 	if (status.providerLabel !== undefined) {
 		lines.push(`Provider description: ${status.providerLabel}`);
@@ -133,6 +119,22 @@ export function formatStatus(status: SandboxStatus): string {
 				failures: [],
 				recoveries: [status.failure.recovery]
 			})
+		);
+	}
+
+	for (const backend of additional) {
+		const id =
+			backend.backendId === undefined ? '' : ' ' + quoted(backend.backendId);
+		const state =
+			status.state === 'closing' || status.state === 'closed'
+				? 'last state: ' + backend.state
+				: backend.state;
+
+		lines.push(
+			`Additional backend${id} (${state})`,
+			backend.effectivePolicy === undefined
+				? `Requested policy: ${policy(backend.policy)}`
+				: `Effective policy: ${policy(backend.effectivePolicy)}`
 		);
 	}
 

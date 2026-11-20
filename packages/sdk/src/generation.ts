@@ -111,6 +111,13 @@ const isDisposable = checker(
 	Type.Object({ dispose: callable<Disposable['dispose']>() })
 );
 
+function effectivePolicy(backend: SandboxBackend): SandboxPolicy {
+	return Object.freeze({
+		...backend.policy,
+		workspaceRelationship: backend.workspace.relationship
+	});
+}
+
 export class SandboxGeneration {
 	readonly #diagnostics: DiagnosticStore;
 	#cleanup = DEFAULT_CLEANUP_BUDGETS;
@@ -994,10 +1001,7 @@ export class SandboxGeneration {
 					state: slot.state,
 					...(slot.backend !== undefined && {
 						backendId: slot.backend.id,
-						effectivePolicy: Object.freeze({
-							...slot.backend.policy,
-							workspaceRelationship: slot.backend.workspace.relationship
-						})
+						effectivePolicy: effectivePolicy(slot.backend)
 					})
 				})
 			)
@@ -1026,7 +1030,7 @@ export class SandboxGeneration {
 				backendId: backend.id,
 				workspace: backend.workspace,
 				capabilities: backend.capabilities,
-				policy: backend.policy,
+				policy: effectivePolicy(backend),
 				policyDescription: backend.policyDescription
 			}),
 			...(failure !== undefined && { failure }),

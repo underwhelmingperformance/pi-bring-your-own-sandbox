@@ -861,6 +861,7 @@ it.each([
 	'missing image',
 	'missing image with warning',
 	'id mismatch',
+	'invalid id',
 	'daemon unavailable',
 	'start-failed',
 	'runtime failure',
@@ -886,7 +887,10 @@ it.each([
 		const powerShellImage = 'sha256:' + 'a'.repeat(64);
 		const isMissing =
 			mode === 'missing image' || mode === 'missing image with warning';
-		const isTransport = mode === 'daemon unavailable' || mode === 'id mismatch';
+		const isTransport =
+			mode === 'daemon unavailable' ||
+			mode === 'id mismatch' ||
+			mode === 'invalid id';
 		const otherId = 'sha256:' + 'b'.repeat(64);
 
 		if (isMissing || isTransport) {
@@ -897,11 +901,12 @@ it.each([
 					'WARNING: Could not load Docker config.\nError: No such image: ' +
 					powerShellImage,
 				'daemon unavailable': 'Daemon connection refused',
-				'id mismatch': ''
+				'id mismatch': '',
+				'invalid id': ''
 			};
 
 			docker.imageInspection = {
-				status: mode === 'id mismatch' ? 0 : 1,
+				status: mode === 'id mismatch' || mode === 'invalid id' ? 0 : 1,
 				stdout: Buffer.from(mode === 'id mismatch' ? otherId : ''),
 				stderr: Buffer.from(messages[mode])
 			};
@@ -943,7 +948,9 @@ it.each([
 							' for ' +
 							powerShellImage +
 							'.'
-						: 'Docker image inspect failed with status 1.';
+						: mode === 'invalid id'
+							? 'Docker image inspect returned an invalid image ID.'
+							: 'Docker image inspect failed with status 1.';
 
 				await expect(pending).rejects.toMatchObject({
 					cause: { message: cause }

@@ -59,7 +59,12 @@ To route Pi's Bash, PowerShell and user-shell commands through the framework,
 create `.pi/extensions/sandbox-tools.ts`:
 
 ```typescript
-export { default } from 'pi-bring-your-own-sandbox/pi-tools';
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import sandboxTools from 'pi-bring-your-own-sandbox/pi-tools';
+
+export default function extension(pi: ExtensionAPI): void {
+  sandboxTools(pi, import.meta.filename);
+}
 ```
 
 Pi's file and search tools retain their own execution paths. See the [Pi

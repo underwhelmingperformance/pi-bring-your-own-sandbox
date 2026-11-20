@@ -116,7 +116,12 @@ A project that installs the framework as an npm dependency can opt into tool
 routing with `.pi/extensions/byos-tools.ts`:
 
 ```typescript
-export { default } from 'pi-bring-your-own-sandbox/pi-tools';
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import sandboxTools from 'pi-bring-your-own-sandbox/pi-tools';
+
+export default function extension(pi: ExtensionAPI): void {
+  sandboxTools(pi, import.meta.filename);
+}
 ```
 
 This requires normal Node resolution from that project. For Pi-managed packages

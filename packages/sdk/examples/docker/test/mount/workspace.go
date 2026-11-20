@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/hanwen/go-fuse/v2/fs"
@@ -14,9 +15,15 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+type backing struct {
+	root      int
+	writable  bool
+	mutations sync.Mutex
+}
+
 type workspaceNode struct {
 	fs.Inode
-	root     int
+	*backing
 	relative string
 	inode    uint64
 }
@@ -52,24 +59,30 @@ func (n *workspaceNode) pin() (int, syscall.Stat_t, syscall.Errno) {
 	return fd, stat, 0
 }
 
-func attributes(stat *syscall.Stat_t, attr *fuse.Attr) {
+func (n *workspaceNode) attributes(stat *syscall.Stat_t, attr *fuse.Attr) {
 	attr.FromStat(stat)
 	attr.Uid, attr.Gid = 65534, 65534
-	attr.Mode &^= 07222
+	attr.Mode &^= 07000
+	if !n.writable {
+		attr.Mode &^= 0222
+	}
 }
 
 func (n *workspaceNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	if strings.HasPrefix(name, stagePrefix) {
+		return nil, syscall.ENOENT
+	}
 	if name == "" || name == "." || name == ".." || strings.ContainsRune(name, '/') {
 		return nil, syscall.EINVAL
 	}
-	child := &workspaceNode{root: n.root, relative: path.Join(n.relative, name)}
+	child := &workspaceNode{backing: n.backing, relative: path.Join(n.relative, name)}
 	fd, stat, errno := child.pin()
 	if errno != 0 {
 		return nil, errno
 	}
 	unix.Close(fd)
 	child.inode = stat.Ino
-	attributes(&stat, &out.Attr)
+	n.attributes(&stat, &out.Attr)
 	return n.NewInode(ctx, child, fs.StableAttr{Mode: stat.Mode & syscall.S_IFMT}), 0
 }
 
@@ -79,7 +92,7 @@ func (n *workspaceNode) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.
 		return errno
 	}
 	unix.Close(fd)
-	attributes(&stat, &out.Attr)
+	n.attributes(&stat, &out.Attr)
 	return 0
 }
 
@@ -126,7 +139,10 @@ type reader struct{ fd int }
 
 func (n *workspaceNode) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	if flags&(unix.O_ACCMODE|unix.O_TRUNC) != unix.O_RDONLY {
-		return nil, 0, syscall.EROFS
+		if !n.writable {
+			return nil, 0, syscall.EROFS
+		}
+		return n.openWriter(flags)
 	}
 	fd, errno := n.open(syscall.S_IFREG, unix.O_RDONLY)
 	if errno != 0 {

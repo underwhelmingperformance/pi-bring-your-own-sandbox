@@ -219,9 +219,13 @@ profile with `sudo apparmor_parser -r test/mount/apparmor` from the Docker
 example directory. The profile permits a FUSE mount at `/workspace` and removal
 of the control mount at `/control`.
 
-A trusted bootstrap mounts a read-only filesystem. Only the filesystem service
-gets a bind mount of the host checkout. The workload reads updated host contents
-through FUSE as UID and GID 65534. The service checks file types before opening
-them and denies access to files with multiple hard links. The test inspects the
-workload's Linux capability sets and checks that the FUSE device and management
-socket are inaccessible. The production provider still uses a copied workspace.
+Only the filesystem service gets a bind mount of the host checkout. The workload
+runs as UID and GID 65534. The test inspects its capabilities and checks that it
+cannot access the FUSE device or control socket.
+
+The writable mount test replaces a regular file in the workspace root. The host
+observes the write while the workload still has the file open, then links the
+file outside the workspace and replaces the workspace entry by rename. The
+workload reads the replacement. A write on the old descriptor fails and the
+retained host file keeps its contents. The read-only mount rejects the first
+write. The mount tests use a prototype. The production provider uses a copy.

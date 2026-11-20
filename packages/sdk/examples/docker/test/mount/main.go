@@ -15,18 +15,19 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func serve() error {
+func serve(writable bool) error {
 	root, err := unix.Open("/backing", unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return err
 	}
 	defer unix.Close(root)
+	workspace := &backing{root: root, writable: writable}
 	listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: "/control/service", Net: "unixpacket"})
 	if err != nil {
 		return err
 	}
 	defer listener.Close()
-	if err = os.Chmod("/control/service", 0600); err != nil {
+	if err = os.Chmod("/control/service", 0666); err != nil {
 		return err
 	}
 	for {
@@ -38,7 +39,7 @@ func serve() error {
 			conn.Close()
 			return err
 		}
-		err = attach(conn, root)
+		err = attach(conn, workspace)
 		conn.Close()
 		if err != nil {
 			log.Print(err)
@@ -46,7 +47,7 @@ func serve() error {
 	}
 }
 
-func attach(c *net.UnixConn, root int) error {
+func attach(c *net.UnixConn, workspace *backing) error {
 	var b [1]byte
 	control := make([]byte, unix.CmsgSpace(4))
 	n, size, flags, _, err := c.ReadMsgUnix(b[:], control)
@@ -76,11 +77,10 @@ func attach(c *net.UnixConn, root int) error {
 		}
 		return fmt.Errorf("invalid mount request")
 	}
-	opts := &fs.Options{MountOptions: fuse.MountOptions{Name: "byos", DisableXAttrs: true}}
-	raw := fs.NewNodeFS(&workspaceNode{root: root, relative: "."}, opts)
+	opts := &fs.Options{MountOptions: fuse.MountOptions{Name: "byos", DisableXAttrs: true, ExtraCapabilities: fuse.CAP_ATOMIC_O_TRUNC}}
+	raw := fs.NewNodeFS(&workspaceNode{backing: workspace, relative: "."}, opts)
 	server, err := fuse.NewServer(raw, fmt.Sprintf("/dev/fd/%d", fds[0]), &opts.MountOptions)
 	if err != nil {
-		unix.Close(fds[0])
 		return err
 	}
 	go server.Serve()
@@ -88,13 +88,17 @@ func attach(c *net.UnixConn, root int) error {
 	return err
 }
 
-func mount() error {
+func mount(writable bool) error {
 	fd, err := unix.Open("/dev/fuse", unix.O_RDWR|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return err
 	}
 	opts := fmt.Sprintf("fd=%d,rootmode=40000,user_id=0,group_id=0,allow_other,default_permissions", fd)
-	if err := unix.Mount("byos", "/workspace", "fuse", unix.MS_RDONLY|unix.MS_NOSUID|unix.MS_NODEV, opts); err != nil {
+	flags := uintptr(unix.MS_NOSUID | unix.MS_NODEV)
+	if !writable {
+		flags |= unix.MS_RDONLY
+	}
+	if err := unix.Mount("byos", "/workspace", "fuse", flags, opts); err != nil {
 		return err
 	}
 	conn, err := net.DialUnix("unixpacket", nil, &net.UnixAddr{Name: "/control/service", Net: "unixpacket"})
@@ -125,17 +129,17 @@ func mount() error {
 		return err
 	}
 	args := []string{"setpriv", "--reuid=65534", "--regid=65534", "--clear-groups", "--no-new-privs", "--bounding-set=-all", "--inh-caps=-all", "--ambient-caps=-all", "--"}
-	return unix.Exec("/usr/bin/setpriv", append(args, os.Args[2:]...), os.Environ())
+	return unix.Exec("/usr/bin/setpriv", append(args, os.Args[3:]...), os.Environ())
 }
 
 func main() {
 	var err error
 	switch {
-	case len(os.Args) == 2 && os.Args[1] == "serve":
+	case len(os.Args) == 3 && os.Args[1] == "serve":
 		log.SetOutput(os.Stdout)
-		err = serve()
-	case len(os.Args) > 2 && os.Args[1] == "mount":
-		err = mount()
+		err = serve(os.Args[2] == "read-write")
+	case len(os.Args) > 3 && os.Args[1] == "mount":
+		err = mount(os.Args[2] == "read-write")
 	default:
 		log.Fatal("expected serve or mount with a workload command")
 	}

@@ -1,7 +1,8 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { link, writeFile } from 'node:fs/promises';
+import { link, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
@@ -12,9 +13,11 @@ import { ALLOCATION_LABEL } from '../src/resources.js';
 
 import { DockerFixture } from './fixture.js';
 
-it.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
-	'reads a mediated file after dropping mount privileges and closing the control channel',
-	async () => {
+it
+	.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')
+	.each(['read-only', 'read-write'])(
+	'serves a %s host workspace after dropping mount privileges and closing the control channel',
+	async (mode) => {
 		const fixture = await DockerFixture.create();
 		const allocation = 'byos-mount-' + randomUUID();
 		const label = ALLOCATION_LABEL + '=' + allocation;
@@ -63,16 +66,38 @@ it.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				'--entrypoint=/mount-check'
 			];
 
+			const owner = await stat(fixture.workspace);
+			const credentials = String(owner.uid) + ':' + String(owner.gid);
+
+			await fixture.docker([
+				'run',
+				'--rm',
+				'--pull=never',
+				'--network=none',
+				'--cap-drop=ALL',
+				'--cap-add=CHOWN',
+				'--mount',
+				'type=volume,source=' + allocation + ',target=/control',
+				DOCKER_IMAGE,
+				'chown',
+				credentials,
+				'/control'
+			]);
 			await fixture.docker([
 				'run',
 				'--detach',
 				'--name',
 				allocation,
 				...common,
+				'--user=' + credentials,
 				'--mount',
-				'type=bind,source=' + fixture.workspace + ',target=/backing,readonly',
+				'type=bind,source=' +
+					fixture.workspace +
+					',target=/backing' +
+					(mode === 'read-only' ? ',readonly' : ''),
 				DOCKER_IMAGE,
-				'serve'
+				'serve',
+				mode
 			]);
 
 			try {
@@ -110,7 +135,7 @@ it.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 			);
 			await link(fixture.outside, path.join(fixture.workspace, 'alias'));
 
-			const output = await fixture.docker([
+			const workload = fixture.docker([
 				'run',
 				'--rm',
 				...common,
@@ -125,25 +150,63 @@ it.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				'--tmpfs=/workspace:rw,nosuid,nodev',
 				DOCKER_IMAGE,
 				'mount',
+				mode,
 				'/usr/local/bin/node',
-				'--input-type=module',
+				'--input-type=module-typescript',
 				'-e',
-				`import { existsSync, readFileSync } from 'node:fs';
-const status = Object.fromEntries(readFileSync('/proc/self/status', 'utf8')
-  .split(String.fromCharCode(10)).map(line => line.split(':').map(value => value.trim())));
-console.log(JSON.stringify({
-  file: readFileSync('/workspace/source.txt', 'utf8'),
-  backing: existsSync('/backing/source.txt'), alias: existsSync('/workspace/alias'),
-  ids: [status.Uid, status.Gid].map(ids => ids.split(/\\s+/).map(Number)), groups: status.Groups,
-  device: existsSync('/dev/fuse'), socket: existsSync('/control/service'),
-  privileges: Object.fromEntries(['CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb', 'NoNewPrivs']
-    .map(key => [key, status[key]]))
-}));`
+				await readFile(new URL('mount/workload.ts', import.meta.url), 'utf8'),
+				mode
 			]);
+			const source = path.join(fixture.workspace, 'source.txt');
+			const retained = path.join(fixture.workspace, '..', 'retained');
+			const observe = async () => {
+				for (let attempt = 0; attempt < 500; attempt++) {
+					if ((await readFile(source, 'utf8')) === 'workload edit') {
+						const replacement = path.join(fixture.workspace, 'replacement');
+
+						await writeFile(replacement, 'host replacement');
+						await link(source, retained);
+						await rename(replacement, source);
+
+						return;
+					}
+
+					await delay(10);
+				}
+
+				throw new Error('The host did not observe the workload write.');
+			};
+
+			const [job, observed] = await Promise.allSettled([
+				workload,
+				mode === 'read-write' ? observe() : undefined
+			]);
+
+			if (job.status === 'rejected') {
+				const detail = await fixture.docker(['logs', allocation]);
+
+				throw new Error('The mounted job failed. ' + detail, {
+					cause: job.reason
+				});
+			}
+
+			if (observed.status === 'rejected') {
+				throw observed.reason;
+			}
+
+			const output = job.value;
+
+			if (mode === 'read-write') {
+				expect(await readFile(retained, 'utf8')).toBe('workload edit');
+			}
+
 			const zero = '0000000000000000';
 
 			expect(JSON.parse(output)).toStrictEqual({
-				file: 'after service startup',
+				initial: 'after service startup',
+				denied: true,
+				file:
+					mode === 'read-write' ? 'host replacement' : 'after service startup',
 				backing: false,
 				alias: false,
 				ids: [

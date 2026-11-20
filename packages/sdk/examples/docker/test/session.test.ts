@@ -9,13 +9,13 @@ import { promisify } from 'node:util';
 
 import type {
 	AgentSessionRuntime,
+	ExtensionContext,
 	InlineExtension
 } from '@earendil-works/pi-coding-agent';
 import type {
 	ReviewSnapshot,
 	Sandbox,
 	SandboxBackend,
-	SandboxContext,
 	SandboxHost,
 	SandboxPolicy
 } from 'pi-bring-your-own-sandbox/api';
@@ -29,6 +29,8 @@ import { ScriptedModel } from '../../../src/fixtures/scripted-model.js';
 import sandboxTools from '../../../src/pi-tools.js';
 import { snapshotProcessRequest } from '../../../src/process-input.js';
 import { inspectWorkspace } from '../../consumer/src/workspace.js';
+import { DOCKER_IMAGE } from '../src/image.js';
+import { createDockerOutsideDestination } from '../src/outside.js';
 import { createDockerProvider } from '../src/provider.js';
 
 import {
@@ -45,7 +47,7 @@ interface DockerSession {
 	readonly runtime: AgentSessionRuntime;
 	readonly sandbox: Sandbox;
 	readonly pi: SandboxHost;
-	readonly context: SandboxContext;
+	readonly context: ExtensionContext;
 	readonly fixture: DockerFixture;
 }
 
@@ -55,10 +57,11 @@ const readSnapshot = async (snapshot: ReviewSnapshot) =>
 async function withDockerSession(
 	run: (session: DockerSession) => Promise<void>,
 	extensions: readonly InlineExtension[] = [],
-	filesystemScope: SandboxPolicy['filesystemScope'] = 'workspace-only'
+	filesystemScope: SandboxPolicy['filesystemScope'] = 'workspace-only',
+	outsideApproval?: 'always' | 'never'
 ): Promise<void> {
 	let fixture: DockerFixture | undefined;
-	const current: { pi?: SandboxHost; context?: SandboxContext } = {};
+	const current: { pi?: SandboxHost; context?: ExtensionContext } = {};
 
 	try {
 		const config = new FixtureConfig();
@@ -74,10 +77,15 @@ async function withDockerSession(
 
 						const prepared = fixture;
 
-						config.activate(
-							pi,
-							createDockerProvider(() => prepared.providerClient())
-						);
+						config.activate(pi, {
+							...createDockerProvider(() => prepared.providerClient()),
+							...(outsideApproval && {
+								outsideSandbox: createDockerOutsideDestination(
+									prepared.config,
+									{ createClient: () => prepared.providerClient() }
+								)
+							})
+						});
 						current.pi = pi;
 						pi.on('session_start', (_event, context) => {
 							current.context = context;
@@ -125,6 +133,10 @@ async function withDockerSession(
 					config.set({
 						provider: 'example.docker',
 						providerConfig: fixture.config,
+						...(outsideApproval && {
+							approval: { policy: outsideApproval },
+							outsideSandbox: { destination: 'provider' }
+						}),
 						policy: {
 							workspaceAccess: 'read-write',
 							filesystemScope,
@@ -142,6 +154,85 @@ async function withDockerSession(
 describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 	'Docker SDK integration (pnpm test:provider requires a local daemon and the pinned image)',
 	() => {
+		it.each(['always', 'never'] as const)(
+			'applies %s approval to a separate Docker workspace',
+			async (approval) => {
+				await withDockerSession(
+					async ({ pi, context, sandbox, fixture }) => {
+						await sandbox.files.writeFile(
+							'source.txt',
+							new TextEncoder().encode('ordinary')
+						);
+
+						const outside = await sandboxClient.getOutsideSandboxExecutor(
+							pi,
+							context
+						);
+
+						expect(outside.destination.kind).toBe('provider');
+						expect(outside.destination.id).not.toBe(sandbox.backendId);
+
+						const running = outside.exec(
+							{
+								kind: 'shell',
+								dialect: 'sh',
+								command: 'printf approved > source.txt'
+							},
+							{
+								justification:
+									'Test a file change in the separate Docker allocation.'
+							}
+						);
+
+						if (approval === 'never') {
+							await expect(running).rejects.toMatchObject({
+								name: 'ApprovalDeniedError'
+							});
+						} else {
+							const result = await running;
+
+							expect(result.exit).toStrictEqual({ kind: 'code', code: 0 });
+						}
+
+						const after = await fixture.docker([
+							'run',
+							'--rm',
+							'--pull=never',
+							'--network=none',
+							'--cap-drop=ALL',
+							'--user=65534:65534',
+							'--read-only',
+							'--mount',
+							'type=volume,source=' +
+								outside.destination.id +
+								',target=/workspace,readonly',
+							DOCKER_IMAGE,
+							'cat',
+							'/workspace/source.txt'
+						]);
+
+						expect({
+							outside: after,
+							ordinary: new TextDecoder().decode(
+								await sandbox.files.readFile('source.txt')
+							),
+							host: await readFile(
+								path.join(fixture.workspace, 'source.txt'),
+								'utf8'
+							)
+						}).toStrictEqual({
+							outside: approval === 'always' ? 'approved' : 'original',
+							ordinary: 'ordinary',
+							host: 'original'
+						});
+					},
+					[],
+					'workspace-only',
+					approval
+				);
+			}
+		);
+
 		it('satisfies the intermediate filesystem request with Docker workspace isolation', async () => {
 			await withDockerSession(
 				async ({ sandbox, fixture }) => {

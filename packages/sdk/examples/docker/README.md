@@ -91,6 +91,37 @@ other jobs. File operations continue to use the pinned Node helper image. To
 include the PowerShell conformance scenario, set `BYOS_DOCKER_POWERSHELL_IMAGE`
 to the image ID when running `pnpm test:provider`.
 
+## Separate Docker destination for outside execution
+
+A trusted extension can register a second local Docker destination for approved
+commands. For example, use a writable copy for a package build while the
+ordinary session has read-only access. The destination imports the host checkout
+when it opens. Edits in either Docker volume affect only that volume.
+
+```typescript
+import {
+  configureOutsideExecution,
+  registerSandboxProvider
+} from 'pi-bring-your-own-sandbox/api';
+
+import { createDockerOutsideDestination } from './outside.js';
+import { createDockerProvider } from './provider.js';
+
+registerSandboxProvider(pi, {
+  ...createDockerProvider(),
+  outsideSandbox: createDockerOutsideDestination({
+    executable: '/usr/bin/docker',
+    socketPath: '/var/run/docker.sock'
+  })
+});
+configureOutsideExecution(pi, () => ({ destination: 'provider' }));
+```
+
+The SDK requests approval for each outside invocation. The Docker destination
+keeps external networking disabled and uses a separate allocation even when both
+connections use the same daemon. Set the optional second argument to
+`{ powerShellImage }` for an outside destination with the PowerShell toolchain.
+
 ## Workspace and process behaviour
 
 Opening creates a labelled Docker volume and copies the host workspace into

@@ -179,11 +179,13 @@ export class DockerResources {
 	async checked(
 		arguments_: readonly string[],
 		context: DockerOperationContext,
-		operation: DockerCommand['operation']
+		operation: DockerCommand['operation'],
+		input?: Uint8Array
 	): Promise<DockerCommandResult> {
 		try {
 			const result = await this.#client.command({
 				args: arguments_,
+				...(input !== undefined && { input }),
 				context,
 				operation,
 				recovery: this.recovery

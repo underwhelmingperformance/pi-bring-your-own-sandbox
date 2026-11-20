@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 
 import type {
 	BackendFileReader,
@@ -77,6 +79,7 @@ export class DockerFileWorker implements BackendFileReader {
 	readonly #helpers: { readonly files: string; readonly search: string };
 	readonly #lifetime: AbortSignal;
 	#name: string | undefined;
+	#matcherWorker: string | undefined;
 	#tail: Promise<unknown> = Promise.resolve();
 	#pending = 0;
 	#idle: NodeJS.Timeout | undefined;
@@ -134,6 +137,7 @@ export class DockerFileWorker implements BackendFileReader {
 				'--security-opt=no-new-privileges',
 				'--user=65534:65534',
 				'--workdir=/workspace',
+				'--tmpfs=/opt/pi-byos/node_modules/re2js:rw,noexec,nosuid,nodev,size=1m,mode=0755,uid=65533,gid=65533',
 				'--pids-limit=32',
 				'--memory=128m',
 				'--cpus=1',
@@ -152,6 +156,33 @@ export class DockerFileWorker implements BackendFileReader {
 		await this.#resources.checked(['start', name], context, operation);
 
 		return name;
+	}
+
+	async #installMatcher(name: string, context: SandboxOperationContext) {
+		if (this.#matcherWorker === name) {
+			return;
+		}
+
+		const engine = await readFile(
+			createRequire(import.meta.url).resolve('re2js')
+		);
+
+		await this.#resources.checked(
+			[
+				'exec',
+				'--interactive',
+				'--user=65533:65533',
+				'--workdir=/',
+				name,
+				'/bin/sh',
+				'-ec',
+				'umask 022; /bin/cat > /opt/pi-byos/node_modules/re2js/index.js'
+			],
+			context,
+			'grep',
+			engine
+		);
+		this.#matcherWorker = name;
 	}
 
 	async #remove(
@@ -229,6 +260,14 @@ export class DockerFileWorker implements BackendFileReader {
 
 		try {
 			const name = await this.#start(context, operation);
+			const isSearch = operation === 'find' || operation === 'grep';
+
+			if (
+				operation === 'grep' &&
+				new URLSearchParams(filename).get('literal') !== 'true'
+			) {
+				await this.#installMatcher(name, context);
+			}
 
 			signal.addEventListener('abort', cancel, { once: true });
 
@@ -246,14 +285,13 @@ export class DockerFileWorker implements BackendFileReader {
 			const result = await this.#client.command({
 				args: [
 					'exec',
+					...(isSearch ? ['--workdir=/opt/pi-byos'] : []),
 					...(input === undefined ? [] : ['--interactive']),
 					name,
 					'/usr/local/bin/node',
 					'--input-type=module-typescript',
 					'--eval',
-					operation === 'find' || operation === 'grep'
-						? this.#helpers.search
-						: this.#helpers.files,
+					isSearch ? this.#helpers.search : this.#helpers.files,
 					'--',
 					operation,
 					filename,

@@ -8,7 +8,7 @@ import type { GrepMatch } from 'pi-bring-your-own-sandbox/api';
 
 const [operation, encoded, maximum] = process.argv.slice(1);
 const options = new URLSearchParams(encoded);
-const root = path.resolve(options.get('path') ?? '.');
+const root = path.resolve('/workspace', options.get('path') ?? '.');
 const limit = Number(
 	options.get('limit') ?? (operation === 'find' ? 1000 : 100)
 );
@@ -239,13 +239,19 @@ async function* find(): AsyncGenerator<string> {
 	}
 }
 
+async function compilePattern(pattern: string, isIgnoreCase: boolean) {
+	const { RE2JS } = await import('re2js');
+
+	return RE2JS.compile(pattern, isIgnoreCase ? RE2JS.CASE_INSENSITIVE : 0);
+}
+
 async function* grep(): AsyncGenerator<() => GrepMatch> {
 	const pattern = options.get('pattern') ?? '';
 	const isIgnoreCase = options.get('ignoreCase') === 'true';
 	const isLiteral = options.get('literal') === 'true';
 	const regex = isLiteral
 		? undefined
-		: new RegExp(pattern, isIgnoreCase ? 'iu' : 'u');
+		: await compilePattern(pattern, isIgnoreCase);
 	const needle = isIgnoreCase ? pattern.toLowerCase() : pattern;
 	const context = Number(options.get('context') ?? 0);
 

@@ -831,6 +831,36 @@ socket.on('error', error => {
 			30_000
 		);
 
+		it('rejects backreferences and keeps the grep worker usable', async () => {
+			await withDockerSession(async ({ sandbox }) => {
+				const path = 'source.txt';
+
+				await expect(
+					sandbox.search.grep({ path, pattern: '(a)\\1' })
+				).rejects.toMatchObject({
+					name: 'SandboxOperationError'
+				});
+
+				await expect(
+					sandbox.files.writeFile(
+						'/opt/pi-byos/node_modules/re2js/index.js',
+						Uint8Array.of(1)
+					)
+				).rejects.toMatchObject({ name: 'SandboxPermissionDeniedError' });
+
+				expect(
+					await sandbox.search.grep({
+						path,
+						pattern: '^ORIG\\p{L}+$',
+						ignoreCase: true
+					})
+				).toStrictEqual({
+					matches: [{ path, line: 1, text: 'original', before: [], after: [] }],
+					truncated: false
+				});
+			});
+		});
+
 		it('searches dense text through a root symlink and skips oversized and binary files', async () => {
 			await withDockerSession(async ({ sandbox }) => {
 				const setup = await sandbox.exec({

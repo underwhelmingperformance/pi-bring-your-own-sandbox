@@ -300,6 +300,20 @@ retained host file keeps its contents. The workload also shrinks an open file,
 extends it with zero bytes and checks that a resize beyond 16 MiB fails with
 `EFBIG`. On a read-only mount the workload checks for `EROFS`.
 
+For ordinary authorised saves, the last replacement of a directory entry wins.
+The test replaces a file on the host and saves the same file from the workload.
+The host reads the workload's version. A second file stays open across a host
+rename within the workspace root. A further write to that descriptor returns
+`ESTALE`. The host reads the original contents under the new name.
+
+The writable prototype permits up to 16 successful file creations per service.
+New files must be in the workspace root and have a non-hidden name. The service
+restricts their permissions to owner read and write. A read-only mount rejects
+creation. The service does not implement workload rename or unlink. Linux
+resolves the operands of these operations by name, so a host process can
+substitute an entry after the service has checked it. Enabling them in a shared
+workspace requires enforcement at the point of mutation.
+
 A second mount runs the provider's file helper. A host read verifies the new
 contents after a writable save. On a read-only mount the helper returns its
 permission-denied status and the host file keeps its original contents. The

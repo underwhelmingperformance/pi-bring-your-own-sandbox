@@ -164,6 +164,10 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 				const oversized = path.join(fixture.workspace, 'truncate.txt');
 
 				await writeFile(oversized, '');
+				await writeFile(
+					path.join(fixture.workspace, 'concurrent.txt'),
+					'first save'
+				);
 				await truncate(oversized, 16 * 1024 * 1024 + 1);
 			}
 
@@ -208,8 +212,17 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 						const replacement = path.join(fixture.workspace, 'replacement');
 
 						await writeFile(replacement, 'host replacement');
+						await rename(
+							path.join(fixture.workspace, 'editor-save'),
+							path.join(fixture.workspace, 'renamed-save')
+						);
 						await link(source, retained);
 						await rename(replacement, source);
+						await writeFile(replacement, 'host contents');
+						await rename(
+							replacement,
+							path.join(fixture.workspace, 'concurrent.txt')
+						);
 						await writeFile(
 							path.join(fixture.workspace, 'host-ready'),
 							'ready'
@@ -249,7 +262,24 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 				);
 
 				expect(truncated).toStrictEqual(Buffer.from([97, 98, 0, 0]));
-				expect(await readFile(retained, 'utf8')).toBe('workload edit');
+
+				const saved = path.join(fixture.workspace, 'renamed-save');
+				const attributes = await stat(saved);
+
+				expect({
+					retained: await readFile(retained, 'utf8'),
+					concurrent: await readFile(
+						path.join(fixture.workspace, 'concurrent.txt'),
+						'utf8'
+					),
+					renamed: await readFile(saved, 'utf8'),
+					mode: attributes.mode & 0o777
+				}).toStrictEqual({
+					retained: 'workload edit',
+					concurrent: 'workload replacement',
+					renamed: 'workload replacement',
+					mode: 0o600
+				});
 			}
 
 			const helper = await readFile(
@@ -285,7 +315,10 @@ printf '%s\n' "$status"
 				listedSource: true,
 				listedStage: false,
 				denied: true,
+				...(mode === 'read-only' && { createDenied: true }),
 				...(mode === 'read-write' && {
+					renamedDenied: true,
+					createChecks: { limit: true, reserved: true, unlink: true },
 					oversizedDenied: true,
 					sizes: {
 						truncated: 0,

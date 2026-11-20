@@ -29,7 +29,7 @@ type workspaceWriter struct {
 }
 
 func (n *workspaceNode) openWriter(flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
-	if path.Base(n.relative) != n.relative || strings.HasPrefix(n.relative, ".") {
+	if !writableRootFile(n.relative) {
 		return nil, 0, syscall.EACCES
 	}
 	fd, errno := n.open(unix.S_IFREG, unix.O_RDWR)
@@ -52,6 +52,9 @@ func (w *workspaceWriter) replace(data []byte, offset int64, resize bool) error 
 	var source unix.Stat_t
 	if err := unix.Fstat(int(w.file.Fd()), &source); err != nil {
 		return err
+	}
+	if source.Nlink == 0 {
+		return unix.ESTALE
 	}
 	if source.Nlink != 1 || source.Mode&07000 != 0 || int(source.Uid) != os.Geteuid() || int(source.Gid) != os.Getegid() {
 		return unix.EACCES
@@ -97,6 +100,9 @@ func (w *workspaceWriter) replace(data []byte, offset int64, resize bool) error 
 	}
 	var current unix.Stat_t
 	if err := unix.Fstatat(w.root, w.name, &current, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		if err == unix.ENOENT {
+			return unix.ESTALE
+		}
 		return err
 	}
 	if current.Ino != source.Ino || current.Dev != source.Dev || current.Ctim != source.Ctim || current.Nlink != 1 {

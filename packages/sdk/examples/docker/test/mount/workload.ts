@@ -6,6 +6,7 @@ import {
 	openSync,
 	readdirSync,
 	readFileSync,
+	unlinkSync,
 	writeFileSync,
 	writeSync
 } from 'node:fs';
@@ -25,6 +26,24 @@ function isRefused(operation: () => unknown, errno: number) {
 	}
 }
 
+function checkCreates() {
+	for (let index = 1; index < 16; index++) {
+		closeSync(openSync('/workspace/create-' + String(index), 'wx'));
+	}
+
+	return {
+		unlink: isRefused(() => {
+			unlinkSync('/workspace/concurrent.txt');
+		}, constants.errno.ENOTSUP),
+		limit: isRefused(() => {
+			closeSync(openSync('/workspace/create-16', 'wx'));
+		}, constants.errno.EDQUOT),
+		reserved: isRefused(() => {
+			closeSync(openSync('/workspace/.reserved', 'wx'));
+		}, constants.errno.EACCES)
+	};
+}
+
 async function writeAndInspect() {
 	const resize = openSync('/workspace/truncate.txt', 'w+');
 	let isOversizedDenied: boolean;
@@ -41,9 +60,13 @@ async function writeAndInspect() {
 	}
 
 	const reader = openSync(file, 'r');
+	const save = '/workspace/editor-save';
+	const editor = openSync(save, 'wx+');
 	const fd = openSync(file, 'w+');
 
 	try {
+		writeSync(editor, 'workload replacement');
+
 		const truncated = fstatSync(fd).size;
 
 		writeSync(fd, 'workload edit');
@@ -54,6 +77,12 @@ async function writeAndInspect() {
 
 		while (performance.now() < deadline) {
 			if (existsSync('/workspace/host-ready')) {
+				writeFileSync('/workspace/concurrent.txt', 'workload replacement');
+
+				const isRenamedDenied = isRefused(
+					() => writeSync(editor, '!'),
+					constants.errno.ESTALE
+				);
 				const isDenied = isRefused(
 					() => writeSync(fd, 'unexpected', 0),
 					constants.errno.ESTALE
@@ -61,7 +90,9 @@ async function writeAndInspect() {
 
 				return {
 					denied: isDenied,
+					renamedDenied: isRenamedDenied,
 					oversizedDenied: isOversizedDenied,
+					createChecks: checkCreates(),
 					sizes: { truncated, written, readerSize }
 				};
 			}
@@ -71,6 +102,7 @@ async function writeAndInspect() {
 
 		throw new Error('The host did not replace the file.');
 	} finally {
+		closeSync(editor);
 		closeSync(fd);
 		closeSync(reader);
 	}
@@ -80,6 +112,9 @@ const result =
 	process.argv[1] === 'read-write'
 		? await writeAndInspect()
 		: {
+				createDenied: isRefused(() => {
+					closeSync(openSync('/workspace/editor-save', 'wx'));
+				}, constants.errno.EROFS),
 				denied: isRefused(() => {
 					writeFileSync(file, 'unexpected');
 				}, constants.errno.EROFS)

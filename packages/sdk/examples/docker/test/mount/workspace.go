@@ -19,6 +19,7 @@ type backing struct {
 	root      int
 	writable  bool
 	mutations sync.Mutex
+	created   int
 }
 
 type workspaceNode struct {

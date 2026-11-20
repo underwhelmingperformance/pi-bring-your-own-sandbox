@@ -84,8 +84,8 @@ func (n *workspaceNode) Lookup(ctx context.Context, name string, out *fuse.Entry
 	child.inode = stat.Ino
 	n.attributes(&stat, &out.Attr)
 	// Linux can request attributes without a file handle. go-fuse then uses the
-	// inode's first open handle. Keep a fresh inode per lookup and leave entries
-	// uncached so a writer and a reader can report different backing files.
+	// inode's first open handle. Separate lookups need separate inodes because
+	// a staged write replaces the file while earlier readers still have it open.
 	return n.NewInode(ctx, child, fs.StableAttr{Mode: stat.Mode & syscall.S_IFMT}), 0
 }
 

@@ -282,8 +282,8 @@ architecture and run the workload.
 The first build needs access to the Go modules pinned in `test/mount/go.sum` or
 a populated Go module cache. On AppArmor-enabled Docker hosts, install the test
 profile with `sudo apparmor_parser -r test/mount/apparmor` from the Docker
-example directory. The profile permits a FUSE mount at `/workspace` and removal
-of the control mount at `/control`.
+example directory. The profile permits a FUSE mount at `/workspace`, removal of
+the control mount at `/control` and execution of the shell and Node file helper.
 
 Only the filesystem service gets a bind mount of the host checkout. The workload
 runs as UID and GID 65534. The test inspects its capabilities and checks that it
@@ -293,11 +293,14 @@ The writable mount test replaces a regular file in the workspace root. The host
 observes the write while the workload still has the file open, then links the
 file outside the workspace and replaces the workspace entry by rename. The
 workload reads the replacement. A write on the old descriptor fails and the
-retained host file keeps its contents. The read-only mount rejects the first
-write. A second mount runs the provider's file helper. On the writable mount, a
-host read verifies that the helper truncated the file and wrote the new
-contents. On the read-only mount the helper reports a permission error. The
-mount tests use a prototype FUSE service. The production provider copies the
+retained host file keeps its contents. The workload also shrinks an open file,
+extends it with zero bytes and checks that a resize beyond 16 MiB fails with
+`EFBIG`. On a read-only mount the workload checks for `EROFS` directly.
+
+A second mount runs the provider's file helper. A host read verifies the new
+contents after a writable save. On a read-only mount the helper returns its
+permission-denied status and the host file keeps its original contents. Both
+mounts use a prototype FUSE service. The production provider copies the
 workspace into a volume.
 
 The prototype stages each FUSE write request separately. A large application

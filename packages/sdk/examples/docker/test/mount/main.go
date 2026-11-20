@@ -94,6 +94,7 @@ func attach(c *net.UnixConn, workspace *backing) error {
 		}
 		return fmt.Errorf("invalid mount request")
 	}
+	// Leave entry and attribute caching disabled so a new lookup sees host replacements.
 	opts := &fs.Options{MountOptions: fuse.MountOptions{Name: "byos", DisableXAttrs: true, ExtraCapabilities: fuse.CAP_ATOMIC_O_TRUNC}}
 	raw := fs.NewNodeFS(&workspaceNode{backing: workspace, relative: "."}, opts)
 	server, err := fuse.NewServer(raw, fmt.Sprintf("/dev/fd/%d", fds[0]), &opts.MountOptions)

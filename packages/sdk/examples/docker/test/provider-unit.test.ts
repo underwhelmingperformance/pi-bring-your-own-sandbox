@@ -1206,6 +1206,12 @@ it('selects a copy if an earlier startup consumer supplies no trust decision', a
 it('uses the UI of an earlier startup consumer for a refused shared workspace', async () => {
 	const notify = vi.fn();
 
+	using cli = vi
+		.spyOn(NodeDockerClient.prototype, 'command')
+		.mockRejectedValue(
+			new Error('A refused shared workspace must not contact Docker.')
+		);
+
 	await withPiRuntime(
 		[
 			{
@@ -1230,6 +1236,7 @@ it('uses the UI of an earlier startup consumer for a refused shared workspace', 
 		],
 		(_runtime, errors) => {
 			expect(errors).toStrictEqual([]);
+			expect(cli).not.toHaveBeenCalled();
 			expect(notify.mock.calls).toStrictEqual([
 				[expect.stringContaining('--byos-docker-copy'), 'warning']
 			]);

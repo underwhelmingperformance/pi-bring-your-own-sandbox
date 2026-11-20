@@ -96,3 +96,22 @@ that shell exits. Framework shutdown does not confirm termination of those
 descendants. The native Pi route therefore uses termination scope `none`. SDK
 passthrough and provider routes use their declared termination scopes and
 independent allocation-disposal contracts.
+
+## Permission review of a shell call
+
+The shell extension answers synchronous queries on Pi's
+`pi-byos:review:tool-call:v1` event channel. A reviewer can send
+`{ kind: 'available', reply }` to discover whether Pi has a routed shell. For a
+local permission request, send `{ sessionId, toolName, toolCallId, reply }`
+during the pending tool call. Require exactly one synchronous reply. The reply
+supplies a function that takes the review's abort signal and opens a fresh
+[review snapshot][review-protocol]. Close the snapshot when the review ends.
+
+Load the routing extension before the permission gate so the router can record
+the pending call. An unknown call, an overridden tool or a forwarded request
+requires transcript-only review. The default shell destination uses its active
+backend. The built-in normal outside destination uses the host checkout. Custom
+outside executors require their own destination resolver. Opening a snapshot
+does not approve or execute the proposed command.
+
+[review-protocol]: api-protocol.md

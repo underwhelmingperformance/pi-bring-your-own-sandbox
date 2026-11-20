@@ -1,6 +1,6 @@
 import type { BashOperations } from '@earendil-works/pi-coding-agent';
 
-import type { SandboxContext, SandboxHost } from './contracts.js';
+import type { Sandbox, SandboxContext, SandboxHost } from './contracts.js';
 import {
 	isSandboxError,
 	SandboxCancelledError,
@@ -18,9 +18,14 @@ from the selected backend. Pi owns output accumulation and tool presentation.
 export function createShellOperations(
 	pi: SandboxHost,
 	context: SandboxContext,
-	dialect: ShellInvocation['dialect']
+	dialect: ShellInvocation['dialect'],
+	reviewed?: Sandbox
 ): BashOperations {
-	const shell = new SandboxShell();
+	const shell = new SandboxShell(
+		reviewed === undefined
+			? undefined
+			: { getSandbox: () => Promise.resolve(reviewed) }
+	);
 
 	return {
 		async exec(command, _cwd, options) {

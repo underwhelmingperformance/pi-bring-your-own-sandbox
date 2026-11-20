@@ -420,65 +420,122 @@ socket.on('error', error => {
 			});
 		}, 30_000);
 
-		it('routes an approved model Bash call through the isolated Docker target', async () => {
-			const model = new ScriptedModel([
-				{
-					type: 'toolCall',
-					id: 'docker-bash',
-					name: 'bash',
-					arguments: {
-						command:
-							'[[ -n "$BASH_VERSION" ]] && printf "target bash\\n" && id -u && test ! -e /source'
-					}
-				}
-			]);
-			let approvals = 0;
-
-			await withDockerSession(
-				async ({ runtime }) => {
-					runtime.session.setActiveToolsByName(['bash']);
-
-					const selected = runtime.session.modelRuntime.getModel(
-						'scripted',
-						'scripted'
-					);
-
-					if (selected === undefined) {
-						throw new Error('The scripted model was not registered.');
-					}
-
-					await runtime.session.setModel(selected);
-					await runtime.session.prompt('Run the approved Bash tool.');
-
-					const results = model.requests
-						.at(1)
-						?.messages.filter((message) => message.role === 'toolResult')
-						.map(({ content, isError }) => ({ content, isError }));
-
-					expect({ approvals, results }).toStrictEqual({
-						approvals: 1,
-						results: [
-							{
-								content: [{ type: 'text', text: 'target bash\n65534\n' }],
-								isError: false
-							}
-						]
-					});
-				},
-				[
-					{ name: 'sandbox-tools', factory: sandboxTools },
-					model.extension,
+		it.each([
+			{
+				execution: 'sandbox',
+				contents: 'target-only edit',
+				text: 'target bash\n65534\n',
+				blocked: false
+			},
+			{
+				execution: 'outside-sandbox',
+				contents: 'original',
+				text: 'Host command reviewed.',
+				blocked: true
+			}
+		])(
+			'reviews the destination of a model Bash call with execution $execution',
+			async ({ execution, contents, text, blocked }) => {
+				const model = new ScriptedModel([
 					{
-						name: 'fake-approver',
-						factory(pi) {
-							pi.on('tool_call', () => {
-								approvals++;
-							});
+						type: 'toolCall',
+						id: 'docker-bash',
+						name: 'bash',
+						arguments: {
+							execution,
+							...(blocked && { justification: 'Review the host checkout.' }),
+							command:
+								'[[ -n "$BASH_VERSION" ]] && printf "target bash\\n" && id -u && test ! -e /source'
 						}
 					}
-				]
-			);
-		}, 30_000);
+				]);
+				const reviewed: string[] = [];
+
+				await withDockerSession(
+					async ({ runtime, sandbox }) => {
+						await sandbox.files.writeFile(
+							'source.txt',
+							Buffer.from('target-only edit')
+						);
+						runtime.session.setActiveToolsByName(['bash']);
+
+						const selected = runtime.session.modelRuntime.getModel(
+							'scripted',
+							'scripted'
+						);
+
+						if (selected === undefined) {
+							throw new Error('The scripted model was not registered.');
+						}
+
+						await runtime.session.setModel(selected);
+						await runtime.session.prompt('Run the approved Bash tool.');
+
+						const results = model.requests
+							.at(1)
+							?.messages.filter((message) => message.role === 'toolResult')
+							.map(({ content, isError }) => ({ content, isError }));
+
+						expect({ reviewed, results }).toStrictEqual({
+							reviewed: [contents],
+							results: [
+								{
+									content: [{ type: 'text', text }],
+									isError: blocked
+								}
+							]
+						});
+					},
+					[
+						{ name: 'sandbox-tools', factory: sandboxTools },
+						model.extension,
+						{
+							name: 'fake-approver',
+							factory(pi) {
+								pi.on('tool_call', async (event, context) => {
+									const routes: ((
+										signal: AbortSignal
+									) => Promise<ReviewSnapshot>)[] = [];
+
+									pi.events.emit('pi-byos:review:tool-call:v1', {
+										sessionId: context.sessionManager.getSessionId(),
+										toolName: event.toolName,
+										toolCallId: event.toolCallId,
+										reply: (
+											open: (signal: AbortSignal) => Promise<ReviewSnapshot>
+										) => {
+											routes.push(open);
+										}
+									});
+
+									const [open] = routes;
+
+									if (!open || routes.length !== 1) {
+										return {
+											block: true,
+											reason: 'The proposed tool has no review destination.'
+										};
+									}
+
+									const review = await open(new AbortController().signal);
+
+									try {
+										reviewed.push(await readSnapshot(review));
+									} finally {
+										await review.close();
+									}
+
+									return blocked
+										? { block: true, reason: 'Host command reviewed.' }
+										: {};
+								});
+							}
+						}
+					]
+				);
+			},
+			30_000
+		);
 
 		it('runs the shared consumer example through the selected Docker provider', async () => {
 			await withDockerSession(async ({ pi, context, fixture }) => {

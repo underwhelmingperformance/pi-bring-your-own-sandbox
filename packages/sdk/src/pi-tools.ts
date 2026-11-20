@@ -11,6 +11,7 @@ import { justificationSchema } from './approval-schemas.js';
 import { outsideShellOperations } from './outside-shell-operations.js';
 import { registerShellIntegrationDiagnostics } from './pi-integration-status.js';
 import { createShellOperations } from './pi-shell-operations.js';
+import { ShellReviewRoutes } from './shell-review-routes.js';
 import { registerUserShell } from './user-shell.js';
 
 function shellDefinition(pi: ExtensionAPI, dialect: 'bash' | 'powershell') {
@@ -44,6 +45,8 @@ function shellDefinition(pi: ExtensionAPI, dialect: 'bash' | 'powershell') {
 		{ additionalProperties: false }
 	);
 
+	const reviews = new ShellReviewRoutes(pi, dialect, parameters);
+
 	return defineTool({
 		...base,
 		defaultActive: false,
@@ -56,6 +59,7 @@ function shellDefinition(pi: ExtensionAPI, dialect: 'bash' | 'powershell') {
 		],
 		async execute(id, input, signal, update, context) {
 			const isOutside = input.execution === 'outside-sandbox';
+			const reviewed = reviews.executing(id, input.command, isOutside);
 
 			if (isOutside && input.justification === undefined) {
 				throw new InvalidApprovalRequestError();
@@ -72,8 +76,19 @@ function shellDefinition(pi: ExtensionAPI, dialect: 'bash' | 'powershell') {
 				exposeSessionEnvironment: isOutside,
 				operations:
 					isOutside && input.justification !== undefined
-						? outsideShellOperations(pi, context, dialect, input.justification)
-						: createShellOperations(pi, context, dialect)
+						? outsideShellOperations(
+								pi,
+								context,
+								dialect,
+								input.justification,
+								reviewed?.kind === 'host'
+							)
+						: createShellOperations(
+								pi,
+								context,
+								dialect,
+								reviewed?.kind === 'sandbox' ? reviewed.sandbox : undefined
+							)
 			});
 
 			return tool.execute(id, input, signal, update, context);

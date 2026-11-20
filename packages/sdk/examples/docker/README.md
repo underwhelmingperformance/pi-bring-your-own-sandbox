@@ -320,11 +320,12 @@ process can substitute an entry after the service has checked it. Enabling them
 in a shared workspace requires enforcement at the point of mutation.
 
 The SDK file worker and shell jobs attach separate mounts to the same service.
-The integration test writes through `sandbox.files.writeFile` and reads the
-result through `sandbox.exec` and on the host. The host then replaces the file.
-The next `sandbox.files.readFile` reads the editor's version. On a read-only
-mount, an SDK write returns a permission error. The production provider still
-uses a copied workspace.
+The integration test edits a TypeScript file through `sandbox.files.writeFile`.
+A Bash job runs the edited program, and the host reads the new source. The host
+then replaces the file. Both `sandbox.files.readFile` and a regular expression
+search in the same worker see the editor's version. On a read-only mount, an SDK
+write returns a permission error. The production provider still uses a copied
+workspace.
 
 On macOS the service stages each write outside the checkout and asks a
 Seatbelt-restricted host process to rename the staged file. The host process

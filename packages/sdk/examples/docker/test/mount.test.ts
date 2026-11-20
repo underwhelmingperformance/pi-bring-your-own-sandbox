@@ -365,26 +365,31 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 			const sandbox = createSandbox(new TestBackendOwner(backend));
 
 			try {
-				const edit = Buffer.from('tool edit');
+				const build = path.join(fixture.workspace, 'build.ts');
+				const program = (value: string) =>
+					`const value: string = ${JSON.stringify(value)}; process.stdout.write(value);`;
+				const edit = Buffer.from(program('SDK build'));
+
+				await writeFile(build, program('host build'));
 
 				if (mode === 'read-write') {
-					await sandbox.files.writeFile('source.txt', edit);
+					await sandbox.files.writeFile('build.ts', edit);
 					await expect(
 						sandbox.files.writeFile('settings-alias', edit)
 					).rejects.toBeInstanceOf(SandboxPermissionDeniedError);
 				} else {
 					await expect(
-						sandbox.files.writeFile('source.txt', edit)
+						sandbox.files.writeFile('build.ts', edit)
 					).rejects.toBeInstanceOf(SandboxPermissionDeniedError);
 				}
 
 				const shell = await sandbox.exec({
 					kind: 'shell',
-					dialect: 'sh',
-					command: 'IFS= read -r input < source.txt || :; printf %s "$input"'
+					dialect: 'bash',
+					command:
+						'/usr/local/bin/node --disable-warning=ExperimentalWarning --input-type=module-typescript < build.ts'
 				});
-				const expected =
-					mode === 'read-write' ? 'tool edit' : 'after service startup';
+				const expected = mode === 'read-write' ? 'SDK build' : 'host build';
 
 				expect({ ...shell, durationMs: 0 }).toStrictEqual({
 					exit: { kind: 'code', code: 0 },
@@ -393,15 +398,32 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 					omittedBytes: { stdout: 0, stderr: 0 },
 					durationMs: 0
 				});
-				expect(await readFile(source, 'utf8')).toBe(expected);
+				expect(await readFile(build, 'utf8')).toBe(program(expected));
 
 				const replacement = path.join(fixture.workspace, 'editor-update');
 
 				await writeFile(replacement, 'next editor save');
-				await rename(replacement, source);
+				await rename(replacement, build);
 				expect(
-					new TextDecoder().decode(await sandbox.files.readFile('source.txt'))
+					new TextDecoder().decode(await sandbox.files.readFile('build.ts'))
 				).toBe('next editor save');
+				expect(
+					await sandbox.search.grep({
+						path: 'build.ts',
+						pattern: '^next .+ save$'
+					})
+				).toStrictEqual({
+					matches: [
+						{
+							path: 'build.ts',
+							line: 1,
+							text: 'next editor save',
+							before: [],
+							after: []
+						}
+					],
+					truncated: false
+				});
 			} finally {
 				await backend.dispose(operationContext());
 			}

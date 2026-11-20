@@ -13,6 +13,10 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 
 			defineSandboxProviderTests({
 				workspaceVisibility: 'copied',
+				policyEffects:
+					workspaceAccess === 'read-only'
+						? ['read-only', 'denied-network', 'late-special-file']
+						: ['denied-network', 'late-special-file'],
 				verifyRecoveryAfterCancellation: true,
 				verifyIndependentAllocations: true,
 				verifyConcurrentCancellation: true,

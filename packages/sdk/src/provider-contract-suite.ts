@@ -25,6 +25,7 @@ import {
 } from './file-result.js';
 import { OperationScope } from './lifecycle.js';
 import type {
+	SandboxPolicyScenario,
 	SandboxProcessProbe,
 	SandboxProviderTestFixture,
 	SandboxProviderTestOptions
@@ -248,6 +249,108 @@ async function checkProcess(
 		stdout: new Uint8Array(probe.stdout),
 		stderr: new Uint8Array(probe.stderr)
 	});
+}
+
+async function checkPolicyEffects(
+	scenario: SandboxPolicyScenario,
+	fixture: SandboxProviderTestFixture,
+	backend: SandboxBackend,
+	context: SandboxOperationContext
+) {
+	const prepare = fixture.policyEffects?.[scenario];
+
+	if (!prepare) {
+		throw new Error('Supply a policy effect probe for ' + scenario + '.');
+	}
+
+	switch (scenario) {
+		case 'read-only': {
+			expect(backend.policy.workspaceAccess).toBe('read-only');
+			break;
+		}
+
+		case 'denied-network': {
+			expect(backend.policy.networkAccess).toBe('denied');
+			break;
+		}
+
+		case 'protected-path':
+		case 'protected-alias': {
+			expect(backend.policy.workspaceProtection?.length ?? 0).toBeGreaterThan(
+				0
+			);
+			break;
+		}
+		// No default
+	}
+
+	const probe = await prepare(backend);
+
+	if (backend.capabilities.exitStatus === 'guaranteed') {
+		expect(probe.permitted.exit).toStrictEqual({ kind: 'code', code: 0 });
+		expect(probe.denied.exit.kind).toBe('code');
+
+		if (probe.denied.exit.kind === 'code') {
+			expect(probe.denied.exit.code).toBeGreaterThan(0);
+		}
+	}
+
+	await checkProcess(backend, probe.permitted, context);
+
+	const before = structuredClone(await probe.observe());
+
+	if (scenario === 'denied-network') {
+		expect(before.kind).toBe('listener');
+
+		if (before.kind === 'listener') {
+			expect(before.connections).toBeGreaterThan(0);
+		}
+	} else if (scenario === 'late-special-file') {
+		expect(['special', 'listener']).toContain(before.kind);
+	} else {
+		expect(['absent', 'file']).toContain(before.kind);
+	}
+
+	await checkProcess(backend, probe.denied, context);
+	expect(
+		await probe.observe(),
+		'The denied process changed the protected resource.'
+	).toStrictEqual(before);
+
+	if (scenario === 'denied-network') {
+		return;
+	}
+
+	const isRead = scenario === 'late-special-file';
+	const operation = isRead ? 'files.read' : 'files.write';
+
+	if (!backend.capabilities.operations.includes(operation)) {
+		return;
+	}
+
+	if (!probe.file) {
+		throw new Error('Supply the target path for the denied file operation.');
+	}
+
+	const { path, error } = probe.file;
+	const expected =
+		error === 'absent'
+			? SandboxPathNotFoundError
+			: SandboxPermissionDeniedError;
+	const files = backend.files;
+	const outcome = isRead
+		? files?.read?.readFile(path, context)
+		: files?.write?.writeFile(path, randomBytes(32), context);
+
+	if (!outcome) {
+		throw new Error('The declared file operation is missing.');
+	}
+
+	await expect(outcome).rejects.toMatchObject({ name: expected.errorName });
+	expect(
+		await probe.observe(),
+		'The denied file operation changed the protected resource.'
+	).toStrictEqual(before);
 }
 
 async function cancelReadyJob(
@@ -496,6 +599,16 @@ export function providerContractCases<Config>(
 				)
 		}
 	];
+
+	const restrictions = options.policyEffects ?? [];
+
+	for (const scenario of restrictions) {
+		cases.push({
+			label: 'policy effects (' + scenario + ')',
+			run: (fixture, backend, context) =>
+				checkPolicyEffects(scenario, fixture, backend, context)
+		});
+	}
 
 	if (options.verifyConcurrentCancellation) {
 		cases.push({

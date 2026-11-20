@@ -1,5 +1,7 @@
+import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
+	lstat,
 	mkdir,
 	mkdtemp,
 	readFile,
@@ -10,6 +12,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { promisify } from 'node:util';
 
 import type {
 	ProcessRequest,
@@ -140,7 +143,7 @@ export class DockerFixture {
 			DOCKER_IMAGE,
 			'/usr/local/bin/node',
 			'-e',
-			'require("node:http").createServer((_request, response) => response.end("controlled")).listen(8080, "0.0.0.0")'
+			'let connections=0; const server=require("node:http").createServer((_request, response) => response.end("controlled")); server.on("connection",()=>require("node:fs").writeFileSync("/tmp/connections",String(++connections)));server.listen(8080, "0.0.0.0")'
 		]);
 		this.hasServer = true;
 		await this.docker(['start', this.server]);
@@ -503,6 +506,120 @@ process.stdout.write(readFileSync("/tmp/response"));`
 						'const fs=require("node:fs");fs.writeFileSync("/tmp/pending",Buffer.from(process.argv[1],"base64"));fs.renameSync("/tmp/pending","/tmp/response")',
 						Buffer.from(bytes).toString('base64')
 					]);
+				}
+			},
+			policyEffects: {
+				'read-only': (backend) =>
+					Promise.resolve({
+						permitted: sourceRead,
+						denied: {
+							request: {
+								kind: 'shell',
+								dialect: 'sh',
+								command: '{ printf changed > source.txt; } 2>/dev/null'
+							},
+							exit: { kind: 'code', code: 2 },
+							stdout: encode(''),
+							stderr: encode('')
+						},
+						file: { path: '/workspace/source.txt', error: 'denied' },
+						observe: async () => {
+							const data = await this.docker([
+								'run',
+								'--rm',
+								'--pull=never',
+								'--network=none',
+								'--cap-drop=ALL',
+								'--user=65534:65534',
+								'--read-only',
+								'--mount',
+								'type=volume,source=' +
+									backend.id +
+									',target=/workspace,readonly',
+								DOCKER_IMAGE,
+								'sh',
+								'-c',
+								'stat -c "%a %h" /workspace/source.txt && base64 -w0 /workspace/source.txt'
+							]);
+							const [metadata, bytes] = data.trim().split('\n', 2);
+
+							if (!metadata || !bytes) {
+								throw new Error('Missing independent Docker file metadata.');
+							}
+
+							const [mode = '', links] = metadata.split(' ', 2);
+
+							return {
+								kind: 'file',
+								mode: Number.parseInt(mode, 8),
+								links: Number(links),
+								content: new Uint8Array(Buffer.from(bytes, 'base64'))
+							};
+						}
+					}),
+				'denied-network': async () => {
+					const address = await this.#networkAddress();
+
+					return {
+						permitted: sourceRead,
+						denied: {
+							request: {
+								kind: 'argv',
+								executable: '/usr/local/bin/node',
+								args: [
+									'--input-type=module',
+									'-e',
+									NETWORK_PROBE,
+									'http://' + address + ':8080/'
+								]
+							},
+							exit: { kind: 'code', code: 1 },
+							stdout: encode(''),
+							stderr: encode('')
+						},
+						observe: async () => ({
+							kind: 'listener',
+							connections: Number(
+								await this.docker([
+									'exec',
+									this.server,
+									'cat',
+									'/tmp/connections'
+								])
+							)
+						})
+					};
+				},
+				'late-special-file': async () => {
+					const fifo = path.join(this.workspace, 'late-pipe');
+
+					await promisify(execFile)('mkfifo', [fifo]);
+
+					return {
+						permitted: sourceRead,
+						denied: {
+							request: {
+								kind: 'shell',
+								dialect: 'sh',
+								command: 'cat late-pipe 2>/dev/null'
+							},
+							exit: { kind: 'code', code: 1 },
+							stdout: encode(''),
+							stderr: encode('')
+						},
+						file: { path: '/workspace/late-pipe', error: 'absent' },
+						observe: async () => {
+							const metadata = await lstat(fifo);
+
+							expect(metadata.isFIFO()).toBe(true);
+
+							return {
+								kind: 'special',
+								mode: metadata.mode,
+								links: metadata.nlink
+							};
+						}
+					};
 				}
 			},
 			peerProcess: sourceRead,

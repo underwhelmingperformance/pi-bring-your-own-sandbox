@@ -173,3 +173,27 @@ and confirmed termination. Supply a `concurrentJob` that emits a ready marker
 and waits. The suite cancels a second job on the same allocation, then sends
 fresh bytes through the fixture's independent `release` callback. The waiting
 job must return those bytes and exit successfully.
+
+## Checking policy effects
+
+Select individual cases with `policyEffects`. Each case gets a fresh allocation.
+Supply a fixture function under the same key in `fixture.policyEffects`. The
+function receives the open backend so the fixture can identify the allocation
+and introduce resources after startup.
+
+| Case                | Independent observation                                                                                                                           |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `read-only`         | Read the protected bytes, mode and link count from the backing workspace, or confirm that a protected path remains absent.                        |
+| `protected-path`    | Observe the protected resource while the target attempts a direct mutation.                                                                       |
+| `protected-alias`   | Direct the mutation at an alias and observe the original protected resource.                                                                      |
+| `late-special-file` | Create a socket or FIFO after opening. Observe its metadata or count connections at the listener.                                                 |
+| `denied-network`    | Connect an independent control client to the listener before the target attempts a connection. Return the listener's cumulative connection count. |
+
+Supply a permitted process, a denied process and an `observe` function. The
+suite checks both process outcomes and compares independent observations before
+and after each denial. With guaranteed exit status the permitted process must
+exit successfully and the denied process must exit with a positive error code.
+When the backend provides file operations, supply the target path and expected
+error for a write, or for a read of a late special file. Inspect the backing
+resource directly through the fixture. Reading it through the backend would test
+the same boundary twice.

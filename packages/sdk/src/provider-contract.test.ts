@@ -871,3 +871,109 @@ it.each([true, false])(
 		);
 	}
 );
+
+it.each([
+	'read-only',
+	'protected-path',
+	'protected-alias',
+	'late-special-file',
+	'denied-network'
+] as const)(
+	'requires an independent probe for the selected %s restriction',
+	async (restriction) => {
+		const scenario = { ...contractScenario(), policyEffects: [restriction] };
+		const entry = providerContractCases(scenario).find(
+			(test) => test.label === 'policy effects (' + restriction + ')'
+		);
+
+		if (!entry) {
+			throw new Error('Missing policy effects scenario.');
+		}
+
+		await expect(usingProviderFixture(scenario, entry.run)).rejects.toThrow(
+			'Supply a policy effect probe'
+		);
+	}
+);
+
+it.each([false, true])(
+	'observes listener connections independently of the denied exit status (%s)',
+	async (connected) => {
+		const base = contractScenario();
+		const open = base.provider.open;
+		let connections = 1;
+		const scenario: SandboxProviderTestOptions<undefined> = {
+			...base,
+			policyEffects: ['denied-network'],
+			provider: {
+				...base.provider,
+				policies: { ...base.provider.policies, networkAccess: ['denied'] },
+				async open(...arguments_) {
+					const backend = await open(...arguments_);
+
+					return {
+						...backend,
+						policy: { ...backend.policy, networkAccess: 'denied' },
+						exec(request, context) {
+							if (
+								connected &&
+								request.kind === 'argv' &&
+								request.executable === 'probe'
+							) {
+								connections++;
+							}
+
+							return backend.exec(request, context);
+						}
+					};
+				}
+			},
+			async createFixture() {
+				const fixture = await base.createFixture();
+				const denied = fixture.processes?.[0];
+
+				if (!denied) {
+					throw new Error('Missing denied command fixture.');
+				}
+
+				return {
+					...fixture,
+					policy: { ...fixture.policy, networkAccess: 'denied' },
+					policyEffects: {
+						'denied-network': () =>
+							Promise.resolve({
+								permitted: {
+									request: { kind: 'argv', executable: 'pwd', args: [] },
+									exit: { kind: 'code', code: 0 },
+									stdout: Buffer.from('/remote/project\n'),
+									stderr: Buffer.alloc(0)
+								},
+								denied,
+								observe: () =>
+									Promise.resolve({ kind: 'listener', connections })
+							})
+					}
+				};
+			}
+		};
+		const entry = providerContractCases(scenario).find(
+			(test) => test.label === 'policy effects (denied-network)'
+		);
+
+		if (!entry) {
+			throw new Error('Missing network policy check.');
+		}
+
+		const result = usingProviderFixture(scenario, entry.run);
+
+		if (connected) {
+			await expect(result).rejects.toThrow(
+				'The denied process changed the protected resource.'
+			);
+
+			return;
+		}
+
+		await result;
+	}
+);

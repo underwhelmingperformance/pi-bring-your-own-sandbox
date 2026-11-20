@@ -301,6 +301,7 @@ try {
 		recoveries: []
 	});
 	assert.deepEqual(peer.state, {
+		sample: 'original',
 		opens: 2,
 		reviews: 2,
 		disposals: 2,

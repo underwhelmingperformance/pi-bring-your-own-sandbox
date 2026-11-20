@@ -11,6 +11,7 @@ export * as sdk from 'pi-bring-your-own-sandbox/api';
 
 export const apiUrl = import.meta.resolve('pi-bring-your-own-sandbox/api');
 interface ProviderState {
+	sample: string;
 	opens: number;
 	reviews: number;
 	calls: ProcessRequest[];
@@ -19,6 +20,7 @@ interface ProviderState {
 }
 
 export const state: ProviderState = {
+	sample: 'original',
 	opens: 0,
 	reviews: 0,
 	calls: [],
@@ -43,7 +45,7 @@ export const provider: SandboxProvider<undefined> = {
 		shells: []
 	},
 	policies: {
-		workspaceAccess: ['read-write'],
+		workspaceAccess: ['read-write', 'read-only'],
 		filesystemScope: ['provider-default'],
 		networkAccess: ['provider-default']
 	},
@@ -76,6 +78,19 @@ export const provider: SandboxProvider<undefined> = {
 			recovery: { kind: 'none' },
 			async exec(invocation, execution) {
 				state.calls.push(invocation);
+
+				if (
+					invocation.kind === 'argv' &&
+					invocation.executable === 'replace-sample'
+				) {
+					if (request.policy.workspaceAccess === 'read-only') {
+						return { kind: 'exited', exit: { kind: 'code', code: 1 } };
+					}
+
+					state.sample = 'changed';
+
+					return { kind: 'exited', exit: { kind: 'code', code: 0 } };
+				}
 
 				if (invocation.kind === 'argv' && invocation.executable === 'wait') {
 					state.isRunning = true;

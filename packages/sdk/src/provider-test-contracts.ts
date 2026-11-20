@@ -40,10 +40,62 @@ export interface SandboxProcessProbe {
 }
 
 /**
+Restrictions with independent checks in the public provider suite.
+*/
+export type SandboxPolicyScenario =
+	| 'read-only'
+	| 'protected-path'
+	| 'protected-alias'
+	| 'late-special-file'
+	| 'denied-network';
+
+/**
+Independent observations of a protected object or a controlled listener.
+*/
+export type SandboxPolicyEvidence =
+	| {
+			readonly kind: 'file';
+			readonly content: Uint8Array;
+			readonly mode: number;
+			readonly links: number;
+	  }
+	| { readonly kind: 'absent' }
+	| { readonly kind: 'special'; readonly mode: number; readonly links: number }
+	| { readonly kind: 'listener'; readonly connections: number };
+
+/**
+Target commands and an independent observer for one policy restriction.
+*/
+export interface SandboxPolicyProbe {
+	readonly permitted: SandboxProcessProbe;
+	readonly denied: SandboxProcessProbe;
+	readonly observe: () => Promise<SandboxPolicyEvidence>;
+	/**
+	Supply the target path and expected error when the backend offers the corresponding file operation.
+	*/
+	readonly file?: {
+		readonly path: string;
+		readonly error: 'absent' | 'denied';
+	};
+}
+
+/**
 An isolated test workspace and provider-specific probes. The suite creates a
 fresh fixture for every test. Seed target files before returning this value.
 */
 export interface SandboxProviderTestFixture {
+	/**
+	Prepare the restricted resource after opening, and inspect it independently of the backend.
+	*/
+	readonly policyEffects?: Partial<
+		Readonly<
+			Record<
+				SandboxPolicyScenario,
+				(backend: SandboxBackend) => Promise<SandboxPolicyProbe>
+			>
+		>
+	>;
+
 	/**
 	A seeded regular file seen from the source workspace and through a target
 	process. Replace the source by rename so a stale open inode cannot pass.
@@ -248,6 +300,11 @@ for different policy modes and backend capability subsets.
 @typeParam Config - Validated provider configuration.
 */
 export interface SandboxProviderTestOptions<Config> {
+	/**
+	Register one separately reported test for each selected policy restriction.
+	*/
+	readonly policyEffects?: readonly SandboxPolicyScenario[];
+
 	/**
 	Cancel one job while a peer on the same allocation waits for a response.
 	*/

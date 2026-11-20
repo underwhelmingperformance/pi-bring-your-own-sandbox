@@ -763,3 +763,60 @@ it.each([-1_000_000, 1_000_000])(
 		}
 	}
 );
+
+it.each(['session', 'socket', 'provider', 'generation', 'backend'])(
+	'rejects a review snapshot with a mismatched %s before allocation',
+	async (field) => {
+		const docker = new FakeDocker();
+		const provider = createDockerProvider(() => docker);
+		const opening = {
+			...context(),
+			reportRecovery() {
+				return;
+			},
+			confirmCleanup() {
+				return;
+			}
+		};
+		const parent = await provider.open(request, opening);
+
+		try {
+			if (!provider.openReviewSnapshot) {
+				throw new Error('Expected Docker snapshot support.');
+			}
+
+			const before = docker.commands.length;
+
+			await expect(
+				provider.openReviewSnapshot(
+					{
+						...request,
+						sessionId: field === 'session' ? 'different' : request.sessionId,
+						configuration: {
+							...request.configuration,
+							socketPath:
+								field === 'socket'
+									? '/different'
+									: request.configuration.socketPath
+						},
+						policy: { ...request.policy, workspaceAccess: 'read-only' },
+						source: {
+							kind: 'sandbox',
+							backendId: field === 'backend' ? 'other' : parent.id,
+							providerId: field === 'provider' ? 'other' : provider.id,
+							generationId:
+								field === 'generation' ? 'other' : request.generationId
+						}
+					},
+					opening
+				)
+			).rejects.toMatchObject({
+				name: 'StaleSandboxHandleError',
+				operation: 'open'
+			});
+			expect(docker.commands.slice(before)).toStrictEqual([]);
+		} finally {
+			await parent.dispose(context());
+		}
+	}
+);

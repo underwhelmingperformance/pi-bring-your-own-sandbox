@@ -45,6 +45,16 @@ function mount(fields: readonly string[]): string {
 	return fields.map((field) => `"${field.replaceAll('"', '""')}"`).join(',');
 }
 
+const copiedWorkspace = {
+	root: '/workspace',
+	pathFlavor: 'posix',
+	relationship: 'copied',
+	home: '/tmp',
+	defaultShell: 'sh',
+	description:
+		'The host workspace is copied on opening. Changes remain in a generation-owned Docker volume until disposal.'
+} as const;
+
 class DockerBackend implements SandboxBackend {
 	readonly #resources: DockerResources;
 	readonly #onClose: () => void;
@@ -57,15 +67,8 @@ class DockerBackend implements SandboxBackend {
 	readonly files: BackendFiles;
 	readonly search: BackendSearch;
 	readonly id: string;
-	readonly workspace = {
-		root: '/workspace',
-		pathFlavor: 'posix',
-		relationship: 'copied',
-		home: '/tmp',
-		defaultShell: 'sh',
-		description:
-			'The host workspace is copied on opening. Changes remain in a generation-owned Docker volume until disposal.'
-	} as const;
+	readonly workspace: SandboxBackend['workspace'];
+
 	readonly capabilities = {
 		processKinds: ['argv', 'shell'],
 		terminationScope: 'workload',
@@ -91,8 +94,19 @@ class DockerBackend implements SandboxBackend {
 		launcher: string,
 		client: DockerClient,
 		helpers: { readonly files: string; readonly search: string },
-		onClose: () => void
+		onClose: () => void,
+		source?: ReviewSnapshotSource
 	) {
+		this.workspace =
+			source === undefined
+				? copiedWorkspace
+				: {
+						...copiedWorkspace,
+						description:
+							source.kind === 'host'
+								? 'Read-only snapshot of the host checkout.'
+								: 'Read-only snapshot of the proposed command’s Docker workspace.'
+					};
 		this.#onClose = onClose;
 		this.#resources = resources;
 		this.#launcher = launcher;
@@ -235,20 +249,19 @@ class DockerBackend implements SandboxBackend {
 		await this.#resources.dispose(context);
 	}
 
-	copyInto(
+	async copyInto(
 		backend: DockerBackend,
 		importer: string,
 		context: SandboxOpenContext
 	): Promise<void> {
 		if (this.#lifetime.signal.aborted) {
-			return Promise.reject(
-				new SandboxSessionClosingError({
-					operation: 'open',
-					backendId: this.id
-				})
-			);
+			throw new SandboxSessionClosingError({
+				operation: 'open',
+				backendId: this.id
+			});
 		}
 
+		const signal = AbortSignal.any([context.signal, this.#lifetime.signal]);
 		const copying = backend.initialise(
 			mount([
 				'type=volume',
@@ -260,16 +273,37 @@ class DockerBackend implements SandboxBackend {
 			importer,
 			{
 				...context,
-				signal: AbortSignal.any([context.signal, this.#lifetime.signal])
+				signal
 			}
 		);
 
 		this.#snapshots.add(copying);
-		void Promise.allSettled([copying]).then(() => {
-			this.#snapshots.delete(copying);
-		});
 
-		return copying;
+		try {
+			await copying;
+		} catch (error) {
+			if (
+				error instanceof SandboxCancelledError &&
+				signal.aborted &&
+				!context.signal.aborted
+			) {
+				throw new SandboxCancelledError(
+					{
+						operation: 'open',
+						providerId: 'example.docker',
+						backendId: this.id,
+						reason: 'shutdown',
+						completion: error.completion,
+						...(error.recovery !== undefined && { recovery: error.recovery })
+					},
+					{ cause: error }
+				);
+			}
+
+			throw error;
+		} finally {
+			this.#snapshots.delete(copying);
+		}
 	}
 
 	async initialise(
@@ -344,18 +378,32 @@ class DockerBackend implements SandboxBackend {
 			}
 
 			if (copied.exit.kind !== 'code' || copied.exit.code !== 0) {
+				const failures = new Map([
+					[42, 'The workspace changed during the Docker import.'],
+					[43, 'The Docker workspace exceeds the snapshot import limits.'],
+					[44, 'A regular file has a hard link outside the workspace.'],
+					[45, 'A workspace entry has a filename that is not valid UTF-8.'],
+					[
+						46,
+						'Docker could not read or copy a workspace entry. Check permissions and available space.'
+					]
+				]);
 				const message =
-					copied.exit.kind === 'code' && copied.exit.code === 43
-						? 'The Docker workspace exceeds the snapshot import limits.'
-						: 'Docker could not read a stable copy of the workspace.';
+					(copied.exit.kind === 'code'
+						? failures.get(copied.exit.code)
+						: undefined) ??
+					'The Docker workspace importer stopped before it finished.';
 
 				context.reportDiagnostic({ level: 'warning', message });
 
-				throw new SandboxOperationError({
-					operation: 'open',
-					providerId: 'example.docker',
-					recovery: this.recovery
-				});
+				throw new SandboxOperationError(
+					{
+						operation: 'open',
+						providerId: 'example.docker',
+						recovery: this.recovery
+					},
+					{ cause: new Error(message) }
+				);
 			}
 		} catch (error) {
 			try {
@@ -507,7 +555,8 @@ export function createDockerProvider(
 			{ files, search },
 			() => {
 				active.delete(resources.volume);
-			}
+			},
+			source
 		);
 
 		if (parent === undefined) {

@@ -232,9 +232,18 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				}
 			});
 		}, 30_000);
-		it.each(['external hard link', 'oversized file'])(
+		it.each([
+			[
+				'external hard link',
+				'A regular file has a hard link outside the workspace.'
+			],
+			[
+				'oversized file',
+				'The Docker workspace exceeds the snapshot import limits.'
+			]
+		])(
 			'rejects a host snapshot with an %s and preserves the active backend',
-			async (defect) => {
+			async (defect, message) => {
 				await withDockerSession(async ({ pi, context, fixture, sandbox }) => {
 					const added = path.join(fixture.workspace, 'added');
 
@@ -247,7 +256,11 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 
 					await expect(
 						sandboxClient.openReviewSnapshot(pi, context, { kind: 'host' })
-					).rejects.toMatchObject({ operation: 'open' });
+					).rejects.toMatchObject({
+						name: 'SandboxOperationError',
+						operation: 'open',
+						cause: { cause: { message } }
+					});
 					await expect(
 						sandbox.files.readFile('source.txt')
 					).resolves.toStrictEqual(new TextEncoder().encode('original'));

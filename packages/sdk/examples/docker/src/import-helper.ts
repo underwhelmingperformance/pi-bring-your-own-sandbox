@@ -6,6 +6,8 @@ import {
 	chmod,
 	chown,
 	lchown,
+	link,
+	lutimes,
 	mkdir,
 	open,
 	opendir,
@@ -19,9 +21,21 @@ const byteLimit = 512 * 1024 * 1024;
 const entryLimit = 100_000;
 // Linux O_PATH pins the inode without opening a device or waiting on a FIFO.
 const pathOnly = 0o1000_0000;
-const linkedFiles = new Map<string, { expected: bigint; paths: number }>();
+const linkedFiles = new Map<
+	string,
+	{ expected: bigint; paths: number; target: string }
+>();
 const manifest = new Map<string, string>();
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+
+class ImportFailure extends Error {
+	readonly status: number;
+
+	constructor(status: number, message: string) {
+		super(message);
+		this.status = status;
+	}
+}
 
 class ImportPass {
 	#bytes = 0;
@@ -32,7 +46,12 @@ class ImportPass {
 		this.#copy = shouldCopy;
 	}
 
-	async file(source: string, target: string, size: bigint): Promise<string> {
+	async file(
+		source: string,
+		target: string,
+		size: bigint,
+		shouldCopy = this.#copy
+	): Promise<string> {
 		if (size > BigInt(byteLimit - this.#bytes)) {
 			throw new RangeError('Workspace contents exceed 512 MiB.');
 		}
@@ -42,7 +61,7 @@ class ImportPass {
 			constants.O_RDONLY | constants.O_NONBLOCK
 		);
 
-		const output = this.#copy ? await open(target, 'wx') : undefined;
+		const output = shouldCopy ? await open(target, 'wx') : undefined;
 		const hash = createHash('sha256');
 
 		try {
@@ -102,18 +121,26 @@ class ImportPass {
 				);
 			}
 		} else if (stat.isFile()) {
+			let shouldCopy = this.#copy;
+
 			if (this.#copy && stat.nlink > 1n) {
 				const key = String(stat.dev) + '/' + String(stat.ino);
 				const linked = linkedFiles.get(key) ?? {
+					target,
 					expected: stat.nlink,
 					paths: 0
 				};
+
+				if (linked.paths > 0) {
+					await link(linked.target, target);
+					shouldCopy = false;
+				}
 
 				linked.paths++;
 				linkedFiles.set(key, linked);
 			}
 
-			content = await this.file(descriptor, target, stat.size);
+			content = await this.file(descriptor, target, stat.size, shouldCopy);
 		} else if (stat.isSymbolicLink()) {
 			const link = await readlink(source, { encoding: 'buffer' });
 
@@ -122,6 +149,11 @@ class ImportPass {
 			if (this.#copy) {
 				await symlink(link, target);
 				await lchown(target, 65_534, 65_534);
+				await lutimes(
+					target,
+					Number(stat.atimeMs) / 1000,
+					Number(stat.mtimeMs) / 1000
+				);
 			}
 		}
 
@@ -132,6 +164,17 @@ class ImportPass {
 				target,
 				Number(stat.atimeMs) / 1000,
 				Number(stat.mtimeMs) / 1000
+			);
+		}
+
+		if (
+			depth === 0 &&
+			this.#copy &&
+			linkedFiles.values().some((file) => BigInt(file.paths) !== file.expected)
+		) {
+			throw new ImportFailure(
+				44,
+				'A workspace file also has a link outside the import root.'
 			);
 		}
 
@@ -158,13 +201,13 @@ class ImportPass {
 		const value = before + '/' + content;
 
 		if (before !== signature(await pinned.stat({ bigint: true }))) {
-			throw new Error('The workspace changed during import.');
+			throw new ImportFailure(42, 'The workspace changed during import.');
 		}
 
 		if (this.#copy) {
 			manifest.set(relative, value);
 		} else if (manifest.get(relative) !== value) {
-			throw new Error('The workspace changed during import.');
+			throw new ImportFailure(42, 'The workspace changed during import.');
 		}
 	}
 
@@ -172,7 +215,7 @@ class ImportPass {
 		await this.visit('/source', '', 0);
 
 		if (!this.#copy && this.#entries !== manifest.size) {
-			throw new Error('The workspace changed during import.');
+			throw new ImportFailure(42, 'The workspace changed during import.');
 		}
 	}
 }
@@ -180,15 +223,16 @@ class ImportPass {
 try {
 	await new ImportPass(true).run();
 
-	if (
-		linkedFiles.values().some((file) => BigInt(file.paths) !== file.expected)
-	) {
-		throw new Error(
-			'A workspace file also has a link outside the import root.'
-		);
-	}
-
 	await new ImportPass(false).run();
 } catch (error) {
-	process.exitCode = error instanceof RangeError ? 43 : 42;
+	process.exitCode =
+		error instanceof RangeError
+			? 43
+			: error instanceof ImportFailure
+				? error.status
+				: error instanceof TypeError &&
+					  'code' in error &&
+					  error.code === 'ERR_ENCODING_INVALID_ENCODED_DATA'
+					? 45
+					: 46;
 }

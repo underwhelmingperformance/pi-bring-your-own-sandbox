@@ -69,12 +69,13 @@ not synchronised, and target changes are not copied back. Disposal deletes the
 volume. An empty workspace is writable in read-write mode.
 
 Import accepts up to 512 MiB of regular-file contents, 100,000 entries and 128
-directory levels. The importer copies regular files and symbolic links. It omits
-sockets, FIFOs and devices, and rejects regular files with links outside the
-source tree. It checks file contents and metadata against the source a second
-time before the backend opens. The bootstrap container has one CPU, 256 MiB of
-memory and a limit of 32 processes. The writable workspace volume has no storage
-quota after import.
+directory levels, including entries under dependency directories. Filenames must
+be valid UTF-8. The importer preserves internal hard links and symbolic links.
+It omits sockets, FIFOs and devices, and rejects regular files with links
+outside the source tree. It checks file contents and metadata against the source
+a second time before the backend opens. The bootstrap container has one CPU, 256
+MiB of memory and a limit of 32 processes. The writable workspace volume has no
+storage quota after import.
 
 Review snapshots use the same importer with a fresh volume. A review of a
 sandbox command copies the live backend volume, including edits made by shell

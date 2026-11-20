@@ -39,6 +39,9 @@ export function snapshotCapabilities(
 export function snapshotPolicy(policy: SandboxPolicy): SandboxPolicy {
 	return Object.freeze({
 		workspaceAccess: policy.workspaceAccess,
+		...(policy.workspaceRelationship !== undefined && {
+			workspaceRelationship: policy.workspaceRelationship
+		}),
 		filesystemScope: policy.filesystemScope,
 		networkAccess: policy.networkAccess,
 		...(policy.workspaceProtection !== undefined && {
@@ -66,6 +69,9 @@ export function snapshotPolicies(
 ): SupportedSandboxPolicies {
 	return Object.freeze({
 		workspaceAccess: Object.freeze([...value.workspaceAccess]),
+		...(value.workspaceRelationship !== undefined && {
+			workspaceRelationship: Object.freeze([...value.workspaceRelationship])
+		}),
 		filesystemScope: Object.freeze([...value.filesystemScope]),
 		networkAccess: Object.freeze([...value.networkAccess])
 	});

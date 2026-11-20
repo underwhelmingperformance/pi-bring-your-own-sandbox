@@ -77,6 +77,10 @@ export function selectProvider(
 	}
 
 	if (
+		(policy.workspaceRelationship !== undefined &&
+			!provider.policies.workspaceRelationship?.includes(
+				policy.workspaceRelationship
+			)) ||
 		!canProtectWorkspace(provider.capabilities, policy) ||
 		!provider.policies.workspaceAccess.includes(policy.workspaceAccess) ||
 		provider.policies.filesystemScope.every(

@@ -18,6 +18,11 @@ export interface DockerConfig {
 	Absolute path of the Docker CLI executable.
 	*/
 	readonly executable: string;
+	/**
+	Workspace for ordinary opens when the consumer omits the relationship.
+	Review snapshots always use private copies.
+	*/
+	readonly defaultWorkspaceRelationship?: 'shared' | 'copied';
 }
 
 /**
@@ -40,13 +45,28 @@ export interface DockerCommand {
 	*/
 	readonly args: readonly string[];
 	/**
+	Complete input for a fixed helper invocation with piped stdin.
+	*/
+	readonly input?: Uint8Array;
+	/**
 	Deadline for the local CLI. The provider handles target cancellation.
 	*/
 	readonly context: DockerOperationContext;
 	/**
 	SDK operation associated with a transport failure.
 	*/
-	readonly operation: 'open' | 'exec' | 'dispose';
+	readonly operation:
+		| 'open'
+		| 'exec'
+		| 'dispose'
+		| 'readFile'
+		| 'stat'
+		| 'access'
+		| 'writeFile'
+		| 'mkdir'
+		| 'listDirectory'
+		| 'find'
+		| 'grep';
 	/**
 	Recovery metadata for resources that may remain after a transport failure.
 	*/

@@ -16,9 +16,12 @@ import {
 import {
 	closeSandboxSession,
 	getSandbox,
-	registerSandboxProvider
+	openReviewSnapshot,
+	registerSandboxProvider,
+	registerSandboxRequirement
 } from './api.js';
 import type {
+	ReviewSnapshotSource,
 	SandboxConfigContext,
 	SandboxHost,
 	SandboxProvider
@@ -27,6 +30,7 @@ import { formatStatus } from './diagnostics.js';
 import { discoverBroker } from './discovery.js';
 import { connectionProvider } from './fixtures/connection-provider.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
+import { brokerReply, respond } from './fixtures/protocol-peer.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -99,6 +103,29 @@ it('activates a provider without a configuration file and shares lazy resolution
 		}).toStrictEqual({ providers: ['active', 'active'], resolutions: 1 });
 	});
 });
+
+it.each([true, false, undefined])(
+	'passes project trust %s to the provider configuration resolver',
+	async (trusted) => {
+		await fixture(async (pi, context) => {
+			const backend = new MemoryBackend();
+			const decisions: (boolean | undefined)[] = [];
+
+			registerSandboxProvider(pi, provider('active', backend), {
+				configure({ pi: session }) {
+					decisions.push(session.isProjectTrusted?.());
+
+					return { configuration: {} };
+				}
+			});
+			await getSandbox(pi, {
+				...context,
+				...(trusted !== undefined && { isProjectTrusted: () => trusted })
+			});
+			expect(decisions).toStrictEqual([trusted]);
+		});
+	}
+);
 
 it('rejects distinct activated providers before configuration or allocation', async () => {
 	await fixture(async (pi, context) => {
@@ -439,5 +466,201 @@ it('shares one diagnostic allowance between configuration and execution', async 
 			],
 			dropped: 2
 		});
+	});
+});
+
+it('rejects a non-callable resolver at registration', async () => {
+	await fixture((pi) => {
+		expect(() => {
+			Reflect.apply(registerSandboxProvider, undefined, [
+				pi,
+				provider('active', new MemoryBackend()),
+				{ configure: false }
+			]);
+		}).toThrow(
+			expect.objectContaining({
+				name: 'InvalidSandboxRequestError',
+				operation: 'configure'
+			})
+		);
+
+		return Promise.resolve();
+	});
+});
+
+it('attributes an unsupported configured relationship to the extension', async () => {
+	await fixture(async (pi, context) => {
+		const backend = new MemoryBackend();
+
+		registerSandboxProvider(pi, provider('active', backend), {
+			configure: () => ({
+				configuration: {},
+				policy: { ...backend.policy, workspaceRelationship: 'copied' }
+			})
+		});
+		await expect(getSandbox(pi, context)).rejects.toMatchObject({
+			name: 'UnsupportedSandboxPolicyError',
+			operation: 'configure',
+			providerId: 'active',
+			configurationSource: 'extension'
+		});
+	});
+});
+
+it('opens independent review snapshots of a verified destination', async () => {
+	await fixture(async (pi, context) => {
+		const backend = new MemoryBackend();
+		const ordinary = provider('active', backend);
+		const capabilities = {
+			...backend.capabilities,
+			processKinds: ['argv', 'shell'] as const,
+			shells: ['sh'] as const
+		};
+		const sources: ReviewSnapshotSource[] = [];
+		const released: number[] = [];
+
+		registerSandboxProvider(pi, {
+			...ordinary,
+			capabilities,
+			policies: {
+				workspaceAccess: ['read-write', 'read-only'],
+				filesystemScope: ['provider-default', 'workspace-only'],
+				networkAccess: ['provider-default', 'denied'],
+				workspaceRelationship: ['copied', 'remote']
+			},
+			openReviewSnapshot(request) {
+				sources.push(request.source);
+
+				const index = sources.length;
+
+				return Promise.resolve({
+					id: 'review-' + String(index),
+					workspace: { ...backend.workspace, relationship: 'copied' as const },
+					policy: request.policy,
+					capabilities,
+					policyDescription: 'Review fixture',
+					recovery: backend.recovery,
+					...(backend.files && { files: backend.files }),
+					exec: backend.exec.bind(backend),
+					dispose: () => {
+						released.push(index);
+
+						return Promise.resolve();
+					}
+				});
+			}
+		});
+
+		const target = await getSandbox(pi, context);
+		const source = {
+			kind: 'sandbox' as const,
+			providerId: target.providerId,
+			generationId: target.generationId,
+			backendId: target.backendId
+		};
+		const first = await openReviewSnapshot(pi, context, source);
+		const abort = new AbortController();
+		const second = await openReviewSnapshot(pi, context, source, {
+			signal: abort.signal
+		});
+		const host = await openReviewSnapshot(pi, context, { kind: 'host' });
+
+		expect(sources).toStrictEqual([source, source, { kind: 'host' }]);
+		await first.close();
+		await expect(first.sandbox.files.readFile('file')).rejects.toMatchObject({
+			name: 'SandboxSessionClosingError'
+		});
+		expect(released).toStrictEqual([1]);
+		await expect(
+			openReviewSnapshot(pi, context, { ...source, generationId: 'stale' })
+		).rejects.toMatchObject({ name: 'StaleSandboxHandleError' });
+		abort.abort();
+		await second.close();
+		await closeSandboxSession(pi, context);
+		await expect(host.close()).resolves.toMatchObject({ confirmed: true });
+		expect(released.toSorted((a, b) => a - b)).toStrictEqual([1, 2, 3]);
+	});
+});
+
+it('retains recovery information when an independent broker cannot close a rejected snapshot', async () => {
+	await fixture(async (pi, context) => {
+		const reply = brokerReply();
+		const recovery = {
+			kind: 'allocation',
+			id: 'remaining',
+			lease: 'manual',
+			instructions: 'Remove remaining.'
+		};
+
+		Object.assign(reply.service, {
+			openReviewSnapshot: () =>
+				Promise.resolve({
+					sandbox: {
+						providerId: 'independent',
+						backendId: 'remaining',
+						capabilities: { processKinds: [], operations: [], shells: [] }
+					},
+					close: () =>
+						Promise.resolve({
+							confirmed: false,
+							failures: [],
+							recoveries: [recovery]
+						})
+				})
+		});
+		respond(pi.events, 'pi-byos:discovery:v1:brokers', reply);
+		await expect(
+			openReviewSnapshot(pi, context, { kind: 'host' })
+		).rejects.toMatchObject({
+			name: 'SandboxCleanupError',
+			operation: 'dispose',
+			providerId: 'independent',
+			backendId: 'remaining',
+			recovery,
+			cause: { name: 'UnsupportedSandboxCapabilityError' }
+		});
+	});
+});
+
+it('rejects a review if the configured provider has no snapshot operation', async () => {
+	await fixture(async (pi, context) => {
+		registerSandboxProvider(pi, provider('ordinary', new MemoryBackend()));
+		await expect(
+			openReviewSnapshot(pi, context, { kind: 'host' })
+		).rejects.toMatchObject({
+			name: 'UnsupportedSandboxCapabilityError',
+			operation: 'acquire',
+			providerId: 'ordinary'
+		});
+	});
+});
+
+it('rejects an incompatible session-wide workspace requirement before copying', async () => {
+	await fixture(async (pi, context) => {
+		const backend = new MemoryBackend();
+		const ordinary = provider('active', backend);
+		const copy = vi.fn(() => Promise.resolve(backend));
+
+		registerSandboxProvider(pi, {
+			...ordinary,
+			policies: {
+				...ordinary.policies,
+				workspaceRelationship: ['remote', 'copied'],
+				workspaceAccess: ['read-only', 'read-write'],
+				networkAccess: ['denied', 'provider-default'],
+				filesystemScope: ['workspace-only', 'provider-default']
+			},
+			openReviewSnapshot: copy
+		});
+		registerSandboxRequirement(pi, {
+			policy: { workspaceAccess: 'read-write' }
+		});
+		await expect(
+			openReviewSnapshot(pi, context, { kind: 'host' })
+		).rejects.toMatchObject({
+			name: 'UnsupportedSandboxPolicyError',
+			providerId: 'active'
+		});
+		expect(copy).not.toHaveBeenCalled();
 	});
 });

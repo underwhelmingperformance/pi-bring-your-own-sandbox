@@ -1,4 +1,6 @@
 import type {
+	ReviewSnapshot,
+	ReviewSnapshotSource,
 	Sandbox,
 	SandboxAcquireOptions,
 	SandboxBackend,
@@ -9,6 +11,7 @@ import type {
 	SandboxErrorInfo,
 	SandboxOpenContext,
 	SandboxOpenRequest,
+	SandboxOperationOptions,
 	SandboxPolicy,
 	SandboxWorkspace,
 	ShellDialect,
@@ -87,6 +90,13 @@ Provider configuration captured in a closure after synchronous validation.
 Opening preserves the provider configuration type.
 */
 export interface ConfiguredProviderV1 {
+	readonly openReviewSnapshot?: (
+		request: Omit<SandboxOpenRequest, 'configuration'> & {
+			readonly source: ReviewSnapshotSource;
+		},
+		context: SandboxOpenContext
+	) => Promise<SandboxBackend>;
+
 	/**
 	Open using the captured typed configuration and supplied generation
 	request. Report recovery metadata before allocation.
@@ -233,8 +243,9 @@ export interface SandboxStatus {
 	readonly capabilities?: SandboxCapabilities;
 
 	/**
-	Effective protections after backend validation. Before startup, only the
-	requested policy in `selection` is available.
+	Effective base policy after backend validation, including the workspace
+	relationship. Older brokers may report the relationship only in `workspace`.
+	Before startup, only the requested policy in `selection` is available.
 	*/
 	readonly policy?: SandboxPolicy;
 
@@ -263,6 +274,12 @@ export interface SandboxBackendStatus {
 	Negotiated policy that the backend was opened to satisfy.
 	*/
 	readonly policy: SandboxPolicy;
+
+	/**
+	Policy after backend validation, including the actual workspace relationship.
+	Available for allocations that opened successfully.
+	*/
+	readonly effectivePolicy?: SandboxPolicy;
 
 	/**
 	Whether the backend is starting, usable or persistently failed.
@@ -319,6 +336,12 @@ Version 1 broker service discovered through Pi. A runtime has one service;
 session generations allocate a backend for each negotiated policy lazily.
 */
 export interface BrokerServiceV1 {
+	readonly openReviewSnapshot?: (
+		context: SandboxContext,
+		source: ReviewSnapshotSource,
+		options?: SandboxOperationOptions
+	) => Promise<ReviewSnapshot>;
+
 	/**
  Required guard enforcement contract for cooperating SDK copies.
  */

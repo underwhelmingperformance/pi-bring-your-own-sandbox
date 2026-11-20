@@ -23,11 +23,11 @@ in that order.
 
 Additional test commands run specific suites:
 
-| Command                 | Purpose                                                      | Requirements                          |
-| ----------------------- | ------------------------------------------------------------ | ------------------------------------- |
-| `pnpm test:integration` | Real Pi sessions, CLI/RPC approval and consumer integration. | Local fixtures; no model credentials. |
-| `pnpm test:package`     | Packed archives, exports and independent SDK copies.         | Dependency installation access.       |
-| `pnpm test:provider`    | Real Docker execution, isolation and cleanup.                | Local Docker daemon and pinned image. |
+| Command                 | Purpose                                                      | Requirements                                                                  |
+| ----------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `pnpm test:integration` | Real Pi sessions, CLI/RPC approval and consumer integration. | Local fixtures; no model credentials.                                         |
+| `pnpm test:package`     | Packed archives, exports and independent SDK copies.         | Dependency installation access.                                               |
+| `pnpm test:provider`    | Real Docker execution, isolation and cleanup.                | Local Docker daemon, pinned image and [mount test prerequisites][mount-test]. |
 
 Package tests compile every source export in an isolated consumer with
 `noPropertyAccessFromIndexSignature` enabled. Source and compiled consumers use
@@ -72,11 +72,11 @@ continue after completion, cancellation or disposal under a `process-group`
 guarantee. Tests must clean up surviving children independently. Target-native
 Windows path tests do not establish Windows host execution support.
 
-The Docker example supports execution through POSIX `sh` and Bash, with copied
-workspace volumes. It does not provide SDK file/search operations or PowerShell.
-Workspace volumes have no storage quota, and the initial copy container has no
-job resource limits. A host crash requires manual resource cleanup; see the
-Docker guide for recovery instructions.
+The Docker example runs POSIX `sh`, Bash and optional PowerShell jobs in copied
+workspace volumes. File and search operations use the same volume. Workspace
+volumes have no storage quota, and the initial copy container has no job
+resource limits. A host crash requires manual resource cleanup; see the Docker
+guide for recovery instructions.
 
 See the [Pi integration guide][pi] for unsupported tool paths, host transcript
 files and competing shell handlers. Terminal drawing, keyboard navigation and
@@ -89,3 +89,4 @@ installation.
 [spec]: specification.md
 [api]: api-protocol.md
 [pi]: pi-integration.md
+[mount-test]: ../examples/docker/README.md#verify-fuse-mount-privileges

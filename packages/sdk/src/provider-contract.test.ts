@@ -1,8 +1,15 @@
 import { expect, it, vi } from 'vitest';
 
-import type { SandboxBackend, SandboxPolicy } from './contracts.js';
-import { SandboxCleanupError } from './errors.js';
+import type {
+	BackendProcessContext,
+	ProcessRequest,
+	SandboxBackend,
+	SandboxOperationContext,
+	SandboxPolicy
+} from './contracts.js';
+import { SandboxCleanupError, SandboxOperationError } from './errors.js';
 import { contractScenario } from './fixtures/provider-contract.js';
+import { observe } from './lifecycle.js';
 import {
 	providerContractCases,
 	usingProviderFixture
@@ -515,5 +522,750 @@ it.each(['confirmed cancellation', 'idempotent disposal'])(
 		} finally {
 			vi.useRealTimers();
 		}
+	}
+);
+
+it.each([
+	{
+		defect: 'a target discarding its prepared editor save',
+		relationship: 'copied',
+		expected: 'completed editor save'
+	},
+	{
+		defect: 'an editor replacing the target during preparation',
+		relationship: 'copied',
+		expected: 'Preparing an editor save'
+	},
+	{
+		defect: 'a completed shared editor save missing from the source',
+		relationship: 'shared',
+		expected: 'completed editor save'
+	},
+	{
+		defect: 'a shared writer that never reports readiness',
+		relationship: 'shared',
+		expected: 'writer must wait'
+	},
+	{
+		defect: 'a shared writer that exits before the host replaces the file',
+		relationship: 'shared',
+		expected: 'writer must wait'
+	},
+	{
+		defect: 'a stale shared read',
+		relationship: 'shared',
+		expected: 'target process'
+	},
+	{
+		defect: 'a copy written back on disposal',
+		relationship: 'copied',
+		expected: 'Disposing a copied workspace'
+	},
+	{
+		defect: 'a copied write leaking to the source',
+		relationship: 'copied',
+		expected: 'source file'
+	},
+	{
+		defect: 'a file reader stuck on the opening copy',
+		relationship: 'copied',
+		expected: 'file reader'
+	}
+] as const)('detects $defect', async ({ defect, relationship, expected }) => {
+	const base = contractScenario();
+	const open = base.provider.open;
+	let source = Buffer.from('seed');
+	let target = Buffer.from(source);
+	const readTarget = { kind: 'argv', executable: 'read', args: [] } as const;
+	const writeTarget = (bytes: Uint8Array): ProcessRequest => ({
+		kind: 'argv',
+		executable: 'write',
+		args: [Buffer.from(bytes).toString('base64')]
+	});
+	const scenario = {
+		...base,
+		workspaceVisibility: relationship,
+		timeoutMs: 500,
+		cleanup: { cancellationGraceMs: 5, disposalTimeoutMs: 100 },
+		capabilities: {
+			...base.provider.capabilities,
+			operations: ['exec', 'files.read'] as const
+		},
+		provider: {
+			...base.provider,
+			async open(...arguments_: Parameters<typeof open>) {
+				const backend = await open(...arguments_);
+
+				return {
+					...backend,
+					async dispose(context: SandboxOperationContext) {
+						await backend.dispose(context);
+
+						if (defect === 'a copy written back on disposal') {
+							source = target;
+						}
+					},
+					workspace: { ...backend.workspace, relationship },
+					files: {
+						...backend.files,
+						read: {
+							access: () => Promise.resolve(),
+							stat: () =>
+								Promise.resolve({ kind: 'file' as const, size: target.length }),
+							readFile: () =>
+								Promise.resolve(
+									defect === 'a file reader stuck on the opening copy'
+										? Buffer.from('seed')
+										: target
+								)
+						}
+					},
+					exec(request: ProcessRequest, context: BackendProcessContext) {
+						if (request.kind === 'argv' && request.executable === 'wait') {
+							return Promise.withResolvers<never>().promise;
+						}
+
+						if (request.kind === 'argv' && request.executable === 'write') {
+							target = Buffer.from(request.args[0] ?? '', 'base64');
+
+							if (defect === 'a copied write leaking to the source') {
+								source = target;
+							}
+						} else {
+							context.onOutput({ stream: 'stdout', data: target });
+						}
+
+						return Promise.resolve({
+							kind: 'exited' as const,
+							exit: { kind: 'code' as const, code: 0 }
+						});
+					}
+				};
+			}
+		},
+		async createFixture() {
+			return {
+				...(await base.createFixture()),
+				visibility: {
+					targetPath: 'file',
+					...(defect === 'a target discarding its prepared editor save' && {
+						stageSave: () => ({ prepare: readTarget, commit: readTarget })
+					}),
+					...(defect ===
+						'an editor replacing the target during preparation' && {
+						stageSave: (bytes: Uint8Array) => ({
+							prepare: writeTarget(bytes),
+							commit: readTarget
+						})
+					}),
+					...(defect ===
+						'a completed shared editor save missing from the source' && {
+						stageSave: (bytes: Uint8Array) => ({
+							prepare: readTarget,
+							commit: writeTarget(bytes)
+						})
+					}),
+					readSource: () => Promise.resolve(source),
+					replaceSource: (bytes: Uint8Array) => {
+						source = Buffer.from(bytes);
+
+						if (relationship === 'shared' && defect !== 'a stale shared read') {
+							target = source;
+						}
+
+						return Promise.resolve();
+					},
+					readTarget,
+					waitForReplacement: (): ProcessRequest =>
+						defect === 'a shared writer that never reports readiness'
+							? { kind: 'argv', executable: 'wait', args: [] }
+							: readTarget,
+					writeTarget
+				}
+			};
+		}
+	};
+	const entry = providerContractCases(scenario).find(
+		(item) => item.label === `workspace visibility (${relationship})`
+	);
+
+	if (!entry) {
+		throw new Error('Missing workspace visibility scenario.');
+	}
+
+	vi.useFakeTimers();
+
+	try {
+		const outcome = observe(usingProviderFixture(scenario, entry.run));
+
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(await outcome).toHaveProperty(
+			'error.message',
+			expect.stringContaining(expected)
+		);
+	} finally {
+		vi.useRealTimers();
+	}
+});
+
+it.each(['successful', 'missing', 'wrong output'] as const)(
+	'checks a %s follow-up probe after confirmed cancellation',
+	async (mode) => {
+		const base = contractScenario();
+		const scenario = {
+			...base,
+			verifyRecoveryAfterCancellation: true,
+			async createFixture() {
+				const fixture = await base.createFixture();
+
+				return {
+					...fixture,
+					cancellation: {
+						...fixture.cancellation,
+						...(mode !== 'missing' && {
+							after: {
+								request: { kind: 'argv' as const, executable: 'pwd', args: [] },
+								stdout: Buffer.from(
+									mode === 'successful' ? '/remote/project\n' : 'wrong'
+								),
+								stderr: new Uint8Array(),
+								exit: { kind: 'code' as const, code: 0 }
+							}
+						})
+					}
+				};
+			}
+		};
+		const entry = providerContractCases(scenario).find(
+			(item) => item.label === 'confirmed cancellation and continued use'
+		);
+
+		if (!entry) {
+			throw new Error('Missing cancellation recovery scenario.');
+		}
+
+		const run = usingProviderFixture(scenario, entry.run);
+
+		if (mode === 'successful') {
+			await run;
+
+			return;
+		}
+
+		await expect(run).rejects.toThrow(
+			mode === 'missing' ? 'Supply a process' : /to strictly equal/
+		);
+	}
+);
+
+it('rejects a recovery scenario without a termination guarantee before opening', () => {
+	const base = contractScenario();
+
+	expect(() =>
+		providerContractCases({
+			...base,
+			capabilities: { ...base.provider.capabilities, terminationScope: 'none' },
+			verifyRecoveryAfterCancellation: true
+		})
+	).toThrow('Continued use requires confirmed termination.');
+});
+
+it('detects disposal that also closes a second allocation from the same source', async () => {
+	const base = contractScenario();
+	const { open } = base.provider;
+	let isClosed = false;
+	const options = {
+		...base,
+		verifyIndependentAllocations: true,
+		provider: {
+			...base.provider,
+			async open(...arguments_: Parameters<typeof open>) {
+				const backend = await open(...arguments_);
+
+				return {
+					...backend,
+					async exec(request: ProcessRequest, context: BackendProcessContext) {
+						if (isClosed) {
+							throw new Error('The peer is closed.');
+						}
+
+						return backend.exec(request, context);
+					},
+					async dispose(context: SandboxOperationContext) {
+						isClosed = true;
+						await backend.dispose(context);
+					}
+				};
+			}
+		},
+		async createFixture() {
+			const fixture = await base.createFixture();
+			const peerProcess = fixture.processes?.[0];
+
+			if (peerProcess === undefined) {
+				throw new Error('Missing fixture process.');
+			}
+
+			return {
+				...fixture,
+				peerProcess,
+				verifyAllocationDisposed: fixture.verifyDisposed
+			};
+		}
+	};
+	const scenario = providerContractCases(options).find(
+		(entry) =>
+			entry.label === 'independent disposal of allocations from the same source'
+	);
+
+	if (scenario === undefined) {
+		throw new Error('Missing allocation disposal scenario.');
+	}
+
+	await expect(usingProviderFixture(options, scenario.run)).rejects.toThrow(
+		'The peer is closed.'
+	);
+});
+
+it('requires a peer job when checking concurrent cancellation', async () => {
+	const scenario = {
+		...contractScenario(),
+		verifyConcurrentCancellation: true
+	};
+	const entry = providerContractCases(scenario).find(
+		(item) => item.label === 'cancellation leaves a concurrent job running'
+	);
+
+	expect(entry).toBeDefined();
+
+	if (!entry) {
+		throw new Error('Missing concurrent cancellation scenario.');
+	}
+
+	await expect(usingProviderFixture(scenario, entry.run)).rejects.toThrow(
+		'Supply a concurrent job'
+	);
+});
+
+it.each(['survives', 'exits early', 'cancelled'] as const)(
+	'checks whether a concurrent job survives cancellation (%s)',
+	async (mode) => {
+		const base = contractScenario();
+		const open = base.provider.open;
+		const gate = Promise.withResolvers<Uint8Array>();
+		const ready = Buffer.from('waiting');
+		const request = { kind: 'argv', executable: 'peer', args: [] } as const;
+		const scenario = {
+			...base,
+			verifyConcurrentCancellation: true,
+			async createFixture() {
+				return {
+					...(await base.createFixture()),
+					concurrentJob: {
+						request,
+						ready,
+						release: (bytes: Uint8Array) => {
+							gate.resolve(bytes);
+
+							return Promise.resolve();
+						}
+					}
+				};
+			},
+			provider: {
+				...base.provider,
+				async open(...arguments_: Parameters<typeof open>) {
+					const backend = await open(...arguments_);
+
+					return {
+						...backend,
+						async exec(
+							process: ProcessRequest,
+							context: BackendProcessContext
+						) {
+							if (process.kind !== 'argv' || process.executable !== 'peer') {
+								if (mode !== 'survives') {
+									context.signal.addEventListener(
+										'abort',
+										() => {
+											gate.resolve(new Uint8Array());
+										},
+										{ once: true }
+									);
+								}
+
+								return backend.exec(process, context);
+							}
+
+							context.onOutput({ stream: 'stdout', data: ready });
+
+							const bytes = await gate.promise;
+
+							if (mode === 'cancelled') {
+								return {
+									kind: 'cancelled' as const,
+									termination: 'confirmed' as const
+								};
+							}
+
+							context.onOutput({ stream: 'stdout', data: bytes });
+
+							return {
+								kind: 'exited' as const,
+								exit: { kind: 'code' as const, code: 0 }
+							};
+						}
+					};
+				}
+			}
+		};
+		const entry = providerContractCases(scenario).find(
+			(item) => item.label === 'cancellation leaves a concurrent job running'
+		);
+
+		if (!entry) {
+			throw new Error('Missing concurrent cancellation scenario.');
+		}
+
+		const result = usingProviderFixture(scenario, entry.run);
+
+		if (mode === 'survives') {
+			await result;
+
+			return;
+		}
+
+		await expect(result).rejects.toThrow(
+			'The same peer must return the response'
+		);
+	}
+);
+
+it.each([
+	'read-only',
+	'protected-path',
+	'protected-alias',
+	'late-special-file',
+	'denied-network'
+] as const)(
+	'requires an independent probe for the selected %s restriction',
+	async (restriction) => {
+		const scenario = { ...contractScenario(), policyEffects: [restriction] };
+		const entry = providerContractCases(scenario).find(
+			(test) => test.label === 'policy effects (' + restriction + ')'
+		);
+
+		if (!entry) {
+			throw new Error('Missing policy effects scenario.');
+		}
+
+		await expect(usingProviderFixture(scenario, entry.run)).rejects.toThrow(
+			'Supply a policy effect probe'
+		);
+	}
+);
+
+it.each(['blocked', 'connected', 'invalid file expectation'] as const)(
+	'observes listener connections independently of the denied exit status (%s)',
+	async (mode) => {
+		const base = contractScenario();
+		const open = base.provider.open;
+		let connections = 1;
+		const scenario: SandboxProviderTestOptions<undefined> = {
+			...base,
+			policyEffects: ['denied-network'],
+			provider: {
+				...base.provider,
+				policies: { ...base.provider.policies, networkAccess: ['denied'] },
+				async open(...arguments_) {
+					const backend = await open(...arguments_);
+
+					return {
+						...backend,
+						policy: { ...backend.policy, networkAccess: 'denied' },
+						exec(request, context) {
+							if (
+								mode === 'connected' &&
+								request.kind === 'argv' &&
+								request.executable === 'probe'
+							) {
+								connections++;
+							}
+
+							return backend.exec(request, context);
+						}
+					};
+				}
+			},
+			async createFixture() {
+				const fixture = await base.createFixture();
+				const denied = fixture.processes?.[0];
+
+				if (!denied) {
+					throw new Error('Missing denied command fixture.');
+				}
+
+				return {
+					...fixture,
+					policy: { ...fixture.policy, networkAccess: 'denied' },
+					policyEffects: {
+						'denied-network': () =>
+							Promise.resolve({
+								permitted: {
+									request: { kind: 'argv', executable: 'pwd', args: [] },
+									exit: { kind: 'code', code: 0 },
+									stdout: Buffer.from('/remote/project\n'),
+									stderr: Buffer.alloc(0)
+								},
+								denied,
+								...(mode === 'invalid file expectation' && {
+									file: { path: 'sample', error: 'unsupported-file' as const }
+								}),
+								observe: () =>
+									Promise.resolve({ kind: 'listener', connections })
+							})
+					}
+				};
+			}
+		};
+		const entry = providerContractCases(scenario).find(
+			(test) => test.label === 'policy effects (denied-network)'
+		);
+
+		if (!entry) {
+			throw new Error('Missing network policy check.');
+		}
+
+		const result = usingProviderFixture(scenario, entry.run);
+
+		if (mode === 'connected') {
+			await expect(result).rejects.toThrow(
+				'The denied process changed the protected resource.'
+			);
+
+			return;
+		}
+
+		if (mode === 'invalid file expectation') {
+			await expect(result).rejects.toThrow(
+				'The unsupported-file error applies only to a read of a late special file.'
+			);
+
+			return;
+		}
+
+		await result;
+	}
+);
+
+it('waits for a cancelled scenario to release its active job before disposal', async () => {
+	vi.useFakeTimers();
+
+	const base = contractScenario();
+	let isPending = false;
+	const events: string[] = [];
+
+	try {
+		const run = usingProviderFixture(
+			{
+				...base,
+				timeoutMs: 50,
+				cleanup: { cancellationGraceMs: 100 },
+				provider: {
+					...base.provider,
+					async open(...arguments_) {
+						const backend = await base.provider.open(...arguments_);
+
+						return {
+							...backend,
+							async dispose(context) {
+								events.push(isPending ? 'disposed while running' : 'disposed');
+								await backend.dispose(context);
+							}
+						};
+					}
+				}
+			},
+			async (_fixture, _backend, context) => {
+				isPending = true;
+				await new Promise<void>((resolve) => {
+					context.signal.addEventListener(
+						'abort',
+						() => setTimeout(resolve, 25),
+						{ once: true }
+					);
+				});
+				isPending = false;
+				events.push('stopped');
+
+				throw new Error('The cancelled operation stopped.');
+			}
+		);
+		const rejected = expect(run).rejects.toMatchObject({
+			message: 'The provider contract operation exceeded its deadline.',
+			cause: { message: 'The cancelled operation stopped.' }
+		});
+
+		await vi.advanceTimersByTimeAsync(200);
+		await rejected;
+		expect(events).toStrictEqual(['stopped', 'disposed']);
+	} finally {
+		vi.useRealTimers();
+	}
+});
+
+it('checks the first allocation was released before disposing the second', async () => {
+	const base = contractScenario();
+	const active = new Set<string>();
+	const verifyAllocationDisposed = vi.fn((backend: SandboxBackend) => {
+		expect(
+			active.has(backend.id),
+			'The disposed allocation still exists.'
+		).toBe(false);
+
+		return Promise.resolve();
+	});
+
+	const options: SandboxProviderTestOptions<undefined> = {
+		...base,
+		verifyIndependentAllocations: true,
+		provider: {
+			...base.provider,
+			async open(...arguments_) {
+				const backend = await base.provider.open(...arguments_);
+				const id = arguments_[0].generationId;
+
+				active.add(id);
+
+				return {
+					...backend,
+					id,
+					async dispose(context) {
+						if (active.size === 1) {
+							active.delete(id);
+						}
+
+						await backend.dispose(context);
+					}
+				};
+			}
+		},
+		async createFixture() {
+			const fixture = await base.createFixture();
+			const peerProcess = fixture.processes?.[0];
+
+			if (!peerProcess) {
+				throw new Error('Missing peer process.');
+			}
+
+			return {
+				...fixture,
+				peerProcess,
+				verifyAllocationDisposed
+			};
+		}
+	};
+	const entry = providerContractCases(options).find(
+		(test) =>
+			test.label === 'independent disposal of allocations from the same source'
+	);
+
+	if (!entry) {
+		throw new Error('Missing independent disposal case.');
+	}
+
+	await expect(usingProviderFixture(options, entry.run)).rejects.toThrow(
+		'The disposed allocation still exists.'
+	);
+	expect(verifyAllocationDisposed.mock.contexts).toMatchObject([
+		{ verifyAllocationDisposed }
+	]);
+});
+
+it.each([
+	{ kind: 'special', count: 0, succeeds: false },
+	{ kind: 'listener', count: 0, succeeds: false },
+	{ kind: 'special', count: 1, succeeds: true }
+] as const)(
+	'verifies the independent control for a late $kind with count $count',
+	async ({ kind, count, succeeds }) => {
+		const base = contractScenario();
+		const options: SandboxProviderTestOptions<undefined> = {
+			...base,
+			policyEffects: ['late-special-file'],
+			provider: {
+				...base.provider,
+				async open(...arguments_) {
+					const backend = await base.provider.open(...arguments_);
+					const read = backend.files?.read;
+
+					if (!read) {
+						throw new Error('Missing read fixture.');
+					}
+
+					return {
+						...backend,
+						files: {
+							...backend.files,
+							read: {
+								...read,
+								readFile: () =>
+									Promise.reject(
+										new SandboxOperationError({ operation: 'readFile' })
+									)
+							}
+						}
+					};
+				}
+			},
+			async createFixture() {
+				const fixture = await base.createFixture();
+				const denied = fixture.processes?.[0];
+
+				if (!denied) {
+					throw new Error('Missing denied command fixture.');
+				}
+
+				return {
+					...fixture,
+					policyEffects: {
+						'late-special-file': () =>
+							Promise.resolve({
+								permitted: {
+									request: { kind: 'argv', executable: 'pwd', args: [] },
+									exit: { kind: 'code', code: 0 },
+									stdout: Buffer.from('/remote/project\n'),
+									stderr: Buffer.alloc(0)
+								},
+								denied,
+								file: { path: 'late', error: 'unsupported-file' },
+								observe: () =>
+									Promise.resolve(
+										kind === 'listener'
+											? { kind, connections: count }
+											: { kind, bytesReceived: count, links: 1, mode: 0o600 }
+									)
+							})
+					}
+				};
+			}
+		};
+		const entry = providerContractCases(options).find(
+			(test) => test.label === 'policy effects (late-special-file)'
+		);
+
+		if (!entry) {
+			throw new Error('Missing late special file scenario.');
+		}
+
+		const result = usingProviderFixture(options, entry.run);
+
+		if (succeeds) {
+			await result;
+
+			return;
+		}
+
+		await expect(result).rejects.toThrow('independent control');
 	}
 );

@@ -27,6 +27,7 @@ export const passthroughProvider: ProviderServiceV1 =
 			shells: ['bash', 'sh', 'powershell']
 		},
 		policies: {
+			workspaceRelationship: ['shared'],
 			workspaceAccess: ['read-write'],
 			filesystemScope: ['provider-default'],
 			networkAccess: ['provider-default']

@@ -116,7 +116,12 @@ A project that installs the framework as an npm dependency can opt into tool
 routing with `.pi/extensions/byos-tools.ts`:
 
 ```typescript
-export { default } from 'pi-bring-your-own-sandbox/pi-tools';
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import sandboxTools from 'pi-bring-your-own-sandbox/pi-tools';
+
+export default function extension(pi: ExtensionAPI): void {
+  sandboxTools(pi, import.meta.filename);
+}
 ```
 
 This requires normal Node resolution from that project. For Pi-managed packages
@@ -251,6 +256,11 @@ extension loading and is shared across callers. Cancelling an acquisition does
 not cancel shared resolution. Shutdown cancels resolution, and failures remain
 errors for that runtime generation.
 
+In Pi, `context.pi.isProjectTrusted?.()` returns the effective project trust
+decision. Embedded hosts can omit the method. Pi can trust a project without a
+prompt, so a provider needs a separate configuration setting for features that
+require the user's consent.
+
 Configuration resolvers can call `reportDiagnostic` with a user-facing warning,
 including the configuration path and invalid field. Configuration and ordinary
 backend diagnostics share the runtime's bounded store. Status includes these
@@ -315,6 +325,11 @@ configuration within the cooperative threat model.
 
 The shared policy vocabulary is deliberately small:
 
+- `workspaceRelationship` optionally requires a `shared`, `copied` or `remote`
+  workspace. Providers declare which relationships they can open. Acquisition
+  rejects an undeclared relationship or a conflict with the configured policy.
+  An explicit requirement gets a separate backend from an unspecified one. The
+  broker verifies the relationship against the opened workspace.
 - `workspaceAccess`: `read-only` or `read-write` for the project workspace.
 - `filesystemScope`: `workspace-only`, `system-read-only` or `provider-default`.
   Workspace-only forbids access to host files outside exposed workspace mounts.

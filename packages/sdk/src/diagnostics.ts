@@ -1,13 +1,39 @@
 import { formatCleanupReport } from './cleanup-report.js';
 import type { SandboxPolicy } from './contracts.js';
+import { policyKey } from './negotiation.js';
 import type { ProviderInfo, SandboxStatus } from './protocol.js';
 
 function list(values: readonly string[]): string {
 	return values.length === 0 ? 'none' : values.join(', ');
 }
 
-function policy(value: SandboxPolicy): string {
-	return `workspace ${value.workspaceAccess}; filesystem ${value.filesystemScope}; network ${value.networkAccess}`;
+function quoted(value: string): string {
+	return JSON.stringify(value).replaceAll(
+		/[\p{Control}\p{Format}\p{Line_Separator}\p{Paragraph_Separator}]/gu,
+		(character) =>
+			character
+				.split('')
+				.map(
+					(unit) =>
+						'\\u' + (unit.codePointAt(0) ?? 0).toString(16).padStart(4, '0')
+				)
+				.join('')
+	);
+}
+
+function policy(
+	value: SandboxPolicy,
+	workspaceRelationship = value.workspaceRelationship
+): string {
+	const relationship =
+		workspaceRelationship === undefined ? '' : ` (${workspaceRelationship})`;
+
+	const protectedResources = (value.workspaceProtection ?? []).map(
+		(resource) =>
+			resource.kind === 'git-metadata' ? 'Git metadata' : quoted(resource.path)
+	);
+
+	return `workspace ${value.workspaceAccess}${relationship}; filesystem ${value.filesystemScope}; network ${value.networkAccess}; protected resources: ${list(protectedResources)}`;
 }
 
 function userShell(status: SandboxStatus): string {
@@ -27,6 +53,11 @@ function userShell(status: SandboxStatus): string {
 
 export function formatStatus(status: SandboxStatus): string {
 	const selection = status.selection;
+	const baseKey =
+		selection === undefined ? undefined : policyKey(selection.policy);
+	const additional = (status.backends ?? []).filter(
+		(backend) => policyKey(backend.policy) !== baseKey
+	);
 	const lines = [
 		selection === undefined
 			? 'Provider: unavailable'
@@ -41,12 +72,16 @@ export function formatStatus(status: SandboxStatus): string {
 
 	lines.push(
 		status.workspace === undefined
-			? 'Target: not opened'
+			? additional.length === 0
+				? 'Target: not opened'
+				: 'Default target: not opened'
 			: `Target: ${status.workspace.root} (${status.workspace.relationship})`
 	);
 
 	if (status.policy !== undefined) {
-		lines.push(`Effective policy: ${policy(status.policy)}`);
+		lines.push(
+			`Effective policy: ${policy(status.policy, status.workspace?.relationship)}`
+		);
 	}
 
 	if (selection !== undefined && status.policy === undefined) {
@@ -75,13 +110,8 @@ export function formatStatus(status: SandboxStatus): string {
 		lines.push(`Failure: ${status.failure.name}: ${status.failure.message}`);
 	}
 
-	const report = status.closeReport;
-
-	lines.push(...formatProviderDiagnostics(status));
-
-	if (report !== undefined) {
-		lines.push(formatCleanupReport(report));
-	} else if (
+	if (
+		status.closeReport === undefined &&
 		status.state === 'failed' &&
 		status.failure?.recovery?.kind === 'allocation'
 	) {
@@ -92,6 +122,30 @@ export function formatStatus(status: SandboxStatus): string {
 				recoveries: [status.failure.recovery]
 			})
 		);
+	}
+
+	for (const backend of additional) {
+		const id =
+			backend.backendId === undefined ? '' : ' ' + quoted(backend.backendId);
+		const state =
+			status.state === 'closing' || status.state === 'closed'
+				? 'last state: ' + backend.state
+				: backend.state;
+
+		lines.push(
+			`Additional backend${id} (${state})`,
+			backend.effectivePolicy === undefined
+				? `Requested policy: ${policy(backend.policy)}`
+				: `Effective policy: ${policy(backend.effectivePolicy)}`
+		);
+	}
+
+	const report = status.closeReport;
+
+	lines.push(...formatProviderDiagnostics(status));
+
+	if (report !== undefined) {
+		lines.push(formatCleanupReport(report));
 	}
 
 	return lines.join('\n');
@@ -118,6 +172,11 @@ export function formatProviders(providers: readonly ProviderInfo[]): string {
 	for (const provider of providers) {
 		lines.push(
 			`${provider.id}: ${provider.label}`,
+			...(provider.policies.workspaceRelationship === undefined
+				? []
+				: [
+						`  Workspace relationships: ${list(provider.policies.workspaceRelationship)}`
+					]),
 			`  Operations: ${list(provider.capabilities.operations)}`,
 			`  Termination scope: ${provider.capabilities.terminationScope}`,
 			`  Shells: ${list(provider.capabilities.shells)}`,

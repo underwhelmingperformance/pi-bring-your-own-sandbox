@@ -1,10 +1,12 @@
 import { reportCleanup } from './cleanup-report.js';
 import { inspectContext } from './context.js';
 import type {
+	ReviewSnapshotSource,
 	SandboxAcquireOptions,
 	SandboxCloseReport,
 	SandboxContext,
-	SandboxHost
+	SandboxHost,
+	SandboxOperationOptions
 } from './contracts.js';
 import type { GenerationDependencies } from './generation.js';
 import { SandboxGeneration } from './generation.js';
@@ -61,6 +63,14 @@ export class SandboxBroker implements BrokerServiceV1 {
 
 	acquire(context: SandboxContext, options?: SandboxAcquireOptions) {
 		return this.#resolve(context).acquire(context, options);
+	}
+
+	openReviewSnapshot(
+		context: SandboxContext,
+		source: ReviewSnapshotSource,
+		options?: SandboxOperationOptions
+	) {
+		return this.#resolve(context).openReviewSnapshot(context, source, options);
 	}
 
 	negotiate(context: SandboxContext, options?: SandboxAcquireOptions) {

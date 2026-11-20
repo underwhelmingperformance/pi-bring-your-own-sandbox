@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
@@ -8,12 +8,14 @@ import type {
 	BackendProcessOutcome,
 	DirectoryEntry,
 	SandboxBackend,
+	SandboxCleanupBudgets,
 	SandboxOperation,
 	SandboxOperationContext
 } from './contracts.js';
 import {
 	isSandboxError,
 	SandboxCancelledError,
+	SandboxOperationError,
 	SandboxPathNotFoundError,
 	SandboxPermissionDeniedError
 } from './errors.js';
@@ -22,8 +24,9 @@ import {
 	isFindResult,
 	isGrepResult
 } from './file-result.js';
-import { OperationScope } from './lifecycle.js';
+import { observe, OperationScope, settleOperation } from './lifecycle.js';
 import type {
+	SandboxPolicyScenario,
 	SandboxProcessProbe,
 	SandboxProviderTestFixture,
 	SandboxProviderTestOptions
@@ -33,6 +36,7 @@ import {
 	settleProcess
 } from './termination-scope.js';
 import { isProviderInfo, isRecord, isRecovery } from './validation.js';
+import { checkWorkspaceVisibility } from './workspace-visibility-suite.js';
 
 function compareEntries(left: DirectoryEntry, right: DirectoryEntry): number {
 	return left.name.localeCompare(right.name);
@@ -41,7 +45,8 @@ function compareEntries(left: DirectoryEntry, right: DirectoryEntry): number {
 type ContractRun = (
 	fixture: SandboxProviderTestFixture,
 	backend: SandboxBackend,
-	context: SandboxOperationContext
+	context: SandboxOperationContext,
+	afterDisposal: (verify: () => Promise<void>) => void
 ) => Promise<void>;
 
 interface ContractCase {
@@ -50,7 +55,10 @@ interface ContractCase {
 }
 
 async function bounded<Value>(
-	options: Pick<SandboxProviderTestOptions<unknown>, 'timeoutMs' | 'cleanup'>,
+	options: Pick<
+		SandboxProviderTestOptions<unknown>,
+		'timeoutMs' | 'cleanup'
+	> & { readonly drainOnTimeout?: boolean },
 	run: (context: SandboxOperationContext) => Promise<Value>,
 	operation: SandboxOperation = 'exec'
 ): Promise<Value> {
@@ -67,21 +75,59 @@ async function bounded<Value>(
 		cleanup
 	);
 
-	async function expired(): Promise<never> {
-		await scope.whenCancelled();
-
-		throw new Error('The provider contract operation exceeded its deadline.');
-	}
+	const running = Promise.try(() => run(scope.context));
 
 	try {
-		const result = await Promise.race([run(scope.context), expired()]);
+		const result = await Promise.race([
+			observe(running),
+			scope.whenCancelled()
+		]);
 
-		scope.check('unknown');
+		if (result.kind === 'cancelled' || scope.reason !== undefined) {
+			const stopped = options.drainOnTimeout
+				? await settleOperation(scope, running)
+				: result;
 
-		return result;
+			throw new Error(
+				'The provider contract operation exceeded its deadline.',
+				stopped.kind === 'rejected' ? { cause: stopped.error } : undefined
+			);
+		}
+
+		if (result.kind === 'rejected') {
+			throw result.error;
+		}
+
+		return result.value;
 	} finally {
 		scope.dispose();
 	}
+}
+
+function openFixture<Config>(
+	options: SandboxProviderTestOptions<Config>,
+	fixture: SandboxProviderTestFixture,
+	context: SandboxOperationContext,
+	confirmCleanup: () => void
+): Promise<SandboxBackend> {
+	const config = options.provider.validateConfig(fixture.configuration);
+
+	return options.provider.open(
+		{
+			generationId: randomUUID(),
+			sessionId: randomUUID(),
+			hostWorkspace: fixture.hostWorkspace,
+			policy: fixture.policy,
+			configuration: config
+		},
+		{
+			...context,
+			confirmCleanup,
+			reportRecovery: (recovery) => {
+				expect(isRecovery(recovery)).toBe(true);
+			}
+		}
+	);
 }
 
 export async function usingProviderFixture<Config>(
@@ -99,33 +145,17 @@ export async function usingProviderFixture<Config>(
 	const fixture = await options.createFixture();
 	let backend: SandboxBackend | undefined;
 	let isCleanupConfirmed = false;
+	const afterDisposal: (() => Promise<void>)[] = [];
 	const failures: unknown[] = [];
 
 	try {
 		expect(isProviderInfo(options.provider)).toBe(true);
 		expect(options.provider.protocolVersion).toBe(1);
 
-		const config = options.provider.validateConfig(fixture.configuration);
-
 		backend = await bounded(deadlines, (context) =>
-			options.provider.open(
-				{
-					generationId: randomUUID(),
-					sessionId: randomUUID(),
-					hostWorkspace: fixture.hostWorkspace,
-					policy: fixture.policy,
-					configuration: config
-				},
-				{
-					...context,
-					confirmCleanup: () => {
-						isCleanupConfirmed = true;
-					},
-					reportRecovery: (recovery) => {
-						expect(isRecovery(recovery)).toBe(true);
-					}
-				}
-			)
+			openFixture(options, fixture, context, () => {
+				isCleanupConfirmed = true;
+			})
 		);
 		expect(isCleanupConfirmed).toBe(false);
 		validateBackend(backend, options.provider, fixture.policy);
@@ -157,8 +187,13 @@ export async function usingProviderFixture<Config>(
 
 		const opened = backend;
 
-		await bounded(deadlines, (context) => run(fixture, opened, context));
+		await bounded({ ...deadlines, drainOnTimeout: true }, (context) =>
+			run(fixture, opened, context, (verify) => {
+				afterDisposal.push(verify);
+			})
+		);
 	} catch (error) {
+		afterDisposal.length = 0;
 		failures.push(error);
 	}
 
@@ -171,6 +206,10 @@ export async function usingProviderFixture<Config>(
 				async (context) => {
 					await closing.dispose(context);
 					await fixture.verifyDisposed();
+
+					for (const verify of afterDisposal) {
+						await verify();
+					}
 				},
 				'dispose'
 			);
@@ -223,9 +262,302 @@ async function checkProcess(
 		stderr: new Uint8Array(Buffer.concat(stderr))
 	}).toStrictEqual({
 		outcome: { kind: 'exited', exit: probe.exit },
-		stdout: probe.stdout,
-		stderr: probe.stderr
+		stdout: new Uint8Array(probe.stdout),
+		stderr: new Uint8Array(probe.stderr)
 	});
+}
+
+async function checkPolicyEffects(
+	scenario: SandboxPolicyScenario,
+	fixture: SandboxProviderTestFixture,
+	backend: SandboxBackend,
+	context: SandboxOperationContext
+) {
+	const prepare = fixture.policyEffects?.[scenario];
+
+	if (!prepare) {
+		throw new Error('Supply a policy effect probe for ' + scenario + '.');
+	}
+
+	switch (scenario) {
+		case 'read-only': {
+			expect(backend.policy.workspaceAccess).toBe('read-only');
+			break;
+		}
+
+		case 'denied-network': {
+			expect(backend.policy.networkAccess).toBe('denied');
+			break;
+		}
+
+		case 'protected-path':
+		case 'protected-alias': {
+			expect(backend.policy.workspaceProtection?.length ?? 0).toBeGreaterThan(
+				0
+			);
+			break;
+		}
+		// No default
+	}
+
+	const probe = await prepare(backend);
+
+	if (
+		scenario !== 'late-special-file' &&
+		probe.file?.error === 'unsupported-file'
+	) {
+		throw new Error(
+			'The unsupported-file error applies only to a read of a late special file.'
+		);
+	}
+
+	if (backend.capabilities.exitStatus === 'guaranteed') {
+		expect(probe.permitted.exit).toStrictEqual({ kind: 'code', code: 0 });
+		expect(probe.denied.exit.kind).toBe('code');
+
+		if (probe.denied.exit.kind === 'code') {
+			expect(probe.denied.exit.code).toBeGreaterThan(0);
+		}
+	}
+
+	await checkProcess(backend, probe.permitted, context);
+
+	const before = structuredClone(await probe.observe());
+
+	if (scenario === 'denied-network') {
+		expect(before.kind).toBe('listener');
+	} else if (scenario === 'late-special-file') {
+		expect(['special', 'listener']).toContain(before.kind);
+	} else {
+		expect(['absent', 'file']).toContain(before.kind);
+	}
+
+	if (before.kind === 'listener') {
+		expect(
+			before.connections,
+			'Connect an independent control client to the listener first.'
+		).toBeGreaterThan(0);
+	} else if (before.kind === 'special') {
+		expect(
+			before.bytesReceived,
+			'Send bytes from an independent control writer to the FIFO first.'
+		).toBeGreaterThan(0);
+	}
+
+	await checkProcess(backend, probe.denied, context);
+	expect(
+		structuredClone(await probe.observe()),
+		'The denied process changed the protected resource.'
+	).toStrictEqual(before);
+
+	if (scenario === 'denied-network') {
+		return;
+	}
+
+	const isRead = scenario === 'late-special-file';
+	const operation = isRead ? 'files.read' : 'files.write';
+
+	if (!backend.capabilities.operations.includes(operation)) {
+		return;
+	}
+
+	if (!probe.file) {
+		throw new Error('Supply the target path for the denied file operation.');
+	}
+
+	const { path, error } = probe.file;
+
+	const expected =
+		error === 'absent'
+			? SandboxPathNotFoundError
+			: error === 'unsupported-file'
+				? SandboxOperationError
+				: SandboxPermissionDeniedError;
+	const files = backend.files;
+	const outcome = isRead
+		? files?.read?.readFile(path, context)
+		: files?.write?.writeFile(path, randomBytes(32), context);
+
+	if (!outcome) {
+		throw new Error('The declared file operation is missing.');
+	}
+
+	await expect(outcome).rejects.toMatchObject({ name: expected.errorName });
+	expect(
+		structuredClone(await probe.observe()),
+		'The denied file operation changed the protected resource.'
+	).toStrictEqual(before);
+}
+
+async function cancelReadyJob(
+	fixture: SandboxProviderTestFixture,
+	backend: SandboxBackend,
+	context: SandboxOperationContext,
+	cleanup: SandboxCleanupBudgets
+): Promise<void> {
+	const probe = fixture.cancellation;
+
+	expect(probe.ready.byteLength).toBeGreaterThan(0);
+
+	const controller = new AbortController();
+	const execution = new OperationScope(
+		{ operation: 'exec' },
+		context.signal,
+		{
+			signal: controller.signal,
+			timeoutMs: Math.max(1, context.remainingMs())
+		},
+		10_000,
+		cleanup
+	);
+	const stdout: Uint8Array[] = [];
+	let outcome: BackendProcessOutcome;
+	const expectedTermination =
+		backend.capabilities.terminationScope === 'none'
+			? 'not-guaranteed'
+			: 'confirmed';
+
+	try {
+		const result = await settleProcess(
+			execution,
+			backend.exec(probe.request, {
+				...execution.context,
+				onOutput(output) {
+					if (output.stream !== 'stdout') {
+						return;
+					}
+
+					stdout.push(new Uint8Array(output.data));
+
+					if (Buffer.concat(stdout).includes(Buffer.from(probe.ready))) {
+						controller.abort();
+					}
+				}
+			}),
+			backend.capabilities.terminationScope
+		);
+
+		if (result.kind === 'rejected') {
+			throw result.error;
+		}
+
+		if (result.kind === 'abandoned') {
+			throw new Error(
+				'The provider did not confirm termination within its cleanup deadline.'
+			);
+		}
+
+		outcome = result.value;
+	} catch (error) {
+		if (
+			!isSandboxError(error, SandboxCancelledError) ||
+			error.completion !== expectedTermination
+		) {
+			throw error;
+		}
+
+		outcome = { kind: 'cancelled', termination: expectedTermination };
+	} finally {
+		execution.dispose();
+	}
+
+	expect({
+		hasStarted: controller.signal.aborted,
+		outcome
+	}).toStrictEqual({
+		hasStarted: true,
+		outcome: { kind: 'cancelled', termination: expectedTermination }
+	});
+}
+
+async function checkConcurrentCancellation(
+	fixture: SandboxProviderTestFixture,
+	backend: SandboxBackend,
+	context: SandboxOperationContext,
+	cleanup: SandboxCleanupBudgets
+): Promise<void> {
+	const peer = fixture.concurrentJob;
+
+	if (!peer || peer.ready.length === 0) {
+		throw new Error(
+			'Supply a concurrent job with a non-empty ready marker and an independent release.'
+		);
+	}
+
+	const response = randomBytes(32);
+	const ready = Promise.withResolvers<boolean>();
+	const controller = new AbortController();
+	const scope = new OperationScope(
+		{ operation: 'exec' },
+		context.signal,
+		{ signal: controller.signal },
+		Math.max(1, context.remainingMs()),
+		cleanup
+	);
+	const stdout: Uint8Array[] = [];
+	const stderr: Uint8Array[] = [];
+	const running = backend.exec(peer.request, {
+		...scope.context,
+		onOutput({ stream, data }) {
+			(stream === 'stdout' ? stdout : stderr).push(new Uint8Array(data));
+
+			if (
+				stream === 'stdout' &&
+				Buffer.concat(stdout).includes(Buffer.from(peer.ready))
+			) {
+				ready.resolve(true);
+			}
+		}
+	});
+
+	try {
+		expect(
+			await Promise.race([ready.promise, running, scope.whenCancelled()]),
+			'The peer must start and wait for release.'
+		).toBe(true);
+		await cancelReadyJob(fixture, backend, context, cleanup);
+		scope.check();
+
+		const released = await settleOperation(
+			scope,
+			peer.release(response, scope.context)
+		);
+
+		scope.check('unknown');
+
+		if (released.kind === 'rejected') {
+			throw released.error;
+		}
+
+		const outcome = await Promise.race([running, scope.whenCancelled()]);
+		const exit =
+			backend.capabilities.exitStatus === 'optional' &&
+			outcome.kind === 'exited' &&
+			outcome.exit.kind === 'unavailable'
+				? outcome.exit
+				: { kind: 'code', code: 0 };
+
+		expect(
+			{ outcome, stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr) },
+			'The same peer must return the response sent after cancellation.'
+		).toStrictEqual({
+			outcome: { kind: 'exited', exit },
+			stdout: Buffer.concat([peer.ready, response]),
+			stderr: Buffer.alloc(0)
+		});
+	} finally {
+		controller.abort();
+
+		try {
+			await settleProcess(
+				scope,
+				running,
+				backend.capabilities.terminationScope
+			);
+		} finally {
+			scope.dispose();
+		}
+	}
 }
 
 export function providerContractCases<Config>(
@@ -233,6 +565,15 @@ export function providerContractCases<Config>(
 ): readonly ContractCase[] {
 	const capabilities = options.capabilities ?? options.provider.capabilities;
 	const cleanup = resolveCleanupBudgets(options.cleanup);
+
+	if (
+		(options.verifyRecoveryAfterCancellation ||
+			options.verifyConcurrentCancellation) &&
+		capabilities.terminationScope === 'none'
+	) {
+		throw new Error('Continued use requires confirmed termination.');
+	}
+
 	const cases: ContractCase[] = [
 		{
 			label: 'metadata and policy',
@@ -258,81 +599,13 @@ export function providerContractCases<Config>(
 			label:
 				capabilities.terminationScope === 'none'
 					? 'cancellation without a termination guarantee'
-					: 'confirmed cancellation',
+					: options.verifyRecoveryAfterCancellation === true
+						? 'confirmed cancellation and continued use'
+						: 'confirmed cancellation',
 			run: async (fixture, backend, context) => {
 				const probe = fixture.cancellation;
 
-				expect(probe.ready.byteLength).toBeGreaterThan(0);
-
-				const controller = new AbortController();
-				const execution = new OperationScope(
-					{ operation: 'exec' },
-					context.signal,
-					{
-						signal: controller.signal,
-						timeoutMs: Math.max(1, context.remainingMs())
-					},
-					10_000,
-					cleanup
-				);
-				const stdout: Uint8Array[] = [];
-				let outcome: BackendProcessOutcome;
-				const expectedTermination =
-					backend.capabilities.terminationScope === 'none'
-						? 'not-guaranteed'
-						: 'confirmed';
-
-				try {
-					const result = await settleProcess(
-						execution,
-						backend.exec(probe.request, {
-							...execution.context,
-							onOutput(output) {
-								if (output.stream !== 'stdout') {
-									return;
-								}
-
-								stdout.push(new Uint8Array(output.data));
-
-								if (Buffer.concat(stdout).includes(Buffer.from(probe.ready))) {
-									controller.abort();
-								}
-							}
-						}),
-						backend.capabilities.terminationScope
-					);
-
-					if (result.kind === 'rejected') {
-						throw result.error;
-					}
-
-					if (result.kind === 'abandoned') {
-						throw new Error(
-							'The provider did not confirm termination within its cleanup deadline.'
-						);
-					}
-
-					outcome = result.value;
-				} catch (error) {
-					if (
-						!isSandboxError(error, SandboxCancelledError) ||
-						error.completion !== expectedTermination
-					) {
-						throw error;
-					}
-
-					outcome = { kind: 'cancelled', termination: expectedTermination };
-				} finally {
-					execution.dispose();
-				}
-
-				expect({
-					hasStarted: controller.signal.aborted,
-					outcome
-				}).toStrictEqual({
-					hasStarted: true,
-					outcome: { kind: 'cancelled', termination: expectedTermination }
-				});
+				await cancelReadyJob(fixture, backend, context, cleanup);
 
 				if (backend.capabilities.terminationScope === 'none') {
 					return;
@@ -343,6 +616,18 @@ export function providerContractCases<Config>(
 					'Supply an independent termination check for the declared scope.'
 				).toBeTypeOf('function');
 				await probe.verifyStopped?.();
+
+				if (!options.verifyRecoveryAfterCancellation) {
+					return;
+				}
+
+				if (!probe.after) {
+					throw new Error(
+						'Supply a process to run after confirmed cancellation.'
+					);
+				}
+
+				await checkProcess(backend, probe.after, context);
 			}
 		},
 		{
@@ -361,6 +646,91 @@ export function providerContractCases<Config>(
 				)
 		}
 	];
+
+	const restrictions = options.policyEffects ?? [];
+
+	for (const scenario of restrictions) {
+		cases.push({
+			label: 'policy effects (' + scenario + ')',
+			run: (fixture, backend, context) =>
+				checkPolicyEffects(scenario, fixture, backend, context)
+		});
+	}
+
+	if (options.verifyConcurrentCancellation) {
+		cases.push({
+			label: 'cancellation leaves a concurrent job running',
+			run: (fixture, backend, context) =>
+				checkConcurrentCancellation(fixture, backend, context, cleanup)
+		});
+	}
+
+	if (options.verifyIndependentAllocations) {
+		cases.push({
+			label: 'independent disposal of allocations from the same source',
+			run: async (fixture, first, context) => {
+				const probe = fixture.peerProcess;
+
+				if (probe === undefined) {
+					throw new Error(
+						'Supply a repeatable process for the second allocation.'
+					);
+				}
+
+				const verify = fixture.verifyAllocationDisposed;
+
+				if (verify === undefined) {
+					throw new Error(
+						'Supply an independent disposal check for each allocation.'
+					);
+				}
+
+				let isConfirmed = false;
+				const second = await openFixture(options, fixture, context, () => {
+					isConfirmed = true;
+				});
+
+				try {
+					expect(isConfirmed).toBe(false);
+					validateBackend(second, options.provider, fixture.policy);
+					await checkProcess(second, probe, context);
+					await bounded(
+						options,
+						async (closing) => {
+							await first.dispose(closing);
+							await verify.call(fixture, first);
+						},
+						'dispose'
+					);
+					await checkProcess(second, probe, context);
+				} finally {
+					await bounded(
+						options,
+						(closing) => second.dispose(closing),
+						'dispose'
+					);
+				}
+			}
+		});
+	}
+
+	const relationship = options.workspaceVisibility;
+
+	if (relationship !== undefined) {
+		cases.push({
+			label: `workspace visibility (${relationship})`,
+			run: (fixture, backend, context, afterDisposal) =>
+				checkWorkspaceVisibility(
+					relationship,
+					fixture,
+					backend,
+					context,
+					capabilities,
+					cleanup,
+					afterDisposal
+				)
+		});
+	}
 
 	if (capabilities.processKinds.includes('argv')) {
 		cases.push({
@@ -492,7 +862,8 @@ export function providerContractCases<Config>(
 					stat: await reader.stat(probe.path, context),
 					entries: entries.toSorted(compareEntries)
 				}).toStrictEqual({
-					stat: probe.stat,
+					stat:
+						typeof probe.stat === 'function' ? await probe.stat() : probe.stat,
 					entries: probe.entries.toSorted(compareEntries)
 				});
 			}
@@ -570,13 +941,18 @@ resource release independently.
 export function defineSandboxProviderTests<Config>(
 	options: SandboxProviderTestOptions<Config>
 ): void {
+	const cleanup = resolveCleanupBudgets(options.cleanup);
+	const testTimeout =
+		(options.timeoutMs ?? 10_000) * 5 +
+		cleanup.disposalTimeoutMs +
+		cleanup.cancellationGraceMs;
+
 	describe(options.label, () => {
 		for (const entry of providerContractCases(options)) {
 			it(
 				entry.label,
 				() => usingProviderFixture(options, entry.run),
-				(options.timeoutMs ?? 10_000) * 5 +
-					resolveCleanupBudgets(options.cleanup).disposalTimeoutMs
+				testTimeout
 			);
 		}
 	});

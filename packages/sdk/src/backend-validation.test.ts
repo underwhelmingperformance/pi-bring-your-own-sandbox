@@ -113,6 +113,7 @@ it.each([
 		}
 	},
 	{ search: { find: () => Promise.resolve({ paths: [], truncated: false }) } },
+	{ policy: { ...policy, workspaceRelationship: 'copied' } },
 	{ workspace: { ...backend().workspace, root: 'relative' } },
 	{ workspace: { ...backend().workspace, home: 'relative' } },
 	{ workspace: { ...backend().workspace, defaultShell: 'sh' } },
@@ -314,3 +315,18 @@ it.each([
 		).toBe(expected);
 	}
 );
+
+it('rejects an undeclared workspace even when no relationship was requested', () => {
+	expect(() =>
+		validateBackend(
+			backend(),
+			{
+				...provider,
+				policies: { ...provider.policies, workspaceRelationship: ['copied'] }
+			},
+			policy
+		)
+	).toThrow(
+		expect.objectContaining({ name: 'InvalidSandboxDeclarationError' })
+	);
+});

@@ -54,7 +54,7 @@ calls, including when cleanup is already complete.
 | `shells`          | One invocation for every selected shell dialect, with complete expected output and exit status.                                                                                                                                                                                               |
 | `read`            | A seeded regular file, its complete bytes and a path that does not exist.                                                                                                                                                                                                                     |
 | `write`           | A missing directory and file for a writable scenario, plus an independent callback that reads the resulting target file. The suite creates parents, writes binary bytes and overwrites the file with shorter content. A read-only scenario must reject a write with a typed permission error. |
-| `list`            | A seeded directory, its complete metadata and immediate children. Listing order is ignored.                                                                                                                                                                                                   |
+| `list`            | A seeded directory, its complete metadata and immediate children. Use a callback to observe directory size on the target after opening. Listing order is ignored.                                                                                                                             |
 | `find` and `grep` | Queries and complete expected results under the provider's documented search rules. Include exact-limit and truncated results, plus context and matching options where supported.                                                                                                             |
 | `cancellation`    | A long-running job and a stdout readiness marker. Promised termination scopes also require an independent `verifyStopped` callback. Emit the marker after the processes under test have started.                                                                                              |
 | `verifyPolicy`    | Independent negative tests for all requested restrictions. Required for read-only, workspace-only, system-read-only, denied-network and protected-resource scenarios. The callback receives the backend and a deadline context.                                                               |
@@ -71,19 +71,43 @@ deadlines, with a default of ten seconds per stage. The `cleanup` option selects
 `cancellationGraceMs` and `disposalTimeoutMs` independently, with defaults of
 five and ten seconds. Each cleanup budget must be an integer from 1 to 300,000
 milliseconds. Cancellation contexts publish the selected grace, and disposal
-contexts use the selected disposal timeout. `timeoutMs` still bounds the whole
-test case, so allow enough time for the cancellation probe to start and, when
-termination is promised, stop. A promised termination scope must acknowledge
-cancellation within the selected cleanup grace. Scope `none` returns without
-waiting for an acknowledgement. A timeout does not establish that a target
-stopped. Independent fixture cleanup must release resources even when opening
-fails or a transport stops responding. If fixture setup fails before returning,
-the setup callback must clean up its partial allocation.
+contexts use the selected disposal timeout. When a case exceeds its foreground
+deadline, the suite waits up to the cancellation grace period before disposal. A
+promised termination scope must acknowledge cancellation within the selected
+cleanup grace. Scope `none` returns without waiting for an acknowledgement. A
+timeout does not establish that a target stopped. Independent fixture cleanup
+must release resources even when opening fails or a transport stops responding.
+If fixture setup fails before returning, the setup callback must clean up its
+partial allocation.
 
 The suite runs teardown after a failed assertion or metadata check. If teardown
 also fails, an `AggregateError` preserves the original failure and the cleanup
 failures. Fixture resources must be independent between cases. Do not combine
 these scenarios with concurrent tests that reuse the same allocation.
+
+Set `workspaceVisibility` to `shared` or `copied` to register the corresponding
+visibility scenario. Its `visibility` probe reads and atomically replaces a
+seeded source file and constructs target commands for the same file. In a
+writable shared workspace, the test observes a target write from the source
+while the writer is running, then replaces the file and waits for the writer to
+observe the replacement. Copied workspaces must isolate changes in both
+directions. When file methods are available the suite also compares their
+results with target process reads and independent source reads.
+
+Supply `visibility.stageSave` to test an editor that replaces a file by rename.
+The first target command writes a temporary file. The suite replaces the source
+file on the host before the second target command renames the temporary file.
+Independent reads check the final contents on both sides. The editor's save wins
+in a shared workspace. In a copied workspace the host keeps its own edit.
+Fixture cleanup must include the temporary file if the scenario ends before the
+rename.
+
+In writable scenarios, grep searches the file at `visibility.targetPath` after a
+target process writes to the copy or the host replaces the shared file. It
+searches again after a file write. Supply an absent, searchable path under
+`visibility.findTarget` to check whether find sees a newly created file. The
+fixture controls the path so it can account for the provider's ignore rules. The
+suite reads the copied workspace's source file again after disposal.
 
 ## Verify effects at the target
 
@@ -116,6 +140,10 @@ or the backend returning a confirmed result, is insufficient evidence.
 `verifyDisposed` should inspect allocations through the runtime's management
 interface or another independent observer.
 
+Set `verifyRecoveryAfterCancellation: true` and supply a successful process
+probe under `cancellation.after` to verify continued use. The suite runs the
+probe on the same allocation after the independent termination check.
+
 In-memory and message-based test doubles verify protocol behaviour, not OS
 isolation. Real host execution also does not establish sandbox isolation. An
 isolating provider needs tests for its runtime-specific boundaries, environment
@@ -142,3 +170,43 @@ in [workspace protection][workspace-protection]. The test kit requires the
 probe; it cannot establish runtime enforcement from a capability declaration.
 
 [workspace-protection]: workspace-protection.md
+
+Set `verifyIndependentAllocations: true` to check two allocations from the same
+source. Supply a repeatable `peerProcess` probe. The suite checks its output and
+exit status on the second allocation before and after disposing the first. The
+fixture must implement `verifyAllocationDisposed(backend)` to check the first
+allocation against the runtime while the second allocation is still open.
+Fixture cleanup must account for both allocations.
+
+Use `verifyConcurrentCancellation` for providers that support concurrent jobs
+and confirmed termination. Supply a `concurrentJob` that emits a ready marker
+and waits. The suite cancels a second job on the same allocation, then sends
+fresh bytes through the fixture's independent `release` callback. The callback
+receives the operation context so it can stop at the scenario deadline. The
+waiting job must return those bytes and exit successfully.
+
+## Checking policy effects
+
+Select individual cases with `policyEffects`. Each case gets a fresh allocation.
+Supply a fixture function under the same key in `fixture.policyEffects`. The
+function receives the open backend so the fixture can identify the allocation
+and introduce resources after startup.
+
+| Case                | Independent observation                                                                                                                                               |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `read-only`         | Read the protected bytes, mode and link count from the backing workspace, or confirm that a protected path remains absent.                                            |
+| `protected-path`    | Observe the protected resource while the target attempts a direct mutation.                                                                                           |
+| `protected-alias`   | Direct the mutation at an alias and observe the original protected resource.                                                                                          |
+| `late-special-file` | Create a socket or FIFO after opening. Use an independent client to connect to the socket or write bytes to the FIFO. Return the cumulative connection or byte count. |
+| `denied-network`    | Connect an independent control client to the listener before the target attempts a connection. Return the listener's cumulative connection count.                     |
+
+Supply a permitted process, a denied process and an `observe` function. The
+suite checks both process outcomes and compares independent observations before
+and after each denial. With guaranteed exit status the permitted process must
+exit successfully and the denied process must exit with a positive error code.
+When the backend provides file operations, supply the target path and expected
+error for a write, or for a read of a late special file. Use `absent` if the
+target cannot see the path and `denied` for a permission error. A read of a
+special file can also specify `unsupported-file` for `SandboxOperationError`.
+Inspect the backing resource directly through the fixture. Reading it through
+the backend would test the same boundary twice.

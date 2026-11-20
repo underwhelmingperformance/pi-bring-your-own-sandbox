@@ -1,0 +1,276 @@
+//go:build linux
+
+package main
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path"
+	"strings"
+	"sync"
+	"syscall"
+
+	"github.com/hanwen/go-fuse/v2/fs"
+	"github.com/hanwen/go-fuse/v2/fuse"
+	"golang.org/x/sys/unix"
+)
+
+const maxWriteSize = 16 << 20
+const stagePrefix = ".pi-byos-write-"
+
+var errSourceChanged = errors.New("file metadata changed while staging a write")
+
+type workspaceWriter struct {
+	mu   sync.Mutex
+	file *os.File
+	*backing
+	name string
+}
+
+func (n *workspaceNode) openWriter(flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
+	if !writableRootFile(n.relative) {
+		return nil, 0, syscall.EACCES
+	}
+	fd, errno := n.open(unix.S_IFREG, unix.O_RDWR)
+	if errno != 0 {
+		return nil, 0, errno
+	}
+	w := &workspaceWriter{file: os.NewFile(uintptr(fd), n.relative), backing: n.backing, name: n.relative}
+	if flags&unix.O_TRUNC != 0 {
+		if err := w.replace(nil, 0, true); err != nil {
+			w.file.Close()
+			return nil, 0, fs.ToErrno(err)
+		}
+	}
+	return w, fuse.FOPEN_DIRECT_IO, 0
+}
+
+func (w *workspaceWriter) current() (unix.Stat_t, error) {
+	var entry, opened unix.Stat_t
+	if err := unix.Fstatat(w.root, w.name, &entry, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		if err == unix.ENOENT {
+			return entry, unix.ESTALE
+		}
+		return entry, err
+	}
+	if err := unix.Fstat(int(w.file.Fd()), &opened); err != nil {
+		return entry, err
+	}
+	if entry.Dev != opened.Dev || entry.Ino != opened.Ino {
+		return entry, unix.ESTALE
+	}
+	if entry.Nlink != 1 || opened.Nlink != 1 {
+		return entry, unix.EACCES
+	}
+	if entry.Ctim != opened.Ctim || entry.Size != opened.Size || entry.Mode != opened.Mode || entry.Uid != opened.Uid || entry.Gid != opened.Gid {
+		return opened, errSourceChanged
+	}
+	return opened, nil
+}
+
+func (w *workspaceWriter) replace(data []byte, offset int64, resize bool) error {
+	w.mutations.Lock()
+	defer w.mutations.Unlock()
+	for attempt := 0; attempt < 2; attempt++ {
+		err := w.stage(data, offset, resize)
+		if err != errSourceChanged {
+			return err
+		}
+	}
+	return unix.ESTALE
+}
+
+func (w *workspaceWriter) stage(data []byte, offset int64, resize bool) error {
+	source, err := w.current()
+	if err != nil {
+		return err
+	}
+	if source.Mode&07000 != 0 || int(source.Uid) != os.Geteuid() || int(source.Gid) != os.Getegid() {
+		return unix.EACCES
+	}
+	if offset < 0 || offset > maxWriteSize-int64(len(data)) || (!resize && source.Size > maxWriteSize) {
+		return unix.EFBIG
+	}
+
+	staged, err := os.CreateTemp(fmt.Sprintf("/proc/self/fd/%d", w.staging), stagePrefix)
+	if err != nil {
+		return err
+	}
+	stage := path.Base(staged.Name())
+	published := false
+	defer func() {
+		if !published {
+			staged.Close()
+			unix.Unlinkat(w.staging, stage, 0)
+		}
+	}()
+	preserve := source.Size
+	if resize {
+		preserve = min(source.Size, offset)
+	}
+	if _, err := io.CopyN(staged, io.NewSectionReader(w.file, 0, preserve), preserve); err != nil {
+		return err
+	}
+	if resize && offset > preserve {
+		if err := staged.Truncate(offset); err != nil {
+			return err
+		}
+	}
+	if len(data) > 0 {
+		if _, err := staged.WriteAt(data, offset); err != nil {
+			return err
+		}
+	}
+	if err := staged.Chmod(os.FileMode(source.Mode & 0777)); err != nil {
+		return err
+	}
+	if err := preserveAttributes(int(w.file.Fd()), int(staged.Fd())); err != nil {
+		return err
+	}
+	current, err := w.current()
+	if err != nil {
+		return err
+	}
+	if current.Ctim != source.Ctim {
+		return errSourceChanged
+	}
+	if err := w.backing.replace(stage, w.name, current); err != nil {
+		return err
+	}
+	published = true
+	previous := w.file
+	w.file = staged
+	return previous.Close()
+}
+
+func (n *workspaceNode) Setattr(ctx context.Context, handle fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
+	if !n.writable {
+		return syscall.EROFS
+	}
+	size, resize := in.GetSize()
+	writer, ok := handle.(*workspaceWriter)
+	const truncateFlags = fuse.FATTR_SIZE | fuse.FATTR_FH | fuse.FATTR_LOCKOWNER | fuse.FATTR_KILL_SUIDGID
+	if !ok || !resize || in.Valid&^truncateFlags != 0 {
+		return syscall.ENOTSUP
+	}
+	if size > maxWriteSize {
+		return syscall.EFBIG
+	}
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	if err := writer.replace(nil, int64(size), true); err != nil {
+		return fs.ToErrno(err)
+	}
+	var stat syscall.Stat_t
+	if err := syscall.Fstat(int(writer.file.Fd()), &stat); err != nil {
+		return fs.ToErrno(err)
+	}
+	n.attributes(&stat, &out.Attr)
+	return 0
+}
+
+func (w *workspaceWriter) Write(ctx context.Context, data []byte, off int64) (uint32, syscall.Errno) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err := w.replace(data, off, false); err != nil {
+		return 0, fs.ToErrno(err)
+	}
+	return uint32(len(data)), 0
+}
+
+func (w *workspaceWriter) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	n, err := w.file.ReadAt(dest, off)
+	if err != nil && err != io.EOF {
+		return nil, fs.ToErrno(err)
+	}
+	return fuse.ReadResultData(dest[:n]), 0
+}
+
+func (w *workspaceWriter) Release(ctx context.Context) syscall.Errno {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return fs.ToErrno(w.file.Close())
+}
+
+func (w *workspaceWriter) Fsync(ctx context.Context, flags uint32) syscall.Errno {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return fs.ToErrno(w.file.Sync())
+}
+
+func listAttributes(fd int) (map[string][]byte, error) {
+	size, err := unix.Flistxattr(fd, nil)
+	if err != nil {
+		return nil, err
+	}
+	if size > 65536 {
+		return nil, unix.E2BIG
+	}
+	names := make([]byte, size)
+	if size > 0 {
+		n, err := unix.Flistxattr(fd, names)
+		if err != nil {
+			return nil, err
+		}
+		names = names[:n]
+	}
+	attrs := make(map[string][]byte)
+	remaining := 1 << 20
+	for _, name := range strings.Split(string(names), "\x00") {
+		if name == "" {
+			continue
+		}
+		size, err := unix.Fgetxattr(fd, name, nil)
+		if err != nil {
+			return nil, err
+		}
+		if size > remaining {
+			return nil, unix.E2BIG
+		}
+		value := make([]byte, size)
+		if size > 0 {
+			n, err := unix.Fgetxattr(fd, name, value)
+			if err != nil {
+				return nil, err
+			}
+			value = value[:n]
+		}
+		remaining -= len(value)
+		attrs[name] = value
+	}
+	return attrs, nil
+}
+
+func preserveAttributes(source, target int) error {
+	from, err := listAttributes(source)
+	if err != nil {
+		return err
+	}
+	to, err := listAttributes(target)
+	if err != nil {
+		return err
+	}
+	for name, value := range from {
+		current, exists := to[name]
+		delete(to, name)
+		if exists && bytes.Equal(current, value) {
+			continue
+		}
+		if strings.HasPrefix(name, "security.") || strings.HasPrefix(name, "system.") || strings.HasPrefix(name, "trusted.") {
+			return unix.ENOTSUP
+		}
+		if err := unix.Fsetxattr(target, name, value, 0); err != nil {
+			return err
+		}
+	}
+	if len(to) > 0 {
+		return unix.ENOTSUP
+	}
+	return nil
+}

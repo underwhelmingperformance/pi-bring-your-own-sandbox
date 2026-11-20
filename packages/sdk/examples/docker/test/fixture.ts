@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { once } from 'node:events';
 import {
 	mkdir,
 	mkdtemp,
@@ -8,6 +9,7 @@ import {
 	symlink,
 	writeFile
 } from 'node:fs/promises';
+import { connect, createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -20,6 +22,7 @@ import type {
 import type { SandboxProviderTestFixture } from 'pi-bring-your-own-sandbox/testing';
 import { expect } from 'vitest';
 
+import { nodeVisibilityProbe } from '../../../src/fixtures/node-visibility-probe.js';
 import { remainingBudget } from '../../../src/fixtures/remaining-budget.js';
 import { NodeDockerClient } from '../src/client.js';
 import type { DockerClient, DockerConfig } from '../src/contracts.js';
@@ -40,6 +43,16 @@ process.exitCode = 1;
 `;
 
 const encode = (text: string) => new TextEncoder().encode(text);
+const sourceRead = {
+	request: {
+		kind: 'argv',
+		executable: '/bin/cat',
+		args: ['source.txt']
+	},
+	exit: { kind: 'code', code: 0 },
+	stdout: encode('original'),
+	stderr: new Uint8Array()
+} as const;
 
 export function operationContext(): SandboxOperationContext {
 	return {
@@ -102,6 +115,7 @@ export class DockerFixture {
 
 	readonly #directory: string;
 	readonly #client: NodeDockerClient;
+	#localListener: Server | undefined;
 	readonly allocations = new Set<string>();
 	readonly workspace: string;
 	readonly outside: string;
@@ -129,7 +143,7 @@ export class DockerFixture {
 			DOCKER_IMAGE,
 			'/usr/local/bin/node',
 			'-e',
-			'require("node:http").createServer((_request, response) => response.end("controlled")).listen(8080, "0.0.0.0")'
+			'let connections=0; const server=require("node:http").createServer((_request, response) => response.end("controlled")); server.on("connection",()=>require("node:fs").writeFileSync("/tmp/connections",String(++connections)));server.listen(8080, "0.0.0.0")'
 		]);
 		this.hasServer = true;
 		await this.docker(['start', this.server]);
@@ -191,11 +205,14 @@ export class DockerFixture {
 		};
 	}
 
-	async docker(arguments_: readonly string[]): Promise<string> {
+	async docker(
+		arguments_: readonly string[],
+		context: SandboxOperationContext = operationContext()
+	): Promise<string> {
 		const result = await this.#client.command({
 			args: arguments_,
 			operation: 'exec',
-			context: operationContext(),
+			context,
 			recovery: { kind: 'none' }
 		});
 
@@ -207,8 +224,10 @@ export class DockerFixture {
 		return new TextDecoder().decode(result.stdout);
 	}
 
-	async noJobContainers(): Promise<void> {
-		for (const allocation of this.allocations) {
+	async noJobContainers(
+		allocations: ReadonlySet<string> = this.allocations
+	): Promise<void> {
+		for (const allocation of allocations) {
 			expect(
 				await this.docker([
 					'container',
@@ -223,10 +242,12 @@ export class DockerFixture {
 		}
 	}
 
-	async verifyDisposed(): Promise<void> {
-		await this.noJobContainers();
+	async verifyDisposed(
+		allocations: ReadonlySet<string> = this.allocations
+	): Promise<void> {
+		await this.noJobContainers(allocations);
 
-		for (const allocation of this.allocations) {
+		for (const allocation of allocations) {
 			expect(
 				await this.docker([
 					'volume',
@@ -307,12 +328,108 @@ export class DockerFixture {
 		expect(await readFile(this.outside, 'utf8')).toBe('host-only');
 	}
 
+	async volumeFile(command: string, filename: string): Promise<string> {
+		const [volume] = this.allocations;
+
+		if (volume === undefined) {
+			throw new Error('Expected an open Docker workspace.');
+		}
+
+		return this.docker([
+			'run',
+			'--rm',
+			'--pull=never',
+			'--network=none',
+			'--read-only',
+			'--cap-drop=ALL',
+			'--mount',
+			`type=volume,source=${volume},target=/workspace,readonly`,
+			DOCKER_IMAGE,
+			command,
+			...(command === 'stat' ? ['-c', '%s'] : []),
+			'/workspace/' + filename
+		]);
+	}
+
 	contract(policy: SandboxPolicy): SandboxProviderTestFixture {
 		const cwd = '/workspace/nested';
 
 		return {
 			configuration: this.config,
 			hostWorkspace: this.workspace,
+			find: [
+				{
+					request: { pattern: '*.txt', limit: 1 },
+					result: { paths: ['source.txt'], truncated: false }
+				},
+				{
+					request: { pattern: '*', limit: 1 },
+					result: { paths: ['escape'], truncated: true }
+				},
+				{
+					request: { pattern: 'nested' },
+					result: { paths: ['nested/'], truncated: false }
+				}
+			],
+			grep: [
+				{
+					request: {
+						pattern: 'ORIGIN.L',
+						ignoreCase: true,
+						glob: '*.txt',
+						limit: 1
+					},
+					result: {
+						matches: [
+							{
+								path: 'source.txt',
+								line: 1,
+								text: 'original',
+								before: [],
+								after: []
+							}
+						],
+						truncated: false
+					}
+				},
+				{
+					request: { path: 'source.txt', pattern: '.', literal: true },
+					result: { matches: [], truncated: false }
+				}
+			],
+			write: {
+				directory: 'new/sub',
+				path: 'new/sub/file',
+				read: async () =>
+					new Uint8Array(
+						Buffer.from(
+							await this.volumeFile('base64', 'new/sub/file'),
+							'base64'
+						)
+					)
+			},
+			list: {
+				path: '.',
+				stat: async () => ({
+					kind: 'directory' as const,
+					size: Number(await this.volumeFile('stat', '.'))
+				}),
+				entries: [
+					{ name: 'nested', kind: 'directory' },
+					{ name: 'source.txt', kind: 'file' },
+					{ name: 'escape', kind: 'symlink' }
+				]
+			},
+			read: {
+				path: 'source.txt',
+				bytes: encode('original'),
+				missingPath: 'missing-file'
+			},
+			visibility: nodeVisibilityProbe(
+				this.workspace,
+				'source.txt',
+				'/usr/local/bin/node'
+			),
 			policy,
 			processes: [
 				{
@@ -356,8 +473,209 @@ export class DockerFixture {
 					stderr: encode('error')
 				}
 			},
+			concurrentJob: {
+				request: {
+					kind: 'argv',
+					executable: '/usr/local/bin/node',
+					args: [
+						'--input-type=module',
+						'-e',
+						`import {existsSync,readFileSync,writeFileSync} from 'node:fs';
+import {setTimeout} from 'node:timers/promises';
+writeFileSync("/tmp/peer-ready","");
+process.stdout.write("ready");
+while (!existsSync("/tmp/response")) await setTimeout(10);
+process.stdout.write(readFileSync("/tmp/response"));`
+					]
+				},
+				ready: encode('ready'),
+				release: async (bytes, context) => {
+					const [allocation] = this.allocations;
+
+					if (allocation === undefined) {
+						throw new Error('The concurrent jobs have no Docker allocation.');
+					}
+
+					const running = await this.docker(
+						[
+							'ps',
+							'--filter',
+							`label=${ALLOCATION_LABEL}=${allocation}`,
+							'--format',
+							'{{.Names}}'
+						],
+						context
+					);
+					const candidates = running
+						.trim()
+						.split('\n')
+						.filter(
+							(item) =>
+								item.length > 0 && !item.startsWith(allocation + '-files-')
+						);
+					const peers = [];
+
+					for (const id of candidates) {
+						const marked = await this.docker(
+							[
+								'exec',
+								id,
+								'/bin/sh',
+								'-c',
+								'if [ -f /tmp/peer-ready ]; then printf ready; fi'
+							],
+							context
+						);
+
+						if (marked === 'ready') {
+							peers.push(id);
+						}
+					}
+
+					const [peer] = peers;
+
+					if (!peer || peers.length !== 1) {
+						throw new Error('Expected one waiting Docker peer.');
+					}
+
+					await this.docker(
+						[
+							'exec',
+							peer,
+							'/bin/sh',
+							'-ec',
+							'printf %s "$1" | base64 -d > /tmp/pending && mv /tmp/pending /tmp/response',
+							'release',
+							Buffer.from(bytes).toString('base64')
+						],
+						context
+					);
+				}
+			},
+			policyEffects: {
+				'read-only': (backend) =>
+					Promise.resolve({
+						permitted: sourceRead,
+						denied: {
+							request: {
+								kind: 'shell',
+								dialect: 'sh',
+								command: '{ printf changed > source.txt; } 2>/dev/null'
+							},
+							exit: { kind: 'code', code: 2 },
+							stdout: encode(''),
+							stderr: encode('')
+						},
+						file: { path: '/workspace/source.txt', error: 'denied' },
+						observe: async () => {
+							const data = await this.docker([
+								'run',
+								'--rm',
+								'--pull=never',
+								'--network=none',
+								'--cap-drop=ALL',
+								'--user=65534:65534',
+								'--read-only',
+								'--mount',
+								'type=volume,source=' +
+									backend.id +
+									',target=/workspace,readonly',
+								DOCKER_IMAGE,
+								'sh',
+								'-c',
+								'stat -c "%a %h" /workspace/source.txt && base64 -w0 /workspace/source.txt'
+							]);
+							const [metadata, bytes] = data.trim().split('\n', 2);
+
+							if (!metadata || !bytes) {
+								throw new Error('Missing independent Docker file metadata.');
+							}
+
+							const [mode = '', links] = metadata.split(' ', 2);
+
+							return {
+								kind: 'file',
+								mode: Number.parseInt(mode, 8),
+								links: Number(links),
+								content: Buffer.from(bytes, 'base64')
+							};
+						}
+					}),
+				'denied-network': async () => {
+					const address = await this.#networkAddress();
+
+					return {
+						permitted: sourceRead,
+						denied: {
+							request: {
+								kind: 'argv',
+								executable: '/usr/local/bin/node',
+								args: [
+									'--input-type=module',
+									'-e',
+									NETWORK_PROBE,
+									'http://' + address + ':8080/'
+								]
+							},
+							exit: { kind: 'code', code: 1 },
+							stdout: encode(''),
+							stderr: encode('')
+						},
+						observe: async () => ({
+							kind: 'listener',
+							connections: Number(
+								await this.docker([
+									'exec',
+									this.server,
+									'cat',
+									'/tmp/connections'
+								])
+							)
+						})
+					};
+				},
+				'late-special-file': async () => {
+					const endpoint = path.join(this.workspace, 's');
+					let connections = 0;
+					const server = createServer((peer) => {
+						connections++;
+						peer.destroy();
+					});
+
+					this.#localListener = server;
+					server.listen(endpoint);
+					await once(server, 'listening');
+
+					const control = connect(endpoint);
+
+					await once(control, 'close');
+
+					return {
+						permitted: sourceRead,
+						denied: {
+							request: {
+								kind: 'argv',
+								executable: '/usr/local/bin/node',
+								args: [
+									'-e',
+									"const peer = require('node:net').connect('/workspace/s'); peer.on('error', error => { if (!['ENOENT','EPERM','EACCES'].includes(error.code)) throw error; process.exitCode=1; });"
+								]
+							},
+							exit: { kind: 'code', code: 1 },
+							stdout: encode(''),
+							stderr: encode('')
+						},
+						file: { path: '/workspace/s', error: 'absent' },
+						observe: () => Promise.resolve({ kind: 'listener', connections })
+					};
+				}
+			},
+			peerProcess: sourceRead,
+			verifyAllocationDisposed: (backend) =>
+				this.verifyDisposed(new Set([backend.id])),
 			cancellation: {
 				request: cancellationRequest,
+				after: sourceRead,
 				ready: encode('ready'),
 				verifyStopped: () => this.noJobContainers()
 			},
@@ -404,7 +722,11 @@ export class DockerFixture {
 				}
 			}
 		} finally {
-			await rm(this.#directory, { recursive: true, force: true });
+			try {
+				await this.#localListener?.[Symbol.asyncDispose]();
+			} finally {
+				await rm(this.#directory, { recursive: true, force: true });
+			}
 		}
 	}
 }

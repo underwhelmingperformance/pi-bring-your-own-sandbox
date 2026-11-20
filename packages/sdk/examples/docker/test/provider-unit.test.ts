@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+
 import type {
 	BackendProcessContext,
 	SandboxOpenRequest,
@@ -7,24 +9,29 @@ import {
 	closeSandboxSession,
 	getSandbox,
 	initialiseSandboxHost,
+	openReviewSnapshot,
 	SandboxTransportError
 } from 'pi-bring-your-own-sandbox/api';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 
+import { discoverBroker } from '../../../src/discovery.js';
 import { FakeClock } from '../../../src/fixtures/clock.js';
 import { FixtureConfig } from '../../../src/fixtures/config.js';
 import { withPiRuntime } from '../../../src/fixtures/pi-runtime.js';
 import { remainingBudget } from '../../../src/fixtures/remaining-budget.js';
 import { OperationScope } from '../../../src/lifecycle.js';
+import { NodeDockerClient } from '../src/client.js';
 import type {
 	DockerClient,
 	DockerCommand,
 	DockerCommandResult,
 	DockerConfig
 } from '../src/contracts.js';
+import dockerExtension from '../src/extension.js';
 import { DOCKER_IMAGE } from '../src/image.js';
 import { createDockerProvider } from '../src/provider.js';
 import { cleanupContext } from '../src/resources.js';
+import dockerShellProfile from '../src/shell-profile.js';
 
 class FakeDocker implements DockerClient {
 	readonly commands: DockerCommand[] = [];
@@ -35,6 +42,9 @@ class FakeDocker implements DockerClient {
 	hasLostRemoval = false;
 	status = 0;
 	bootstrapStatus = 0;
+	imageInspection?: DockerCommandResult;
+	runtimeError = '';
+	launchFailure: 'not-found' | 'permission-denied' | 'start-failed' | undefined;
 	lostCreation: 'volume' | 'container' | undefined;
 	readonly pendingAllocations: (() => void)[] = [];
 
@@ -64,6 +74,18 @@ class FakeDocker implements DockerClient {
 
 			return Promise.reject(
 				new SandboxTransportError({ operation: command.operation })
+			);
+		}
+
+		if (operation === 'image') {
+			const id = arguments_.at(-1) ?? '';
+
+			return Promise.resolve(
+				this.imageInspection ?? {
+					status: 0,
+					stdout: Buffer.from(id),
+					stderr: Buffer.alloc(0)
+				}
 			);
 		}
 
@@ -124,15 +146,14 @@ class FakeDocker implements DockerClient {
 			const created = this.commands.findLast(
 				(entry) => entry.args[0] === 'create'
 			);
-			const isLauncher =
-				created?.args.includes('--entrypoint=/usr/local/bin/node') === true;
+			const isLauncher = created?.args.includes('--workdir=/') === true;
 
 			return result(
 				JSON.stringify({
 					Running: false,
 					Status: 'exited',
 					ExitCode: isLauncher ? 0 : this.bootstrapStatus,
-					Error: ''
+					Error: isLauncher ? this.runtimeError : ''
 				})
 			);
 		}
@@ -164,14 +185,18 @@ class FakeDocker implements DockerClient {
 				(entry) => entry.args[0] === 'create'
 			);
 
-			if (created?.args.includes('--entrypoint=/usr/local/bin/node') === true) {
+			if (created?.args.includes('--workdir=/') === true) {
 				command.onOutput?.({
 					stream: 'stdout',
 					data: new TextEncoder().encode(
-						JSON.stringify({
-							kind: 'exited',
-							exit: { kind: 'code', code: this.status }
-						}) + '\n'
+						JSON.stringify(
+							this.launchFailure
+								? { kind: this.launchFailure }
+								: {
+										kind: 'exited',
+										exit: { kind: 'code', code: this.status }
+									}
+						) + '\n'
 					)
 				});
 			}
@@ -345,7 +370,14 @@ it('uses literal argv, isolated mounts and explicit target environment overrides
 			processKinds: ['argv', 'shell'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			operations: ['exec'],
+			operations: [
+				'exec',
+				'files.read',
+				'files.write',
+				'files.list',
+				'search.find',
+				'search.grep'
+			],
 			shells: ['sh', 'bash']
 		},
 		workspace: {
@@ -757,3 +789,498 @@ it.each([-1_000_000, 1_000_000])(
 		}
 	}
 );
+
+it.each(['session', 'socket', 'provider', 'generation', 'backend'])(
+	'rejects a review snapshot with a mismatched %s before allocation',
+	async (field) => {
+		const docker = new FakeDocker();
+		const provider = createDockerProvider(() => docker);
+		const opening = {
+			...context(),
+			reportRecovery() {
+				return;
+			},
+			confirmCleanup() {
+				return;
+			}
+		};
+		const parent = await provider.open(request, opening);
+
+		try {
+			if (!provider.openReviewSnapshot) {
+				throw new Error('Expected Docker snapshot support.');
+			}
+
+			const before = docker.commands.length;
+
+			await expect(
+				provider.openReviewSnapshot(
+					{
+						...request,
+						sessionId: field === 'session' ? 'different' : request.sessionId,
+						configuration: {
+							...request.configuration,
+							socketPath:
+								field === 'socket'
+									? '/different'
+									: request.configuration.socketPath
+						},
+						policy: { ...request.policy, workspaceAccess: 'read-only' },
+						source: {
+							kind: 'sandbox',
+							backendId: field === 'backend' ? 'other' : parent.id,
+							providerId: field === 'provider' ? 'other' : provider.id,
+							generationId:
+								field === 'generation' ? 'other' : request.generationId
+						}
+					},
+					opening
+				)
+			).rejects.toMatchObject({
+				name: 'StaleSandboxHandleError',
+				operation: 'open'
+			});
+			expect(docker.commands.slice(before)).toStrictEqual([]);
+		} finally {
+			await parent.dispose(context());
+		}
+	}
+);
+
+it('advertises PowerShell only for a trusted image selected by immutable ID', () => {
+	const image = 'sha256:' + 'a'.repeat(64);
+
+	expect(
+		createDockerProvider({ powerShellImage: image }).capabilities.shells
+	).toStrictEqual(['sh', 'bash', 'powershell']);
+	expect(createDockerProvider().capabilities.shells).toStrictEqual([
+		'sh',
+		'bash'
+	]);
+	expect(() =>
+		createDockerProvider({ powerShellImage: 'local:latest' })
+	).toThrow('immutable Docker image ID');
+});
+
+it.each([
+	'missing image',
+	'missing image with warning',
+	'id mismatch',
+	'invalid id',
+	'daemon unavailable',
+	'start-failed',
+	'runtime failure',
+	'not-found',
+	'permission-denied',
+	'nonzero',
+	'available'
+] as const)(
+	'checks the optional Docker PowerShell runtime during open: %s',
+	async (mode) => {
+		const docker = new FakeDocker();
+
+		docker.runtimeError =
+			mode === 'runtime failure' ? 'Failed to start OCI runtime' : '';
+		docker.launchFailure =
+			mode === 'not-found' ||
+			mode === 'permission-denied' ||
+			mode === 'start-failed'
+				? mode
+				: undefined;
+		docker.status = mode === 'nonzero' ? 7 : 0;
+
+		const powerShellImage = 'sha256:' + 'a'.repeat(64);
+		const isMissing =
+			mode === 'missing image' || mode === 'missing image with warning';
+		const isTransport =
+			mode === 'daemon unavailable' ||
+			mode === 'id mismatch' ||
+			mode === 'invalid id';
+		const otherId = 'sha256:' + 'b'.repeat(64);
+
+		if (isMissing || isTransport) {
+			const messages = {
+				'missing image':
+					'Error response from daemon: No such image: ' + powerShellImage,
+				'missing image with warning':
+					'WARNING: Could not load Docker config.\nError: No such image: ' +
+					powerShellImage,
+				'daemon unavailable': 'Daemon connection refused',
+				'id mismatch': '',
+				'invalid id': ''
+			};
+
+			docker.imageInspection = {
+				status: mode === 'id mismatch' || mode === 'invalid id' ? 0 : 1,
+				stdout: Buffer.from(mode === 'id mismatch' ? otherId : ''),
+				stderr: Buffer.from(messages[mode])
+			};
+		}
+
+		const provider = createDockerProvider({
+			createClient: () => docker,
+			powerShellImage
+		});
+		const diagnostics: unknown[] = [];
+		const pending = provider.open(request, {
+			...context(),
+			reportDiagnostic(entry) {
+				diagnostics.push(entry);
+			},
+			reportRecovery() {
+				return;
+			},
+			confirmCleanup() {
+				return;
+			}
+		});
+
+		if (mode !== 'available') {
+			await expect(pending).rejects.toMatchObject({
+				name: isTransport
+					? 'SandboxTransportError'
+					: mode === 'start-failed' || mode === 'runtime failure'
+						? 'SandboxOperationError'
+						: 'UnsupportedSandboxCapabilityError',
+				operation: 'open'
+			});
+
+			if (isTransport) {
+				const cause =
+					mode === 'id mismatch'
+						? 'Docker reported image ' +
+							otherId +
+							' for ' +
+							powerShellImage +
+							'.'
+						: mode === 'invalid id'
+							? 'Docker image inspect returned an invalid image ID.'
+							: 'Docker image inspect failed with status 1.';
+
+				await expect(pending).rejects.toMatchObject({
+					cause: { message: cause }
+				});
+			}
+
+			expect(docker.isVolumePresent).toBe(false);
+
+			const diagnostic = isMissing
+				? 'Build the configured PowerShell image on the selected Docker daemon before opening the workspace.'
+				: mode === 'not-found' ||
+					  mode === 'permission-denied' ||
+					  mode === 'nonzero'
+					? 'The selected Docker toolchain must provide executable PowerShell 7 or later at /opt/powershell/pwsh.'
+					: undefined;
+
+			expect(diagnostics).toStrictEqual(
+				diagnostic ? [{ level: 'warning', message: diagnostic }] : []
+			);
+
+			if (isMissing) {
+				expect(docker.commands.map((command) => command.args)).toStrictEqual([
+					['image', 'inspect', '--format', '{{.Id}}', powerShellImage]
+				]);
+			}
+
+			return;
+		}
+
+		const backend = await pending;
+
+		try {
+			await backend.exec(
+				{ kind: 'shell', dialect: 'powershell', command: 'exit 0' },
+				{
+					...context(),
+					onOutput() {
+						return;
+					}
+				}
+			);
+
+			const jobs = docker.commands
+				.filter(
+					(command) =>
+						command.args[0] === 'create' &&
+						command.args.includes(powerShellImage)
+				)
+				.map((command) => JSON.parse(command.args.at(-1) ?? 'null') as unknown);
+
+			expect(jobs).toStrictEqual(
+				['if ($PSVersionTable.PSVersion.Major -lt 7) { exit 1 }', 'exit 0'].map(
+					(command) => ({
+						cwd: '/workspace',
+						env: {},
+						executable: '/opt/powershell/pwsh',
+						args: [
+							'-NoLogo',
+							'-NoProfile',
+							'-NonInteractive',
+							'-Command',
+							command
+						]
+					})
+				)
+			);
+		} finally {
+			await backend.dispose(context());
+		}
+	}
+);
+
+it('builds the optional toolchain on the pinned Docker job image by default', async () => {
+	const dockerfile = await readFile(
+		new URL('../src/powershell/Dockerfile', import.meta.url),
+		'utf8'
+	);
+
+	expect(dockerfile.split('\n')).toContain('ARG NODE_IMAGE=' + DOCKER_IMAGE);
+});
+
+it.each([
+	{ trusted: true, copy: false, shared: true },
+	{ trusted: true, copy: false, shared: true, profile: true },
+	{ trusted: true, copy: true, shared: false },
+	{ trusted: false, copy: false, shared: false },
+	{ trusted: undefined, copy: false, shared: true }
+])(
+	'selects the development workspace for Pi trust $trusted and explicit copy $copy',
+	async ({ trusted, copy, shared, profile }) => {
+		const docker = new FakeDocker();
+
+		using cli = vi
+			.spyOn(NodeDockerClient.prototype, 'command')
+			.mockImplementation(docker.command.bind(docker));
+		await withPiRuntime(
+			[
+				{
+					name: 'docker',
+					factory(pi) {
+						(profile === true ? dockerShellProfile : dockerExtension)(pi);
+						pi.registerCommand('test-workspace', {
+							description: 'Check the active Docker workspace.',
+							async handler(_arguments, session) {
+								const context = {
+									cwd: session.cwd,
+									sessionManager: session.sessionManager
+								};
+								const opened = getSandbox(pi, context);
+
+								if (shared) {
+									await expect(opened).rejects.toMatchObject({
+										name: 'UnsupportedSandboxPolicyError',
+										operation: 'open'
+									});
+									expect(cli.mock.calls).toStrictEqual([]);
+
+									const status = await discoverBroker(pi.events)?.status(
+										context
+									);
+
+									expect(
+										status?.diagnostics?.map((entry) => entry.message)
+									).toStrictEqual([
+										expect.stringContaining('--byos-docker-copy')
+									]);
+
+									await expect(
+										getSandbox(pi, context, {
+											policy: { workspaceAccess: 'read-only' }
+										})
+									).rejects.toMatchObject({
+										name: 'UnsupportedSandboxPolicyError'
+									});
+
+									const privateWorkspace = await getSandbox(pi, context, {
+										policy: { workspaceRelationship: 'copied' }
+									});
+
+									expect(privateWorkspace.workspace.relationship).toBe(
+										'copied'
+									);
+								} else {
+									const ordinary = await opened;
+
+									expect(ordinary.workspace.relationship).toBe('copied');
+								}
+
+								const review = await openReviewSnapshot(pi, context, {
+									kind: 'host'
+								});
+
+								expect({
+									relationship: review.sandbox.workspace.relationship,
+									access: review.sandbox.policy.workspaceAccess,
+									network: review.sandbox.policy.networkAccess
+								}).toStrictEqual({
+									relationship: 'copied',
+									access: 'read-only',
+									network: 'denied'
+								});
+								expect(await review.close()).toMatchObject({ confirmed: true });
+								expect(await closeSandboxSession(pi, context)).toMatchObject({
+									confirmed: true
+								});
+							}
+						});
+					}
+				}
+			],
+			async (runtime, errors) => {
+				if (copy) {
+					runtime.session.extensionRunner.setFlagValue(
+						'byos-docker-copy',
+						true
+					);
+				}
+
+				const notifications: { message: string; type: string | undefined }[] =
+					[];
+				const runner = runtime.session.extensionRunner;
+
+				runner.setUIContext(
+					{
+						...runner.getUIContext(),
+						notify(message, type) {
+							notifications.push({ message, type });
+						}
+					},
+					'tui'
+				);
+				await runtime.session.prompt('/test-workspace');
+				expect(errors).toStrictEqual([]);
+				expect(notifications).toStrictEqual(
+					shared
+						? [
+								{
+									type: 'warning',
+									message:
+										'This Docker provider supports private copies only. Start Pi with --byos-docker-copy to use a private workspace.'
+								}
+							]
+						: []
+				);
+				expect(
+					runtime.session.messages.filter(
+						(message) => message.role === 'custom'
+					)
+				).toStrictEqual([]);
+			},
+			{ ...(trusted !== undefined && { projectTrusted: trusted }) }
+		);
+	}
+);
+
+it('selects a copy if an earlier startup consumer supplies no trust decision', async () => {
+	const docker = new FakeDocker();
+
+	using cli = vi
+		.spyOn(NodeDockerClient.prototype, 'command')
+		.mockImplementation(docker.command.bind(docker));
+	await withPiRuntime(
+		[
+			{
+				name: 'early-consumer',
+				factory(pi) {
+					pi.on('session_start', async (_event, session) => {
+						const sandbox = await getSandbox(pi, {
+							cwd: session.cwd,
+							sessionManager: session.sessionManager
+						});
+
+						expect(sandbox.workspace.relationship).toBe('copied');
+					});
+				}
+			},
+			{ name: 'docker', factory: dockerExtension }
+		],
+		(_runtime, errors) => {
+			expect(errors).toStrictEqual([]);
+			expect(cli).toHaveBeenCalled();
+
+			return Promise.resolve();
+		}
+	);
+});
+
+it('displays an early refusal after Pi binds the Docker session UI', async () => {
+	const notify = vi.fn();
+
+	using cli = vi
+		.spyOn(NodeDockerClient.prototype, 'command')
+		.mockRejectedValue(
+			new Error('A refused shared workspace must not contact Docker.')
+		);
+
+	await withPiRuntime(
+		[
+			{
+				name: 'early-consumer',
+				factory(pi) {
+					pi.on('session_start', async (_event, session) => {
+						const context = {
+							cwd: session.cwd,
+							sessionManager: session.sessionManager,
+							isProjectTrusted: () => session.isProjectTrusted()
+						};
+
+						await expect(getSandbox(pi, context)).rejects.toMatchObject({
+							name: 'UnsupportedSandboxPolicyError'
+						});
+					});
+				}
+			},
+			{ name: 'docker', factory: dockerExtension }
+		],
+		(_runtime, errors) => {
+			expect(errors).toStrictEqual([]);
+			expect(cli).not.toHaveBeenCalled();
+			expect(notify.mock.calls).toStrictEqual([
+				[expect.stringContaining('--byos-docker-copy'), 'warning']
+			]);
+
+			return Promise.resolve();
+		},
+		{ notify }
+	);
+});
+
+it('preserves the policy error when the workspace notice cannot be delivered', async () => {
+	const provider = createDockerProvider({
+		notifyWorkspaceUnavailable() {
+			throw new Error('The UI is closed.');
+		}
+	});
+	const diagnostics: string[] = [];
+	const recovery = vi.fn();
+	const cleanup = vi.fn();
+
+	await expect(
+		provider.open(
+			{
+				...request,
+				configuration: {
+					...request.configuration,
+					defaultWorkspaceRelationship: 'shared'
+				}
+			},
+			{
+				...context(),
+				confirmCleanup: cleanup,
+				reportRecovery: recovery,
+				reportDiagnostic(diagnostic) {
+					diagnostics.push(diagnostic.message);
+				}
+			}
+		)
+	).rejects.toMatchObject({
+		name: 'UnsupportedSandboxPolicyError',
+		operation: 'open'
+	});
+	expect(cleanup).toHaveBeenCalledOnce();
+	expect(recovery).not.toHaveBeenCalled();
+	expect(diagnostics).toStrictEqual([
+		expect.stringContaining('--byos-docker-copy'),
+		'The workspace notification could not be displayed.'
+	]);
+});

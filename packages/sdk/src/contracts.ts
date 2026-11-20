@@ -44,7 +44,8 @@ export interface SandboxHostOptions {
 Live Pi context required for generation identity and workspace paths. Pass the
 context supplied by Pi so its runtime validity checks remain active.
 */
-export type SandboxContext = Pick<ExtensionContext, 'cwd' | 'sessionManager'>;
+export type SandboxContext = Pick<ExtensionContext, 'cwd' | 'sessionManager'> &
+	Partial<Pick<ExtensionContext, 'isProjectTrusted'>>;
 
 /**
 Command languages that a provider can advertise independently of argv
@@ -115,6 +116,11 @@ promises no specific isolation.
 */
 export interface SandboxPolicy {
 	/**
+	Required relationship between the target and host workspace.
+	*/
+	readonly workspaceRelationship?: SandboxWorkspace['relationship'];
+
+	/**
 	Immutable workspace resources. Omission requests no resource-specific
 	protection. Providers must prevent creation, writes, removal, replacement
 	and renames through all aliases, including changes to parent directories.
@@ -148,6 +154,12 @@ export interface SandboxPolicy {
 Policy values that a provider accepts before allocating a backend.
 */
 export interface SupportedSandboxPolicies {
+	/**
+	Every workspace relationship that an opened backend can report.
+	Omit this field if the provider cannot negotiate a relationship.
+	*/
+	readonly workspaceRelationship?: readonly SandboxWorkspace['relationship'][];
+
 	/**
 	Workspace modes available when opening a backend.
 	*/
@@ -1028,6 +1040,17 @@ export interface SandboxProvider<Config> {
 	readonly validateConfig: (input: unknown) => Config;
 
 	/**
+	Copy the validated destination into a fresh read-only backend. Providers
+	must reject a changing source if they cannot obtain a consistent copy.
+	*/
+	readonly openReviewSnapshot?: (
+		request: SandboxOpenRequest<Config> & {
+			readonly source: ReviewSnapshotSource;
+		},
+		context: SandboxOpenContext
+	) => Promise<SandboxBackend>;
+
+	/**
 	Allocate one backend for the generation. Report recovery metadata before
 	allocation and clean up a failed or cancelled opening.
 	*/
@@ -1035,6 +1058,25 @@ export interface SandboxProvider<Config> {
 		request: SandboxOpenRequest<Config>,
 		context: SandboxOpenContext
 	) => Promise<SandboxBackend>;
+}
+
+/**
+The resolved destination of the proposed command. Use the identities from the
+live sandbox handle for commands that will execute in that sandbox.
+*/
+export type ReviewSnapshotSource =
+	| { readonly kind: 'host' }
+	| ({ readonly kind: 'sandbox' } & Pick<
+			Sandbox,
+			'providerId' | 'generationId' | 'backendId'
+	  >);
+
+/**
+A fresh read-only sandbox owned by one review. Close it when the review ends.
+*/
+export interface ReviewSnapshot {
+	readonly sandbox: Sandbox;
+	readonly close: () => Promise<SandboxCloseReport>;
 }
 
 /**

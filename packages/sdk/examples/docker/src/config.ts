@@ -31,11 +31,11 @@ export function dockerConfig(input: unknown): DockerConfig {
 			{ operation: 'configure', providerId: 'example.docker' },
 			{
 				cause: new TypeError(
-					'Set executable and socketPath to absolute local paths.'
+					'Use absolute local paths for executable and socketPath and select shared or copied for defaultWorkspaceRelationship.'
 				)
 			}
 		);
 	}
 
-	return { socketPath: value.socketPath, executable: value.executable };
+	return value;
 }

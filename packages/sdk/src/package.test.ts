@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
 	copyFile,
+	cp,
 	mkdir,
 	mkdtemp,
 	readFile,
@@ -229,6 +230,34 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 				host,
 				'node_modules/pi-bring-your-own-sandbox'
 			);
+			const matcher = new URL(import.meta.resolve('re2js'));
+			const dockerAssets = path.join(installed, 'examples/docker/dist');
+
+			const packedMatcher = await Promise.all([
+				readFile(path.join(dockerAssets, 're2js.mjs')),
+				readFile(path.join(dockerAssets, 'RE2JS-LICENSE'))
+			]);
+			const originalMatcher = await Promise.all([
+				readFile(matcher),
+				readFile(new URL('../LICENSE', matcher))
+			]);
+
+			expect(packedMatcher).toStrictEqual(originalMatcher);
+
+			const extension = path.join(host, '.pi/extensions/docker');
+
+			await cp(path.join(installed, 'examples/docker/src'), extension, {
+				recursive: true
+			});
+
+			const copiedMatcher = await run(extension, process.execPath, [
+				'--input-type=module',
+				'-e',
+				"import { readDockerMatcher } from './matcher.ts'; process.stdout.write(await readDockerMatcher());"
+			]);
+
+			expect(copiedMatcher.stdout).toBe(originalMatcher[0].toString('utf8'));
+
 			const manifest: unknown = JSON.parse(
 				await readFile(path.join(installed, 'package.json'), 'utf8')
 			);
@@ -339,8 +368,22 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 
 			expect(result).toMatchObject({
 				success: true,
-				numTotalTests: 4,
-				numPassedTests: 4,
+				numTotalTests: 5,
+				numPassedTests: 5,
+				testResults: [
+					{
+						assertionResults: expect.arrayContaining([
+							expect.objectContaining({
+								title: 'confirmed cancellation and continued use',
+								status: 'passed'
+							}),
+							expect.objectContaining({
+								title: 'policy effects (read-only)',
+								status: 'passed'
+							})
+						]) as unknown
+					}
+				],
 				numPendingTests: 0
 			});
 		} finally {

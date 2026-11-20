@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { copyFile, mkdir, realpath } from 'node:fs/promises';
+import { copyFile, mkdir, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -93,11 +93,23 @@ const dockerLoader = new DefaultResourceLoader({
 	noThemes: true,
 	noPromptTemplates: true,
 	noContextFiles: true,
-	additionalExtensionPaths: [path.join(sdkRoot, 'examples/docker/src/index.ts')]
+	additionalExtensionPaths: [path.join(root, '.pi/extensions/docker/index.ts')]
 });
 
 await dockerLoader.reload();
 assert.deepEqual(dockerLoader.getExtensions().errors, []);
+
+const shellEntry = path.join(root, 'sandbox-tools.ts');
+
+await writeFile(
+	shellEntry,
+	`import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import sandboxTools from 'pi-bring-your-own-sandbox/pi-tools';
+
+export default function extension(pi: ExtensionAPI): void {
+  sandboxTools(pi, import.meta.filename);
+}`
+);
 
 const helperPath = path.join(root, 'workspace-helper.ts');
 
@@ -145,7 +157,7 @@ const create: CreateAgentSessionRuntimeFactory = async (options) => {
 			noContextFiles: true,
 			additionalExtensionPaths: [
 				guardRoot,
-				path.join(sdkRoot, 'dist/pi-tools.js'),
+				shellEntry,
 				path.join(consumer, 'index.ts')
 			],
 			extensionFactories: [
@@ -206,6 +218,16 @@ try {
 	assert.deepEqual(errors, []);
 	assert.ok(live.pi);
 	assert.ok(live.context);
+
+	const routes: string[] = [];
+
+	live.pi.events.emit('pi-byos:review:tool-call:v1', {
+		kind: 'available',
+		reply() {
+			routes.push('available');
+		}
+	});
+	assert.deepEqual(routes, ['available', 'available']);
 
 	const [first, second] = await Promise.all([
 		sdk.getSandbox(live.pi, live.context),
@@ -279,6 +301,7 @@ try {
 		recoveries: []
 	});
 	assert.deepEqual(peer.state, {
+		sample: 'original',
 		opens: 2,
 		reviews: 2,
 		disposals: 2,

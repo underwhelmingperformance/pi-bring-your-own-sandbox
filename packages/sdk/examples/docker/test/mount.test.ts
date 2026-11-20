@@ -140,9 +140,9 @@ shutdown($peer, 1);
 my $count = sysread($peer, my $reply, 1);
 die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 			]);
-			expect(await fixture.docker(['logs', allocation])).toContain(
-				'mount request from uid 65534: permission denied'
-			);
+			await expect
+				.poll(() => fixture.docker(['logs', allocation]), { timeout: 5000 })
+				.toContain('mount request from uid 65534: permission denied');
 
 			const security = await fixture.docker([
 				'info',

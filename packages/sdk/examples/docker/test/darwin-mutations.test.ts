@@ -29,17 +29,18 @@ it.skipIf(process.platform !== 'darwin')(
 		const directory = await mkdtemp(path.join(tmpdir(), 'byos-darwin-'));
 		const workspace = await realpath(directory);
 		const file = (name: string) => path.join(workspace, name);
-		const protectedDirectory = file('.pi');
+		const protectedParent = file('config');
+		const protectedDirectory = file('config/.pi');
 
 		try {
-			await mkdir(protectedDirectory);
+			await mkdir(protectedDirectory, { recursive: true });
 			await mkdir(file('src'));
 			await writeFile(file('src/input'), 'original');
 			await writeFile(file('src/editor-save'), 'from editor');
 			await rename(file('src/editor-save'), file('src/input'));
-			await writeFile(file('.pi/config'), 'single');
-			await writeFile(file('.pi/settings'), 'protected');
-			await link(file('.pi/settings'), file('src/alias'));
+			await writeFile(file('config/.pi/config'), 'single');
+			await writeFile(file('config/.pi/settings'), 'protected');
+			await link(file('config/.pi/settings'), file('src/alias'));
 			await writeFile(file('src/first-name'), 'shared inode');
 			await link(file('src/first-name'), file('src/second-name'));
 
@@ -50,6 +51,8 @@ it.skipIf(process.platform !== 'darwin')(
 					'WORKSPACE=' + workspace,
 					'-D',
 					'PROTECTED=' + protectedDirectory,
+					'-D',
+					'PROTECTED_PARENT=' + protectedParent,
 					'-f',
 					profile,
 					process.execPath,
@@ -60,20 +63,31 @@ it.skipIf(process.platform !== 'darwin')(
 
 			expect(JSON.parse(result.stdout)).toStrictEqual({
 				input: 'from editor',
-				outcomes: ['EPERM', 'EPERM', 'EPERM', 'EPERM', 'EPERM']
+				outcomes: {
+					protectedFile: 'EPERM',
+					protectedAlias: 'EPERM',
+					unlink: 'EPERM',
+					renameAlias: 'EPERM',
+					writeAlias: 'EPERM',
+					truncateAlias: 'EPERM',
+					link: 'EPERM',
+					ancestor: 'EPERM',
+					absent: 'EPERM'
+				}
 			});
 
 			const entries = await readdir(protectedDirectory);
-			const settings = await stat(file('.pi/settings'));
+			const settings = await stat(file('config/.pi/settings'));
 			const first = await stat(file('src/first-name'));
 			const second = await stat(file('src/second-name'));
 
 			expect({
 				input: await readFile(file('src/input'), 'utf8'),
 				entries: entries.toSorted((left, right) => left.localeCompare(right)),
-				config: await readFile(file('.pi/config'), 'utf8'),
-				settings: await readFile(file('.pi/settings'), 'utf8'),
+				config: await readFile(file('config/.pi/config'), 'utf8'),
+				settings: await readFile(file('config/.pi/settings'), 'utf8'),
 				links: settings.nlink,
+				bytes: await readFile(file('src/first-name'), 'utf8'),
 				ordinaryAlias: {
 					sameInode: first.ino === second.ino,
 					links: first.nlink
@@ -85,6 +99,7 @@ it.skipIf(process.platform !== 'darwin')(
 				config: 'single',
 				settings: 'protected',
 				links: 2,
+				bytes: 'shared inode',
 				ordinaryAlias: { sameInode: true, links: 2 },
 				staged: 'next'
 			});

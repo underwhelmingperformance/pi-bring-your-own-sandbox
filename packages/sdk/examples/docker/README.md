@@ -339,9 +339,10 @@ A host filesystem check can see the object selected for a rename or unlink. The
 ordinary checkout. The profile permits writes to workspace files with a single
 name and denies writes to a protected subtree. The host replaces a file, the
 child reads the new contents and saves by rename, and the host checks the
-result. The test also checks a protected file, an absent protected path and a
-hard-link alias. Apple's `com.apple.SubmitDiagInfo.sb` uses the same
-`has-multiple-names` filter for writes.
+result. The test also checks an absent protected file, renaming its parent,
+creating a hard link and modifying a file through an existing hard link. Apple's
+`com.apple.SubmitDiagInfo.sb` uses the same `has-multiple-names` filter for
+writes.
 
 The [Linux probe][linux-mutations] attaches two deny-only checks to the kernel's
 authorisation of rename and unlink. The checks inspect the source and target
@@ -362,26 +363,31 @@ afterwards. The check sees which entries the rename will use. A link count
 observed there does not establish that the count will remain the same until the
 rename completes. The probe tests aliases that already exist.
 
-A check in the Docker VM cannot establish the same guarantee for files backed by
-another operating system.
+For a checkout on macOS, a check in the Docker VM only sees the guest's view of
+the directory entries.
 
-In a one-off OrbStack test on macOS 27.0.1, SSHFS mounted the host checkout at
-`/workspace` for an unprivileged workload. The container had networking
-disabled. SSHFS used
-`-o passive,direct_io,dir_cache=no,attr_timeout=0,entry_timeout=0,negative_timeout=0`
-to communicate with Apple's `/usr/libexec/sftp-server` over [standard input and
-output][passive]. The host used the [test Seatbelt profile][write-profile] with
-one extra grant for writes to `/dev/null`, which the server opens at startup.
-The server log confirmed that SSHFS used the OpenSSH POSIX rename extension. The
-workload read a host editor's replacement and saved a temporary file by rename.
-The host saw the new contents. Renames over a protected file and a hard-link
-alias returned `EACCES`.
+In a one-off test on OrbStack 2.2.5 and macOS 27.0.1, SSHFS 3.7.3 ran inside a
+network-isolated container. A root bootstrap had `CAP_SYS_ADMIN` and access to
+`/dev/fuse` to mount the test checkout at `/workspace`. The workload ran as UID
+65534 with no effective capabilities. SSHFS used `-f` and
+`-o passive,allow_other,direct_io,dir_cache=no,attr_timeout=0,entry_timeout=0,negative_timeout=0`.
+Two pipes connected the Docker CLI's [standard input and output][passive] to
+Apple's `/usr/libexec/sftp-server` on the host. The host restricted writes with
+the [test Seatbelt profile][write-profile]. The protected path was `.pi` under
+the temporary checkout. The server also required write access to `/dev/null` at
+startup. Its debug log confirmed use of the OpenSSH POSIX rename extension.
 
-The macOS profile only restricts writes. The Linux probe checks rename and
-unlink. It does not check opens for writing, truncation, or creation of links. A
-production host service must also confine reads, handle open file descriptors
-across host replacements, enforce protected directories and Git metadata, and
-release the mount when the session closes.
+The workload read a host editor's replacement and saved a temporary file by
+rename. The host saw the new contents. Renames over a protected file and a
+hard-link alias returned `EACCES`. This experiment used a fixed workload and did
+not test confinement of arbitrary SFTP clients or access to the FUSE device from
+the workload.
+
+The macOS profile restricts writes and hard-link creation. The Linux probe
+checks rename and unlink. It does not check opens for writing, truncation, or
+creation of links. A production host service must also confine reads, handle
+open file descriptors across host replacements, enforce protected directories
+and Git metadata, and release the mount when the session closes.
 
 [darwin-mutations]: test/darwin-mutations.test.ts
 [write-profile]: test/mount/darwin-mutations.sb

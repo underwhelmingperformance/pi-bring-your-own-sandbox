@@ -5,3 +5,5 @@
     (require-all (subpath (param "WORKSPACE"))
                  (require-not (file-attribute has-multiple-names))))
 (deny file-write* (subpath (param "PROTECTED")))
+(deny file-link)
+(deny file-write-unlink (literal (param "PROTECTED_PARENT")))

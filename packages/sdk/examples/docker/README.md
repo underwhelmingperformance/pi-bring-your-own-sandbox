@@ -373,9 +373,11 @@ network-isolated container. A root bootstrap had `CAP_SYS_ADMIN` and access to
 `-o passive,allow_other,direct_io,dir_cache=no,attr_timeout=0,entry_timeout=0,negative_timeout=0`.
 Two pipes connected the Docker CLI's [standard input and output][passive] to
 Apple's `/usr/libexec/sftp-server` on the host. The host restricted writes with
-the [test Seatbelt profile][write-profile]. The protected path was `.pi` under
-the temporary checkout. The server also required write access to `/dev/null` at
-startup. Its debug log confirmed use of the OpenSSH POSIX rename extension.
+the [test Seatbelt profile][write-profile]. Both `WORKSPACE` and
+`PROTECTED_PARENT` were the absolute temporary checkout path. `PROTECTED` was
+the absolute path to its `.pi` directory. The test appended
+`(allow file-write-data (literal "/dev/null"))` to the profile so the server
+could start. Its debug log confirmed use of the OpenSSH POSIX rename extension.
 
 The workload read a host editor's replacement and saved a temporary file by
 rename. The host saw the new contents. Renames over a protected file and a

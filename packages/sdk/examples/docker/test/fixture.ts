@@ -455,6 +455,16 @@ export class DockerFixture {
 			},
 			cancellation: {
 				request: cancellationRequest,
+				after: {
+					request: {
+						kind: 'argv',
+						executable: '/bin/cat',
+						args: ['source.txt']
+					},
+					exit: { kind: 'code', code: 0 },
+					stdout: encode('original'),
+					stderr: new Uint8Array()
+				},
 				ready: encode('ready'),
 				verifyStopped: () => this.noJobContainers()
 			},

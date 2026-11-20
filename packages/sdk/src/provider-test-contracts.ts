@@ -195,6 +195,10 @@ export interface SandboxProviderTestFixture {
 		Required for `process-group` and `workload`; unused for `none`.
 		*/
 		readonly verifyStopped?: () => Promise<void>;
+		/**
+ Successful operation on the same allocation after confirmed termination.
+ */
+		readonly after?: SandboxProcessProbe;
 	};
 	/**
 	Independent negative tests for every requested restrictive policy. Required
@@ -223,9 +227,14 @@ for different policy modes and backend capability subsets.
 */
 export interface SandboxProviderTestOptions<Config> {
 	/**
-	Run workspace visibility checks with independent source observations.
-	The fixture must supply a visibility probe for each selected scenario.
+	Run another process after independently confirming cancellation. Supply
+	`cancellation.after` for this scenario.
 	*/
+	readonly verifyRecoveryAfterCancellation?: boolean;
+
+	/**
+ Run bidirectional file visibility checks on the selected workspace relationship.
+ */
 	readonly workspaceVisibility?: 'shared' | 'copied';
 
 	/**

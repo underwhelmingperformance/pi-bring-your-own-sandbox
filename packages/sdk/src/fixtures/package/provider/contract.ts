@@ -5,6 +5,7 @@ import { defineSandboxProviderTests } from 'pi-bring-your-own-sandbox/testing';
 import { provider, state } from './provider.js';
 
 defineSandboxProviderTests({
+	verifyRecoveryAfterCancellation: true,
 	label: 'installed provider using its own Vitest peer',
 	provider,
 	createFixture() {
@@ -31,6 +32,12 @@ defineSandboxProviderTests({
 			],
 			cancellation: {
 				request: { kind: 'argv', executable: 'wait', args: [] },
+				after: {
+					request: { kind: 'argv', executable: 'pwd', args: [] },
+					exit: { kind: 'code', code: 0 },
+					stdout: new TextEncoder().encode('/packed/project\n'),
+					stderr: new Uint8Array()
+				},
 				ready: new TextEncoder().encode('ready'),
 				verifyStopped() {
 					assert.equal(state.isRunning, false);

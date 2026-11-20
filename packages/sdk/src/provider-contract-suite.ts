@@ -259,7 +259,9 @@ export function providerContractCases<Config>(
 			label:
 				capabilities.terminationScope === 'none'
 					? 'cancellation without a termination guarantee'
-					: 'confirmed cancellation',
+					: options.verifyRecoveryAfterCancellation === true
+						? 'confirmed cancellation and continued use'
+						: 'confirmed cancellation',
 			run: async (fixture, backend, context) => {
 				const probe = fixture.cancellation;
 
@@ -336,6 +338,10 @@ export function providerContractCases<Config>(
 				});
 
 				if (backend.capabilities.terminationScope === 'none') {
+					if (options.verifyRecoveryAfterCancellation) {
+						throw new Error('Continued use requires confirmed termination.');
+					}
+
 					return;
 				}
 
@@ -344,6 +350,18 @@ export function providerContractCases<Config>(
 					'Supply an independent termination check for the declared scope.'
 				).toBeTypeOf('function');
 				await probe.verifyStopped?.();
+
+				if (!options.verifyRecoveryAfterCancellation) {
+					return;
+				}
+
+				if (!probe.after) {
+					throw new Error(
+						'Supply a process to run after confirmed cancellation.'
+					);
+				}
+
+				await checkProcess(backend, probe.after, context);
 			}
 		},
 		{

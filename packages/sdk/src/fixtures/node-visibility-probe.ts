@@ -26,7 +26,7 @@ export function nodeVisibilityProbe(
 		]
 	});
 	const write =
-		"import {readFile,writeFile} from 'node:fs/promises';await writeFile(process.argv[1],Buffer.from(process.argv[2],'base64'));";
+		"import {readFile,writeFile,rename} from 'node:fs/promises';import {randomUUID} from 'node:crypto';const temp=process.argv[1]+'.'+randomUUID();await writeFile(temp,Buffer.from(process.argv[2],'base64'),{flag:'wx'});await rename(temp,process.argv[1]);";
 
 	return {
 		targetPath: basename,

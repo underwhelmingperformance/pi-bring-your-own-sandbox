@@ -114,6 +114,14 @@ networking includes relays through host services. Network namespaces and
 read-only mounts alone do not establish socket denial. A provider must reject
 restrictions that it cannot enforce.
 
+In a writable visibility scenario, grep must find a random line written through
+the process and file interfaces. Find must return a new file created through the
+file writer. These checks use the search operations selected for the suite.
+
+Set `verifyRecoveryAfterCancellation: true` and supply a successful process
+probe under `cancellation.after` to verify continued use. The suite runs the
+probe on the same allocation after the independent termination check.
+
 For `process-group` and `workload`, `verifyStopped` must independently establish
 termination within the advertised scope. Include a waiting parent with a child
 that creates another session in runtime-specific tests. A workload provider must

@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import path from 'node:path';
 
 import { expect } from 'vitest';
 
@@ -97,8 +98,8 @@ export async function checkWorkspaceVisibility(
 		return;
 	}
 
-	const written = randomBytes(24);
-	const observed = randomBytes(24);
+	const written = Buffer.from(randomBytes(24).toString('hex'));
+	const observed = Buffer.from(randomBytes(24).toString('hex'));
 
 	if (relationship === 'shared') {
 		if (probe.waitForReplacement === undefined) {
@@ -167,7 +168,41 @@ export async function checkWorkspaceVisibility(
 		).toStrictEqual(replaced);
 	}
 
-	await checkReader(relationship === 'shared' ? observed : written);
+	const paths =
+		backend.workspace.pathFlavor === 'posix' ? path.posix : path.win32;
+	const targetPath = probe.targetPath;
+
+	async function checkGrep(bytes: Buffer) {
+		if (!capabilities.operations.includes('search.grep')) {
+			return;
+		}
+
+		const pattern = bytes.toString('utf8');
+
+		expect(
+			await backend.search?.grep?.(
+				{ path: targetPath, pattern, literal: true },
+				context
+			),
+			'Grep must search the same file as the target process.'
+		).toStrictEqual({
+			matches: [
+				{
+					path: paths.basename(targetPath),
+					line: 1,
+					text: pattern,
+					before: [],
+					after: []
+				}
+			],
+			truncated: false
+		});
+	}
+
+	const current = relationship === 'shared' ? observed : written;
+
+	await checkReader(current);
+	await checkGrep(current);
 
 	const writer = capabilities.operations.includes('files.write')
 		? backend.files?.write
@@ -177,10 +212,26 @@ export async function checkWorkspaceVisibility(
 		return;
 	}
 
-	const content = randomBytes(32);
+	const content = Buffer.from(randomBytes(32).toString('hex'));
 
 	await writer.writeFile(probe.targetPath, content, context);
 	await checkReader(content);
+	await checkGrep(content);
+
+	if (capabilities.operations.includes('search.find')) {
+		const basename = 'byos-' + randomBytes(12).toString('hex');
+		const directory = paths.dirname(targetPath);
+
+		await writer.writeFile(paths.join(directory, basename), content, context);
+		expect(
+			await backend.search?.find?.(
+				{ path: directory, pattern: basename },
+				context
+			),
+			'Find must see a new file created by the file writer.'
+		).toStrictEqual({ paths: [basename], truncated: false });
+	}
+
 	expect(await execute(backend, probe.readTarget, context)).toStrictEqual(
 		content
 	);

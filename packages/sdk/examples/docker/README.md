@@ -74,8 +74,9 @@ and the upstream file/search gaps.
 ## Optional PowerShell image
 
 Build the reference toolchain once from `packages/sdk` with BuildKit on amd64 or
-arm64. The Dockerfile requires support for `ADD --checksum`. Docker verifies the
-PowerShell archive for the daemon's architecture before it unpacks the runtime.
+arm64. Use the pinned Debian 12 Node base image. The Dockerfile requires support
+for `ADD --checksum`. Docker verifies the PowerShell archive for the daemon's
+architecture before it unpacks the runtime.
 
 ```sh
 image=$(node --input-type=module -e 'import { DOCKER_IMAGE } from "./examples/docker/src/image.ts"; process.stdout.write(DOCKER_IMAGE)')

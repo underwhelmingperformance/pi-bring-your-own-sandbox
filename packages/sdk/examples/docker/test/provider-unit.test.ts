@@ -37,8 +37,9 @@ class FakeDocker implements DockerClient {
 	hasLostRemoval = false;
 	status = 0;
 	bootstrapStatus = 0;
-	imageStatus = 0;
-	launchFailure: 'not-found' | 'permission-denied' | undefined;
+	imageFailure: 'missing image' | 'daemon unavailable' | undefined;
+	runtimeError = '';
+	launchFailure: 'not-found' | 'permission-denied' | 'start-failed' | undefined;
 	lostCreation: 'volume' | 'container' | undefined;
 	readonly pendingAllocations: (() => void)[] = [];
 
@@ -72,10 +73,16 @@ class FakeDocker implements DockerClient {
 		}
 
 		if (operation === 'image') {
+			const id = arguments_.at(-1) ?? '';
+
 			return Promise.resolve({
-				status: this.imageStatus,
-				stdout: new Uint8Array(),
-				stderr: new Uint8Array()
+				status: this.imageFailure === undefined ? 0 : 1,
+				stdout: new TextEncoder().encode(this.imageFailure ? '' : id),
+				stderr: new TextEncoder().encode(
+					this.imageFailure === 'missing image'
+						? 'Error response from daemon: No such image: ' + id
+						: 'Daemon connection refused'
+				)
 			});
 		}
 
@@ -143,7 +150,7 @@ class FakeDocker implements DockerClient {
 					Running: false,
 					Status: 'exited',
 					ExitCode: isLauncher ? 0 : this.bootstrapStatus,
-					Error: ''
+					Error: isLauncher ? this.runtimeError : ''
 				})
 			);
 		}
@@ -854,6 +861,9 @@ it('advertises PowerShell only for a trusted image selected by immutable ID', ()
 
 it.each([
 	'missing image',
+	'daemon unavailable',
+	'start-failed',
+	'runtime failure',
 	'not-found',
 	'permission-denied',
 	'nonzero',
@@ -863,9 +873,18 @@ it.each([
 	async (mode) => {
 		const docker = new FakeDocker();
 
-		docker.imageStatus = mode === 'missing image' ? 1 : 0;
+		docker.imageFailure =
+			mode === 'missing image' || mode === 'daemon unavailable'
+				? mode
+				: undefined;
+		docker.runtimeError =
+			mode === 'runtime failure' ? 'Failed to start OCI runtime' : '';
 		docker.launchFailure =
-			mode === 'not-found' || mode === 'permission-denied' ? mode : undefined;
+			mode === 'not-found' ||
+			mode === 'permission-denied' ||
+			mode === 'start-failed'
+				? mode
+				: undefined;
 		docker.status = mode === 'nonzero' ? 7 : 0;
 
 		const powerShellImage = 'sha256:' + 'a'.repeat(64);
@@ -873,8 +892,12 @@ it.each([
 			createClient: () => docker,
 			powerShellImage
 		});
+		const diagnostics: unknown[] = [];
 		const pending = provider.open(request, {
 			...context(),
+			reportDiagnostic(entry) {
+				diagnostics.push(entry);
+			},
 			reportRecovery() {
 				return;
 			},
@@ -885,10 +908,28 @@ it.each([
 
 		if (mode !== 'available') {
 			await expect(pending).rejects.toMatchObject({
-				name: 'UnsupportedSandboxCapabilityError',
+				name:
+					mode === 'daemon unavailable'
+						? 'SandboxTransportError'
+						: mode === 'start-failed' || mode === 'runtime failure'
+							? 'SandboxOperationError'
+							: 'UnsupportedSandboxCapabilityError',
 				operation: 'open'
 			});
 			expect(docker.isVolumePresent).toBe(false);
+
+			const diagnostic =
+				mode === 'missing image'
+					? 'Build the configured PowerShell image on the selected Docker daemon before opening the workspace.'
+					: mode === 'not-found' ||
+						  mode === 'permission-denied' ||
+						  mode === 'nonzero'
+						? 'The selected Docker toolchain must provide executable PowerShell 7 or later at /opt/powershell/pwsh.'
+						: undefined;
+
+			expect(diagnostics).toStrictEqual(
+				diagnostic ? [{ level: 'warning', message: diagnostic }] : []
+			);
 
 			if (mode === 'missing image') {
 				expect(docker.commands.map((command) => command.args)).toStrictEqual([

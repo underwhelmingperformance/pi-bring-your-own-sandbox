@@ -23,6 +23,7 @@ import {
 	SandboxPathNotFoundError,
 	SandboxPermissionDeniedError,
 	SandboxSessionClosingError,
+	SandboxTransportError,
 	StaleSandboxHandleError,
 	UnsupportedSandboxCapabilityError,
 	UnsupportedSandboxPolicyError
@@ -220,13 +221,13 @@ class DockerBackend implements SandboxBackend {
 					onOutput() {
 						return;
 					}
-				}
+				},
+				'open'
 			);
 		} catch (error) {
 			if (
 				!isSandboxError(error, SandboxPathNotFoundError) &&
-				!isSandboxError(error, SandboxPermissionDeniedError) &&
-				!isSandboxError(error, SandboxOperationError)
+				!isSandboxError(error, SandboxPermissionDeniedError)
 			) {
 				throw error;
 			}
@@ -250,14 +251,15 @@ class DockerBackend implements SandboxBackend {
 
 	async #run(
 		request: ProcessRequest,
-		context: BackendProcessContext
+		context: BackendProcessContext,
+		operation: 'open' | 'exec' = 'exec'
 	): Promise<BackendProcessOutcome> {
 		const invocation: TargetInvocation = {
 			...targetCommand(request),
 			cwd: path.posix.resolve('/workspace', request.cwd ?? '.'),
 			env: request.env ?? {}
 		};
-		const frames = new LaunchFrames(context.onOutput, this.recovery);
+		const frames = new LaunchFrames(context.onOutput, this.recovery, operation);
 		// A different launcher UID prevents the child from writing control frames through /proc.
 		const result = await this.#resources.job(
 			[
@@ -293,7 +295,7 @@ class DockerBackend implements SandboxBackend {
 					frames.accept(output);
 				}
 			},
-			'exec'
+			operation
 		);
 
 		return result.kind === 'cancelled' ? result : frames.finish();
@@ -666,7 +668,15 @@ export function createDockerProvider(
 				recovery: { kind: 'none' }
 			});
 
-			if (inspected.status !== 0) {
+			const output = new TextDecoder();
+			const missing = 'No such image: ' + powerShellImage;
+			const message = output.decode(inspected.stderr).trim();
+
+			if (
+				inspected.status !== 0 &&
+				(message === 'Error response from daemon: ' + missing ||
+					message === 'Error: ' + missing)
+			) {
 				context.reportDiagnostic({
 					level: 'warning',
 					message:
@@ -674,6 +684,16 @@ export function createDockerProvider(
 				});
 
 				throw new UnsupportedSandboxCapabilityError({
+					operation: 'open',
+					providerId: 'example.docker'
+				});
+			}
+
+			if (
+				inspected.status !== 0 ||
+				output.decode(inspected.stdout).trim() !== powerShellImage
+			) {
+				throw new SandboxTransportError({
 					operation: 'open',
 					providerId: 'example.docker'
 				});

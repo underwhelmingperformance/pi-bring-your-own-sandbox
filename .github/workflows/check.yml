@@ -143,6 +143,7 @@ jobs:
         working-directory: packages/sdk/examples/docker/test/mount
         run: |
           go mod download
+          go test -mod=readonly ./...
           if docker info --format '{{json .SecurityOptions}}' | jq -e 'index("name=apparmor") != null'; then
             sudo apparmor_parser -r apparmor
           fi

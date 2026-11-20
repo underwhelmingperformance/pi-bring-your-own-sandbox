@@ -69,7 +69,7 @@ func (n *workspaceNode) Create(ctx context.Context, name string, flags, mode uin
 		if errno != 0 {
 			return nil, nil, 0, errno
 		}
-		if out.Attr.Mode&unix.S_IFMT == unix.S_IFDIR && flags&unix.O_ACCMODE != unix.O_RDONLY {
+		if out.Attr.Mode&unix.S_IFMT == unix.S_IFDIR {
 			return nil, nil, 0, syscall.EISDIR
 		}
 		child := inode.Operations().(*workspaceNode)

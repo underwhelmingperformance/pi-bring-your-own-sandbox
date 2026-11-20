@@ -21,10 +21,6 @@ const byteLimit = 512 * 1024 * 1024;
 const entryLimit = 100_000;
 // Linux O_PATH pins the inode without opening a device or waiting on a FIFO.
 const pathOnly = 0o1000_0000;
-const linkedFiles = new Map<
-	string,
-	{ expected: bigint; paths: number; target: string }
->();
 const manifest = new Map<string, string>();
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
@@ -40,18 +36,17 @@ class ImportFailure extends Error {
 class ImportPass {
 	#bytes = 0;
 	#entries = 0;
+	readonly #linkedFiles = new Map<
+		string,
+		{ expected: bigint; paths: number; target: string; content: string }
+	>();
 	readonly #copy: boolean;
 
 	constructor(shouldCopy: boolean) {
 		this.#copy = shouldCopy;
 	}
 
-	async file(
-		source: string,
-		target: string,
-		size: bigint,
-		shouldCopy = this.#copy
-	): Promise<string> {
+	async file(source: string, target: string, size: bigint): Promise<string> {
 		if (size > BigInt(byteLimit - this.#bytes)) {
 			throw new RangeError('Workspace contents exceed 512 MiB.');
 		}
@@ -61,7 +56,7 @@ class ImportPass {
 			constants.O_RDONLY | constants.O_NONBLOCK
 		);
 
-		const output = shouldCopy ? await open(target, 'wx') : undefined;
+		const output = this.#copy ? await open(target, 'wx') : undefined;
 		const hash = createHash('sha256');
 
 		try {
@@ -121,26 +116,7 @@ class ImportPass {
 				);
 			}
 		} else if (stat.isFile()) {
-			let shouldCopy = this.#copy;
-
-			if (this.#copy && stat.nlink > 1n) {
-				const key = String(stat.dev) + '/' + String(stat.ino);
-				const linked = linkedFiles.get(key) ?? {
-					target,
-					expected: stat.nlink,
-					paths: 0
-				};
-
-				if (linked.paths > 0) {
-					await link(linked.target, target);
-					shouldCopy = false;
-				}
-
-				linked.paths++;
-				linkedFiles.set(key, linked);
-			}
-
-			content = await this.file(descriptor, target, stat.size, shouldCopy);
+			content = await this.regularFile(descriptor, target, stat);
 		} else if (stat.isSymbolicLink()) {
 			const link = await readlink(source, { encoding: 'buffer' });
 
@@ -170,7 +146,9 @@ class ImportPass {
 		if (
 			depth === 0 &&
 			this.#copy &&
-			linkedFiles.values().some((file) => BigInt(file.paths) !== file.expected)
+			this.#linkedFiles
+				.values()
+				.some((file) => BigInt(file.paths) < file.expected)
 		) {
 			throw new ImportFailure(
 				44,
@@ -179,6 +157,47 @@ class ImportPass {
 		}
 
 		await this.record(relative, stat, pinned, content);
+	}
+
+	async regularFile(
+		source: string,
+		target: string,
+		stat: BigIntStats
+	): Promise<string> {
+		if (stat.nlink === 1n) {
+			return this.file(source, target, stat.size);
+		}
+
+		const key = String(stat.dev) + '/' + String(stat.ino);
+		const existing = this.#linkedFiles.get(key);
+
+		if (existing === undefined) {
+			const content = await this.file(source, target, stat.size);
+
+			this.#linkedFiles.set(key, {
+				expected: stat.nlink,
+				paths: 1,
+				target,
+				content
+			});
+
+			return content;
+		}
+
+		existing.paths++;
+
+		if (
+			stat.nlink !== existing.expected ||
+			BigInt(existing.paths) > existing.expected
+		) {
+			throw new ImportFailure(42, 'The workspace changed during import.');
+		}
+
+		if (this.#copy) {
+			await link(existing.target, target);
+		}
+
+		return existing.content;
 	}
 
 	async record(

@@ -232,6 +232,39 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				}
 			});
 		}, 30_000);
+
+		it('counts each inode once when importing hard-linked files', async () => {
+			await withDockerSession(async ({ pi, context, sandbox }) => {
+				const prepared = await sandbox.exec({
+					kind: 'shell',
+					dialect: 'sh',
+					command:
+						'set -e; truncate -s 9M data; for i in $(seq 1 57); do ln data "alias$i"; done'
+				});
+
+				expect(prepared.exit).toStrictEqual({ kind: 'code', code: 0 });
+
+				const review = await sandboxClient.openReviewSnapshot(pi, context, {
+					kind: 'sandbox',
+					providerId: sandbox.providerId,
+					generationId: sandbox.generationId,
+					backendId: sandbox.backendId
+				});
+
+				try {
+					const result = await review.sandbox.exec({
+						kind: 'shell',
+						dialect: 'sh',
+						command: 'test data -ef alias57 && stat -c "%h %s" alias57'
+					});
+
+					expect(new TextDecoder().decode(result.stdout)).toBe('58 9437184\n');
+				} finally {
+					await review.close();
+				}
+			});
+		}, 30_000);
+
 		it.each([
 			[
 				'external hard link',

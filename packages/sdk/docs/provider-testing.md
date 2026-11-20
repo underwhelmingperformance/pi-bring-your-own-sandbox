@@ -94,12 +94,12 @@ observe the replacement. Copied workspaces must isolate changes in both
 directions. When file methods are available the suite also compares their
 results with target process reads and independent source reads.
 
-In writable scenarios, grep searches the seed after a target process writes to
-the copy or the host replaces the shared file. It searches again after a file
-write. Supply an absent, searchable path under `visibility.findTarget` to check
-whether find sees a newly created file. The fixture controls the path so it can
-account for the provider's ignore rules. The suite reads the copied workspace's
-source file again after disposal.
+In writable scenarios, grep searches the file at `visibility.targetPath` after a
+target process writes to the copy or the host replaces the shared file. It
+searches again after a file write. Supply an absent, searchable path under
+`visibility.findTarget` to check whether find sees a newly created file. The
+fixture controls the path so it can account for the provider's ignore rules. The
+suite reads the copied workspace's source file again after disposal.
 
 ## Verify effects at the target
 

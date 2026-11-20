@@ -197,9 +197,10 @@ export async function checkWorkspaceVisibility(
 				context
 			),
 			'Grep must search the same file as the target process.'
-		).toMatchObject({
+		).toStrictEqual({
 			matches: [
 				{
+					path: paths.basename(targetPath),
 					line: 1,
 					text: pattern,
 					before: [],
@@ -234,12 +235,16 @@ export async function checkWorkspaceVisibility(
 		const basename = paths.basename(probe.findTarget);
 		const directory = paths.dirname(probe.findTarget);
 
+		const find = () =>
+			backend.search?.find?.({ path: directory, pattern: basename }, context);
+
+		expect(
+			await find(),
+			'The find probe must start with an absent file.'
+		).toStrictEqual({ paths: [], truncated: false });
 		await writer.writeFile(paths.join(directory, basename), content, context);
 		expect(
-			await backend.search?.find?.(
-				{ path: directory, pattern: basename },
-				context
-			),
+			await find(),
 			'Find must see a new file created by the file writer.'
 		).toStrictEqual({ paths: [basename], truncated: false });
 	}

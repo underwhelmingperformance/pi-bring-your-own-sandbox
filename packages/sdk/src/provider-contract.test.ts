@@ -698,7 +698,7 @@ it.each(['successful', 'missing', 'wrong output'] as const)(
 		}
 
 		await expect(run).rejects.toThrow(
-			mode === 'missing' ? 'Supply a process' : undefined
+			mode === 'missing' ? 'Supply a process' : /to strictly equal/
 		);
 	}
 );

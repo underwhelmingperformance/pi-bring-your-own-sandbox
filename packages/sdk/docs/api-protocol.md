@@ -298,13 +298,14 @@ zero context lines and no glob filter. Context is a non-negative safe integer.
 Match line numbers are one-based. `before` and `after` contain adjacent lines
 without newline terminators, nearest available context in file order. A matching
 line produces one result even if the pattern matches several times. Paths are
-relative to the search root, and `text` excludes its newline terminator.
-`truncated` means at least one additional result was omitted. It is false when
-the total exactly equals the limit. Providers document regex/glob syntax, ignore
-behaviour and result selection. The framework does not require a Pi search
-profile or impose a shared result order. Returned paths retain the target path
-flavour. Duplicate paths or matching lines are invalid even when results use a
-provider-specific order.
+relative to the search root. A grep restricted to a single file returns its
+basename. The `text` field excludes its newline terminator. `truncated` means at
+least one additional result was omitted. It is false when the total exactly
+equals the limit. Providers document regex/glob syntax, ignore behaviour and
+result selection. The framework does not require a Pi search profile or impose a
+shared result order. Returned paths retain the target path flavour. Duplicate
+paths or matching lines are invalid even when results use a provider-specific
+order.
 
 ## Discovery envelopes and service identity
 

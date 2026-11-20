@@ -251,7 +251,7 @@ export interface SandboxProviderTestOptions<Config> {
 	readonly verifyRecoveryAfterCancellation?: boolean;
 
 	/**
-	Supply a visibility probe to check host edits from a target process. Writable
+	Select the shared or copied visibility tests for this scenario. Writable
 	workspaces also exercise changes from the target.
 	*/
 	readonly workspaceVisibility?: 'shared' | 'copied';

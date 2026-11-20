@@ -6,6 +6,7 @@ import {
 	openSync,
 	readdirSync,
 	readFileSync,
+	rmdirSync,
 	unlinkSync,
 	writeFileSync,
 	writeSync
@@ -32,6 +33,12 @@ function checkCreates() {
 	}
 
 	return {
+		removeDirectory: isRefused(() => {
+			rmdirSync('/workspace/nested');
+		}, constants.errno.ENOTSUP),
+		nestedCreate: isRefused(() => {
+			closeSync(openSync('/workspace/nested/new', 'wx'));
+		}, constants.errno.EACCES),
 		unlink: isRefused(() => {
 			unlinkSync('/workspace/concurrent.txt');
 		}, constants.errno.ENOTSUP),
@@ -77,6 +84,8 @@ async function writeAndInspect() {
 
 		while (performance.now() < deadline) {
 			if (existsSync('/workspace/host-ready')) {
+				const previousSave = readFileSync('/workspace/concurrent.txt', 'utf8');
+
 				writeFileSync('/workspace/concurrent.txt', 'workload replacement');
 
 				const isRenamedDenied = isRefused(
@@ -91,6 +100,7 @@ async function writeAndInspect() {
 				return {
 					denied: isDenied,
 					renamedDenied: isRenamedDenied,
+					previousSave,
 					oversizedDenied: isOversizedDenied,
 					createChecks: checkCreates(),
 					sizes: { truncated, written, readerSize }

@@ -265,8 +265,10 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 
 				const saved = path.join(fixture.workspace, 'renamed-save');
 				const attributes = await stat(saved);
+				const directory = await stat(path.join(fixture.workspace, 'nested'));
 
 				expect({
+					directory: directory.isDirectory(),
 					retained: await readFile(retained, 'utf8'),
 					concurrent: await readFile(
 						path.join(fixture.workspace, 'concurrent.txt'),
@@ -275,6 +277,7 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 					renamed: await readFile(saved, 'utf8'),
 					mode: attributes.mode & 0o777
 				}).toStrictEqual({
+					directory: true,
 					retained: 'workload edit',
 					concurrent: 'workload replacement',
 					renamed: 'workload replacement',
@@ -318,7 +321,14 @@ printf '%s\n' "$status"
 				...(mode === 'read-only' && { createDenied: true }),
 				...(mode === 'read-write' && {
 					renamedDenied: true,
-					createChecks: { limit: true, reserved: true, unlink: true },
+					previousSave: 'host contents',
+					createChecks: {
+						limit: true,
+						reserved: true,
+						unlink: true,
+						removeDirectory: true,
+						nestedCreate: true
+					},
 					oversizedDenied: true,
 					sizes: {
 						truncated: 0,

@@ -308,11 +308,14 @@ rename within the workspace root. A further write to that descriptor returns
 
 The writable prototype permits up to 16 successful file creations per service.
 New files must be in the workspace root and have a non-hidden name. The service
-restricts their permissions to owner read and write. A read-only mount rejects
-creation. The service does not implement workload rename or unlink. Linux
-resolves the operands of these operations by name, so a host process can
-substitute an entry after the service has checked it. Enabling them in a shared
-workspace requires enforcement at the point of mutation.
+restricts their permissions to owner read and write. The service counts a file
+as soon as the backing filesystem creates it. If a subsequent metadata read
+fails, the file still exists. Writes require the file's group to match the
+service's group, including when a setgid directory supplies the group. A
+read-only mount rejects creation. The service refuses workload renames and
+removals. Linux resolves the operands of these operations by name, so a host
+process can substitute an entry after the service has checked it. Enabling them
+in a shared workspace requires enforcement at the point of mutation.
 
 A second mount runs the provider's file helper. A host read verifies the new
 contents after a writable save. On a read-only mount the helper returns its

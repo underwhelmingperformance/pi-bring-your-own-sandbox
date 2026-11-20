@@ -19,12 +19,20 @@ func writableRootFile(name string) bool {
 
 const maxCreatedFiles = 16
 
-// Without an Unlink handler go-fuse removes its cached child and reports success.
-func (n *workspaceNode) Unlink(ctx context.Context, name string) syscall.Errno {
+// Without removal handlers go-fuse removes its cached child and reports success.
+func (n *workspaceNode) removalError() syscall.Errno {
 	if !n.writable {
 		return syscall.EROFS
 	}
 	return syscall.ENOTSUP
+}
+
+func (n *workspaceNode) Unlink(ctx context.Context, name string) syscall.Errno {
+	return n.removalError()
+}
+
+func (n *workspaceNode) Rmdir(ctx context.Context, name string) syscall.Errno {
+	return n.removalError()
 }
 
 func (b *backing) create(name string, mode uint32) (int, error) {
@@ -60,6 +68,9 @@ func (n *workspaceNode) Create(ctx context.Context, name string, flags, mode uin
 		inode, errno := n.Lookup(ctx, name, out)
 		if errno != 0 {
 			return nil, nil, 0, errno
+		}
+		if out.Attr.Mode&unix.S_IFMT == unix.S_IFDIR && flags&unix.O_ACCMODE != unix.O_RDONLY {
+			return nil, nil, 0, syscall.EISDIR
 		}
 		child := inode.Operations().(*workspaceNode)
 		handle, openFlags, errno := child.Open(ctx, flags)

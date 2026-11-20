@@ -9,6 +9,7 @@ import type {
 } from './contracts.js';
 import { SandboxCleanupError, SandboxOperationError } from './errors.js';
 import { contractScenario } from './fixtures/provider-contract.js';
+import { observe } from './lifecycle.js';
 import {
 	providerContractCases,
 	usingProviderFixture
@@ -662,12 +663,13 @@ it.each([
 	vi.useFakeTimers();
 
 	try {
-		await Promise.all([
-			expect(usingProviderFixture(scenario, entry.run)).rejects.toThrow(
-				expected
-			),
-			vi.advanceTimersByTimeAsync(1000)
-		]);
+		const outcome = observe(usingProviderFixture(scenario, entry.run));
+
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(await outcome).toHaveProperty(
+			'error.message',
+			expect.stringContaining(expected)
+		);
 	} finally {
 		vi.useRealTimers();
 	}

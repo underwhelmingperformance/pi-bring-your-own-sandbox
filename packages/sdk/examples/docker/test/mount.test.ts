@@ -16,6 +16,7 @@ import { promisify } from 'node:util';
 
 import { expect, it } from 'vitest';
 
+import { connectHostReplacements } from '../src/host-replacements.js';
 import { DOCKER_IMAGE } from '../src/image.js';
 import { ALLOCATION_LABEL } from '../src/resources.js';
 
@@ -30,6 +31,11 @@ it
 		const allocation = 'byos-mount-' + randomUUID();
 		const label = ALLOCATION_LABEL + '=' + allocation;
 		const binary = path.join(fixture.workspace, '..', 'mount-check');
+
+		const staging = path.join(fixture.workspace, '..', 'staging');
+		const isHostReplacements =
+			process.platform === 'darwin' && mode === 'read-write';
+		let closeHost: (() => Promise<void>) | undefined;
 
 		fixture.allocations.add(allocation);
 
@@ -75,6 +81,11 @@ it
 			];
 
 			const owner = await stat(fixture.workspace);
+
+			if (isHostReplacements) {
+				await mkdir(staging, { mode: 0o700 });
+			}
+
 			const credentials = String(owner.uid) + ':' + String(owner.gid);
 
 			await fixture.docker([
@@ -103,9 +114,11 @@ it
 					fixture.workspace +
 					',target=/backing' +
 					(mode === 'read-only' ? ',readonly' : ''),
+				...(isHostReplacements
+					? ['--mount', 'type=bind,source=' + staging + ',target=/staging']
+					: []),
 				DOCKER_IMAGE,
-				'serve',
-				mode
+				...(isHostReplacements ? ['serve-host'] : ['serve', mode])
 			]);
 
 			try {
@@ -124,6 +137,15 @@ it
 				throw new Error('The mount service did not start. ' + logs, {
 					cause: error
 				});
+			}
+
+			if (isHostReplacements) {
+				closeHost = await connectHostReplacements(
+					fixture.config,
+					allocation,
+					fixture.workspace,
+					staging
+				);
 			}
 
 			await fixture.docker([
@@ -208,20 +230,31 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 				'mount',
 				mode
 			];
-			const workload = fixture.docker([
-				...mounted,
-				'/usr/local/bin/node',
-				'--input-type=module-typescript',
-				'-e',
-				await readFile(new URL('mount/workload.ts', import.meta.url), 'utf8'),
-				mode
-			]);
+			const finished = new AbortController();
+			const workload = async () => {
+				try {
+					return await fixture.docker([
+						...mounted,
+						'/usr/local/bin/node',
+						'--input-type=module-typescript',
+						'-e',
+						await readFile(
+							new URL('mount/workload.ts', import.meta.url),
+							'utf8'
+						),
+						mode
+					]);
+				} finally {
+					finished.abort();
+				}
+			};
+
 			const source = path.join(fixture.workspace, 'source.txt');
 			const retained = path.join(fixture.workspace, '..', 'retained');
 			const observe = async () => {
 				const deadline = Date.now() + 45_000;
 
-				while (Date.now() < deadline) {
+				while (!finished.signal.aborted && Date.now() < deadline) {
 					if ((await readFile(source, 'utf8')) === 'workload edit') {
 						const replacement = path.join(fixture.workspace, 'replacement');
 
@@ -262,7 +295,7 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 			};
 
 			const [job, observed] = await Promise.allSettled([
-				workload,
+				workload(),
 				mode === 'read-write' ? observe() : undefined
 			]);
 
@@ -397,7 +430,11 @@ printf '%s\n' "$status"
 				}
 			});
 		} finally {
-			await fixture.cleanup();
+			try {
+				await closeHost?.();
+			} finally {
+				await fixture.cleanup();
+			}
 		}
 	},
 	210_000

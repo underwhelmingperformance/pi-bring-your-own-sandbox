@@ -93,7 +93,7 @@ func (w *workspaceWriter) stage(data []byte, offset int64, resize bool) error {
 		return unix.EFBIG
 	}
 
-	staged, err := os.CreateTemp(fmt.Sprintf("/proc/self/fd/%d", w.root), stagePrefix)
+	staged, err := os.CreateTemp(fmt.Sprintf("/proc/self/fd/%d", w.staging), stagePrefix)
 	if err != nil {
 		return err
 	}
@@ -102,7 +102,7 @@ func (w *workspaceWriter) stage(data []byte, offset int64, resize bool) error {
 	defer func() {
 		if !published {
 			staged.Close()
-			unix.Unlinkat(w.root, stage, 0)
+			unix.Unlinkat(w.staging, stage, 0)
 		}
 	}()
 	preserve := source.Size
@@ -135,7 +135,7 @@ func (w *workspaceWriter) stage(data []byte, offset int64, resize bool) error {
 	if current.Ctim != source.Ctim {
 		return errSourceChanged
 	}
-	if err := unix.Renameat(w.root, stage, w.root, w.name); err != nil {
+	if err := w.backing.replace(stage, w.name, current); err != nil {
 		return err
 	}
 	published = true

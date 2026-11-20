@@ -17,6 +17,8 @@ import (
 
 type backing struct {
 	root      int
+	staging   int
+	replace   func(stage, target string, previous unix.Stat_t) error
 	writable  bool
 	mutations sync.Mutex
 	created   int

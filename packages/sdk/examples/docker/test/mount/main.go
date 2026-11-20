@@ -15,13 +15,32 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func serve(writable bool) error {
+func serve(writable, hostReplacements bool) error {
 	root, err := unix.Open("/backing", unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return err
 	}
 	defer unix.Close(root)
-	workspace := &backing{root: root, writable: writable}
+	workspace := &backing{root: root, staging: root, writable: writable, replace: func(stage, target string, previous unix.Stat_t) error {
+		return unix.Renameat(root, stage, root, target)
+	}}
+	if hostReplacements {
+		staging, err := unix.Open("/staging", unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+		if err != nil {
+			return err
+		}
+		defer unix.Close(staging)
+		replacer, err := net.ListenUnix("unix", &net.UnixAddr{Name: replacementSocket, Net: "unix"})
+		if err != nil {
+			return err
+		}
+		defer replacer.Close()
+		if err := os.Chmod(replacementSocket, 0600); err != nil {
+			return err
+		}
+		workspace.staging = staging
+		workspace.replace = (&hostReplacer{listener: replacer, root: root}).replace
+	}
 	listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: "/control/service", Net: "unixpacket"})
 	if err != nil {
 		return err
@@ -155,7 +174,12 @@ func main() {
 	switch {
 	case len(os.Args) == 3 && os.Args[1] == "serve":
 		log.SetOutput(os.Stdout)
-		err = serve(os.Args[2] == "read-write")
+		err = serve(os.Args[2] == "read-write", false)
+	case len(os.Args) == 2 && os.Args[1] == "serve-host":
+		log.SetOutput(os.Stdout)
+		err = serve(true, true)
+	case len(os.Args) == 2 && os.Args[1] == "host-channel":
+		err = hostChannel()
 	case len(os.Args) > 3 && os.Args[1] == "mount":
 		err = mount(os.Args[2] == "read-write")
 	default:

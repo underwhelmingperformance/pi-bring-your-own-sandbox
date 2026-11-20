@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"syscall"
+	"unicode/utf8"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
@@ -14,7 +15,7 @@ import (
 )
 
 func writableRootFile(name string) bool {
-	return name != "" && !strings.HasPrefix(name, ".") && !strings.ContainsRune(name, '/')
+	return utf8.ValidString(name) && name != "" && !strings.HasPrefix(name, ".") && !strings.ContainsRune(name, '/')
 }
 
 const maxCreatedFiles = 16

@@ -1031,9 +1031,13 @@ it('waits for a cancelled scenario to release its active job before disposal', a
 				});
 				isPending = false;
 				events.push('stopped');
+
+				throw new Error('The cancelled operation stopped.');
 			}
 		);
-		const rejected = expect(run).rejects.toThrow();
+		const rejected = expect(run).rejects.toThrow(
+			'The provider contract operation exceeded its deadline.'
+		);
 
 		await vi.advanceTimersByTimeAsync(200);
 		await rejected;
@@ -1046,6 +1050,15 @@ it('waits for a cancelled scenario to release its active job before disposal', a
 it('checks the first allocation was released before disposing the second', async () => {
 	const base = contractScenario();
 	const active = new Set<string>();
+	const verifyAllocationDisposed = vi.fn((backend: SandboxBackend) => {
+		expect(
+			active.has(backend.id),
+			'The disposed allocation still exists.'
+		).toBe(false);
+
+		return Promise.resolve();
+	});
+
 	const options: SandboxProviderTestOptions<undefined> = {
 		...base,
 		verifyIndependentAllocations: true,
@@ -1081,14 +1094,7 @@ it('checks the first allocation was released before disposing the second', async
 			return {
 				...fixture,
 				peerProcess,
-				verifyAllocationDisposed(backend: SandboxBackend) {
-					expect(
-						active.has(backend.id),
-						'The disposed allocation still exists.'
-					).toBe(false);
-
-					return Promise.resolve();
-				}
+				verifyAllocationDisposed
 			};
 		}
 	};
@@ -1104,6 +1110,9 @@ it('checks the first allocation was released before disposing the second', async
 	await expect(usingProviderFixture(options, entry.run)).rejects.toThrow(
 		'The disposed allocation still exists.'
 	);
+	expect(verifyAllocationDisposed.mock.contexts).toMatchObject([
+		{ verifyAllocationDisposed }
+	]);
 });
 
 it.each([

@@ -24,7 +24,7 @@ import {
 	isFindResult,
 	isGrepResult
 } from './file-result.js';
-import { OperationScope, settleOperation } from './lifecycle.js';
+import { observe, OperationScope, settleOperation } from './lifecycle.js';
 import type {
 	SandboxPolicyScenario,
 	SandboxProcessProbe,
@@ -77,22 +77,28 @@ async function bounded<Value>(
 
 	const running = Promise.try(() => run(scope.context));
 
-	async function expired(): Promise<never> {
-		await scope.whenCancelled();
+	try {
+		const result = await Promise.race([
+			observe(running),
+			scope.whenCancelled()
+		]);
 
-		if (options.drainOnTimeout) {
-			await settleOperation(scope, running);
+		if (result.kind === 'cancelled' || scope.reason !== undefined) {
+			if (options.drainOnTimeout) {
+				await settleOperation(scope, running);
+			}
+
+			throw new Error(
+				'The provider contract operation exceeded its deadline.',
+				result.kind === 'rejected' ? { cause: result.error } : undefined
+			);
 		}
 
-		throw new Error('The provider contract operation exceeded its deadline.');
-	}
+		if (result.kind === 'rejected') {
+			throw result.error;
+		}
 
-	try {
-		const result = await Promise.race([running, expired()]);
-
-		scope.check('unknown');
-
-		return result;
+		return result.value;
 	} finally {
 		scope.dispose();
 	}
@@ -507,8 +513,18 @@ async function checkConcurrentCancellation(
 			'The peer must start and wait for release.'
 		).toBe(true);
 		await cancelReadyJob(fixture, backend, context, cleanup);
-		await Promise.race([peer.release(response), scope.whenCancelled()]);
 		scope.check();
+
+		const released = await settleOperation(
+			scope,
+			peer.release(response, scope.context)
+		);
+
+		scope.check('unknown');
+
+		if (released.kind === 'rejected') {
+			throw released.error;
+		}
 
 		const outcome = await Promise.race([running, scope.whenCancelled()]);
 		const exit =
@@ -679,7 +695,7 @@ export function providerContractCases<Config>(
 						options,
 						async (closing) => {
 							await first.dispose(closing);
-							await verify(first);
+							await verify.call(fixture, first);
 						},
 						'dispose'
 					);
@@ -922,13 +938,18 @@ resource release independently.
 export function defineSandboxProviderTests<Config>(
 	options: SandboxProviderTestOptions<Config>
 ): void {
+	const cleanup = resolveCleanupBudgets(options.cleanup);
+	const testTimeout =
+		(options.timeoutMs ?? 10_000) * 5 +
+		cleanup.disposalTimeoutMs +
+		cleanup.cancellationGraceMs;
+
 	describe(options.label, () => {
 		for (const entry of providerContractCases(options)) {
 			it(
 				entry.label,
 				() => usingProviderFixture(options, entry.run),
-				(options.timeoutMs ?? 10_000) * 5 +
-					resolveCleanupBudgets(options.cleanup).disposalTimeoutMs
+				testTimeout
 			);
 		}
 	});

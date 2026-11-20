@@ -255,7 +255,10 @@ export interface SandboxProviderTestFixture {
 	readonly concurrentJob?: {
 		readonly request: ProcessRequest;
 		readonly ready: Uint8Array;
-		readonly release: (bytes: Uint8Array) => Promise<void>;
+		readonly release: (
+			bytes: Uint8Array,
+			context: SandboxOperationContext
+		) => Promise<void>;
 	};
 	/**
 	A long-running foreground job, including a descendant when supported.
@@ -293,9 +296,9 @@ export interface SandboxProviderTestFixture {
 	*/
 	readonly verifyDisposed: () => Promise<void>;
 	/**
-    Check that the first allocation has released its resources while its peer
-    remains open. Required for the independent allocation scenario.
-    */
+	Check that the first allocation has released its resources while its peer
+	remains open. Required for the independent allocation scenario.
+	*/
 	readonly verifyAllocationDisposed?: (
 		backend: SandboxBackend
 	) => Promise<void>;

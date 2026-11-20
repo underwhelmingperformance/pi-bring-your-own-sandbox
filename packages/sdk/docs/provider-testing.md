@@ -71,14 +71,14 @@ deadlines, with a default of ten seconds per stage. The `cleanup` option selects
 `cancellationGraceMs` and `disposalTimeoutMs` independently, with defaults of
 five and ten seconds. Each cleanup budget must be an integer from 1 to 300,000
 milliseconds. Cancellation contexts publish the selected grace, and disposal
-contexts use the selected disposal timeout. `timeoutMs` still bounds the whole
-test case, so allow enough time for the cancellation probe to start and, when
-termination is promised, stop. A promised termination scope must acknowledge
-cancellation within the selected cleanup grace. Scope `none` returns without
-waiting for an acknowledgement. A timeout does not establish that a target
-stopped. Independent fixture cleanup must release resources even when opening
-fails or a transport stops responding. If fixture setup fails before returning,
-the setup callback must clean up its partial allocation.
+contexts use the selected disposal timeout. When a case exceeds its foreground
+deadline, the suite waits up to the cancellation grace period before disposal. A
+promised termination scope must acknowledge cancellation within the selected
+cleanup grace. Scope `none` returns without waiting for an acknowledgement. A
+timeout does not establish that a target stopped. Independent fixture cleanup
+must release resources even when opening fails or a transport stops responding.
+If fixture setup fails before returning, the setup callback must clean up its
+partial allocation.
 
 The suite runs teardown after a failed assertion or metadata check. If teardown
 also fails, an `AggregateError` preserves the original failure and the cleanup
@@ -173,8 +173,9 @@ Fixture cleanup must account for both allocations.
 Use `verifyConcurrentCancellation` for providers that support concurrent jobs
 and confirmed termination. Supply a `concurrentJob` that emits a ready marker
 and waits. The suite cancels a second job on the same allocation, then sends
-fresh bytes through the fixture's independent `release` callback. The waiting
-job must return those bytes and exit successfully.
+fresh bytes through the fixture's independent `release` callback. The callback
+receives the operation context so it can stop at the scenario deadline. The
+waiting job must return those bytes and exit successfully.
 
 ## Checking policy effects
 

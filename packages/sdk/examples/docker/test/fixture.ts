@@ -205,11 +205,14 @@ export class DockerFixture {
 		};
 	}
 
-	async docker(arguments_: readonly string[]): Promise<string> {
+	async docker(
+		arguments_: readonly string[],
+		context: SandboxOperationContext = operationContext()
+	): Promise<string> {
 		const result = await this.#client.command({
 			args: arguments_,
 			operation: 'exec',
-			context: operationContext(),
+			context,
 			recovery: { kind: 'none' }
 		});
 
@@ -486,31 +489,43 @@ process.stdout.write(readFileSync("/tmp/response"));`
 					]
 				},
 				ready: encode('ready'),
-				release: async (bytes) => {
+				release: async (bytes, context) => {
 					const [allocation] = this.allocations;
 
 					if (allocation === undefined) {
 						throw new Error('The concurrent jobs have no Docker allocation.');
 					}
 
-					const running = await this.docker([
-						'ps',
-						'--filter',
-						`label=${ALLOCATION_LABEL}=${allocation}`,
-						'--format',
-						'{{.ID}}'
-					]);
-					const candidates = running.trim().split('\n').filter(Boolean);
+					const running = await this.docker(
+						[
+							'ps',
+							'--filter',
+							`label=${ALLOCATION_LABEL}=${allocation}`,
+							'--format',
+							'{{.Names}}'
+						],
+						context
+					);
+					const candidates = running
+						.trim()
+						.split('\n')
+						.filter(
+							(item) =>
+								item.length > 0 && !item.startsWith(allocation + '-files-')
+						);
 					const peers = [];
 
 					for (const id of candidates) {
-						const marked = await this.docker([
-							'exec',
-							id,
-							'/bin/sh',
-							'-c',
-							'if [ -f /tmp/peer-ready ]; then printf ready; fi'
-						]);
+						const marked = await this.docker(
+							[
+								'exec',
+								id,
+								'/bin/sh',
+								'-c',
+								'if [ -f /tmp/peer-ready ]; then printf ready; fi'
+							],
+							context
+						);
 
 						if (marked === 'ready') {
 							peers.push(id);
@@ -523,15 +538,18 @@ process.stdout.write(readFileSync("/tmp/response"));`
 						throw new Error('Expected one waiting Docker peer.');
 					}
 
-					await this.docker([
-						'exec',
-						peer,
-						'/bin/sh',
-						'-ec',
-						'printf %s "$1" | base64 -d > /tmp/pending && mv /tmp/pending /tmp/response',
-						'release',
-						Buffer.from(bytes).toString('base64')
-					]);
+					await this.docker(
+						[
+							'exec',
+							peer,
+							'/bin/sh',
+							'-ec',
+							'printf %s "$1" | base64 -d > /tmp/pending && mv /tmp/pending /tmp/response',
+							'release',
+							Buffer.from(bytes).toString('base64')
+						],
+						context
+					);
 				}
 			},
 			policyEffects: {

@@ -185,6 +185,14 @@ fresh bytes through the fixture's independent `release` callback. The callback
 receives the operation context so it can stop at the scenario deadline. The
 waiting job must return those bytes and exit successfully.
 
+For shared editor saves on filesystems with hard links, supply
+`visibility.linkSource` alongside `stageSave`. The suite prepares the save,
+replaces the destination on the host, then asks the fixture to link the current
+destination to another path. The returned observer reads the surviving link
+directly from the host. The suite checks inode identity, contents, permissions,
+ownership and a one-link decrease after the save. Include extended attributes in
+the observation when available.
+
 ## Checking policy effects
 
 Select individual cases with `policyEffects`. Each case gets a fresh allocation.

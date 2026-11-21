@@ -141,6 +141,22 @@ export interface SandboxProviderTestFixture {
 			readonly commit: ProcessRequest;
 		};
 		/**
+		Create another hard link to the current source file. The returned observer
+		reads that link independently before and after the shared editor save.
+		Include extended attributes when the filesystem supports them.
+		*/
+		readonly linkSource?: () => Promise<
+			() => Promise<{
+				readonly identity: string;
+				readonly content: Uint8Array;
+				readonly mode: number;
+				readonly uid: number;
+				readonly gid: number;
+				readonly links: number;
+				readonly xattrs?: Readonly<Record<string, Uint8Array>>;
+			}>
+		>;
+		/**
 		Write the bytes, emit "ready" on stdout, then emit the replacement
 		bytes from the same path before exiting. Required for writable sharing.
 		*/

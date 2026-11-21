@@ -78,6 +78,15 @@ routes. Case-insensitive filesystems require the same protection for equivalent
 spellings. Check then use validation alone cannot enforce this against
 concurrent workload mutations.
 
+An editor may save a new regular file by atomically renaming it over an
+authorised, unprotected directory entry. If the old file also has a protected
+hard link, the replacement removes one link to the old inode. Its link count
+decreases by one and its change time can advance. The surviving link must still
+refer to the same inode with the same contents, permissions, owner, group and
+extended attributes. This exception applies only to the destination of the
+atomic replacement. In-place writes, removal of a protected entry and access
+through otherwise forbidden aliases remain subject to the original policy.
+
 A provider must reject a request if its runtime cannot enforce the complete
 resource set. Filtering SDK file paths is insufficient because arbitrary
 commands can mutate files. A copied workspace must explain which protected

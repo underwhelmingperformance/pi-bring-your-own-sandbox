@@ -123,7 +123,9 @@ export interface SandboxPolicy {
 	/**
 	Immutable workspace resources. Omission requests no resource-specific
 	protection. Providers must prevent creation, writes, removal, replacement
-	and renames through all aliases, including changes to parent directories.
+	and renames of protected entries, including through aliases and parent
+	directories. An atomic regular-file save over an authorised unprotected
+	entry may change only link count and change time on the displaced inode.
 	Read-only workspace permissions alone do not establish immutability through
 	external aliases or referenced Git metadata.
 	*/

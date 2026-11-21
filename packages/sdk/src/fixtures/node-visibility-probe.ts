@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readFile, rename, writeFile } from 'node:fs/promises';
+import { link, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { ProcessRequest } from '../contracts.js';
@@ -31,6 +31,24 @@ export function nodeVisibilityProbe(
 
 			await writeFile(temporary, bytes);
 			await rename(temporary, file);
+		},
+		async linkSource() {
+			const alias = path.join(source, randomUUID());
+
+			await link(file, alias);
+
+			return async () => {
+				const entry = await stat(alias, { bigint: true });
+
+				return {
+					identity: [entry.dev, entry.ino].join('/'),
+					content: new Uint8Array(await readFile(alias)),
+					mode: Number(entry.mode),
+					uid: Number(entry.uid),
+					gid: Number(entry.gid),
+					links: Number(entry.nlink)
+				};
+			};
 		},
 		readTarget: processRequest(
 			"import { readFile } from 'node:fs/promises';process.stdout.write(await readFile(process.argv[1]));"

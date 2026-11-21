@@ -128,8 +128,32 @@ export async function checkWorkspaceVisibility(
 		return;
 	}
 
+	if (!save && relationship === 'shared' && probe.linkSource) {
+		throw new Error('Supply an editor save to test a hard-linked destination.');
+	}
+
 	if (save !== undefined) {
+		const observe =
+			relationship === 'shared' ? await probe.linkSource?.() : undefined;
+		const original = observe && structuredClone(await observe());
+
+		if (original) {
+			expect(Buffer.from(original.content)).toStrictEqual(replaced);
+			expect(original.links).toBeGreaterThanOrEqual(2);
+		}
+
 		await execute(backend, save.commit, context);
+
+		if (observe && original) {
+			expect(
+				structuredClone(await observe()),
+				'An editor save changed the surviving hard link.'
+			).toStrictEqual({
+				...original,
+				links: original.links - 1
+			});
+		}
+
 		expect(
 			{
 				target: await execute(backend, probe.readTarget, context),

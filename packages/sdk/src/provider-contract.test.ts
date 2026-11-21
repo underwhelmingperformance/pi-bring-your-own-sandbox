@@ -527,6 +527,11 @@ it.each(['confirmed cancellation', 'idempotent disposal'])(
 
 it.each([
 	{
+		defect: 'an editor changing the other hard link',
+		relationship: 'shared',
+		expected: 'surviving hard link'
+	},
+	{
 		defect: 'a target discarding its prepared editor save',
 		relationship: 'copied',
 		expected: 'completed editor save'
@@ -628,7 +633,10 @@ it.each([
 						if (request.kind === 'argv' && request.executable === 'write') {
 							target = Buffer.from(request.args[0] ?? '', 'base64');
 
-							if (defect === 'a copied write leaking to the source') {
+							if (
+								defect === 'a copied write leaking to the source' ||
+								defect === 'an editor changing the other hard link'
+							) {
 								source = target;
 							}
 						} else {
@@ -648,6 +656,23 @@ it.each([
 				...(await base.createFixture()),
 				visibility: {
 					targetPath: 'file',
+					...(defect === 'an editor changing the other hard link' && {
+						stageSave: (bytes: Uint8Array) => ({
+							prepare: readTarget,
+							commit: writeTarget(bytes)
+						}),
+						linkSource: () =>
+							Promise.resolve(() =>
+								Promise.resolve({
+									identity: 'original',
+									content: new Uint8Array(source),
+									mode: 0o644,
+									uid: 42,
+									gid: 42,
+									links: 2
+								})
+							)
+					}),
 					...(defect === 'a target discarding its prepared editor save' && {
 						stageSave: () => ({ prepare: readTarget, commit: readTarget })
 					}),

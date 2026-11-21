@@ -514,19 +514,30 @@ socket.on('error', error => {
 		it.each([
 			{
 				execution: 'sandbox',
+				prefixChanged: false,
 				contents: 'target-only edit',
 				text: 'target bash\n65534\n',
 				blocked: false
 			},
 			{
+				execution: 'sandbox',
+				contents: 'target-only edit',
+				prefixChanged: true,
+				text: new sandboxClient.StaleSandboxHandleError({ operation: 'exec' })
+					.message,
+				blocked: false
+			},
+			{
 				execution: 'outside-sandbox',
+				prefixChanged: false,
 				contents: 'original',
 				text: 'Host command reviewed.',
 				blocked: true
 			}
 		])(
-			'reviews the destination of a model Bash call with execution $execution',
-			async ({ execution, contents, text, blocked }) => {
+			'reviews the destination of a model Bash call with execution $execution and prefix change $prefixChanged',
+			async ({ execution, contents, text, blocked, prefixChanged }) => {
+				let changePrefix: (() => void) | undefined;
 				const model = new ScriptedModel([
 					{
 						type: 'toolCall',
@@ -544,6 +555,12 @@ socket.on('error', error => {
 
 				await withDockerSession(
 					async ({ runtime, sandbox }) => {
+						changePrefix = () => {
+							runtime.services.settingsManager.setShellCommandPrefix(
+								'export LC_ALL=C'
+							);
+						};
+
 						await sandbox.files.writeFile(
 							'source.txt',
 							Buffer.from('target-only edit')
@@ -572,7 +589,7 @@ socket.on('error', error => {
 							results: [
 								{
 									content: [{ type: 'text', text }],
-									isError: blocked
+									isError: blocked || prefixChanged
 								}
 							]
 						});
@@ -619,6 +636,10 @@ socket.on('error', error => {
 										reviewed.push(await readSnapshot(review));
 									} finally {
 										await review.close();
+									}
+
+									if (prefixChanged) {
+										changePrefix?.();
 									}
 
 									return blocked

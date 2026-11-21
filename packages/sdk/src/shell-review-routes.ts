@@ -24,6 +24,7 @@ type BoundDestination =
 interface Route {
 	readonly context: ExtensionContext;
 	readonly command: string;
+	readonly prefix: string | undefined;
 	readonly isOutside: boolean;
 	destination?: BoundDestination;
 }
@@ -75,6 +76,8 @@ export class ShellReviewRoutes {
 			this.#routes.set(event.toolCallId, {
 				context,
 				command: input['command'],
+				prefix:
+					toolName === 'bash' ? pi.getSettings().shellCommandPrefix : undefined,
 				isOutside: input['execution'] === 'outside-sandbox'
 			});
 		});
@@ -220,6 +223,7 @@ export class ShellReviewRoutes {
 	executing(
 		id: string,
 		command: string,
+		prefix: string | undefined,
 		isOutside: boolean
 	): BoundDestination | undefined {
 		const route = this.#routes.get(id);
@@ -228,7 +232,11 @@ export class ShellReviewRoutes {
 			return;
 		}
 
-		if (route.command !== command || route.isOutside !== isOutside) {
+		if (
+			route.command !== command ||
+			route.prefix !== prefix ||
+			route.isOutside !== isOutside
+		) {
 			throw new StaleSandboxHandleError({ operation: 'exec' });
 		}
 

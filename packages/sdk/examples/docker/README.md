@@ -9,8 +9,8 @@ The framework's runtime does not depend on Docker. Registering the example does
 not contact the daemon. Docker is required when a consumer acquires an
 explicitly selected `example.docker` backend.
 
-See the [workspace editing goals][editing] for when Docker should share the
-checkout, use a private copy or take a review snapshot.
+See the [workspace editing goals][editing] for when Docker shares the checkout,
+uses a private copy or takes a review snapshot.
 
 [editing]: workspace-editing.md
 
@@ -57,9 +57,9 @@ dependency.
 Pi supplies TypeBox at runtime. Add `typebox` as a development dependency to
 type-check the copied example outside Pi.
 
-Loading the example activates `example.docker` with default Docker settings and
-a writable private copy of the checkout. Edits stay in the copy until disposal.
-An explicit request for shared editing fails before allocation. To customise the
+Loading the example activates `example.docker`. In trusted Pi projects, the
+example requests live editing and reports when changes will stay in a private
+copy. Untrusted projects and the shell-only profile use a copy. To customise the
 provider, write an extension factory that calls `registerSandboxProvider` with
 the declaration returned by `createDockerProvider` and a `configure` callback.
 Return raw Docker input under `configuration`, and provide a complete policy or
@@ -133,11 +133,24 @@ connections use the same daemon. Set the optional second argument to
 
 ## Workspace and process behaviour
 
-Opening creates a labelled Docker volume and copies the host workspace into
-`/workspace`. The copy includes hidden files and preserves symbolic links.
-Commands share the volume for that generation. Host changes after opening are
-not synchronised, and target changes are not copied back. Disposal deletes the
-volume. An empty workspace is writable in read-write mode.
+Live editing requires a local Docker daemon with volume subpath support and
+matching host and workload user IDs. Docker checks that the checkout is writable
+and that the volume refers to the host checkout. Docker requires an existing
+`.pi` directory and checks that its mount is read-only. In Git checkouts, the
+provider runs a host Git installation outside the checkout to locate the current
+metadata and hooks before each operation. A reused file worker restarts when a
+guarded path appears, disappears or is replaced. Disposing the backend removes
+the Docker volume and leaves the host checkout in place.
+
+On OrbStack, Docker uses a copy for checkouts in the macOS per-user temporary
+directory. In that location, an atomic save followed by a container read
+returned the new contents truncated to the old file size.
+
+Opening a private copy creates a labelled Docker volume and copies the host
+workspace into `/workspace`. The copy includes hidden files and preserves
+symbolic links. Jobs mount only the copied volume. Host changes after opening
+are not synchronised, and target changes are not copied back. Disposal deletes
+the volume. An empty workspace is writable in read-write mode.
 
 Import accepts up to 512 MiB of regular-file contents, 100,000 entries and 128
 directory levels, including entries under dependency directories. Filenames must
@@ -155,15 +168,16 @@ mounts its copy read-only and can release it independently.
 
 Each foreground command creates a separate container. Containers have a
 read-only runtime image, a private 16 MiB `/tmp`, a limit of 64 processes, a 128
-MiB memory limit and one CPU. Network mode is `none`. Job containers do not
-mount the host workspace or Docker socket. Docker logging is disabled for job
-containers; stdout and stderr are streamed to the SDK.
+MiB memory limit and one CPU. Network mode is `none`. The Docker socket stays
+outside the container. Docker disables logging for job containers and streams
+stdout and stderr to the SDK.
 
-A protected Node launcher starts the requested command as UID and GID 65534. The
-launcher retains a different UID so a child cannot modify its control stream
-through `/proc`. The container grants the launcher only the capabilities needed
-for privilege changes and target-directory access. `no-new-privileges` prevents
-the child from gaining privilege through executable file attributes.
+A protected Node launcher starts commands as the developer in a shared checkout
+and as UID and GID 65534 in a copy. The launcher retains a different UID so a
+child cannot modify its control stream through `/proc`. The container grants the
+launcher only the capabilities needed for privilege changes and target-directory
+access. `no-new-privileges` prevents the child from gaining privilege through
+executable file attributes.
 
 The launcher passes argv without a shell, applies target environment overrides
 and deletions, and reports code exits, signal exits and spawn failures. Shell

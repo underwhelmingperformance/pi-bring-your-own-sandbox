@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"os"
 	"path"
 	"strings"
 	"syscall"
@@ -37,9 +36,15 @@ func (n *workspaceNode) Rmdir(ctx context.Context, name string) syscall.Errno {
 	return n.remove(name, "rmdir")
 }
 
-func (b *backing) create(name string, mode uint32) (int, error) {
+func (n *workspaceNode) create(name string, mode uint32) (int, error) {
+	b := n.backing
 	b.mutations.Lock()
 	defer b.mutations.Unlock()
+	parent, _, errno := n.pin()
+	if errno != 0 {
+		return -1, errno
+	}
+	defer unix.Close(parent)
 	if b.host != nil {
 		if mode&0400 == 0 {
 			return -1, unix.ENOTSUP
@@ -102,5 +107,9 @@ func (n *workspaceNode) Create(ctx context.Context, name string, flags, mode uin
 	if flags&unix.O_ACCMODE == unix.O_RDONLY {
 		return inode, &reader{fd}, fuse.FOPEN_DIRECT_IO, 0
 	}
-	return inode, &workspaceWriter{file: os.NewFile(uintptr(fd), name), backing: n.backing, name: relative}, fuse.FOPEN_DIRECT_IO, 0
+	writer, err := child.writer(fd)
+	if err != nil {
+		return nil, nil, 0, fs.ToErrno(err)
+	}
+	return inode, writer, fuse.FOPEN_DIRECT_IO, 0
 }

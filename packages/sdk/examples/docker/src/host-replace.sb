@@ -1,6 +1,17 @@
 (version 1)
-(allow default)
-(deny file-write*)
+(deny default)
+(import "system.sb")
+(allow process-exec file-read* file-map-executable (literal (param "RUNTIME")))
+(allow file-read* file-map-executable (subpath "/System/Library") (subpath "/usr/lib"))
+(allow sysctl-read)
+(allow file-read-metadata
+    (path-ancestors (param "RUNTIME"))
+    (path-ancestors (param "WORKSPACE"))
+    (path-ancestors (param "STAGING")))
+(allow file-read*
+    (subpath (param "WORKSPACE"))
+    (subpath (param "STAGING")))
+(allow file-read-data (literal "/dev/urandom") (literal "/dev/null"))
 (allow file-write-unlink
     (require-all (subpath (param "STAGING"))
                  (require-not (file-attribute has-multiple-names))))

@@ -21,9 +21,7 @@ func serve(writable, hostReplacements bool) error {
 		return err
 	}
 	defer unix.Close(root)
-	workspace := &backing{root: root, staging: root, writable: writable, replace: func(stage, target string, previous unix.Stat_t) error {
-		return unix.Renameat(root, stage, root, target)
-	}}
+	workspace := &backing{root: root, staging: root, writable: writable}
 	if hostReplacements {
 		staging, err := unix.Open("/staging", unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 		if err != nil {
@@ -40,7 +38,6 @@ func serve(writable, hostReplacements bool) error {
 		}
 		workspace.staging = staging
 		workspace.host = &hostReplacer{listener: replacer, root: root}
-		workspace.replace = workspace.host.replace
 	}
 	listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: "/control/service", Net: "unixpacket"})
 	if err != nil {

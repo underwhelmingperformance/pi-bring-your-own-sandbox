@@ -28,7 +28,27 @@ type workspaceWriter struct {
 	mu   sync.Mutex
 	file *os.File
 	*backing
-	name string
+	name     string
+	identity string
+}
+
+func (n *workspaceNode) writer(fd int) (*workspaceWriter, error) {
+	file := os.NewFile(uintptr(fd), n.relative)
+	writer := &workspaceWriter{file: file, backing: n.backing, name: n.relative}
+	if n.host != nil {
+		var stat unix.Stat_t
+		if err := unix.Fstat(fd, &stat); err != nil {
+			file.Close()
+			return nil, err
+		}
+		id, err := n.host.version(hostChange{Op: "identify", Target: n.relative}, stat)
+		if err != nil {
+			file.Close()
+			return nil, err
+		}
+		writer.identity = id
+	}
+	return writer, nil
 }
 
 func (n *workspaceNode) openWriter(flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
@@ -43,7 +63,10 @@ func (n *workspaceNode) openWriter(flags uint32) (fs.FileHandle, uint32, syscall
 	if errno != 0 {
 		return nil, 0, errno
 	}
-	w := &workspaceWriter{file: os.NewFile(uintptr(fd), n.relative), backing: n.backing, name: n.relative}
+	w, err := n.writer(fd)
+	if err != nil {
+		return nil, 0, fs.ToErrno(err)
+	}
 	if flags&unix.O_TRUNC != 0 {
 		if err := w.replace(nil, 0, true); err != nil {
 			w.file.Close()
@@ -154,7 +177,15 @@ func (w *workspaceWriter) stage(data []byte, offset int64, resize bool) error {
 	if current.Ctim != source.Ctim {
 		return errSourceChanged
 	}
-	if err := w.backing.replace(stage, w.name, current); err != nil {
+	if w.host != nil {
+		id, err := w.host.version(hostChange{Op: "replace", Source: stage, Target: w.name, Expected: w.identity}, current)
+		if err != nil {
+			return err
+		}
+		w.identity = id
+		// The host has committed the rename even if the VM still caches the old entry.
+		w.host.waitForEntry(w.name, current)
+	} else if err := unix.Renameat(w.root, stage, w.root, w.name); err != nil {
 		return err
 	}
 	published = true

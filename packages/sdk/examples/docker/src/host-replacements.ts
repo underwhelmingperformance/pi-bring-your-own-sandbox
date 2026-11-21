@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,19 +12,29 @@ export async function connectHostReplacements(
 	workspace: string,
 	staging: string
 ) {
+	const runtime = await realpath(process.execPath);
+	const script = await readFile(
+		new URL('host-replace.ts', import.meta.url),
+		'utf8'
+	);
 	const host = spawn(
 		'/usr/bin/sandbox-exec',
 		[
 			'-D',
 			'WORKSPACE=' + workspace,
 			'-D',
+			'RUNTIME=' + runtime,
+			'-D',
 			'STAGING=' + staging,
 			'-D',
 			'PROTECTED=' + path.join(workspace, '.pi'),
 			'-f',
 			fileURLToPath(new URL('host-replace.sb', import.meta.url)),
-			process.execPath,
-			fileURLToPath(new URL('host-replace.ts', import.meta.url)),
+			runtime,
+			'--input-type=module-typescript',
+			'--eval',
+			script,
+			'--',
 			staging
 		],
 		{ cwd: workspace, stdio: ['pipe', 'pipe', 'inherit'], env: {} }

@@ -7,6 +7,8 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
+	"sync"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -15,6 +17,7 @@ import (
 const replacementSocket = "/control/replace"
 
 type hostReplacer struct {
+	mu       sync.Mutex
 	root     int
 	listener *net.UnixListener
 	conn     net.Conn
@@ -22,76 +25,95 @@ type hostReplacer struct {
 }
 
 type hostChange struct {
-	Op     string `json:"op"`
-	Target string `json:"target"`
-	Source string `json:"source,omitempty"`
-	Mode   uint32 `json:"mode"`
+	Op       string `json:"op"`
+	Target   string `json:"target"`
+	Source   string `json:"source,omitempty"`
+	Mode     uint32 `json:"mode"`
+	Size     string `json:"size,omitempty"`
+	Mtime    string `json:"mtime,omitempty"`
+	Expected string `json:"expected,omitempty"`
 }
 
-func (p *hostReplacer) replace(stage, target string, previous unix.Stat_t) error {
-	if err := p.change(hostChange{Op: "replace", Source: stage, Target: target}); err != nil {
-		if err == unix.ENOENT {
-			return unix.ESTALE
-		}
-		return err
+func (p *hostReplacer) version(request hostChange, stat unix.Stat_t) (string, error) {
+	request.Size = strconv.FormatInt(stat.Size, 10)
+	request.Mtime = strconv.FormatInt(stat.Mtim.Nano(), 10)
+	id, err := p.exchange(request)
+	if err == unix.ENOENT {
+		return "", unix.ESTALE
 	}
-	return p.waitForEntry(target, previous)
+	if err == nil && id == "" {
+		return "", unix.EIO
+	}
+	return id, err
 }
 
 func (p *hostReplacer) change(request hostChange) error {
+	_, err := p.exchange(request)
+	return err
+}
+
+func (p *hostReplacer) exchange(request hostChange) (string, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if p.conn == nil {
 		if err := p.listener.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
-			return err
+			return "", err
 		}
 		conn, err := p.listener.AcceptUnix()
 		if err != nil {
-			return err
+			return "", err
 		}
 		p.conn = conn
 		p.replies = json.NewDecoder(conn)
-		p.listener.Close()
 	}
 	if err := p.conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		return err
+		return "", err
 	}
 	if err := json.NewEncoder(p.conn).Encode(request); err != nil {
 		p.conn.Close()
-		return unix.EIO
+		p.conn = nil
+		return "", unix.EIO
 	}
-	var reply string
+	var reply struct {
+		Status   string
+		Identity string
+	}
 	if err := p.replies.Decode(&reply); err != nil {
 		p.conn.Close()
-		return unix.EIO
+		p.conn = nil
+		return "", unix.EIO
 	}
-	switch reply {
+	switch reply.Status {
+	case "ESTALE":
+		return "", unix.ESTALE
 	case "OK":
-		return nil
+		return reply.Identity, nil
 	case "EPERM", "EACCES":
-		return unix.EACCES
+		return "", unix.EACCES
 	case "ENOENT":
-		return unix.ENOENT
+		return "", unix.ENOENT
 	case "EEXIST":
-		return unix.EEXIST
+		return "", unix.EEXIST
 	case "EISDIR":
-		return unix.EISDIR
+		return "", unix.EISDIR
 	case "ENOTDIR":
-		return unix.ENOTDIR
+		return "", unix.ENOTDIR
 	case "ENOTEMPTY":
-		return unix.ENOTEMPTY
+		return "", unix.ENOTEMPTY
 	case "EINVAL":
-		return unix.EINVAL
+		return "", unix.EINVAL
 	case "EXDEV":
-		return unix.EXDEV
+		return "", unix.EXDEV
 	case "EROFS":
-		return unix.EROFS
+		return "", unix.EROFS
 	case "ENOSPC":
-		return unix.ENOSPC
+		return "", unix.ENOSPC
 	case "EDQUOT":
-		return unix.EDQUOT
+		return "", unix.EDQUOT
 	case "ENAMETOOLONG":
-		return unix.ENAMETOOLONG
+		return "", unix.ENAMETOOLONG
 	default:
-		return unix.EIO
+		return "", unix.EIO
 	}
 }
 

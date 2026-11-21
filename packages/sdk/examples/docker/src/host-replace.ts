@@ -1,4 +1,4 @@
-import { constants, type Stats } from 'node:fs';
+import { type BigIntStats, constants, type Stats } from 'node:fs';
 import {
 	access,
 	lstat,
@@ -12,7 +12,7 @@ import {
 import path from 'node:path';
 import { createInterface } from 'node:readline';
 
-const staging = process.argv[2];
+const staging = process.argv[1];
 
 if (!staging || process.platform !== 'darwin' || !path.isAbsolute(staging)) {
 	throw new Error(
@@ -62,28 +62,32 @@ async function existingEntry(filename: string) {
 	}
 }
 
+function identity(entry: BigIntStats) {
+	return [entry.dev, entry.ino, entry.birthtimeNs].join('/');
+}
+
 async function change(
 	stagingDirectory: string,
 	request: unknown
-): Promise<string> {
+): Promise<{ status: string; identity?: string }> {
 	if (
 		typeof request !== 'object' ||
 		request === null ||
 		!('op' in request) ||
 		!('target' in request)
 	) {
-		return 'EINVAL';
+		return { status: 'EINVAL' };
 	}
 
 	const { op, target } = request;
 
 	if (!isWorkspacePath(target)) {
-		return 'EINVAL';
+		return { status: 'EINVAL' };
 	}
 
 	try {
 		if (!(await hasWorkspaceParent(target))) {
-			return 'EACCES';
+			return { status: 'EACCES' };
 		}
 
 		switch (op) {
@@ -96,7 +100,7 @@ async function change(
 					request.mode < 0 ||
 					request.mode > 0o777
 				) {
-					return 'EINVAL';
+					return { status: 'EINVAL' };
 				}
 
 				if (op === 'mkdir') {
@@ -114,7 +118,7 @@ async function change(
 				const entry = await lstat(target);
 
 				if (!entry.isFile() || entry.nlink !== 1) {
-					return 'EACCES';
+					return { status: 'EACCES' };
 				}
 
 				await unlink(target);
@@ -128,66 +132,87 @@ async function change(
 
 			case 'rename': {
 				if (!('source' in request) || !isWorkspacePath(request.source)) {
-					return 'EINVAL';
+					return { status: 'EINVAL' };
 				}
 
 				if (
 					!(await hasWorkspaceParent(request.source)) ||
 					!isRegularOrDirectory(await lstat(request.source))
 				) {
-					return 'EACCES';
+					return { status: 'EACCES' };
 				}
 
 				const destination = await existingEntry(target);
 
 				if (destination && !isRegularOrDirectory(destination)) {
-					return 'EACCES';
+					return { status: 'EACCES' };
 				}
 
 				await rename(request.source, target);
 				break;
 			}
 
+			case 'identify':
 			case 'replace': {
+				const current = await lstat(target, { bigint: true });
+
+				if (!current.isFile() || current.nlink !== 1n) {
+					return { status: 'EACCES' };
+				}
+
+				if (
+					!('size' in request) ||
+					String(current.size) !== request.size ||
+					!('mtime' in request) ||
+					String(current.mtimeNs) !== request.mtime
+				) {
+					return { status: 'ESTALE' };
+				}
+
+				const expected = identity(current);
+
+				if (op === 'identify') {
+					return { status: 'OK', identity: expected };
+				}
+
+				if (!('expected' in request) || request.expected !== expected) {
+					return { status: 'ESTALE' };
+				}
+
 				if (
 					!('source' in request) ||
 					typeof request.source !== 'string' ||
 					!/^\.pi-byos-write-[0-9]+$/u.test(request.source)
 				) {
-					return 'EINVAL';
+					return { status: 'EINVAL' };
 				}
 
 				const source = path.join(stagingDirectory, request.source);
-				const entry = await lstat(target);
-				const replacement = await lstat(source);
+				const replacement = await lstat(source, { bigint: true });
 
-				if (
-					!entry.isFile() ||
-					entry.nlink !== 1 ||
-					!replacement.isFile() ||
-					replacement.nlink !== 1
-				) {
-					return 'EACCES';
+				if (!replacement.isFile() || replacement.nlink !== 1n) {
+					return { status: 'EACCES' };
 				}
 
 				await access(target, constants.W_OK);
 				await rename(source, target);
-				break;
+
+				return { status: 'OK', identity: identity(replacement) };
 			}
 
 			default: {
-				return 'EINVAL';
+				return { status: 'EINVAL' };
 			}
 		}
 
-		return 'OK';
+		return { status: 'OK' };
 	} catch (error) {
 		if (
 			error instanceof Error &&
 			'code' in error &&
 			typeof error.code === 'string'
 		) {
-			return error.code;
+			return { status: error.code };
 		}
 
 		throw error;

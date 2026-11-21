@@ -296,7 +296,7 @@ it('reports confirmed broker cleanup after Docker opening releases partial alloc
 });
 
 it.each([
-	{ networkAccess: 'provider-default' },
+	{ workspaceRelationship: 'remote' },
 	{ workspaceRelationship: 'shared' },
 	{ workspaceProtection: [{ kind: 'path', path: '.pi' }] }
 ] as const)('rejects policy %j before contacting Docker', async (policy) => {
@@ -322,6 +322,48 @@ it.each([
 	).rejects.toMatchObject({ name: 'UnsupportedSandboxPolicyError' });
 	expect(docker.commands).toStrictEqual([]);
 });
+
+it.each([
+	['provider-default', 'provider-default', 'read-write'],
+	['provider-default', 'denied', 'read-write'],
+	['workspace-only', 'provider-default', 'read-write'],
+	['provider-default', 'provider-default', 'read-only']
+] as const)(
+	'reports the effective isolation for a %s/%s/%s copy',
+	async (filesystemScope, networkAccess, workspaceAccess) => {
+		const docker = new FakeDocker();
+		const provider = createDockerProvider(() => docker);
+		const backend = await provider.open(
+			{
+				...request,
+				policy: {
+					filesystemScope,
+					networkAccess,
+					workspaceAccess,
+					workspaceRelationship: 'copied'
+				}
+			},
+			{
+				...context(),
+				confirmCleanup() {
+					return;
+				},
+				reportRecovery() {
+					return;
+				}
+			}
+		);
+
+		expect(backend.workspace.relationship).toBe('copied');
+		expect(backend.policy).toStrictEqual({
+			workspaceRelationship: 'copied',
+			workspaceAccess,
+			filesystemScope: 'workspace-only',
+			networkAccess: 'denied'
+		});
+		await backend.dispose(context());
+	}
+);
 
 it('uses literal argv, isolated mounts and explicit target environment overrides', async () => {
 	const docker = new FakeDocker();

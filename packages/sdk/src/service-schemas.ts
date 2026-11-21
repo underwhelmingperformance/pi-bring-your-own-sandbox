@@ -76,6 +76,10 @@ export const providerServiceSchema = Type.Intersect([
 
 export const brokerServiceSchema = Type.Object({
 	guardVersion: Type.Literal(1),
+	openReviewSnapshot:
+		Type.Optional(
+			callable<NonNullable<BrokerServiceV1['openReviewSnapshot']>>()
+		),
 	id: nonEmptyStringSchema,
 	acquire: callable<BrokerServiceV1['acquire']>(),
 	negotiate: callable<BrokerServiceV1['negotiate']>(),
@@ -83,6 +87,9 @@ export const brokerServiceSchema = Type.Object({
 	status: callable<BrokerServiceV1['status']>(),
 	providers: callable<BrokerServiceV1['providers']>()
 });
+
+const reviewOpener =
+	callable<NonNullable<SandboxProvider<unknown>['openReviewSnapshot']>>();
 
 export const providerDeclarationSchema = Type.Intersect([
 	providerInfoSchema,
@@ -94,6 +101,7 @@ export const providerDeclarationSchema = Type.Intersect([
 		protocolVersion: Type.Literal(1),
 		validateConfig: callable<SandboxProvider<unknown>['validateConfig']>(),
 		open: callable<SandboxProvider<unknown>['open']>(),
+		openReviewSnapshot: Type.Optional(reviewOpener),
 		outsideSandbox: Type.Optional(outsideDeclarationSchema)
 	})
 ]);
@@ -150,7 +158,7 @@ export const runtimeSettingsSchema = Type.Object({
 		snapshot: callable<DiagnosticStore['snapshot']>()
 	}),
 	guardVersion: Type.Literal(1),
-	configurationVersion: Type.Literal(1),
+	configurationVersion: Type.Enum([1, 2]),
 	assertConfigurable: callable<RuntimeSettingsV1['assertConfigurable']>(),
 	id: nonEmptyStringSchema,
 	lifetime: signalSchema,

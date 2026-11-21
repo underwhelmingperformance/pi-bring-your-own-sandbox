@@ -51,6 +51,8 @@ it.each([
 		const backend = shellBackend();
 		const reviewed: ExecutionApprovalRequest[] = [];
 		let ordinaryOpens = 0;
+		let outsideOpens = 0;
+		const opensDuringInvestigation: number[] = [];
 
 		let workspace = '';
 		const config = new FixtureConfig();
@@ -86,7 +88,11 @@ it.each([
 							label: 'Fixture remote outside execution',
 							capabilities: backend.backend.capabilities,
 							policy: backend.backend.policy,
-							open: () => Promise.resolve(backend.backend)
+							open: () => {
+								outsideOpens++;
+
+								return Promise.resolve(backend.backend);
+							}
 						}
 					});
 				}
@@ -144,7 +150,46 @@ it.each([
 					});
 				}
 			},
-			{ name: 'shell', factory: sandboxTools },
+			{
+				name: 'shell',
+				factory: (pi) => {
+					sandboxTools(pi, '<inline:shell>');
+				}
+			},
+			{
+				name: 'investigate outside destination',
+				factory(pi) {
+					if (destination !== 'provider') {
+						return;
+					}
+
+					pi.on('tool_call', async (event, context) => {
+						const routes: ((signal: AbortSignal) => Promise<unknown>)[] = [];
+
+						pi.events.emit('pi-byos:review:tool-call:v1', {
+							sessionId: context.sessionManager.getSessionId(),
+							toolName: event.toolName,
+							toolCallId: event.toolCallId,
+							reply: (open: (signal: AbortSignal) => Promise<unknown>) => {
+								routes.push(open);
+							}
+						});
+
+						const [open] = routes;
+
+						if (!open || routes.length !== 1) {
+							throw new Error('Expected one route for the pending tool call.');
+						}
+
+						await expect(
+							open(new AbortController().signal)
+						).rejects.toMatchObject({
+							name: 'UnsupportedSandboxCapabilityError'
+						});
+						opensDuringInvestigation.push(outsideOpens);
+					});
+				}
+			},
 			parent.extension
 		];
 
@@ -182,6 +227,7 @@ it.each([
 
 				expect({
 					errors,
+					opensDuringInvestigation,
 					ordinaryOpens,
 					reviewed: reviewed.map(({ process, destination, justification }) => ({
 						process,
@@ -193,6 +239,7 @@ it.each([
 					results
 				}).toStrictEqual({
 					errors: [],
+					opensDuringInvestigation: destination === 'provider' ? [0] : [],
 					ordinaryOpens: 0,
 					reviewed: [
 						{

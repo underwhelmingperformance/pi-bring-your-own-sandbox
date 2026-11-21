@@ -49,3 +49,19 @@ it('validates built-in default policies against their declarations', () => {
 		InvalidSandboxDeclarationError
 	);
 });
+
+it('rejects a default workspace relationship outside the declaration', () => {
+	const provider = {
+		...passthroughProvider,
+		defaultPolicy: {
+			workspaceAccess: 'read-write',
+			filesystemScope: 'provider-default',
+			networkAccess: 'provider-default',
+			workspaceRelationship: 'copied'
+		}
+	} as const;
+
+	expect(() => new ProviderRegistry(provider)).toThrow(
+		InvalidSandboxDeclarationError
+	);
+});

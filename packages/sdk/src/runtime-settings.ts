@@ -44,7 +44,7 @@ import { callable, checker, nonEmptyStringSchema } from './schemas.js';
 import { runtimeSettingsSchema } from './service-schemas.js';
 
 export interface RuntimeSettingsV1 {
-	readonly configurationVersion: 1;
+	readonly configurationVersion: 1 | 2;
 	readonly diagnostics: DiagnosticStore;
 	readonly guardVersion: 1;
 	readonly id: string;
@@ -294,7 +294,10 @@ export function runtimeSettings(
 			});
 
 			return {
-				configurationVersion: 1,
+				configurationVersion:
+					options?.normalExecutor?.policy.workspaceRelationship === undefined
+						? 1
+						: 2,
 				diagnostics,
 				guardVersion: 1,
 				id,

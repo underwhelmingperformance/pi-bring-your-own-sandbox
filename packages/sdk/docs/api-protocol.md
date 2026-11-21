@@ -99,12 +99,31 @@ Exit status and termination scope are checked after opening, because a backend
 may strengthen its declaration. Every requested capability must then be present
 in the opened backend. Negotiation never selects another provider.
 
+An explicit `workspaceRelationship` must match the base policy when both specify
+a value. The provider must declare support and return that relationship in its
+workspace descriptor. Each relationship, including the unspecified default, has
+its own allocation key. Provider discovery uses service version 2 when the
+provider declares workspace relationships or requires one for outside execution.
+A host normal executor with a required relationship uses settings configuration
+version 2. Older peers reject these declarations before they can discard the
+requirement.
+
 `negotiate(context, options)` on the broker, exposed as `negotiateSandbox`,
 performs the same checks without opening a backend. It resolves to
 `{ ok: true, policy }` or `{ ok: false, error }`, where `error` is the typed
-error that acquisition would throw. Status lists every started backend under
-`backends`, with its negotiated policy, state and backend ID; the top-level
-backend fields describe the backend for the base policy.
+error that acquisition would throw. Status includes one entry under `backends`
+for each distinct negotiated policy that an acquisition has requested. The
+entry's `state` is `opening`, `ready` or `failed`. After a backend opens, its
+entry includes the backend ID and `effectivePolicy`. The effective policy
+includes the actual workspace relationship and any additional restrictions that
+the backend enforces.
+
+The top-level backend fields describe the allocation for the base policy. The
+top-level `policy` includes the actual relationship. Older brokers can omit
+`effectivePolicy` and the relationship in the top-level policy. On an acquired
+sandbox, `sandbox.policy` is a snapshot of `SandboxBackend.policy`. A backend
+can omit `workspaceRelationship` from this policy.
+`sandbox.workspace.relationship` always gives the actual relationship.
 
 `WorkspaceProtection` is either `{ kind: 'git-metadata' }` or
 `{ kind: 'path', path: string }`. `SandboxPolicy.workspaceProtection` is an
@@ -289,13 +308,14 @@ zero context lines and no glob filter. Context is a non-negative safe integer.
 Match line numbers are one-based. `before` and `after` contain adjacent lines
 without newline terminators, nearest available context in file order. A matching
 line produces one result even if the pattern matches several times. Paths are
-relative to the search root, and `text` excludes its newline terminator.
-`truncated` means at least one additional result was omitted. It is false when
-the total exactly equals the limit. Providers document regex/glob syntax, ignore
-behaviour and result selection. The framework does not require a Pi search
-profile or impose a shared result order. Returned paths retain the target path
-flavour. Duplicate paths or matching lines are invalid even when results use a
-provider-specific order.
+relative to the search root. A grep restricted to a single file returns its
+basename. The `text` field excludes its newline terminator. `truncated` means at
+least one additional result was omitted. It is false when the total exactly
+equals the limit. Providers document regex/glob syntax, ignore behaviour and
+result selection. The framework does not require a Pi search profile or impose a
+shared result order. Returned paths retain the target path flavour. Duplicate
+paths or matching lines are invalid even when results use a provider-specific
+order.
 
 ## Discovery envelopes and service identity
 
@@ -579,3 +599,26 @@ ordinary handles or preparing outside execution.
 `SandboxProviderMismatchError` reports a mismatched expected ID. Existing typed
 capability and policy errors report unsupported guarantees. Diagnostics and
 cleanup remain available when requirements cannot be satisfied.
+
+## Review snapshots
+
+Call `openReviewSnapshot(pi, context, source, { signal })` once when a review
+first needs workspace evidence. For a host command, pass `{ kind: 'host' }`. For
+a sandbox command, pass `kind: 'sandbox'` and the `providerId`, `generationId`
+and `backendId` of its execution handle. The broker checks the identity against
+its ready backends before asking the provider to copy data.
+
+The returned `sandbox` supports file reads and POSIX shell commands in a
+read-only copy with external networking denied. Call `close()` when the review
+ends and inspect its cleanup report. Aborting the review signal or closing the
+session also disposes the snapshot. Concurrent reviews own separate allocations.
+Session-wide requirements also apply to reviews. Set the ordinary workspace's
+write access or shared relationship in the provider configuration or on the
+ordinary acquisition. A session-wide requirement for either conflicts with a
+read-only copied snapshot and rejects the review before allocation.
+
+Providers implement the optional `openReviewSnapshot` method to copy the source
+described by the broker. Report recovery before allocation, as for ordinary
+opening. A broker or provider without snapshot support rejects acquisition. Use
+transcript-only review when the execution destination is unknown or the snapshot
+cannot be acquired.

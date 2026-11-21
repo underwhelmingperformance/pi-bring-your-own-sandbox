@@ -1,13 +1,16 @@
 import type {
 	SandboxHost,
 	SandboxProvider,
+	SandboxProviderConfig,
 	SandboxProviderRegistration
 } from './contracts.js';
 import { isDiscoveryRequest } from './discovery.js';
 import {
 	InvalidSandboxConfigError,
 	InvalidSandboxDeclarationError,
-	isSandboxError
+	InvalidSandboxRequestError,
+	isSandboxError,
+	UnsupportedSandboxPolicyError
 } from './errors.js';
 import type {
 	ConfiguredProviderV1,
@@ -50,15 +53,37 @@ export function registerSandboxProvider<Config, Input = Config>(
 		});
 	}
 
-	registerProviderConfig(
-		pi,
-		provider.id,
-		options?.configure ?? (() => ({ configuration: {} }))
-	);
+	const configure = options?.configure;
+
+	if (configure !== undefined && typeof configure !== 'function') {
+		throw new InvalidSandboxRequestError({ operation: 'configure' });
+	}
+
+	registerProviderConfig(pi, provider.id, async (context) => {
+		const configured: SandboxProviderConfig<unknown> =
+			configure === undefined
+				? { configuration: {} }
+				: await configure(context);
+		const relationship = configured.policy?.workspaceRelationship;
+
+		if (
+			relationship !== undefined &&
+			!provider.policies.workspaceRelationship?.includes(relationship)
+		) {
+			throw new UnsupportedSandboxPolicyError({
+				operation: 'configure',
+				configurationSource: 'extension',
+				providerId: provider.id
+			});
+		}
+
+		return configured;
+	});
 
 	const { id } = provider;
 	const validate = provider.validateConfig.bind(provider);
 	const open = provider.open.bind(provider);
+	const openSnapshot = provider.openReviewSnapshot?.bind(provider);
 	const validateConfig = (input: unknown): Config => {
 		try {
 			const config = validate(input);
@@ -112,6 +137,10 @@ export function registerSandboxProvider<Config, Input = Config>(
 			const config = validateConfig(input);
 
 			return Object.freeze<ConfiguredProviderV1>({
+				...(openSnapshot !== undefined && {
+					openReviewSnapshot: (request, context) =>
+						openSnapshot({ ...request, configuration: config }, context)
+				}),
 				open: (request, context) =>
 					open({ ...request, configuration: config }, context)
 			});
@@ -120,7 +149,12 @@ export function registerSandboxProvider<Config, Input = Config>(
 	const advertisement: ServiceAdvertisementV1 = Object.freeze({
 		kind: 'pi-byos.provider',
 		discoveryVersion: 1,
-		serviceVersions: Object.freeze([1]),
+		serviceVersions: Object.freeze([
+			service.policies.workspaceRelationship === undefined &&
+			service.outsideSandbox?.policy.workspaceRelationship === undefined
+				? 1
+				: 2
+		]),
 		id,
 		service
 	});

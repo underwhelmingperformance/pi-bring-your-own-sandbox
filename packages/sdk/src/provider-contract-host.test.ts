@@ -14,6 +14,7 @@ import { defineSandboxProviderTests } from 'pi-bring-your-own-sandbox/testing';
 import { expect } from 'vitest';
 
 import type { SandboxProvider } from './contracts.js';
+import { nodeVisibilityProbe } from './fixtures/node-visibility-probe.js';
 import { openPassthrough } from './passthrough.js';
 
 const provider: SandboxProvider<undefined> = {
@@ -46,6 +47,7 @@ const provider: SandboxProvider<undefined> = {
 };
 
 defineSandboxProviderTests({
+	workspaceVisibility: 'shared',
 	label: 'compiled contract suite against host processes and files',
 	provider,
 	capabilities: { ...provider.capabilities, shells: ['sh'] },
@@ -80,6 +82,7 @@ defineSandboxProviderTests({
 		return {
 			configuration: undefined,
 			hostWorkspace: directory,
+			visibility: nodeVisibilityProbe(directory, 'seed', process.execPath),
 			policy: {
 				workspaceAccess: 'read-write',
 				filesystemScope: 'provider-default',

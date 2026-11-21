@@ -1,5 +1,8 @@
 export { defineSandboxProviderTests } from './provider-contract-suite.js';
 export type {
+	SandboxPolicyEvidence,
+	SandboxPolicyProbe,
+	SandboxPolicyScenario,
 	SandboxProcessProbe,
 	SandboxProviderTestFixture,
 	SandboxProviderTestOptions

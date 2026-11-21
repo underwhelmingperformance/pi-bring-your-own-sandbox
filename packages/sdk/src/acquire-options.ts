@@ -47,6 +47,9 @@ export function acquireOptions(input: unknown): SandboxAcquireOptions {
 		}),
 		...(value.policy !== undefined && {
 			policy: Object.freeze({
+				...(value.policy.workspaceRelationship !== undefined && {
+					workspaceRelationship: value.policy.workspaceRelationship
+				}),
 				...(value.policy.workspaceProtection !== undefined && {
 					workspaceProtection: snapshotWorkspaceProtection(
 						value.policy.workspaceProtection
@@ -80,7 +83,13 @@ export function checkRequirements(
 
 	if (
 		options.policy !== undefined &&
-		!isPolicySatisfied(sandbox.policy, { ...sandbox.policy, ...options.policy })
+		!isPolicySatisfied(
+			{
+				...sandbox.policy,
+				workspaceRelationship: sandbox.workspace.relationship
+			},
+			{ ...sandbox.policy, ...options.policy }
+		)
 	) {
 		throw new UnsupportedSandboxPolicyError(identity);
 	}

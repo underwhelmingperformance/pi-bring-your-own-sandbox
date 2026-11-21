@@ -85,6 +85,12 @@ export const capabilitiesSchema = Type.Refine(
 	(value) => value.processKinds.includes('shell') === value.shells.length > 0
 );
 
+export const workspaceRelationshipSchema = Type.Enum([
+	'shared',
+	'copied',
+	'remote'
+]);
+
 const workspaceAccessSchema = Type.Enum(['read-only', 'read-write']);
 const filesystemScopeSchema = Type.Enum([
 	'workspace-only',
@@ -116,6 +122,7 @@ export const workspaceProtectionSchema = denseArray(
 );
 
 export const policySchema = Type.Object({
+	workspaceRelationship: Type.Optional(workspaceRelationshipSchema),
 	workspaceProtection: Type.Optional(workspaceProtectionSchema),
 	workspaceAccess: workspaceAccessSchema,
 	filesystemScope: filesystemScopeSchema,
@@ -123,6 +130,9 @@ export const policySchema = Type.Object({
 });
 
 const supportedPoliciesSchema = Type.Object({
+	workspaceRelationship: Type.Optional(
+		denseArray(workspaceRelationshipSchema, { minItems: 1, uniqueItems: true })
+	),
 	workspaceAccess: denseArray(workspaceAccessSchema, {
 		minItems: 1,
 		uniqueItems: true
@@ -147,9 +157,13 @@ export const providerInfoSchema = Type.Refine(
 	}),
 	(provider) =>
 		provider.defaultPolicy === undefined ||
-		(provider.policies.workspaceAccess.includes(
-			provider.defaultPolicy.workspaceAccess
-		) &&
+		((provider.defaultPolicy.workspaceRelationship === undefined ||
+			provider.policies.workspaceRelationship?.includes(
+				provider.defaultPolicy.workspaceRelationship
+			) === true) &&
+			provider.policies.workspaceAccess.includes(
+				provider.defaultPolicy.workspaceAccess
+			) &&
 			provider.policies.filesystemScope.includes(
 				provider.defaultPolicy.filesystemScope
 			) &&

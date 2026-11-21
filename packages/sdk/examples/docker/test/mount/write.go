@@ -28,13 +28,18 @@ type workspaceWriter struct {
 	mu   sync.Mutex
 	file *os.File
 	*backing
-	name     string
-	identity string
+	name       string
+	identity   string
+	attributes syscall.Stat_t
 }
 
 func (n *workspaceNode) writer(fd int) (*workspaceWriter, error) {
 	file := os.NewFile(uintptr(fd), n.relative)
 	writer := &workspaceWriter{file: file, backing: n.backing, name: n.relative}
+	if err := syscall.Fstat(fd, &writer.attributes); err != nil {
+		file.Close()
+		return nil, err
+	}
 	if n.host != nil {
 		var stat unix.Stat_t
 		if err := unix.Fstat(fd, &stat); err != nil {
@@ -170,6 +175,10 @@ func (w *workspaceWriter) stage(data []byte, offset int64, resize bool) error {
 	if err := preserveAttributes(int(w.file.Fd()), int(staged.Fd())); err != nil {
 		return err
 	}
+	var attributes syscall.Stat_t
+	if err := syscall.Fstat(int(staged.Fd()), &attributes); err != nil {
+		return err
+	}
 	current, err := w.current()
 	if err != nil {
 		return err
@@ -190,6 +199,7 @@ func (w *workspaceWriter) stage(data []byte, offset int64, resize bool) error {
 	}
 	published = true
 	previous := w.file
+	w.attributes = attributes
 	w.file = staged
 	return previous.Close()
 }
@@ -232,11 +242,7 @@ func (w *workspaceWriter) Write(ctx context.Context, data []byte, off int64) (ui
 func (w *workspaceWriter) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	n, err := w.file.ReadAt(dest, off)
-	if err != nil && err != io.EOF {
-		return nil, fs.ToErrno(err)
-	}
-	return fuse.ReadResultData(dest[:n]), 0
+	return readCurrent(w.root, w.name, int(w.file.Fd()), dest, off)
 }
 
 func (w *workspaceWriter) Release(ctx context.Context) syscall.Errno {

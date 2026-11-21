@@ -78,12 +78,18 @@ func (n *workspaceNode) Lookup(ctx context.Context, name string, out *fuse.Entry
 	if name == "" || name == "." || name == ".." || strings.ContainsRune(name, '/') {
 		return nil, syscall.EINVAL
 	}
+	if errno := n.checkPath(); errno != 0 {
+		return nil, errno
+	}
 	child := &workspaceNode{backing: n.backing, relative: path.Join(n.relative, name)}
 	fd, stat, errno := child.pin()
 	if errno != 0 {
 		return nil, errno
 	}
 	unix.Close(fd)
+	if errno := n.checkPath(); errno != 0 {
+		return nil, errno
+	}
 	child.inode = stat.Ino
 	n.attributes(&stat, &out.Attr)
 	// Linux can request attributes without a file handle. go-fuse then uses the
@@ -96,15 +102,15 @@ func (n *workspaceNode) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.
 	var stat syscall.Stat_t
 	switch handle := f.(type) {
 	case *reader:
-		if err := syscall.Fstat(handle.fd, &stat); err != nil {
-			return fs.ToErrno(err)
+		stat = handle.opened
+		if fd, current, errno := handle.node.pin(); errno == 0 {
+			unix.Close(fd)
+			stat = current
 		}
 	case *workspaceWriter:
 		handle.mu.Lock()
 		defer handle.mu.Unlock()
-		if err := syscall.Fstat(int(handle.file.Fd()), &stat); err != nil {
-			return fs.ToErrno(err)
-		}
+		stat = handle.attributes
 	default:
 		fd, pinned, errno := n.pin()
 		if errno != 0 {
@@ -131,7 +137,18 @@ func (n *workspaceNode) open(kind uint32, flags int) (int, syscall.Errno) {
 	return opened, fs.ToErrno(err)
 }
 
-type workspaceDir struct{ entries fs.DirStream }
+type workspaceDir struct {
+	entries fs.DirStream
+	node    *workspaceNode
+}
+
+func (n *workspaceNode) checkPath() syscall.Errno {
+	fd, _, errno := n.pin()
+	if errno == 0 {
+		unix.Close(fd)
+	}
+	return errno
+}
 
 func (n *workspaceNode) OpendirHandle(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	fd, errno := n.open(syscall.S_IFDIR, unix.O_RDONLY|unix.O_DIRECTORY)
@@ -143,16 +160,22 @@ func (n *workspaceNode) OpendirHandle(ctx context.Context, flags uint32) (fs.Fil
 		unix.Close(fd)
 		return nil, 0, errno
 	}
-	return &workspaceDir{entries}, 0, 0
+	return &workspaceDir{entries, n}, 0, 0
 }
 
 func (d *workspaceDir) Readdirent(ctx context.Context) (*fuse.DirEntry, syscall.Errno) {
+	if errno := d.node.checkPath(); errno != 0 {
+		return nil, errno
+	}
 	for d.entries.HasNext() {
 		entry, errno := d.entries.Next()
 		if errno != 0 {
 			return nil, errno
 		}
 		if !strings.HasPrefix(entry.Name, stagePrefix) {
+			if errno := d.node.checkPath(); errno != 0 {
+				return nil, errno
+			}
 			return &entry, 0
 		}
 	}
@@ -182,10 +205,26 @@ func (n *workspaceNode) Readlink(ctx context.Context) ([]byte, syscall.Errno) {
 	if count == len(target) {
 		return nil, syscall.ENAMETOOLONG
 	}
+	if errno := n.checkPath(); errno != 0 {
+		return nil, errno
+	}
 	return target[:count], 0
 }
 
-type reader struct{ fd int }
+type reader struct {
+	fd     int
+	node   *workspaceNode
+	opened syscall.Stat_t
+}
+
+func (n *workspaceNode) reader(fd int) (*reader, syscall.Errno) {
+	var stat syscall.Stat_t
+	if err := syscall.Fstat(fd, &stat); err != nil {
+		unix.Close(fd)
+		return nil, fs.ToErrno(err)
+	}
+	return &reader{fd, n, stat}, 0
+}
 
 func (n *workspaceNode) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	if flags&(unix.O_ACCMODE|unix.O_TRUNC) != unix.O_RDONLY {
@@ -198,13 +237,53 @@ func (n *workspaceNode) Open(ctx context.Context, flags uint32) (fs.FileHandle, 
 	if errno != 0 {
 		return nil, 0, errno
 	}
-	return &reader{fd}, fuse.FOPEN_DIRECT_IO, 0
+	handle, errno := n.reader(fd)
+	return handle, fuse.FOPEN_DIRECT_IO, errno
 }
 
 func (f *reader) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
-	n, err := unix.Pread(f.fd, dest, off)
+	return readCurrent(f.node.root, f.node.relative, f.fd, dest, off)
+}
+
+func currentReadEntry(root int, relative string, fd int) (unix.Stat_t, syscall.Errno) {
+	entry, err := entryStat(root, relative)
+	if err == unix.ENOENT {
+		return entry, unix.ESTALE
+	}
+	if err != nil {
+		return entry, fs.ToErrno(err)
+	}
+	var opened unix.Stat_t
+	if err := unix.Fstat(fd, &opened); err != nil {
+		return entry, fs.ToErrno(err)
+	}
+	if entry.Dev != opened.Dev || entry.Ino != opened.Ino {
+		return entry, unix.ESTALE
+	}
+	if entry.Nlink != 1 || opened.Nlink != 1 {
+		return entry, unix.EACCES
+	}
+	if entry.Ctim != opened.Ctim || entry.Size != opened.Size {
+		return entry, unix.ESTALE
+	}
+	return opened, 0
+}
+
+func readCurrent(root int, relative string, fd int, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
+	before, errno := currentReadEntry(root, relative, fd)
+	if errno != 0 {
+		return nil, errno
+	}
+	n, err := unix.Pread(fd, dest, off)
 	if err != nil {
 		return nil, fs.ToErrno(err)
+	}
+	after, errno := currentReadEntry(root, relative, fd)
+	if errno != 0 {
+		return nil, errno
+	}
+	if before.Ctim != after.Ctim || before.Size != after.Size {
+		return nil, unix.ESTALE
 	}
 	return fuse.ReadResultData(dest[:n]), 0
 }

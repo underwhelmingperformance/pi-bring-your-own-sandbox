@@ -6,6 +6,7 @@ import {
 	openSync,
 	readdirSync,
 	readFileSync,
+	readSync,
 	rmdirSync,
 	truncateSync,
 	unlinkSync,
@@ -103,6 +104,14 @@ async function writeAndInspect() {
 
 				return {
 					denied: isDenied,
+					staleReadDenied: isRefused(
+						() => readSync(fd, Buffer.alloc(1), 0, 1, 0),
+						constants.errno.ESTALE
+					),
+					linkedReadDenied: isRefused(
+						() => readSync(linked, Buffer.alloc(1), 0, 1, 0),
+						constants.errno.EACCES
+					),
 					renamedDenied: isRenamedDenied,
 					renamedTruncateDenied: isRefused(() => {
 						ftruncateSync(editor, 0);

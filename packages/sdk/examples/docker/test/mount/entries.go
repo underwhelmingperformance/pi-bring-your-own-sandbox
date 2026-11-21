@@ -105,7 +105,8 @@ func (n *workspaceNode) Create(ctx context.Context, name string, flags, mode uin
 	n.attributes(&stat, &out.Attr)
 	inode := n.NewInode(ctx, child, fs.StableAttr{Mode: unix.S_IFREG})
 	if flags&unix.O_ACCMODE == unix.O_RDONLY {
-		return inode, &reader{fd}, fuse.FOPEN_DIRECT_IO, 0
+		handle, errno := child.reader(fd)
+		return inode, handle, fuse.FOPEN_DIRECT_IO, errno
 	}
 	writer, err := child.writer(fd)
 	if err != nil {

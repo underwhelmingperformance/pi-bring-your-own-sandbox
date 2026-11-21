@@ -507,6 +507,8 @@ for (const target of ['.pi/settings', '.ENVRC', '.Git', '.direnv', '.vscode', '.
 				...(mode === 'read-only' && { createDenied: true }),
 				...(mode === 'read-write' && {
 					renamedDenied: true,
+					staleReadDenied: true,
+					linkedReadDenied: true,
 					renamedTruncateDenied: true,
 					replacedTruncateDenied: true,
 					linkedWriteDenied: true,

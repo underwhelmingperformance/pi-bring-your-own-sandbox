@@ -9,6 +9,7 @@ import {
 	rename,
 	rm,
 	stat,
+	symlink,
 	writeFile
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -46,6 +47,25 @@ it.skipIf(process.platform !== 'darwin')(
 
 			await mkdir(staging);
 
+			const git = (arguments_: string[]) =>
+				execute('/usr/bin/git', arguments_, {
+					cwd: workspace,
+					env: {
+						PATH: '/usr/bin:/bin',
+						HOME: workspace,
+						GIT_CONFIG_NOSYSTEM: '1'
+					}
+				});
+
+			await git([
+				'init',
+				'--quiet',
+				'--separate-git-dir=' + file('admin'),
+				workspace
+			]);
+			await git(['-C', workspace, 'config', 'core.hooksPath', 'src/hooks']);
+			await symlink('src/editor-settings', file('.vscode'));
+
 			const policy = await hostPolicy(workspace, staging, runtime, [
 				'config/.pi'
 			]);
@@ -69,6 +89,9 @@ it.skipIf(process.platform !== 'darwin')(
 				input: 'from editor',
 				outcomes: {
 					protectedFile: 'EPERM',
+					gitConfig: 'EPERM',
+					absentHooks: 'EPERM',
+					settingsTarget: 'EPERM',
 					protectedAlias: 'EPERM',
 					unlink: 'EPERM',
 					renameAlias: 'EPERM',

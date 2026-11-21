@@ -16,6 +16,9 @@ await writeFile('src/next-save', 'next');
 const outcomes: Record<string, string> = {};
 
 const operations = {
+	gitConfig: () => rename('src/next-save', 'admin/config'),
+	absentHooks: () => rename('src/next-save', 'src/hooks'),
+	settingsTarget: () => rename('src/next-save', 'src/editor-settings'),
 	protectedFile: () => rename('src/next-save', 'config/.pi/config'),
 	protectedAlias: () => rename('src/next-save', 'src/alias'),
 	unlink: () => unlink('src/alias'),

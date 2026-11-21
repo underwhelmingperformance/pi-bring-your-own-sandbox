@@ -5,13 +5,15 @@ import { promisify } from 'node:util';
 
 import { HOST_CONFIGURATION_PROTECTION } from 'pi-bring-your-own-sandbox/api';
 
+import { protectedWorkspacePaths } from './git-paths.js';
+
 export async function hostPolicy(
 	workspace: string,
 	staging: string,
 	runtime: string,
 	additionalPaths: readonly string[]
 ) {
-	const protectedPaths = [
+	const requested = [
 		...new Set([
 			...HOST_CONFIGURATION_PROTECTION.map((resource) =>
 				resource.kind === 'git-metadata' ? '.git' : resource.path
@@ -20,7 +22,7 @@ export async function hostPolicy(
 		])
 	];
 
-	for (const relative of protectedPaths) {
+	for (const relative of requested) {
 		if (
 			!/^[\u{20}-\u{7E}]+$/u.test(relative) ||
 			relative
@@ -34,6 +36,16 @@ export async function hostPolicy(
 				'The macOS mount requires printable ASCII in protected path components.'
 			);
 		}
+	}
+
+	const protectedPaths = await protectedWorkspacePaths(workspace, requested);
+
+	if (
+		protectedPaths.some((relative) => !/^[\u{20}-\u{7E}]+$/u.test(relative))
+	) {
+		throw new Error(
+			'The resolved workspace protection requires a non-ASCII path.'
+		);
 	}
 
 	const profile = await readFile(

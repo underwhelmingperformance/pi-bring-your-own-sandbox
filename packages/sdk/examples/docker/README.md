@@ -423,10 +423,14 @@ helper, removes the labelled containers and volume, and removes the empty
 staging directory. The mount test checks those resources after a successful
 session and a failed native open.
 
-Production shared workspaces still require confined reads and protection for
-referenced Git administration directories and hooks. The Linux probe covers
-rename and unlink. Shared sessions require host enforcement for content changes
-as well.
+At open, the macOS service asks Git for the worktree and common administration
+directories, hooks, objects and index paths. Paths inside the checkout and the
+targets of protected symlinks are added to the native policy. The host test uses
+a separate Git directory, a configured hooks path and an absent symlink target.
+Production shared workspaces still require confined reads and protection when a
+host editor changes Git configuration or the targets of symlinks during a
+session. The Linux probe covers rename and unlink. Shared sessions require host
+enforcement for content changes as well.
 
 [darwin-mutations]: test/darwin-mutations.test.ts
 [write-profile]: test/mount/darwin-mutations.sb

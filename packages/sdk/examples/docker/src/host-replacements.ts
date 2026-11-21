@@ -58,7 +58,7 @@ export async function connectHostReplacements(
 
 	function disconnected(
 		cause?: unknown,
-		message = 'The Docker workspace connection closed. Reopen the workspace to resume editing.'
+		message = 'The Docker workspace connection closed. Check any edit that was in progress on the host. Reopen the workspace to resume editing.'
 	) {
 		if (controller.signal.aborted) {
 			return;

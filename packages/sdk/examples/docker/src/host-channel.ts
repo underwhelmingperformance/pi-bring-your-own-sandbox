@@ -1,6 +1,14 @@
 import { request } from 'node:http';
 import type { Duplex } from 'node:stream';
 
+function openingCancellation(signal: AbortSignal): Error {
+	return signal.reason instanceof Error
+		? signal.reason
+		: new Error('Opening the Docker workspace connection was cancelled.', {
+				cause: signal.reason
+			});
+}
+
 export async function attachHostChannel(
 	socketPath: string,
 	container: string,
@@ -24,10 +32,7 @@ export async function attachHostChannel(
 			headers: { Connection: 'Upgrade', Upgrade: 'tcp' },
 			agent: false
 		});
-		const abort = () =>
-			attach.destroy(
-				new Error('Opening the Docker workspace connection was cancelled.')
-			);
+		const abort = () => attach.destroy(openingCancellation(signal));
 		const detach = () => {
 			signal.removeEventListener('abort', abort);
 		};
@@ -35,9 +40,7 @@ export async function attachHostChannel(
 		signal.addEventListener('abort', abort, { once: true });
 		attach.once('error', (error) => {
 			detach();
-			reject(
-				signal.aborted && signal.reason instanceof Error ? signal.reason : error
-			);
+			reject(signal.aborted ? openingCancellation(signal) : error);
 		});
 
 		if (signal.aborted) {
@@ -160,7 +163,10 @@ export async function beginHostRequests(channel: Duplex, signal: AbortSignal) {
 		return requests;
 	} catch (error) {
 		channel.destroy();
-		signal.throwIfAborted();
+
+		if (signal.aborted) {
+			throw openingCancellation(signal);
+		}
 
 		throw error;
 	} finally {

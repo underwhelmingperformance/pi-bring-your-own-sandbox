@@ -540,7 +540,7 @@ fs.renameSync('nested/output/.save', 'settings-alias');
 					expect(reportDiagnostic).toHaveBeenCalledWith({
 						level: 'warning',
 						message:
-							'The Docker workspace connection closed. Reopen the workspace to resume editing.'
+							'The Docker workspace connection closed. Check any edit that was in progress on the host. Reopen the workspace to resume editing.'
 					});
 				}
 			} finally {

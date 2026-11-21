@@ -90,3 +90,15 @@ it('preserves cancellation while waiting for the workspace handshake', async () 
 
 	await expect(opening).rejects.toBe(reason);
 });
+
+it('reports a non-Error cancellation reason as the handshake error cause', async () => {
+	const controller = new AbortController();
+	const channel = Duplex.from({
+		readable: new PassThrough(),
+		writable: new PassThrough()
+	});
+	const opening = beginHostRequests(channel, controller.signal);
+
+	controller.abort('closed by caller');
+	await expect(opening).rejects.toMatchObject({ cause: 'closed by caller' });
+});

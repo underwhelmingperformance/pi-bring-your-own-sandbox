@@ -25,6 +25,7 @@ import {
 	cleanupContext,
 	DockerResources
 } from './resources.js';
+import type { SharedCheckout } from './shared-checkout.js';
 
 const statValidator = Compile(
 	Type.Object({
@@ -79,7 +80,11 @@ the container cancels an individual call without affecting shell workloads.
 export class DockerFileWorker implements BackendFileReader {
 	readonly #resources: DockerResources;
 	readonly #client: DockerClient;
-	readonly #workspace: { readonly mount: string; readonly readOnly: boolean };
+	readonly #workspace: {
+		readonly mount: string;
+		readonly readOnly: boolean;
+		readonly shared?: SharedCheckout;
+	};
 	readonly #helpers: DockerFileHelpers;
 	readonly #lifetime: AbortSignal;
 	#name: string | undefined;
@@ -88,11 +93,16 @@ export class DockerFileWorker implements BackendFileReader {
 	#pending = 0;
 	#idle: NodeJS.Timeout | undefined;
 	#requiresRemoval = false;
+	#guardKey: string | undefined;
 
 	constructor(
 		resources: DockerResources,
 		client: DockerClient,
-		workspace: { readonly mount: string; readonly readOnly: boolean },
+		workspace: {
+			readonly mount: string;
+			readonly readOnly: boolean;
+			readonly shared?: SharedCheckout;
+		},
 		helpers: DockerFileHelpers,
 		lifetime: AbortSignal
 	) {
@@ -116,7 +126,16 @@ export class DockerFileWorker implements BackendFileReader {
 		context: SandboxOperationContext,
 		operation: FileOperation
 	): Promise<string> {
-		if (this.#requiresRemoval) {
+		const guards = await this.#workspace.shared?.mounts(
+			this.#resources.volume,
+			context,
+			operation
+		);
+
+		if (
+			this.#requiresRemoval ||
+			(this.#name !== undefined && this.#guardKey !== guards?.key)
+		) {
 			await this.#remove(context, operation);
 		}
 
@@ -127,6 +146,7 @@ export class DockerFileWorker implements BackendFileReader {
 		const name = this.#resources.volume + '-files-' + randomUUID();
 
 		this.#name = name;
+		this.#guardKey = guards?.key;
 		await this.#resources.checked(
 			[
 				'create',
@@ -139,7 +159,9 @@ export class DockerFileWorker implements BackendFileReader {
 				'--read-only',
 				'--cap-drop=ALL',
 				'--security-opt=no-new-privileges',
-				'--user=65534:65534',
+				this.#workspace.shared
+					? `--user=${String(this.#workspace.shared.uid)}:${String(this.#workspace.shared.gid)}`
+					: '--user=65534:65534',
 				'--workdir=/workspace',
 				'--tmpfs=/opt/pi-byos/node_modules/re2js:rw,noexec,nosuid,nodev,size=1m,mode=0755,uid=65533,gid=65533',
 				'--pids-limit=32',
@@ -148,6 +170,7 @@ export class DockerFileWorker implements BackendFileReader {
 				'--log-driver=none',
 				'--mount',
 				this.#workspace.mount,
+				...(guards?.args ?? []),
 				'--entrypoint=/bin/sleep',
 				DOCKER_IMAGE,
 				'infinity'

@@ -36,15 +36,19 @@ host. For example, Git commands in a linked worktree can fail if the gitdir is
 outside the mount.
 
 Pi extensions cooperate with the host. Docker guards direct project extension
-registration under `.pi`. Ordinary source that a trusted extension imports
-remains editable. An absent `.pi` directory cannot be mounted read-only without
-creating a directory in the checkout, so Docker selects a private copy.
+registration under `.pi`. It requires a single link to the registration file
+`.pi/settings.json` when that file exists. Ordinary source that a trusted
+extension imports remains editable. An absent `.pi` directory cannot be mounted
+read-only without creating a directory in the checkout, so Docker selects a
+private copy.
 
 Container networking is disabled. Checkout entries can refer to files or
 services on the host. For example, a hard link can refer to the same contents as
-a file outside the checkout. The live backend reports `provider-default` for
-filesystem scope and network access. It rejects requests for strict workspace
-protection.
+a file outside the checkout or inside a read-only configuration directory.
+Docker checks the protected paths at the start of each operation. Host changes
+during an operation take effect on the next operation. The live backend reports
+`provider-default` for filesystem scope and network access. It rejects requests
+for strict workspace protection.
 
 [protection]: ../../docs/workspace-protection.md
 

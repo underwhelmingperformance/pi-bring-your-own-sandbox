@@ -38,6 +38,18 @@ const guardPaths = HOST_CONFIGURATION_PROTECTION.map((resource) =>
 	resource.kind === 'git-metadata' ? '.git' : resource.path
 );
 
+function hasVolumeSubpaths(version: string): boolean {
+	const api = /^(\d+)\.(\d+)$/u.exec(version);
+
+	if (!api) {
+		return false;
+	}
+
+	const major = Number(api[1]);
+
+	return major > 1 || (major === 1 && Number(api[2]) >= 45);
+}
+
 async function hostGit(root: string): Promise<string | undefined> {
 	const directories = (process.env['PATH'] ?? '').split(path.delimiter);
 
@@ -102,22 +114,23 @@ export class SharedCheckout {
 		}
 
 		const version = await client.command({
-			args: ['version', '--format', '{{.Server.APIVersion}}'],
+			args: [
+				'version',
+				'--format',
+				'{{.Client.APIVersion}} {{.Server.APIVersion}}'
+			],
 			context,
 			operation: 'open',
 			recovery: { kind: 'none' }
 		});
-		const api = /^(\d+)\.(\d+)$/u.exec(
-			new TextDecoder().decode(version.stdout).trim()
-		);
+		const versions = new TextDecoder().decode(version.stdout).trim().split(' ');
 
 		if (
-			!api ||
 			version.status !== 0 ||
-			(Number(api[1]) === 1 && Number(api[2]) < 45) ||
-			Number(api[1]) < 1
+			versions.length !== 2 ||
+			versions.some((api) => !hasVolumeSubpaths(api))
 		) {
-			return 'Live editing requires volume subpaths (Docker API 1.45 or later).';
+			return 'Live editing requires volume subpaths in both the Docker CLI and daemon (API 1.45 or later).';
 		}
 
 		if (
@@ -131,7 +144,13 @@ export class SharedCheckout {
 				recovery: { kind: 'none' }
 			});
 
-			if (new TextDecoder().decode(info.stdout).trim() === 'OrbStack') {
+			const system = new TextDecoder().decode(info.stdout).trim();
+
+			if (system === '<no value>' || info.status !== 0 || system.length === 0) {
+				return 'Docker could not identify the filesystem service for this macOS temporary checkout.';
+			}
+
+			if (system === 'OrbStack') {
 				return 'OrbStack can return truncated files after editor saves in the macOS per-user temporary directory.';
 			}
 		}
@@ -161,6 +180,13 @@ export class SharedCheckout {
 
 			try {
 				const timeout = Math.max(1, Math.min(3000, context.remainingMs()));
+				const config = Object.fromEntries(
+					Object.entries(process.env).filter(([key]) =>
+						/^GIT_CONFIG_(?:GLOBAL|SYSTEM|NOSYSTEM|PARAMETERS|COUNT|(?:KEY|VALUE)_\d+)$/u.test(
+							key
+						)
+					)
+				);
 				const { stdout } = await runGit(
 					this.gitExecutable,
 					[
@@ -175,6 +201,8 @@ export class SharedCheckout {
 					],
 					{
 						env: {
+							XDG_CONFIG_HOME: process.env['XDG_CONFIG_HOME'],
+							...config,
 							PATH: path.dirname(this.gitExecutable),
 							HOME: homedir(),
 							GIT_OPTIONAL_LOCKS: '0',
@@ -185,9 +213,11 @@ export class SharedCheckout {
 						maxBuffer: 32_768
 					}
 				);
-				const resolved = stdout.trimEnd().split('\n');
+				const resolved = stdout.split('\n');
+				const terminator = resolved.pop();
 
 				if (
+					terminator !== '' ||
 					resolved.length !== 3 ||
 					resolved.some((candidate) => !path.isAbsolute(candidate))
 				) {
@@ -236,6 +266,10 @@ export class SharedCheckout {
 				(name === '.pi' && !metadata.isDirectory())
 			) {
 				return 'A host configuration path is a symbolic link or special file.';
+			}
+
+			if (name.trim() !== name) {
+				return 'The Docker CLI cannot mount this protected path with leading or trailing whitespace.';
 			}
 
 			guards.push({

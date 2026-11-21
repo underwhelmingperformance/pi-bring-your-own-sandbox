@@ -133,13 +133,14 @@ connections use the same daemon. Set the optional second argument to
 
 ## Workspace and process behaviour
 
-Live editing requires a local Docker daemon with volume subpath support and
-matching host and workload user IDs. Docker checks that the checkout is writable
-and that the volume refers to the host checkout. Docker requires an existing
-`.pi` directory and checks that its mount is read-only. In Git checkouts, the
-provider runs a host Git installation outside the checkout to locate the current
-metadata and hooks before each operation. A reused file worker restarts when a
-guarded path appears, disappears or is replaced. Disposing the backend removes
+Live editing requires volume subpath support in the Docker CLI and local daemon,
+and matching host and workload user IDs. Docker checks that the checkout is
+writable and that the volume refers to the host checkout. Docker requires an
+existing `.pi` directory and checks that its mount is read-only. In Git
+checkouts, the provider runs a host Git installation outside the checkout to
+locate the current metadata and hooks before each operation. Git uses the
+configuration environment of the Pi process. A reused file worker restarts when
+a guarded path appears, disappears or is replaced. Disposing the backend removes
 the Docker volume and leaves the host checkout in place.
 
 On OrbStack, Docker uses a copy for checkouts in the macOS per-user temporary

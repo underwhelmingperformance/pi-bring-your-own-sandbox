@@ -372,17 +372,23 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 						await review.close();
 					}
 
+					const xdg = path.join(fixture.workspace, 'xdg');
+
+					await mkdir(path.join(xdg, 'git'), { recursive: true });
 					await mkdir(path.join(fixture.workspace, 'hooks'));
-					await promisify(execFile)('git', [
-						'-C',
-						fixture.workspace,
-						'config',
-						'core.hooksPath',
-						'hooks'
-					]);
+
+					const config = path.join(xdg, 'git', 'config');
+
+					await writeFile(config, '[core]\n\thooksPath = hooks\n');
+					vi.stubEnv('XDG_CONFIG_HOME', xdg);
 					await expect(
 						sandbox.files.writeFile('hooks/config-test', Buffer.from('example'))
 					).rejects.toMatchObject({ name: 'SandboxPermissionDeniedError' });
+					await mkdir(path.join(fixture.workspace, 'hooks '));
+					await writeFile(config, '[core]\n\thooksPath = "hooks "\n');
+					await expect(sandbox.files.stat('created.txt')).rejects.toMatchObject(
+						{ name: 'UnsupportedSandboxPolicyError', operation: 'stat' }
+					);
 					await closeSandboxSession(pi, context);
 					expect(await readFile(filename, 'utf8')).toBe('editor');
 				},

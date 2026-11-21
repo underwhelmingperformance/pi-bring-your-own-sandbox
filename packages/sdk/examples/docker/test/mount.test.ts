@@ -132,6 +132,8 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 			if (mode === 'read-write') {
 				const oversized = path.join(fixture.workspace, 'truncate.txt');
 
+				await writeFile(path.join(fixture.workspace, 'append.txt'), 'initial');
+
 				await mkdir(path.join(fixture.workspace, '.pi'));
 				await writeFile(
 					path.join(fixture.workspace, '.pi/settings'),
@@ -206,6 +208,10 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 						const replacement = path.join(fixture.workspace, 'replacement');
 
 						await writeFile(replacement, 'host replacement');
+						await writeFile(
+							path.join(fixture.workspace, 'append.txt'),
+							'initial and extended'
+						);
 						await rename(
 							path.join(fixture.workspace, 'editor-save'),
 							path.join(fixture.workspace, 'renamed-save')
@@ -333,7 +339,8 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 							'-e',
 							`
 const fs = require('node:fs');
-fs.writeFileSync('nested/output/.save', 'editor contents', {mode: 0o750});
+process.umask(0);
+fs.writeFileSync('nested/output/.save', 'editor contents', {mode: 0o775});
 require('node:child_process').execFileSync('/bin/mv', ['nested/output/.save', 'nested/output/draft.txt']);
 fs.mkdirSync('nested/temporary');
 fs.writeFileSync('nested/temporary/build.log', 'ready');
@@ -354,6 +361,11 @@ for (const target of ['.pi/settings', '.envrc', '.ENVRC', '.Git', '.direnv', '.v
 						'nested/output/draft.txt'
 					);
 					const metadata = await stat(savedPath);
+					const referencePath = path.join(fixture.workspace, 'host-mode');
+
+					await writeFile(referencePath, '', { mode: 0o775 });
+
+					const hostMode = await stat(referencePath);
 
 					expect({
 						error: new TextDecoder().decode(save.stderr),
@@ -363,7 +375,7 @@ for (const target of ['.pi/settings', '.envrc', '.ENVRC', '.Git', '.direnv', '.v
 					}).toStrictEqual({
 						error: '',
 						exit: { kind: 'code', code: 0 },
-						mode: 0o750,
+						mode: hostMode.mode & 0o777,
 						contents: 'editor contents'
 					});
 					await expect(
@@ -485,6 +497,7 @@ for (const target of ['.pi/settings', '.envrc', '.ENVRC', '.Git', '.direnv', '.v
 				...(mode === 'read-write' && {
 					renamedDenied: true,
 					staleReadDenied: true,
+					appendedSize: Buffer.byteLength('initial and extended'),
 					linkedReadDenied: true,
 					renamedTruncateDenied: true,
 					replacedTruncateDenied: true,

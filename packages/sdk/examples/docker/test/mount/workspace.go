@@ -103,14 +103,16 @@ func (n *workspaceNode) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.
 	switch handle := f.(type) {
 	case *reader:
 		stat = handle.opened
-		if fd, current, errno := handle.node.pin(); errno == 0 {
-			unix.Close(fd)
+		if current, errno := currentReadEntry(handle.node.root, handle.node.relative, handle.fd); errno == 0 {
 			stat = current
 		}
 	case *workspaceWriter:
 		handle.mu.Lock()
 		defer handle.mu.Unlock()
 		stat = handle.attributes
+		if current, errno := currentReadEntry(handle.root, handle.name, int(handle.file.Fd())); errno == 0 {
+			stat = current
+		}
 	default:
 		fd, pinned, errno := n.pin()
 		if errno != 0 {
@@ -245,26 +247,26 @@ func (f *reader) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadRes
 	return readCurrent(f.node.root, f.node.relative, f.fd, dest, off)
 }
 
-func currentReadEntry(root int, relative string, fd int) (unix.Stat_t, syscall.Errno) {
+func currentReadEntry(root int, relative string, fd int) (syscall.Stat_t, syscall.Errno) {
+	var opened syscall.Stat_t
 	entry, err := entryStat(root, relative)
 	if err == unix.ENOENT {
-		return entry, unix.ESTALE
+		return opened, unix.ESTALE
 	}
 	if err != nil {
-		return entry, fs.ToErrno(err)
+		return opened, fs.ToErrno(err)
 	}
-	var opened unix.Stat_t
-	if err := unix.Fstat(fd, &opened); err != nil {
-		return entry, fs.ToErrno(err)
+	if err := syscall.Fstat(fd, &opened); err != nil {
+		return opened, fs.ToErrno(err)
 	}
 	if entry.Dev != opened.Dev || entry.Ino != opened.Ino {
-		return entry, unix.ESTALE
+		return opened, unix.ESTALE
 	}
 	if entry.Nlink != 1 || opened.Nlink != 1 {
-		return entry, unix.EACCES
+		return opened, unix.EACCES
 	}
-	if entry.Ctim != opened.Ctim || entry.Size != opened.Size {
-		return entry, unix.ESTALE
+	if entry.Ctim.Nano() != opened.Ctim.Nano() || entry.Size != opened.Size {
+		return opened, unix.ESTALE
 	}
 	return opened, 0
 }

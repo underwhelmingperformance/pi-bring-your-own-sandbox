@@ -69,6 +69,7 @@ async function writeAndInspect() {
 	}
 
 	const reader = openSync(file, 'r');
+	const appended = openSync('/workspace/append.txt', 'r+');
 	const save = '/workspace/editor-save';
 	const editor = openSync(save, 'wx+');
 	const linked = openSync('/workspace/formatter.txt', 'r+');
@@ -104,6 +105,7 @@ async function writeAndInspect() {
 
 				return {
 					denied: isDenied,
+					appendedSize: fstatSync(appended).size,
 					staleReadDenied: isRefused(
 						() => readSync(fd, Buffer.alloc(1), 0, 1, 0),
 						constants.errno.ESTALE
@@ -148,6 +150,7 @@ async function writeAndInspect() {
 		closeSync(editor);
 		closeSync(fd);
 		closeSync(reader);
+		closeSync(appended);
 	}
 }
 

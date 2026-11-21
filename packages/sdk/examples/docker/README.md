@@ -332,10 +332,11 @@ private writable directory. A Seatbelt-restricted host process creates files and
 directories, renames editor saves, removes regular files and empty directories,
 and replaces regular files with staged writes. Operations accept
 workspace-relative paths, including nested paths and hidden editor temporary
-files. Native creation preserves the requested permission bits after the
-workload umask. A file must permit its owner to read it because a later partial
-write reads the previous contents into staging. An open handle becomes stale
-when its path changes, including after the workload renames a parent directory.
+files. Native creation preserves the requested permission bits after both the
+workload and host umasks. A file must permit its owner to read it because a
+later partial write reads the previous contents into staging. An open handle
+becomes stale when its path changes, including after the workload renames a
+parent directory.
 
 The host service restricts writes to regular files with one link and protects
 the preset configuration paths. A caller can also protect additional relative

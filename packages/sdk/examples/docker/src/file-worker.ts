@@ -286,6 +286,10 @@ export class DockerFileWorker implements BackendFileReader {
 			});
 		}
 
+		if (typeof this.#workspace.mount !== 'string') {
+			this.#workspace.mount.assertConnected();
+		}
+
 		const chunks: Uint8Array[] = [];
 		let bytes = 0;
 		let errorBytes = 0;

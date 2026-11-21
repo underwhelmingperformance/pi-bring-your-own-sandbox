@@ -18,7 +18,7 @@ import { promisify } from 'node:util';
 
 import { expect, it } from 'vitest';
 
-import { hostPolicy } from '../src/host-policy.js';
+import { prepareHostPolicy } from '../src/host-policy.js';
 
 const execute = promisify(execFile);
 
@@ -66,9 +66,10 @@ it.skipIf(process.platform !== 'darwin')(
 			await git(['-C', workspace, 'config', 'core.hooksPath', 'src/hooks']);
 			await symlink('src/editor-settings', file('.vscode'));
 
-			const policy = await hostPolicy(workspace, staging, runtime, [
+			const prepare = await prepareHostPolicy(workspace, staging, runtime, [
 				'config/.pi'
 			]);
+			const policy = await prepare();
 			const workload = await readFile(
 				new URL('mount/host-save.ts', import.meta.url),
 				'utf8'

@@ -4,7 +4,6 @@ package main
 
 import (
 	"encoding/json"
-	"io"
 	"log"
 	"net"
 	"os"
@@ -15,14 +14,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const replacementSocket = "/control/replace"
-
 type hostReplacer struct {
-	mu       sync.Mutex
-	root     int
-	listener *net.UnixListener
-	conn     net.Conn
-	replies  *json.Decoder
+	mu      sync.Mutex
+	root    int
+	replies *json.Decoder
 }
 
 type hostChange struct {
@@ -71,33 +66,11 @@ func peerCredentials(conn *net.UnixConn) (*unix.Ucred, error) {
 func (p *hostReplacer) exchange(request hostChange) (string, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.conn == nil {
-		if p.listener == nil {
-			return "", unix.EIO
-		}
-		if err := p.listener.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
-			return "", err
-		}
-		conn, err := p.listener.AcceptUnix()
-		if err != nil {
-			return "", err
-		}
-		peer, err := peerCredentials(conn)
-		if err != nil || peer.Pid <= 0 || peer.Uid != uint32(os.Geteuid()) {
-			conn.Close()
-			return "", unix.EACCES
-		}
-		p.listener.Close()
-		p.listener = nil
-		p.conn = conn
-		p.replies = json.NewDecoder(conn)
-	}
-	if err := p.conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		return "", err
-	}
-	if err := json.NewEncoder(p.conn).Encode(request); err != nil {
-		p.conn.Close()
-		p.conn = nil
+	deadline := time.AfterFunc(5*time.Second, func() {
+		log.Fatal("the host did not acknowledge the workspace operation")
+	})
+	defer deadline.Stop()
+	if err := json.NewEncoder(os.Stdout).Encode(request); err != nil {
 		return "", unix.EIO
 	}
 	var reply struct {
@@ -105,9 +78,7 @@ func (p *hostReplacer) exchange(request hostChange) (string, error) {
 		Identity string
 	}
 	if err := p.replies.Decode(&reply); err != nil {
-		p.conn.Close()
-		p.conn = nil
-		return "", unix.EIO
+		log.Fatalf("workspace host disconnected: %v", err)
 	}
 	switch reply.Status {
 	case "ESTALE":
@@ -161,18 +132,4 @@ func (p *hostReplacer) waitForEntry(target string, previous unix.Stat_t) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-}
-
-func hostChannel() error {
-	conn, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: replacementSocket, Net: "unix"})
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-	go func() {
-		io.Copy(conn, os.Stdin)
-		conn.CloseWrite()
-	}()
-	_, err = io.Copy(os.Stdout, conn)
-	return err
 }

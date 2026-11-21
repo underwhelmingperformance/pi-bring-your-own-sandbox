@@ -92,7 +92,7 @@ export class DockerWorkspaceService {
 
 	readonly #hostWorkspace: string;
 	#stagingIdentity: { dev: bigint; ino: bigint } | undefined;
-	#closeHost: (() => Promise<void>) | undefined;
+	#host: Awaited<ReturnType<typeof connectHostReplacements>> | undefined;
 	readonly resources: DockerResources;
 	readonly bootstrap: string;
 	readonly hasAppArmor: boolean;
@@ -225,6 +225,7 @@ export class DockerWorkspaceService {
 				'--pull=never',
 				'--read-only',
 				'--network=none',
+				...(staging === undefined ? [] : ['--interactive']),
 				'--cap-drop=ALL',
 				'--security-opt=no-new-privileges',
 				'--pids-limit=32',
@@ -277,15 +278,29 @@ export class DockerWorkspaceService {
 			'open'
 		);
 
-		if (staging !== undefined) {
-			this.#closeHost = await connectHostReplacements(
-				config,
-				resources.volume,
-				workspace,
-				staging,
-				request.protectedPaths
-			);
+		if (staging === undefined) {
+			return;
 		}
+
+		const version = await resources.checked(
+			['version', '--format', '{{.Server.APIVersion}}'],
+			context,
+			'open'
+		);
+
+		this.#host = await connectHostReplacements(
+			config.socketPath,
+			new TextDecoder().decode(version.stdout).trim(),
+			resources.volume,
+			workspace,
+			staging,
+			request.protectedPaths,
+			context
+		);
+	}
+
+	assertConnected() {
+		this.#host?.assertConnected();
 	}
 
 	get controlVolume() {
@@ -293,7 +308,7 @@ export class DockerWorkspaceService {
 	}
 
 	async dispose(context: SandboxOperationContext) {
-		await this.#closeHost?.();
+		await this.#host?.close();
 		await this.resources.dispose(context);
 
 		if (

@@ -53,7 +53,10 @@ async function resolvedPath(filename: string): Promise<string> {
 	return resolved;
 }
 
-async function gitPaths(workspace: string): Promise<string[]> {
+async function gitPaths(
+	workspace: string,
+	signal?: AbortSignal
+): Promise<string[]> {
 	const arguments_ = [
 		'--no-pager',
 		'--no-optional-locks',
@@ -81,6 +84,7 @@ async function gitPaths(workspace: string): Promise<string[]> {
 				LC_ALL: 'C',
 				GIT_TERMINAL_PROMPT: '0'
 			},
+			signal,
 			timeout: 5000,
 			maxBuffer: 65_536,
 			encoding: 'buffer'
@@ -120,15 +124,18 @@ async function gitPaths(workspace: string): Promise<string[]> {
 
 export async function protectedWorkspacePaths(
 	workspace: string,
-	relativePaths: readonly string[]
+	relativePaths: readonly string[],
+	signal?: AbortSignal
 ) {
 	const paths = new Set(relativePaths);
 	const candidates = [
 		...relativePaths.map((relative) => path.join(workspace, relative)),
-		...(await gitPaths(workspace))
+		...(await gitPaths(workspace, signal))
 	];
 
 	for (const candidate of candidates) {
+		signal?.throwIfAborted();
+
 		for (const absolute of [candidate, await resolvedPath(candidate)]) {
 			const relative = path.relative(workspace, absolute);
 

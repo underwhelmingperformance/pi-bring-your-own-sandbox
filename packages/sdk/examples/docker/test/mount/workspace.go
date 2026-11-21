@@ -83,6 +83,12 @@ func (n *workspaceNode) Lookup(ctx context.Context, name string, out *fuse.Entry
 	}
 	child := &workspaceNode{backing: n.backing, relative: path.Join(n.relative, name)}
 	fd, stat, errno := child.pin()
+	if errno == unix.EACCES && n.host != nil && stat.Mode&unix.S_IFMT == unix.S_IFREG && stat.Nlink > 1 {
+		// Linux looks up the destination before sending a rename. An opaque entry
+		// permits that lookup without exposing the backing file's attributes or data.
+		out.Attr.Mode = unix.S_IFREG
+		return n.NewInode(ctx, child, fs.StableAttr{Mode: unix.S_IFREG}), 0
+	}
 	if errno != 0 {
 		return nil, errno
 	}

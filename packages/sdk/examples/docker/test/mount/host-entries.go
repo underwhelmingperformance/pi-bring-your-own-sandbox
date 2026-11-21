@@ -129,7 +129,11 @@ func (n *workspaceNode) Rename(ctx context.Context, name string, newParent fs.In
 	if err != nil && err != unix.ENOENT {
 		return fs.ToErrno(err)
 	}
-	if err := n.host.change(hostChange{Op: "rename", Source: source, Target: target}); err != nil {
+	operation := "rename"
+	if before.Mode&unix.S_IFMT == unix.S_IFREG {
+		operation = "rename-file"
+	}
+	if err := n.host.change(hostChange{Op: operation, Source: source, Target: target}); err != nil {
 		return fs.ToErrno(err)
 	}
 	if before.Dev == destination.Dev && before.Ino == destination.Ino {

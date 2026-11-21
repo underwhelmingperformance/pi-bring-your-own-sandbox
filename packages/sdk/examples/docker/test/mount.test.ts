@@ -332,6 +332,25 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 					await sandbox.files.mkdir('nested/output');
 					await sandbox.files.writeFile('nested/output/draft.txt', edit);
 
+					const settings = path.join(fixture.workspace, '.pi/settings');
+					const before = await stat(settings, { bigint: true });
+					const hostCommand = promisify(execFile);
+					const gitOptions = {
+						cwd: fixture.workspace,
+						env: {
+							HOME: fixture.workspace,
+							PATH: '/usr/bin:/bin',
+							GIT_CONFIG_NOSYSTEM: '1'
+						}
+					};
+
+					await hostCommand('/usr/bin/xattr', [
+						'-w',
+						'org.pi-byos.test',
+						'original',
+						settings
+					]);
+
 					const save = await sandbox.exec({
 						kind: 'argv',
 						executable: '/usr/local/bin/node',
@@ -347,11 +366,13 @@ fs.writeFileSync('nested/temporary/build.log', 'ready');
 fs.renameSync('nested/temporary', 'nested/renamed');
 fs.unlinkSync('nested/renamed/build.log');
 fs.rmdirSync('nested/renamed');
-for (const target of ['.pi/settings', '.envrc', '.ENVRC', '.Git', '.direnv', '.vscode', '.idea', '.devcontainer', 'nested/.git', 'nested/policies/config', 'settings-alias']) {
+for (const target of ['.pi/settings', '.envrc', '.ENVRC', '.Git', '.direnv', '.vscode', '.idea', '.devcontainer', 'nested/.git', 'nested/policies/config']) {
   try { fs.renameSync('nested/output/draft.txt', target); }
   catch (error) { if (error.code === 'EACCES' || error.code === 'EPERM') continue; throw error; }
   throw new Error('A protected editor destination was writable.');
 }
+fs.writeFileSync('nested/output/.save', 'detached');
+fs.renameSync('nested/output/.save', 'settings-alias');
 `
 						]
 					});
@@ -361,23 +382,67 @@ for (const target of ['.pi/settings', '.envrc', '.ENVRC', '.Git', '.direnv', '.v
 						'nested/output/draft.txt'
 					);
 					const metadata = await stat(savedPath);
+					const after = await stat(settings, { bigint: true });
 					const referencePath = path.join(fixture.workspace, 'host-mode');
 
 					await writeFile(referencePath, '', { mode: 0o775 });
 
 					const hostMode = await stat(referencePath);
 
+					const extended = await hostCommand('/usr/bin/xattr', [
+						'-p',
+						'org.pi-byos.test',
+						settings
+					]);
+
 					expect({
 						error: new TextDecoder().decode(save.stderr),
 						exit: save.exit,
 						mode: metadata.mode & 0o777,
-						contents: await readFile(savedPath, 'utf8')
+						contents: await readFile(savedPath, 'utf8'),
+						protected: {
+							bytes: await readFile(settings, 'utf8'),
+							xattr: extended.stdout.trimEnd(),
+							inode: after.ino,
+							mode: after.mode,
+							uid: after.uid,
+							gid: after.gid,
+							links: after.nlink
+						},
+						alias: await readFile(
+							path.join(fixture.workspace, 'settings-alias'),
+							'utf8'
+						)
 					}).toStrictEqual({
 						error: '',
 						exit: { kind: 'code', code: 0 },
 						mode: hostMode.mode & 0o777,
-						contents: 'editor contents'
+						contents: 'editor contents',
+						protected: {
+							bytes: 'protected',
+							xattr: 'original',
+							inode: before.ino,
+							mode: before.mode,
+							uid: before.uid,
+							gid: before.gid,
+							links: before.nlink - 1n
+						},
+						alias: 'detached'
 					});
+					await hostCommand('/usr/bin/git', ['init', '--quiet'], gitOptions);
+					await hostCommand(
+						'/usr/bin/git',
+						['config', 'core.hooksPath', 'nested/active-hooks'],
+						gitOptions
+					);
+
+					await expect(
+						sandbox.files.writeFile('nested/active-hooks', edit)
+					).rejects.toBeInstanceOf(SandboxPermissionDeniedError);
+					await expect(
+						stat(path.join(fixture.workspace, 'nested/active-hooks'))
+					).rejects.toMatchObject({ code: 'ENOENT' });
+
 					await expect(
 						stat(path.join(fixture.workspace, 'nested/temporary'))
 					).rejects.toMatchObject({ code: 'ENOENT' });
@@ -441,6 +506,16 @@ for (const target of ['.pi/settings', '.envrc', '.ENVRC', '.Git', '.direnv', '.v
 					],
 					truncated: false
 				});
+
+				if (isHostReplacements) {
+					await fixture.docker(['kill', allocation]);
+					await vi.waitFor(() => {
+						expect(() => service?.assertConnected()).toThrow(
+							'Reopen the workspace'
+						);
+					});
+					await expect(sandbox.files.readFile('build.ts')).rejects.toThrow();
+				}
 			} finally {
 				await backend.dispose(operationContext());
 				service = undefined;

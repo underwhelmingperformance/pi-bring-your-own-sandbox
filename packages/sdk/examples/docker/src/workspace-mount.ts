@@ -2,6 +2,7 @@ export interface DockerMountService {
 	readonly controlVolume: string;
 	readonly bootstrap: string;
 	readonly hasAppArmor: boolean;
+	assertConnected(): void;
 }
 
 export interface DockerWorkspaceMount {
@@ -31,6 +32,8 @@ export function workspaceCommand(
 			...arguments_
 		];
 	}
+
+	service.assertConnected();
 
 	return [
 		'--mount',

@@ -10,7 +10,6 @@ import {
 	unlink
 } from 'node:fs/promises';
 import path from 'node:path';
-import { createInterface } from 'node:readline';
 
 const staging = process.argv[1];
 
@@ -48,32 +47,20 @@ function isProtected(relative: string, isMkdir = false): boolean {
 	);
 }
 
-function isWorkspacePath(value: unknown): value is string {
-	return (
-		typeof value === 'string' &&
-		Buffer.byteLength(value) <= 4095 &&
-		value
-			.split('/')
-			.every(
-				(component) =>
-					component.length > 0 &&
-					component !== '.' &&
-					component !== '..' &&
-					!component.startsWith('.pi-byos-write-') &&
-					!component.includes('\0') &&
-					Buffer.byteLength(component) <= 255
-			)
-	);
-}
-
 async function hasWorkspaceParent(filename: string): Promise<boolean> {
 	const parent = path.resolve(workspace, path.dirname(filename));
 
 	return (await realpath(parent)) === parent;
 }
 
-function isRegularOrDirectory(entry: Stats): boolean {
-	return entry.isDirectory() || (entry.isFile() && entry.nlink === 1);
+function isRegularOrDirectory(
+	entry: Stats,
+	isFileReplacement = false
+): boolean {
+	return (
+		entry.isDirectory() ||
+		(entry.isFile() && (isFileReplacement || entry.nlink === 1))
+	);
 }
 
 async function existingEntry(filename: string) {
@@ -107,7 +94,7 @@ async function change(
 
 	const { op, target } = request;
 
-	if (!isWorkspacePath(target)) {
+	if (typeof target !== 'string') {
 		return { status: 'EINVAL' };
 	}
 
@@ -160,8 +147,9 @@ async function change(
 				break;
 			}
 
-			case 'rename': {
-				if (!('source' in request) || !isWorkspacePath(request.source)) {
+			case 'rename':
+			case 'rename-file': {
+				if (!('source' in request) || typeof request.source !== 'string') {
 					return { status: 'EINVAL' };
 				}
 
@@ -175,7 +163,10 @@ async function change(
 
 				const destination = await existingEntry(target);
 
-				if (destination && !isRegularOrDirectory(destination)) {
+				if (
+					destination &&
+					!isRegularOrDirectory(destination, op === 'rename-file')
+				) {
 					return { status: 'EACCES' };
 				}
 
@@ -250,11 +241,7 @@ async function change(
 	}
 }
 
-const requests = createInterface({ input: process.stdin });
+const request: unknown = JSON.parse(process.argv[3] ?? 'null');
+const result = await change(staging, request);
 
-for await (const line of requests) {
-	const request: unknown = JSON.parse(line);
-	const result = await change(staging, request);
-
-	process.stdout.write(JSON.stringify(result) + '\n');
-}
+process.stdout.write(JSON.stringify(result) + '\n');

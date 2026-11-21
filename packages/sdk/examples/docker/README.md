@@ -328,26 +328,35 @@ write returns a permission error. The production provider still uses a copied
 workspace.
 
 On macOS the service mounts the checkout read-only and stages each write in a
-private writable directory. A Seatbelt-restricted host process creates files and
-directories, renames editor saves, removes regular files and empty directories,
-and replaces regular files with staged writes. Operations accept
-workspace-relative paths, including nested paths and hidden editor temporary
-files. Native creation preserves the requested permission bits after both the
-workload and host umasks. A file must permit its owner to read it because a
-later partial write reads the previous contents into staging. An open handle
-becomes stale when its path changes, including after the workload renames a
-parent directory.
+private writable directory. Pi attaches to the service's standard streams over
+the local Docker Engine socket. The service sends one filesystem request at a
+time. Pi resolves the current protected paths. For each operation it starts an
+unprivileged macOS child under Seatbelt. The child creates a file or directory,
+renames an editor save, removes a regular file or empty directory, or replaces a
+regular file with staged contents. The child exits after replying. Operations
+accept workspace-relative paths, including nested paths and hidden editor
+temporary files. Native creation preserves the requested permission bits after
+both the workload and host umasks. A file must permit its owner to read it
+because a later partial write reads the previous contents into staging. An open
+handle becomes stale when its path changes, including after the workload renames
+a parent directory.
 
-The host service restricts writes to regular files with one link and protects
-the preset configuration paths. A caller can also protect additional relative
-paths with printable ASCII components, including absent entries. The service
-checks case variants before each mutation. Seatbelt denies writes to those
-subtrees and removal of their ancestors. After the rename, the service waits for
-the old directory entry to disappear from the VM's view. A subsequent write or
-truncate checks the open descriptor against the current entry. The formatter
-test covers a host replacement, a host rename, and an open file for which the
-host adds a hard link under `.pi`. The host reads the protected contents
-independently after the formatter exits.
+A file with several hard links can be the destination of an editor save. Pi
+authorises removal of that particular directory entry for the rename. Ordinary
+reads, in-place writes and explicit unlinks through such an alias remain
+restricted. The mount test checks the original inode, contents, permissions,
+ownership, extended attribute and link count through the surviving host name.
+
+The host service restricts in-place writes to regular files with one link and
+protects the preset configuration paths. A caller can also protect additional
+relative paths with printable ASCII components, including absent entries. The
+service checks case variants before each mutation. Seatbelt denies writes to
+those subtrees and removal of their ancestors. After the rename, the service
+waits for the old directory entry to disappear from the VM's view. A subsequent
+write or truncate checks the open descriptor against the current entry. The
+formatter test covers a host replacement, a host rename, and an open file for
+which the host adds a hard link under `.pi`. The host reads the protected
+contents independently after the formatter exits.
 
 The prototype stages each FUSE write request separately. A large application
 write can produce several requests and the host can see each intermediate
@@ -417,20 +426,22 @@ not test confinement of arbitrary SFTP clients or access to the FUSE device from
 the workload.
 
 The mounted backend owns the service container and its control volume. On macOS
-it also owns the host helper and a private staging directory beside the
+it also owns the request channel and a private staging directory beside the
 checkout. The recovery descriptor includes the staging path. Disposal stops the
-helper, removes the labelled containers and volume, and removes the empty
-staging directory. The mount test checks those resources after a successful
-session and a failed native open.
+request channel, removes the labelled containers and volume, and removes the
+empty staging directory. The mount test checks those resources after a
+successful session and a failed native open.
 
-At open, the macOS service asks Git for the worktree and common administration
-directories, hooks, objects and index paths. Paths inside the checkout and the
-targets of protected symlinks are added to the native policy. The host test uses
-a separate Git directory, a configured hooks path and an absent symlink target.
-Production shared workspaces still require confined reads and protection when a
-host editor changes Git configuration or the targets of symlinks during a
-session. The Linux probe covers rename and unlink. Shared sessions require host
-enforcement for content changes as well.
+At open and before each request, Pi asks Git for the worktree and common
+administration directories, hooks, objects and index paths. Paths inside the
+checkout and the targets of protected symlinks are added to the native policy.
+The host test uses a separate Git directory, a configured hooks path and an
+absent symlink target. The mounted test changes the Git hooks path after
+opening, then checks that a file write to the new path fails. A host edit can
+still change a Git path or symlink target between policy preparation and the
+kernel operation. Production shared workspaces require protection across that
+interval and confined reads. The Linux probe covers rename and unlink. Shared
+sessions require host enforcement for content changes as well.
 
 [darwin-mutations]: test/darwin-mutations.test.ts
 [write-profile]: test/mount/darwin-mutations.sb

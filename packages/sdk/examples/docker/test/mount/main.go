@@ -3,6 +3,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -28,16 +29,8 @@ func serve(writable, hostReplacements bool) error {
 			return err
 		}
 		defer unix.Close(staging)
-		replacer, err := net.ListenUnix("unix", &net.UnixAddr{Name: replacementSocket, Net: "unix"})
-		if err != nil {
-			return err
-		}
-		defer replacer.Close()
-		if err := os.Chmod(replacementSocket, 0600); err != nil {
-			return err
-		}
 		workspace.staging = staging
-		workspace.host = &hostReplacer{listener: replacer, root: root}
+		workspace.host = &hostReplacer{root: root, replies: json.NewDecoder(os.Stdin)}
 	}
 	listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: "/control/service", Net: "unixpacket"})
 	if err != nil {
@@ -183,10 +176,7 @@ func main() {
 		log.SetOutput(os.Stdout)
 		err = serve(os.Args[2] == "read-write", false)
 	case len(os.Args) == 2 && os.Args[1] == "serve-host":
-		log.SetOutput(os.Stdout)
 		err = serve(true, true)
-	case len(os.Args) == 2 && os.Args[1] == "host-channel":
-		err = hostChannel()
 	case len(os.Args) > 3 && (os.Args[1] == "mount" || os.Args[1] == "mount-launcher"):
 		err = mount(os.Args[2] == "read-write", os.Args[1] == "mount-launcher")
 	case len(os.Args) == 2 && os.Args[1] == "wait-worker":

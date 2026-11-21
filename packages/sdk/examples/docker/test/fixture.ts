@@ -221,7 +221,11 @@ export class DockerFixture {
 			`Docker ${arguments_[0] ?? 'command'} failed: ${new TextDecoder().decode(result.stderr)}`
 		).toBe(0);
 
-		return new TextDecoder().decode(result.stdout);
+		return new TextDecoder().decode(
+			arguments_[0] === 'logs'
+				? Buffer.concat([result.stdout, result.stderr])
+				: result.stdout
+		);
 	}
 
 	async noJobContainers(

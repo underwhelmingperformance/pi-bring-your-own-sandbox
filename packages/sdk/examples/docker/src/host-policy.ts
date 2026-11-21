@@ -7,7 +7,25 @@ import { HOST_CONFIGURATION_PROTECTION } from 'pi-bring-your-own-sandbox/api';
 
 import { protectedWorkspacePaths } from './git-paths.js';
 
-export async function hostPolicy(
+export function isWorkspacePath(value: unknown): value is string {
+	return (
+		typeof value === 'string' &&
+		Buffer.byteLength(value) <= 4095 &&
+		value
+			.split('/')
+			.every(
+				(component) =>
+					component.length > 0 &&
+					component !== '.' &&
+					component !== '..' &&
+					!component.startsWith('.pi-byos-write-') &&
+					!component.includes('\0') &&
+					Buffer.byteLength(component) <= 255
+			)
+	);
+}
+
+export async function prepareHostPolicy(
 	workspace: string,
 	staging: string,
 	runtime: string,
@@ -38,32 +56,10 @@ export async function hostPolicy(
 		}
 	}
 
-	const protectedPaths = await protectedWorkspacePaths(workspace, requested);
-
-	if (
-		protectedPaths.some((relative) => !/^[\u{20}-\u{7E}]+$/u.test(relative))
-	) {
-		throw new Error(
-			'The resolved workspace protection requires a non-ASCII path.'
-		);
-	}
-
 	const profile = await readFile(
 		new URL('host-replace.sb', import.meta.url),
 		'utf8'
 	);
-	const rules = protectedPaths.map((_, index) => {
-		const parameter = '(param "RESOURCE_' + String(index) + '")';
-
-		return (
-			'(deny file-write* (subpath ' +
-			parameter +
-			'))\n' +
-			'(deny file-write-unlink (path-ancestors ' +
-			parameter +
-			'))'
-		);
-	});
 
 	function checkRuntimePath(file: string) {
 		if (
@@ -128,25 +124,73 @@ export async function hostPolicy(
 		);
 	});
 
-	return {
-		protectedPaths,
-		args: [
-			'-D',
-			'WORKSPACE=' + workspace,
-			'-D',
-			'RUNTIME=' + runtime,
-			'-D',
-			'STAGING=' + staging,
-			...protectedPaths.flatMap((relative, index) => [
+	return async (replaceEntry?: string, signal?: AbortSignal) => {
+		if (replaceEntry !== undefined && !isWorkspacePath(replaceEntry)) {
+			throw new TypeError(
+				'Expected a workspace-relative replacement destination.'
+			);
+		}
+
+		const protectedPaths = await protectedWorkspacePaths(
+			workspace,
+			requested,
+			signal
+		);
+
+		if (
+			protectedPaths.some((relative) => !/^[\u{20}-\u{7E}]+$/u.test(relative))
+		) {
+			throw new Error(
+				'The resolved workspace protection requires a non-ASCII path.'
+			);
+		}
+
+		const rules = protectedPaths.map((_, index) => {
+			const parameter = '(param "RESOURCE_' + String(index) + '")';
+
+			return (
+				'(deny file-write* (subpath ' +
+				parameter +
+				'))\n' +
+				'(deny file-write-unlink (path-ancestors ' +
+				parameter +
+				'))'
+			);
+		});
+
+		return {
+			protectedPaths,
+			args: [
 				'-D',
-				'RESOURCE_' + String(index) + '=' + path.join(workspace, relative)
-			]),
-			...libraries.flatMap((library, index) => [
+				'WORKSPACE=' + workspace,
 				'-D',
-				'LIBRARY_' + String(index) + '=' + library
-			]),
-			'-p',
-			[profile, ...rules, ...libraryRules].join('\n')
-		]
+				'RUNTIME=' + runtime,
+				'-D',
+				'STAGING=' + staging,
+				...protectedPaths.flatMap((relative, index) => [
+					'-D',
+					'RESOURCE_' + String(index) + '=' + path.join(workspace, relative)
+				]),
+				...libraries.flatMap((library, index) => [
+					'-D',
+					'LIBRARY_' + String(index) + '=' + library
+				]),
+				...(replaceEntry === undefined
+					? []
+					: ['-D', 'DESTINATION=' + path.join(workspace, replaceEntry)]),
+				'-p',
+				[
+					profile,
+					...(replaceEntry === undefined
+						? []
+						: [
+								'(allow file-write-unlink (require-all (literal (param "DESTINATION")) (subpath (param "WORKSPACE")) (vnode-type REGULAR-FILE)))',
+								'(deny file-write-unlink (require-not (vnode-type REGULAR-FILE)))'
+							]),
+					...rules,
+					...libraryRules
+				].join('\n')
+			]
+		};
 	};
 }

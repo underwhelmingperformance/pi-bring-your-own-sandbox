@@ -91,7 +91,7 @@ export class DockerWorkspaceService {
 	}
 
 	readonly #hostWorkspace: string;
-	#stagingIdentity: { dev: bigint; ino: bigint } | undefined;
+	#stagingIdentity: 'unverified' | { dev: bigint; ino: bigint } | undefined;
 	#host: Awaited<ReturnType<typeof connectHostReplacements>> | undefined;
 	readonly resources: DockerResources;
 	readonly bootstrap: string;
@@ -136,6 +136,7 @@ export class DockerWorkspaceService {
 			}
 
 			await mkdir(staging, { mode: 0o700 });
+			this.#stagingIdentity = 'unverified';
 
 			const created = await lstat(staging, { bigint: true });
 
@@ -318,9 +319,26 @@ export class DockerWorkspaceService {
 			return;
 		}
 
-		const entry = await lstat(this.resources.hostStaging, { bigint: true });
+		let entry;
+
+		try {
+			entry = await lstat(this.resources.hostStaging, { bigint: true });
+		} catch (error) {
+			if (
+				error instanceof Error &&
+				'code' in error &&
+				error.code === 'ENOENT'
+			) {
+				this.#stagingIdentity = undefined;
+
+				return;
+			}
+
+			throw error;
+		}
 
 		if (
+			this.#stagingIdentity === 'unverified' ||
 			!entry.isDirectory() ||
 			entry.ino !== this.#stagingIdentity.ino ||
 			entry.dev !== this.#stagingIdentity.dev

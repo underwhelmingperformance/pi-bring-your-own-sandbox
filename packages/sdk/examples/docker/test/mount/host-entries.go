@@ -28,12 +28,25 @@ func (b *backing) writablePath(relative string) bool {
 }
 
 // A host-created name may be absent from the VM's directory cache until it expires.
-func (b *backing) openCreated(relative string) (int, error) {
+func (b *backing) openCreated(relative, expected string) (int, error) {
 	node := &workspaceNode{backing: b, relative: relative}
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		fd, errno := node.open(unix.S_IFREG, unix.O_RDONLY)
 		if errno == 0 {
+			var st unix.Stat_t
+			if err := unix.Fstat(fd, &st); err != nil {
+				unix.Close(fd)
+				return -1, err
+			}
+			current, err := b.host.version(hostChange{Op: "identify", Target: relative}, st)
+			if err != nil || current != expected {
+				unix.Close(fd)
+				if err != nil {
+					return -1, err
+				}
+				return -1, unix.ESTALE
+			}
 			return fd, nil
 		}
 		if errno != unix.ENOENT || time.Now().After(deadline) {

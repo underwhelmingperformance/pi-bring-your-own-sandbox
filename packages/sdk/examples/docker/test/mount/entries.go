@@ -56,7 +56,7 @@ func (n *workspaceNode) create(name string, mode uint32) (int, string, error) {
 		if id == "" {
 			return -1, "", unix.EIO
 		}
-		fd, err := b.openCreated(name)
+		fd, err := b.openCreated(name, id)
 		return fd, id, err
 	}
 	if b.created >= maxCreatedFiles {

@@ -116,6 +116,7 @@ export class DockerFixture {
 	readonly #directory: string;
 	readonly #client: NodeDockerClient;
 	#localListener: Server | undefined;
+	#socketDirectory: string | undefined;
 	readonly allocations = new Set<string>();
 	readonly workspace: string;
 	readonly outside: string;
@@ -143,7 +144,14 @@ export class DockerFixture {
 			DOCKER_IMAGE,
 			'/usr/local/bin/node',
 			'-e',
-			'let connections=0; const server=require("node:http").createServer((_request, response) => response.end("controlled")); server.on("connection",()=>require("node:fs").writeFileSync("/tmp/connections",String(++connections)));server.listen(8080, "0.0.0.0")'
+			`let connections = 0;
+const server = require('node:http').createServer((request, response) => {
+	response.end(request.url === '/count' ? String(connections) : 'controlled');
+});
+server.on('connection', socket => {
+	if (socket.remoteAddress !== '127.0.0.1') connections++;
+});
+server.listen(8080, '0.0.0.0');`
 		]);
 		this.hasServer = true;
 		await this.docker(['start', this.server]);
@@ -191,6 +199,59 @@ export class DockerFixture {
 		expect(control).toBe('controlled');
 
 		return address;
+	}
+
+	async #waitingPeer(context = operationContext()) {
+		const [allocation] = this.allocations;
+
+		if (allocation === undefined) {
+			throw new Error('The concurrent jobs have no Docker allocation.');
+		}
+
+		const running = await this.docker(
+			[
+				'ps',
+				'--all',
+				'--filter',
+				`label=${ALLOCATION_LABEL}=${allocation}`,
+				'--format',
+				'{{.Names}}'
+			],
+			context
+		);
+		const candidates = running
+			.trim()
+			.split('\n')
+			.filter(
+				(item) => item.length > 0 && !item.startsWith(allocation + '-files-')
+			);
+
+		if (candidates.length === 0) {
+			return;
+		}
+
+		const [peer] = candidates;
+
+		if (!peer || candidates.length !== 1) {
+			throw new Error('Unexpected Docker job after cancellation.');
+		}
+
+		await this.docker(
+			['exec', peer, '/usr/bin/test', '-f', '/tmp/peer-ready'],
+			context
+		);
+
+		return peer;
+	}
+
+	async socketEndpoint(): Promise<string> {
+		this.#socketDirectory = await mkdtemp('/tmp/pi-byos-socket-');
+
+		const workspace = path.join(this.#socketDirectory, 'w');
+
+		await symlink(this.workspace, workspace);
+
+		return path.join(workspace, 's');
 	}
 
 	providerClient(): DockerClient {
@@ -342,6 +403,7 @@ export class DockerFixture {
 			'--network=none',
 			'--read-only',
 			'--cap-drop=ALL',
+			'--user=65534:65534',
 			'--mount',
 			`type=volume,source=${volume},target=/workspace,readonly`,
 			DOCKER_IMAGE,
@@ -490,51 +552,9 @@ process.stdout.write(readFileSync("/tmp/response"));`
 				},
 				ready: encode('ready'),
 				release: async (bytes, context) => {
-					const [allocation] = this.allocations;
+					const peer = await this.#waitingPeer(context);
 
-					if (allocation === undefined) {
-						throw new Error('The concurrent jobs have no Docker allocation.');
-					}
-
-					const running = await this.docker(
-						[
-							'ps',
-							'--filter',
-							`label=${ALLOCATION_LABEL}=${allocation}`,
-							'--format',
-							'{{.Names}}'
-						],
-						context
-					);
-					const candidates = running
-						.trim()
-						.split('\n')
-						.filter(
-							(item) =>
-								item.length > 0 && !item.startsWith(allocation + '-files-')
-						);
-					const peers = [];
-
-					for (const id of candidates) {
-						const marked = await this.docker(
-							[
-								'exec',
-								id,
-								'/bin/sh',
-								'-c',
-								'if [ -f /tmp/peer-ready ]; then printf ready; fi'
-							],
-							context
-						);
-
-						if (marked === 'ready') {
-							peers.push(id);
-						}
-					}
-
-					const [peer] = peers;
-
-					if (!peer || peers.length !== 1) {
+					if (!peer) {
 						throw new Error('Expected one waiting Docker peer.');
 					}
 
@@ -627,15 +647,17 @@ process.stdout.write(readFileSync("/tmp/response"));`
 								await this.docker([
 									'exec',
 									this.server,
-									'cat',
-									'/tmp/connections'
+									'/usr/local/bin/node',
+									'--input-type=module',
+									'-e',
+									"const response = await fetch('http://127.0.0.1:8080/count'); process.stdout.write(await response.text());"
 								])
 							)
 						})
 					};
 				},
 				'late-special-file': async () => {
-					const endpoint = path.join(this.workspace, 's');
+					const endpoint = await this.socketEndpoint();
 					let connections = 0;
 					const server = createServer((peer) => {
 						connections++;
@@ -677,7 +699,9 @@ process.stdout.write(readFileSync("/tmp/response"));`
 				request: cancellationRequest,
 				after: sourceRead,
 				ready: encode('ready'),
-				verifyStopped: () => this.noJobContainers()
+				verifyStopped: async () => {
+					await this.#waitingPeer();
+				}
 			},
 			verifyPolicy: (backend, context) => this.policyChecks(backend, context),
 			verifyDisposed: () => this.verifyDisposed(),
@@ -725,7 +749,12 @@ process.stdout.write(readFileSync("/tmp/response"));`
 			try {
 				await this.#localListener?.[Symbol.asyncDispose]();
 			} finally {
-				await rm(this.#directory, { recursive: true, force: true });
+				await Promise.all([
+					rm(this.#directory, { recursive: true, force: true }),
+					...(this.#socketDirectory
+						? [rm(this.#socketDirectory, { recursive: true, force: true })]
+						: [])
+				]);
 			}
 		}
 	}

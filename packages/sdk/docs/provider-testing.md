@@ -180,8 +180,9 @@ Fixture cleanup must account for both allocations.
 
 Use `verifyConcurrentCancellation` for providers that support concurrent jobs
 and confirmed termination. Supply a `concurrentJob` that emits a ready marker
-and waits. The suite cancels a second job on the same allocation, then sends
-fresh bytes through the fixture's independent `release` callback. The callback
+and waits. The suite cancels a second job on the same allocation, calls
+`cancellation.verifyStopped` while the peer is still running, then sends fresh
+bytes through the fixture's independent `release` callback. The callback
 receives the operation context so it can stop at the scenario deadline. The
 waiting job must return those bytes and exit successfully.
 

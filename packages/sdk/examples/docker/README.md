@@ -272,6 +272,7 @@ image already present. Set `BYOS_DOCKER_EXECUTABLE` and `BYOS_DOCKER_SOCKET` if
 the daemon uses different paths.
 
 ```sh
+pnpm build
 BYOS_DOCKER_BENCHMARK=1 pnpm exec vitest run --config vitest.provider.config.ts examples/docker/test/benchmark.test.ts
 ```
 

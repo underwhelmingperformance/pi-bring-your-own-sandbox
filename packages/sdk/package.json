@@ -28,6 +28,7 @@
 		"!src/fixtures/**",
 		"docs",
 		"examples/docker/README.md",
+		"examples/docker/workspace-editing.md",
 		"examples/docker/dist/re2js.mjs",
 		"examples/docker/dist/RE2JS-LICENSE",
 		"examples/docker/src",

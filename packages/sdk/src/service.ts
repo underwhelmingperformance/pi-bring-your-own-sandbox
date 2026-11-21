@@ -56,11 +56,11 @@ export function ensureBroker(
 		guardVersion: 1,
 		openReviewSnapshot: (context, source, options) =>
 			invoke((broker) => {
-				if (broker.openReviewSnapshot === undefined) {
-					throw new UnsupportedSandboxCapabilityError({ operation: 'acquire' });
-				}
-
-				return broker.openReviewSnapshot(context, source, options);
+				return broker.openReviewSnapshot === undefined
+					? Promise.reject(
+							new UnsupportedSandboxCapabilityError({ operation: 'acquire' })
+						)
+					: broker.openReviewSnapshot(context, source, options);
 			}),
 		id,
 		acquire: (context, options) =>

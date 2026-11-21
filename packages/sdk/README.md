@@ -43,10 +43,10 @@ results, capabilities, errors and cleanup.
 
 To supply a sandbox, start with the [Docker provider example][docker]. The
 [provider testing guide][testing] explains how to check a provider against the
-shared contract. The [workspace editing goals][editing] describe the intended
-development and review workflows.
+shared contract. The [Docker workspace editing goals][editing] describe that
+provider's intended development and review workflows.
 
-[editing]: docs/workspace-editing.md
+[editing]: examples/docker/workspace-editing.md
 [consumer]: examples/consumer/README.md
 [docker]: examples/docker/README.md
 [testing]: docs/provider-testing.md

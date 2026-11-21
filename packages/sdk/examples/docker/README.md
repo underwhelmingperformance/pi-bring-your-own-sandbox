@@ -9,6 +9,11 @@ The framework's runtime does not depend on Docker. Registering the example does
 not contact the daemon. Docker is required when a consumer acquires an
 explicitly selected `example.docker` backend.
 
+See the [workspace editing goals][editing] for when Docker should share the
+checkout, use a private copy or take a review snapshot.
+
+[editing]: workspace-editing.md
+
 ## Load and select the provider
 
 Use a local Unix-socket Docker daemon on Linux or macOS. The configuration

@@ -14,14 +14,14 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import { SandboxPermissionDeniedError } from 'pi-bring-your-own-sandbox/api';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 
 import { createSandbox } from '../../../src/facade.js';
 import { TestBackendOwner } from '../../../src/fixtures/backend-owner.js';
-import { connectHostReplacements } from '../src/host-replacements.js';
 import { DOCKER_IMAGE } from '../src/image.js';
 import { attachDockerWorkspace } from '../src/provider.js';
 import { ALLOCATION_LABEL, DockerResources } from '../src/resources.js';
+import { DockerWorkspaceService } from '../src/workspace-service.js';
 
 import { DockerFixture, operationContext } from './fixture.js';
 
@@ -32,15 +32,17 @@ it
 	async (mode) => {
 		const fixture = await DockerFixture.create();
 		const client = fixture.providerClient();
-		const resources = new DockerResources(client, fixture.config.socketPath);
+		const isHostReplacements =
+			process.platform === 'darwin' && mode === 'read-write';
+		const resources = new DockerResources(
+			client,
+			fixture.config.socketPath,
+			isHostReplacements ? path.dirname(fixture.workspace) : undefined
+		);
 		const allocation = resources.volume;
 		const label = ALLOCATION_LABEL + '=' + allocation;
 		const binary = path.join(fixture.workspace, '..', 'mount-check');
-
-		const staging = path.join(fixture.workspace, '..', 'staging');
-		const isHostReplacements =
-			process.platform === 'darwin' && mode === 'read-write';
-		let closeHost: (() => Promise<void>) | undefined;
+		let service: DockerWorkspaceService | undefined;
 
 		fixture.allocations.add(allocation);
 
@@ -66,7 +68,25 @@ it
 					timeout: 90_000
 				}
 			);
-			await fixture.docker(['volume', 'create', '--label', label, allocation]);
+			service = await DockerWorkspaceService.open(
+				fixture.config,
+				resources,
+				{
+					workspace: fixture.workspace,
+					bootstrap: binary,
+					access: mode,
+					protectedPaths: isHostReplacements ? ['nested/policies/config'] : []
+				},
+				{
+					...operationContext(),
+					reportRecovery(recovery) {
+						expect(recovery).toStrictEqual(resources.recovery);
+					},
+					confirmCleanup() {
+						return;
+					}
+				}
+			);
 
 			const common = [
 				'--pull=never',
@@ -84,75 +104,6 @@ it
 				'type=bind,source=' + binary + ',target=/mount-check,readonly',
 				'--entrypoint=/mount-check'
 			];
-
-			const owner = await stat(fixture.workspace);
-
-			if (isHostReplacements) {
-				await mkdir(staging, { mode: 0o700 });
-			}
-
-			const credentials = String(owner.uid) + ':' + String(owner.gid);
-
-			await fixture.docker([
-				'run',
-				'--rm',
-				'--pull=never',
-				'--network=none',
-				'--cap-drop=ALL',
-				'--cap-add=CHOWN',
-				'--mount',
-				'type=volume,source=' + allocation + ',target=/control',
-				DOCKER_IMAGE,
-				'chown',
-				credentials,
-				'/control'
-			]);
-			await fixture.docker([
-				'run',
-				'--detach',
-				'--name',
-				allocation,
-				...common,
-				'--user=' + credentials,
-				'--mount',
-				'type=bind,source=' +
-					fixture.workspace +
-					',target=/backing' +
-					(mode === 'read-only' || isHostReplacements ? ',readonly' : ''),
-				...(isHostReplacements
-					? ['--mount', 'type=bind,source=' + staging + ',target=/staging']
-					: []),
-				DOCKER_IMAGE,
-				...(isHostReplacements ? ['serve-host'] : ['serve', mode])
-			]);
-
-			try {
-				await fixture.docker([
-					'exec',
-					allocation,
-					'/usr/bin/timeout',
-					'5',
-					'/bin/sh',
-					'-c',
-					'while [ ! -S /control/service ]; do sleep 0.05; done'
-				]);
-			} catch (error) {
-				const logs = await fixture.docker(['logs', allocation]);
-
-				throw new Error('The mount service did not start. ' + logs, {
-					cause: error
-				});
-			}
-
-			if (isHostReplacements) {
-				closeHost = await connectHostReplacements(
-					fixture.config,
-					allocation,
-					fixture.workspace,
-					staging,
-					['nested/policies/config']
-				);
-			}
 
 			await fixture.docker([
 				'exec',
@@ -172,17 +123,6 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 			await expect
 				.poll(() => fixture.docker(['logs', allocation]), { timeout: 5000 })
 				.toContain('mount request from uid 65534: permission denied');
-
-			const security = await fixture.docker([
-				'info',
-				'--format',
-				'{{json .SecurityOptions}}'
-			]);
-			const options: unknown = JSON.parse(security);
-
-			if (!Array.isArray(options)) {
-				throw new TypeError('Docker did not return its security options.');
-			}
 
 			await writeFile(
 				path.join(fixture.workspace, 'source.txt'),
@@ -223,7 +163,7 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 				'run',
 				'--rm',
 				...common,
-				...(options.includes('name=apparmor')
+				...(service.hasAppArmor
 					? ['--security-opt=apparmor=byos-mount-probe']
 					: []),
 				'--device=/dev/fuse',
@@ -359,11 +299,7 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 				});
 			}
 
-			const backend = await attachDockerWorkspace(resources, client, mode, {
-				controlVolume: allocation,
-				bootstrap: binary,
-				hasAppArmor: options.includes('name=apparmor')
-			});
+			const backend = await attachDockerWorkspace(client, mode, service);
 			const sandbox = createSandbox(new TestBackendOwner(backend));
 
 			try {
@@ -495,7 +431,48 @@ for (const target of ['.pi/settings', '.envrc', '.ENVRC', '.Git', '.direnv', '.v
 				});
 			} finally {
 				await backend.dispose(operationContext());
+				service = undefined;
+
+				if (resources.hostStaging !== undefined) {
+					await expect(stat(resources.hostStaging)).rejects.toMatchObject({
+						code: 'ENOENT'
+					});
+				}
 			}
+
+			if (isHostReplacements) {
+				const failed = new DockerResources(
+					client,
+					fixture.config.socketPath,
+					path.dirname(fixture.workspace)
+				);
+				const confirmCleanup = vi.fn();
+
+				await expect(
+					DockerWorkspaceService.open(
+						fixture.config,
+						failed,
+						{
+							workspace: fixture.workspace,
+							bootstrap: binary,
+							access: mode,
+							protectedPaths: ['../outside']
+						},
+						{ ...operationContext(), reportRecovery: vi.fn(), confirmCleanup }
+					)
+				).rejects.toThrow('protected path');
+				expect(confirmCleanup).toHaveBeenCalledOnce();
+
+				if (failed.hostStaging === undefined) {
+					throw new Error('Missing native staging path.');
+				}
+
+				await expect(stat(failed.hostStaging)).rejects.toMatchObject({
+					code: 'ENOENT'
+				});
+			}
+
+			await fixture.verifyDisposed();
 
 			const zero = '0000000000000000';
 
@@ -554,7 +531,7 @@ for (const target of ['.pi/settings', '.envrc', '.ENVRC', '.Git', '.direnv', '.v
 			});
 		} finally {
 			try {
-				await closeHost?.();
+				await service?.dispose(operationContext());
 			} finally {
 				await fixture.cleanup();
 			}

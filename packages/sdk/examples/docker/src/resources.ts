@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 
 import type {
 	BackendProcessContext,
@@ -83,14 +84,30 @@ export class DockerResources {
 	*/
 	readonly recovery: RecoveryDescriptor;
 
-	constructor(client: DockerClient, socketPath: string) {
+	readonly hostStaging: string | undefined;
+
+	constructor(
+		client: DockerClient,
+		socketPath: string,
+		stagingParent?: string
+	) {
+		this.hostStaging =
+			stagingParent === undefined
+				? undefined
+				: path.join(stagingParent, '.' + this.volume);
 		this.#client = client;
 		this.recovery = {
 			kind: 'allocation',
 			id: this.volume,
 			lease:
 				'Owned by this SDK generation. No automatic expiry; manual cleanup after a host crash.',
-			instructions: `On the local daemon at ${socketPath}, remove containers with label ${ALLOCATION_LABEL}=${this.volume}, then remove volume ${this.volume}.`
+			instructions:
+				`On the local daemon at ${socketPath}, remove containers with label ${ALLOCATION_LABEL}=${this.volume}, then remove volume ${this.volume}.` +
+				(this.hostStaging === undefined
+					? ''
+					: ' Inspect and remove the private staging directory at ' +
+						this.hostStaging +
+						'.')
 		};
 	}
 

@@ -48,11 +48,11 @@ import {
 	DockerResources
 } from './resources.js';
 import {
-	type DockerMountService,
 	type DockerWorkspaceMount,
 	mount,
 	workspaceCommand
 } from './workspace-mount.js';
+import type { DockerWorkspaceService } from './workspace-service.js';
 
 function targetCommand(
 	request: ProcessRequest
@@ -129,6 +129,7 @@ export interface DockerProviderOptions {
 class DockerBackend implements SandboxBackend {
 	readonly #resources: DockerResources;
 	readonly #workspaceMount: DockerWorkspaceMount;
+	readonly #service: DockerWorkspaceService | undefined;
 	readonly #onClose: (() => void) | undefined;
 	readonly #snapshots = new Set<Promise<void>>();
 	readonly #launcher: string;
@@ -156,8 +157,9 @@ class DockerBackend implements SandboxBackend {
 		onClose: (() => void) | undefined,
 		toolchain: { image: string; capabilities: SandboxCapabilities },
 		workspace: SandboxBackend['workspace'],
-		service?: DockerMountService
+		service?: DockerWorkspaceService
 	) {
+		this.#service = service;
 		this.policyDescription = service
 			? 'Jobs access the host checkout through the workspace filesystem service.'
 			: 'Jobs use a copied workspace, a read-only Debian image, private scratch space, UID 65534 and no network. Host files outside the copied workspace are not mounted.';
@@ -362,6 +364,12 @@ class DockerBackend implements SandboxBackend {
 			await expired.promise;
 		}
 
+		if (this.#service !== undefined) {
+			await this.#service.dispose(context);
+
+			return;
+		}
+
 		await this.#resources.dispose(context);
 	}
 
@@ -375,6 +383,17 @@ class DockerBackend implements SandboxBackend {
 				operation: 'open',
 				backendId: this.id
 			});
+		}
+
+		if (this.#service !== undefined) {
+			throw new UnsupportedSandboxCapabilityError(
+				{ operation: 'open', providerId: 'example.docker', backendId: this.id },
+				{
+					cause: new Error(
+						'Review snapshots of a mounted workspace require access to the mounted source.'
+					)
+				}
+			);
 		}
 
 		const signal = AbortSignal.any([context.signal, this.#lifetime.signal]);
@@ -614,15 +633,14 @@ async function readCommands() {
 }
 
 export async function attachDockerWorkspace(
-	resources: DockerResources,
 	client: DockerClient,
 	workspaceAccess: 'read-only' | 'read-write',
-	service: DockerMountService
+	service: DockerWorkspaceService
 ): Promise<SandboxBackend> {
 	const { launcher, helpers } = await readCommands();
 
 	return new DockerBackend(
-		resources,
+		service.resources,
 		{
 			...dockerDefaultPolicy,
 			workspaceAccess,

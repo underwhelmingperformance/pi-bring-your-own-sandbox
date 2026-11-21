@@ -415,9 +415,15 @@ hard-link alias returned `EACCES`. This experiment used a fixed workload and did
 not test confinement of arbitrary SFTP clients or access to the FUSE device from
 the workload.
 
-Production shared workspaces still require confined reads, protection for
-referenced Git administration directories and hooks, and session-owned
-allocation and cleanup of the host service and mount. The Linux probe covers
+The mounted backend owns the service container and its control volume. On macOS
+it also owns the host helper and a private staging directory beside the
+checkout. The recovery descriptor includes the staging path. Disposal stops the
+helper, removes the labelled containers and volume, and removes the empty
+staging directory. The mount test checks those resources after a successful
+session and a failed native open.
+
+Production shared workspaces still require confined reads and protection for
+referenced Git administration directories and hooks. The Linux probe covers
 rename and unlink. Shared sessions require host enforcement for content changes
 as well.
 

@@ -339,8 +339,22 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 
 			expect(result).toMatchObject({
 				success: true,
-				numTotalTests: 4,
-				numPassedTests: 4,
+				numTotalTests: 5,
+				numPassedTests: 5,
+				testResults: [
+					{
+						assertionResults: expect.arrayContaining([
+							expect.objectContaining({
+								title: 'confirmed cancellation and continued use',
+								status: 'passed'
+							}),
+							expect.objectContaining({
+								title: 'policy effects (read-only)',
+								status: 'passed'
+							})
+						]) as unknown
+					}
+				],
 				numPendingTests: 0
 			});
 		} finally {

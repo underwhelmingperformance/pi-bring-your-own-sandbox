@@ -134,6 +134,34 @@ it('opens a backend for each distinct configuration and reuses it', async () => 
 	await generation.close();
 });
 
+it('allocates a separate backend for an explicit workspace relationship', async () => {
+	const { generation, context, opened } = fixture({
+		policies: { ...ALL_POLICIES, workspaceRelationship: ['remote'] }
+	});
+	const policy = { workspaceRelationship: 'remote' } as const;
+
+	await generation.acquire(context);
+	await generation.acquire(context, { policy });
+	await generation.acquire(context, { policy });
+
+	expect(opened).toStrictEqual([PERSONAL, { ...PERSONAL, ...policy }]);
+	await generation.close();
+});
+
+it('rejects a backend that returns another workspace relationship', async () => {
+	const { generation, context } = fixture({
+		policies: { ...ALL_POLICIES, workspaceRelationship: ['copied', 'remote'] },
+		open: () => Promise.resolve(new PolicyBackend(PERSONAL))
+	});
+
+	await expect(
+		generation.acquire(context, {
+			policy: { workspaceRelationship: 'copied' }
+		})
+	).rejects.toMatchObject({ name: 'UnsupportedSandboxPolicyError' });
+	await generation.close();
+});
+
 it('keeps a personal restriction when a request delegates that field', async () => {
 	const personal: SandboxPolicy = { ...PERSONAL, networkAccess: 'denied' };
 	const { generation, context, opened } = fixture({ personal });
@@ -149,6 +177,18 @@ it('keeps a personal restriction when a request delegates that field', async () 
 });
 
 it.each([
+	{
+		name: 'a relationship that a legacy provider does not declare',
+		personal: PERSONAL,
+		policies: ALL_POLICIES,
+		requested: { workspaceRelationship: 'copied' }
+	},
+	{
+		name: 'a shared workspace when the personal policy specifies a copy',
+		personal: { ...PERSONAL, workspaceRelationship: 'copied' },
+		policies: { ...ALL_POLICIES, workspaceRelationship: ['copied', 'shared'] },
+		requested: { workspaceRelationship: 'shared' }
+	},
 	{
 		name: 'a value that the provider does not declare',
 		personal: PERSONAL,
@@ -252,22 +292,36 @@ it('keeps other backends usable after one fails to open', async () => {
 	await generation.close();
 });
 
-it('lists every open backend in status', async () => {
-	const { generation, context } = fixture();
+it('lists negotiated and effective policies for every open backend', async () => {
+	const { generation, context } = fixture({
+		open: (policy) =>
+			Promise.resolve(new PolicyBackend({ ...policy, networkAccess: 'denied' }))
+	});
 
 	await generation.acquire(context);
 	await generation.acquire(context, { policy: RESTRICTED });
 
 	const status = await generation.status();
 
+	expect(status.policy).toStrictEqual({
+		...PERSONAL,
+		networkAccess: 'denied',
+		workspaceRelationship: 'remote'
+	});
 	expect(status.backends).toStrictEqual([
 		{
 			policy: PERSONAL,
+			effectivePolicy: {
+				...PERSONAL,
+				networkAccess: 'denied',
+				workspaceRelationship: 'remote'
+			},
 			state: 'ready',
-			backendId: 'memory:read-write:provider-default'
+			backendId: 'memory:read-write:denied'
 		},
 		{
 			policy: RESTRICTED,
+			effectivePolicy: { ...RESTRICTED, workspaceRelationship: 'remote' },
 			state: 'ready',
 			backendId: 'memory:read-only:denied'
 		}
@@ -524,22 +578,35 @@ it('shares equivalent protection sets while separating different resources', asy
 			policy: { workspaceProtection: [{ kind: 'path', path: '.c' }] }
 		});
 
+		const status = await generation.status();
+
+		const expectedPolicies = [
+			{
+				...PERSONAL,
+				workspaceProtection: [
+					{ kind: 'path', path: '.a' },
+					{ kind: 'path', path: '.b' }
+				]
+			},
+			{ ...PERSONAL, workspaceProtection: [{ kind: 'path', path: '.c' }] }
+		];
+
+		expect(status.backends).toStrictEqual(
+			expectedPolicies.map((policy) => ({
+				policy,
+				backendId: 'memory:read-write:provider-default',
+				state: 'ready',
+				effectivePolicy: { ...policy, workspaceRelationship: 'remote' }
+			}))
+		);
+
 		expect({
 			shared: first.backendId === repeated.backendId,
 			policies: opened,
 			other: other.policy
 		}).toStrictEqual({
 			shared: true,
-			policies: [
-				{
-					...PERSONAL,
-					workspaceProtection: [
-						{ kind: 'path', path: '.a' },
-						{ kind: 'path', path: '.b' }
-					]
-				},
-				{ ...PERSONAL, workspaceProtection: [{ kind: 'path', path: '.c' }] }
-			],
+			policies: expectedPolicies,
 			other: {
 				...PERSONAL,
 				workspaceProtection: [{ kind: 'path', path: '.c' }]

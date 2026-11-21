@@ -9,7 +9,8 @@ import {
 } from './discovery.js';
 import {
 	InvalidSandboxDeclarationError,
-	SandboxInitialisationError
+	SandboxInitialisationError,
+	UnsupportedSandboxCapabilityError
 } from './errors.js';
 import type { BrokerServiceV1, ServiceAdvertisementV1 } from './protocol.js';
 import { BROKER_DISCOVERY_CHANNEL } from './protocol.js';
@@ -53,6 +54,14 @@ export function ensureBroker(
 
 	const service = Object.freeze<BrokerServiceV1>({
 		guardVersion: 1,
+		openReviewSnapshot: (context, source, options) =>
+			invoke((broker) => {
+				if (broker.openReviewSnapshot === undefined) {
+					throw new UnsupportedSandboxCapabilityError({ operation: 'acquire' });
+				}
+
+				return broker.openReviewSnapshot(context, source, options);
+			}),
 		id,
 		acquire: (context, options) =>
 			invoke((broker) => broker.acquire(context, options)),

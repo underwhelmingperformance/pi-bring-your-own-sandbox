@@ -13,6 +13,7 @@ import type { ShellDialect } from './contracts.js';
 import {
 	isSandboxError,
 	SandboxCancelledError,
+	StaleSandboxHandleError,
 	UnconfirmedSandboxTerminationError
 } from './errors.js';
 import { requestExecutionApproval } from './execution-approval.js';
@@ -31,7 +32,8 @@ export function outsideShellOperations(
 	pi: ExtensionAPI,
 	context: ExtensionContext,
 	dialect: ShellDialect,
-	justification: string
+	justification: string,
+	requiresHostCheckout = false
 ): BashOperations {
 	const settings = pi.getSettings();
 	const normal =
@@ -73,6 +75,15 @@ export function outsideShellOperations(
 						cwd: executor.destination.workspace.root
 					};
 					const bound = runtimeSettings(pi);
+
+					if (
+						requiresHostCheckout &&
+						(executor.destination.kind !== 'normal' ||
+							bound.normalExecutor !== undefined ||
+							executor.destination.workspace.root !== context.cwd)
+					) {
+						throw new StaleSandboxHandleError({ operation: 'exec' });
+					}
 
 					if (
 						executor.destination.kind === 'normal' &&

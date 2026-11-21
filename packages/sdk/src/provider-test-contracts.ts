@@ -40,10 +40,129 @@ export interface SandboxProcessProbe {
 }
 
 /**
+Restrictions with independent checks in the public provider suite.
+*/
+export type SandboxPolicyScenario =
+	| 'read-only'
+	| 'protected-path'
+	| 'protected-alias'
+	| 'late-special-file'
+	| 'denied-network';
+
+/**
+Independent observations of a protected object or a controlled listener.
+*/
+export type SandboxPolicyEvidence =
+	| {
+			readonly kind: 'file';
+			readonly content: Uint8Array;
+			readonly mode: number;
+			readonly links: number;
+	  }
+	| { readonly kind: 'absent' }
+	| {
+			readonly kind: 'special';
+			readonly bytesReceived: number;
+			readonly mode: number;
+			readonly links: number;
+	  }
+	| { readonly kind: 'listener'; readonly connections: number };
+
+/**
+Target commands and an independent observer for one policy restriction.
+*/
+export interface SandboxPolicyProbe {
+	readonly permitted: SandboxProcessProbe;
+	readonly denied: SandboxProcessProbe;
+	readonly observe: () => Promise<SandboxPolicyEvidence>;
+	/**
+	Supply the target path and expected error when the backend offers the corresponding file operation. Use `unsupported-file` for a read that fails because of the special file type.
+	*/
+	readonly file?: {
+		readonly path: string;
+		readonly error: 'absent' | 'denied' | 'unsupported-file';
+	};
+}
+
+/**
 An isolated test workspace and provider-specific probes. The suite creates a
 fresh fixture for every test. Seed target files before returning this value.
 */
 export interface SandboxProviderTestFixture {
+	/**
+	Prepare the restricted resource after opening, and inspect it independently of the backend.
+	*/
+	readonly policyEffects?: Partial<
+		Readonly<
+			Record<
+				SandboxPolicyScenario,
+				(backend: SandboxBackend) => Promise<SandboxPolicyProbe>
+			>
+		>
+	>;
+
+	/**
+	A seeded regular file seen from the source workspace and through a target
+	process. Replace the source by rename so a stale open inode cannot pass.
+	*/
+	readonly visibility?: {
+		/**
+		Target path of the seeded regular file, relative to the workspace or absolute.
+		*/
+		readonly targetPath: string;
+		/**
+		An absent target file in an existing searchable directory. Choose a
+		basename without glob metacharacters that the ignore rules include.
+		Supply this path to test whether find observes a file created by writeFile.
+		*/
+		readonly findTarget?: string;
+		/**
+		Read complete bytes independently from the source workspace.
+		*/
+		readonly readSource: () => Promise<Uint8Array>;
+		/**
+		Replace the source file by atomic rename.
+		*/
+		readonly replaceSource: (bytes: Uint8Array) => Promise<void>;
+		/**
+		A successful process that writes only the complete target file to stdout.
+		*/
+		readonly readTarget: ProcessRequest;
+		/**
+		A successful process that replaces the target file with the supplied bytes.
+		*/
+		readonly writeTarget: (bytes: Uint8Array) => ProcessRequest;
+		/**
+		Prepare an editor save in a temporary file and rename it over the seeded
+		file in a second process. The suite replaces the source between commands.
+		*/
+		readonly stageSave?: (bytes: Uint8Array) => {
+			readonly prepare: ProcessRequest;
+			readonly commit: ProcessRequest;
+		};
+		/**
+		Create another hard link to the current source file. The returned observer
+		reads that link independently before and after the shared editor save.
+		Include extended attributes when the filesystem supports them.
+		*/
+		readonly linkSource?: () => Promise<
+			() => Promise<{
+				readonly identity: string;
+				readonly content: Uint8Array;
+				readonly mode: number;
+				readonly uid: number;
+				readonly gid: number;
+				readonly links: number;
+				readonly xattrs?: Readonly<Record<string, Uint8Array>>;
+			}>
+		>;
+		/**
+		Write the bytes, emit "ready" on stdout, then emit the replacement
+		bytes from the same path before exiting. Required for writable sharing.
+		*/
+		readonly waitForReplacement?: (bytes: Uint8Array) => ProcessRequest;
+	};
+
 	/**
 	Unknown configuration passed through the provider's validator.
 	*/
@@ -111,9 +230,10 @@ export interface SandboxProviderTestFixture {
 		*/
 		readonly path: string;
 		/**
-		Complete expected metadata of that directory.
+		Complete expected directory metadata. The suite calls a supplied callback
+		after stat. Observe the target independently of the backend under test.
 		*/
-		readonly stat: FileStat;
+		readonly stat: FileStat | (() => Promise<FileStat>);
 		/**
 		Immediate children before the test starts.
 		*/
@@ -146,6 +266,25 @@ export interface SandboxProviderTestFixture {
 		readonly result: GrepResult;
 	}[];
 	/**
+	A repeatable process on a second allocation from the same source. Required
+	for the independent disposal scenario.
+	*/
+	readonly peerProcess?: SandboxProcessProbe;
+
+	/**
+	A peer that emits its ready marker, waits for release, then emits exactly
+	the supplied bytes and exits successfully. Release the peer independently
+	of the backend under test.
+	*/
+	readonly concurrentJob?: {
+		readonly request: ProcessRequest;
+		readonly ready: Uint8Array;
+		readonly release: (
+			bytes: Uint8Array,
+			context: SandboxOperationContext
+		) => Promise<void>;
+	};
+	/**
 	A long-running foreground job, including a descendant when supported.
 	*/
 	readonly cancellation: {
@@ -162,6 +301,10 @@ export interface SandboxProviderTestFixture {
 		Required for `process-group` and `workload`; unused for `none`.
 		*/
 		readonly verifyStopped?: () => Promise<void>;
+		/**
+		Successful operation on the same allocation after confirmed termination.
+		*/
+		readonly after?: SandboxProcessProbe;
 	};
 	/**
 	Independent negative tests for every requested restrictive policy. Required
@@ -177,6 +320,13 @@ export interface SandboxProviderTestFixture {
 	*/
 	readonly verifyDisposed: () => Promise<void>;
 	/**
+	Check that the first allocation has released its resources while its peer
+	remains open. Required for the independent allocation scenario.
+	*/
+	readonly verifyAllocationDisposed?: (
+		backend: SandboxBackend
+	) => Promise<void>;
+	/**
 	Always release fixture resources, including allocations left by failed
 	opening or disposal. This callback must also work before opening succeeds.
 	*/
@@ -189,6 +339,34 @@ for different policy modes and backend capability subsets.
 @typeParam Config - Validated provider configuration.
 */
 export interface SandboxProviderTestOptions<Config> {
+	/**
+	Register one separately reported test for each selected policy restriction.
+	*/
+	readonly policyEffects?: readonly SandboxPolicyScenario[];
+
+	/**
+	Cancel one job while a peer on the same allocation waits for a response.
+	*/
+	readonly verifyConcurrentCancellation?: boolean;
+
+	/**
+	Open two allocations from the same source and verify the second one before
+	and after disposing the first.
+	*/
+	readonly verifyIndependentAllocations?: boolean;
+
+	/**
+	Run another process after independently confirming cancellation. Supply
+	`cancellation.after` for this scenario.
+	*/
+	readonly verifyRecoveryAfterCancellation?: boolean;
+
+	/**
+	Select the shared or copied visibility tests for this scenario. Writable
+	workspaces also exercise changes from the target.
+	*/
+	readonly workspaceVisibility?: 'shared' | 'copied';
+
 	/**
 	Vitest suite description identifying this scenario.
 	*/

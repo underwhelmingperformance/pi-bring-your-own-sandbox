@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 
 import { resolveSandboxConfig, selectProvider } from './config.js';
 import type { ProviderServiceV1 } from './protocol.js';
+import { applySandboxRequirements } from './requirements.js';
 
 const defaultPolicy = {
 	workspaceAccess: 'read-write',
@@ -114,4 +115,41 @@ it('uses a complete supplied policy and snapshots its protected resources', () =
 		policySource: 'extension',
 		cleanup: { cancellationGraceMs: 8000 }
 	});
+});
+
+it('rejects an unsupported configured relationship and conflicting registered requirements', () => {
+	const provider = service('fixture');
+	const config = resolveSandboxConfig(
+		provider,
+		{ configuration: {}, policy: defaultPolicy },
+		'extension'
+	);
+	const copied = { workspaceRelationship: 'copied' } as const;
+	const shared = { workspaceRelationship: 'shared' } as const;
+
+	expect(() =>
+		selectProvider(
+			{
+				...config,
+				selection: {
+					...config.selection,
+					policy: { ...defaultPolicy, ...copied }
+				}
+			},
+			[provider]
+		)
+	).toThrow(expect.objectContaining({ name: 'UnsupportedSandboxPolicyError' }));
+	expect(() =>
+		applySandboxRequirements(
+			config,
+			{
+				...provider,
+				policies: {
+					...provider.policies,
+					workspaceRelationship: ['shared', 'copied']
+				}
+			},
+			[{ policy: copied }, { policy: shared }]
+		)
+	).toThrow(expect.objectContaining({ name: 'UnsupportedSandboxPolicyError' }));
 });

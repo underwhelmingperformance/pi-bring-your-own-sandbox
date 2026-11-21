@@ -209,7 +209,7 @@ it('reports default status in a headless Pi session without opening a backend or
 				{
 					display: true,
 					content:
-						'Provider: passthrough (default)\nState: idle\nGeneration: <generation>\nTarget: not opened\nRequested policy: workspace read-write; filesystem provider-default; network provider-default\nUser shell: provider default (not opened)\nProvider description: Host execution without isolation\nApproval policy: user\nOutside execution destination: normal\nOutside native Pi shell termination scope: none\nPi shell integration: not requested; routing unverified.'
+						'Provider: passthrough (default)\nState: idle\nGeneration: <generation>\nTarget: not opened\nRequested policy: workspace read-write; filesystem provider-default; network provider-default; protected resources: none\nUser shell: provider default (not opened)\nProvider description: Host execution without isolation\nApproval policy: user\nOutside execution destination: normal\nOutside native Pi shell termination scope: none\nPi shell integration: not requested; routing unverified.'
 				}
 			]
 		});
@@ -228,7 +228,7 @@ it('enumerates providers without allocation and omits provider configuration', a
 					{
 						display: true,
 						content:
-							'Available sandbox providers (declared capabilities):\npassthrough: Host execution without isolation\n  Operations: exec, files.read, files.write, files.list, search.find, search.grep\n  Termination scope: process-group\n  Shells: bash, sh, powershell\n  Policies: workspace read-write; filesystem provider-default; network provider-default\nfixture: In-memory fixture; no OS isolation.\n  Operations: exec, files.read, files.write, files.list\n  Termination scope: workload\n  Shells: none\n  Policies: workspace read-write; filesystem provider-default; network provider-default'
+							'Available sandbox providers (declared capabilities):\npassthrough: Host execution without isolation\n  Workspace relationships: shared\n  Operations: exec, files.read, files.write, files.list, search.find, search.grep\n  Termination scope: process-group\n  Shells: bash, sh, powershell\n  Policies: workspace read-write; filesystem provider-default; network provider-default\nfixture: In-memory fixture; no OS isolation.\n  Operations: exec, files.read, files.write, files.list\n  Termination scope: workload\n  Shells: none\n  Policies: workspace read-write; filesystem provider-default; network provider-default'
 					}
 				]
 			}
@@ -260,7 +260,7 @@ it('reports the target and effective policy after acquisition', async () => {
 					{
 						display: true,
 						content:
-							'Provider: fixture (extension)\nState: ready\nGeneration: <generation>\nBackend: memory\nTarget: /remote/project (remote)\nEffective policy: workspace read-write; filesystem provider-default; network provider-default\nOperations: exec, files.read, files.write, files.list\nTermination scope: workload\nShells: none\nUser shell: unavailable\nProvider description: In-memory fixture; no OS isolation.\nBoundary: In-memory test fixture; no OS isolation.\nApproval policy: user\nOutside execution destination: normal\nOutside native Pi shell termination scope: none\nPi shell integration: not requested; routing unverified.'
+							'Provider: fixture (extension)\nState: ready\nGeneration: <generation>\nBackend: memory\nTarget: /remote/project (remote)\nEffective policy: workspace read-write (remote); filesystem provider-default; network provider-default; protected resources: none\nOperations: exec, files.read, files.write, files.list\nTermination scope: workload\nShells: none\nUser shell: unavailable\nProvider description: In-memory fixture; no OS isolation.\nBoundary: In-memory test fixture; no OS isolation.\nApproval policy: user\nOutside execution destination: normal\nOutside native Pi shell termination scope: none\nPi shell integration: not requested; routing unverified.'
 					}
 				]
 			});

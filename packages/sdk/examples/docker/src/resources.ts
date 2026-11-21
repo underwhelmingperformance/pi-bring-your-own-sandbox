@@ -37,15 +37,16 @@ Uses the broker's cleanup deadline when cancellation has begun. The independent
 signal permits termination requests after foreground execution is aborted.
 */
 export function cleanupContext(
-	context: SandboxOperationContext,
+	context: Pick<SandboxOperationContext, 'reportDiagnostic' | 'operationId'> &
+		Partial<Pick<SandboxOperationContext, 'cleanup' | 'signal'>>,
 	operationId = `${context.operationId}:cleanup`,
 	monotonicNow: () => number = () => performance.now()
 ): DockerOperationContext {
 	const fallback = Date.now() + 5000;
 	const expiresAt = monotonicNow() + 5000;
 	const remainingMs = () =>
-		context.cleanup.remainingMs() ?? Math.max(0, expiresAt - monotonicNow());
-	const deadline = () => context.cleanup.deadline ?? fallback;
+		context.cleanup?.remainingMs() ?? Math.max(0, expiresAt - monotonicNow());
+	const deadline = () => context.cleanup?.deadline ?? fallback;
 
 	return {
 		remainingMs,
@@ -58,7 +59,7 @@ export function cleanupContext(
 		}),
 		operationId,
 		signal: new AbortController().signal,
-		deadlineChanged: context.signal,
+		...(context.signal !== undefined && { deadlineChanged: context.signal }),
 		get deadline() {
 			return deadline();
 		}
@@ -91,34 +92,6 @@ export class DockerResources {
 				'Owned by this SDK generation. No automatic expiry; manual cleanup after a host crash.',
 			instructions: `On the local daemon at ${socketPath}, remove containers with label ${ALLOCATION_LABEL}=${this.volume}, then remove volume ${this.volume}.`
 		};
-	}
-
-	async #remove(
-		name: string,
-		context: DockerOperationContext,
-		operation: DockerCommand['operation']
-	): Promise<void> {
-		try {
-			await this.checked(['rm', '--force', name], context, operation);
-		} catch (error) {
-			const remaining = await this.checked(
-				[
-					'container',
-					'ls',
-					'--all',
-					'--filter',
-					`name=^/${name}$`,
-					'--format',
-					'{{.ID}}'
-				],
-				context,
-				operation
-			);
-
-			if (remaining.stdout.byteLength !== 0) {
-				throw error;
-			}
-		}
 	}
 
 	async #attach(
@@ -170,16 +143,49 @@ export class DockerResources {
 	}
 
 	/**
+	Confirm removal by checking for a surviving container when the daemon rejects rm.
+	*/
+	async removeContainer(
+		name: string,
+		context: DockerOperationContext,
+		operation: DockerCommand['operation']
+	): Promise<void> {
+		try {
+			await this.checked(['rm', '--force', name], context, operation);
+		} catch (error) {
+			const remaining = await this.checked(
+				[
+					'container',
+					'ls',
+					'--all',
+					'--filter',
+					`name=^/${name}$`,
+					'--format',
+					'{{.ID}}'
+				],
+				context,
+				operation
+			);
+
+			if (remaining.stdout.byteLength !== 0) {
+				throw error;
+			}
+		}
+	}
+
+	/**
 	Executes a management command and rejects a non-zero CLI status.
 	*/
 	async checked(
 		arguments_: readonly string[],
 		context: DockerOperationContext,
-		operation: DockerCommand['operation']
+		operation: DockerCommand['operation'],
+		input?: Uint8Array
 	): Promise<DockerCommandResult> {
 		try {
 			const result = await this.#client.command({
 				args: arguments_,
+				...(input !== undefined && { input }),
 				context,
 				operation,
 				recovery: this.recovery
@@ -234,7 +240,11 @@ export class DockerResources {
 		let removal: Promise<void> | undefined;
 
 		const remove = () => {
-			removal ??= this.#remove(name, cleanupContext(context), operation);
+			removal ??= this.removeContainer(
+				name,
+				cleanupContext(context),
+				operation
+			);
 			void Promise.allSettled([removal]);
 
 			return removal;

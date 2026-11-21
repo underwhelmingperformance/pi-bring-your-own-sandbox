@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { chown, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -14,7 +14,7 @@ import {
 	negotiateSandbox,
 	SandboxTransportError
 } from 'pi-bring-your-own-sandbox/api';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 
 import { FakeClock } from '../../../src/fixtures/clock.js';
 import { FixtureConfig } from '../../../src/fixtures/config.js';
@@ -37,7 +37,7 @@ class FakeDocker implements DockerClient {
 	readonly containers = new Set<string>();
 	readonly waiting = new Map<string, () => void>();
 	info = 'Linux';
-	apiVersion = '1.45';
+	apiVersion = '1.45 1.45';
 	mountProbeStatus = 0;
 	isVolumePresent = false;
 	isRunningProbe = false;
@@ -294,16 +294,26 @@ it.each([true, false])(
 );
 
 it.each([
-	['Docker Desktop', '1.45', 0, 'shared'],
-	['Linux', '1.52', 0, 'shared'],
-	['Linux', '1.44', 0, 'copied'],
-	['Linux', '1.52', 1, 'copied']
+	['Docker Desktop', '1.45 1.45', 0, 'shared'],
+	['Linux', '1.52 1.52', 0, 'shared'],
+	['Linux', '1.52 1.44', 0, 'copied'],
+	['Linux', '1.44 1.52', 0, 'copied'],
+	['Linux', '1.52 1.52', 1, 'copied']
 ] as const)(
 	'selects a workspace for %s API %s with mount check %d',
 	async (os, api, probe, relationship) => {
 		const hostWorkspace = await mkdtemp(path.join(tmpdir(), 'byos-sharing-'));
 
 		try {
+			if (process.getuid?.() === 0) {
+				await chown(hostWorkspace, 1000, 1000);
+				vi.spyOn(process, 'getuid').mockReturnValue(1000);
+			}
+
+			if (process.getgid?.() === 0) {
+				vi.spyOn(process, 'getgid').mockReturnValue(1000);
+			}
+
 			await mkdir(path.join(hostWorkspace, '.pi'));
 
 			const docker = new FakeDocker();
@@ -339,7 +349,25 @@ it.each([
 			);
 
 			try {
-				expect(backend.workspace.relationship).toBe(relationship);
+				expect({
+					relationship: backend.workspace.relationship,
+					version: docker.commands
+						.filter((command) => command.args[0] === 'version')
+						.map((command) => command.args),
+					probed: docker.commands.some((command) =>
+						command.args.includes('--entrypoint=/bin/sh')
+					)
+				}).toStrictEqual({
+					relationship,
+					version: [
+						[
+							'version',
+							'--format',
+							'{{.Client.APIVersion}} {{.Server.APIVersion}}'
+						]
+					],
+					probed: !api.includes('1.44')
+				});
 				expect(
 					messages.some((message) => message.includes('private copy'))
 				).toBe(relationship === 'copied');
@@ -347,10 +375,45 @@ it.each([
 				await backend.dispose(context());
 			}
 		} finally {
+			vi.restoreAllMocks();
 			await rm(hostWorkspace, { recursive: true, force: true });
 		}
 	}
 );
+
+it('declines an explicit shared checkout for a root Pi process before allocation', async () => {
+	const docker = new FakeDocker();
+	const provider = createDockerProvider(() => docker);
+	const uid = vi.spyOn(process, 'getuid').mockReturnValue(0);
+
+	try {
+		await expect(
+			provider.open(
+				{
+					...request,
+					policy: {
+						workspaceAccess: 'read-write',
+						filesystemScope: 'provider-default',
+						networkAccess: 'provider-default',
+						workspaceRelationship: 'shared'
+					}
+				},
+				{
+					...context(),
+					reportRecovery() {
+						throw new Error('Unexpected allocation');
+					},
+					confirmCleanup() {
+						return;
+					}
+				}
+			)
+		).rejects.toMatchObject({ name: 'UnsupportedSandboxPolicyError' });
+		expect(docker.commands).toStrictEqual([]);
+	} finally {
+		uid.mockRestore();
+	}
+});
 
 it('reports confirmed broker cleanup after Docker opening releases partial allocations', async () => {
 	const docker = new FakeDocker();

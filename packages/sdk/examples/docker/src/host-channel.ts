@@ -35,7 +35,9 @@ export async function attachHostChannel(
 		signal.addEventListener('abort', abort, { once: true });
 		attach.once('error', (error) => {
 			detach();
-			reject(error);
+			reject(
+				signal.aborted && signal.reason instanceof Error ? signal.reason : error
+			);
 		});
 
 		if (signal.aborted) {
@@ -158,6 +160,7 @@ export async function beginHostRequests(channel: Duplex, signal: AbortSignal) {
 		return requests;
 	} catch (error) {
 		channel.destroy();
+		signal.throwIfAborted();
 
 		throw error;
 	} finally {

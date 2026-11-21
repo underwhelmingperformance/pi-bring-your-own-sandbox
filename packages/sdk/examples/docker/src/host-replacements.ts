@@ -134,14 +134,12 @@ export async function connectHostReplacements(
 
 			return hostReply(result.stdout);
 		} catch (error) {
-			if (!signal.aborted) {
-				disconnected(
-					error,
-					'The native workspace operation failed. Reopen the Docker workspace to resume editing.'
-				);
-			}
+			disconnected(
+				error,
+				'Pi could not confirm the filesystem operation. Check the host workspace before reopening it.'
+			);
 
-			return '{"status":"EIO"}\n';
+			throw error;
 		} finally {
 			signal.removeEventListener('abort', abort);
 		}
@@ -153,10 +151,6 @@ export async function connectHostReplacements(
 				const reply = await serve(line);
 
 				channel.write(reply);
-
-				if (controller.signal.aborted) {
-					return;
-				}
 			}
 		} catch (error) {
 			disconnected(error);

@@ -431,7 +431,9 @@ The mounted backend owns the service container and its control volume. On macOS
 it also owns the request channel and a private staging directory beside the
 checkout. The recovery descriptor includes the staging path. Disposal stops the
 request channel, removes the labelled containers and volume, and removes the
-empty staging directory. The mount test checks those resources after a
+empty staging directory. If Pi loses the reply to a mutation, the connection
+closes and Pi reports that the host result could not be confirmed. Inspect the
+checkout before retrying. The mount test checks those resources after a
 successful session and a failed native open.
 
 At open and before each request, Pi asks Git for the worktree and common

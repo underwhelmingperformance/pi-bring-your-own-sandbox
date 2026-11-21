@@ -76,3 +76,17 @@ it.each([
 ])('refuses an incomplete or ambiguous native reply', (stdout) => {
 	expect(() => hostReply(stdout)).toThrow();
 });
+
+it('preserves cancellation while waiting for the workspace handshake', async () => {
+	const controller = new AbortController();
+	const reason = new Error('Opening cancelled');
+	const channel = Duplex.from({
+		readable: new PassThrough(),
+		writable: new PassThrough()
+	});
+	const opening = beginHostRequests(channel, controller.signal);
+
+	controller.abort(reason);
+
+	await expect(opening).rejects.toBe(reason);
+});

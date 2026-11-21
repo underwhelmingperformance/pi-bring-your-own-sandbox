@@ -272,6 +272,8 @@ class DockerBackend implements SandboxBackend {
 		context: BackendProcessContext,
 		operation: 'open' | 'exec' = 'exec'
 	): Promise<BackendProcessOutcome> {
+		this.#service?.assertConnected(context);
+
 		const invocation: TargetInvocation = {
 			...targetCommand(request),
 			cwd: path.posix.resolve('/workspace', request.cwd ?? '.'),

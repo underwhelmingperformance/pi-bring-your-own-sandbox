@@ -155,8 +155,16 @@ async function change(
 
 				if (
 					isProtected(request.source) ||
-					!(await hasWorkspaceParent(request.source)) ||
-					!isRegularOrDirectory(await lstat(request.source))
+					!(await hasWorkspaceParent(request.source))
+				) {
+					return { status: 'EACCES' };
+				}
+
+				const source = await lstat(request.source);
+
+				if (
+					!isRegularOrDirectory(source) ||
+					(op === 'rename-file' && !source.isFile())
 				) {
 					return { status: 'EACCES' };
 				}

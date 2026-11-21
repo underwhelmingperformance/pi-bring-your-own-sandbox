@@ -1,8 +1,10 @@
+import type { SandboxOperationContext } from 'pi-bring-your-own-sandbox/api';
+
 export interface DockerMountService {
 	readonly controlVolume: string;
 	readonly bootstrap: string;
 	readonly hasAppArmor: boolean;
-	assertConnected(): void;
+	assertConnected(context: SandboxOperationContext): void;
 }
 
 export interface DockerWorkspaceMount {
@@ -32,8 +34,6 @@ export function workspaceCommand(
 			...arguments_
 		];
 	}
-
-	service.assertConnected();
 
 	return [
 		'--mount',

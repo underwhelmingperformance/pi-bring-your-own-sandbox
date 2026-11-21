@@ -287,7 +287,7 @@ export class DockerFileWorker implements BackendFileReader {
 		}
 
 		if (typeof this.#workspace.mount !== 'string') {
-			this.#workspace.mount.assertConnected();
+			this.#workspace.mount.assertConnected(context);
 		}
 
 		const chunks: Uint8Array[] = [];

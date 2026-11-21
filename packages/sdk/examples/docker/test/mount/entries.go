@@ -94,7 +94,7 @@ func (n *workspaceNode) Create(ctx context.Context, name string, flags, mode uin
 		if out.Attr.Mode&unix.S_IFMT == unix.S_IFDIR {
 			return nil, nil, 0, syscall.EISDIR
 		}
-		child := inode.Operations().(*workspaceNode)
+		child := inode.Operations().(fs.NodeOpener)
 		handle, openFlags, errno := child.Open(ctx, flags)
 		return inode, handle, openFlags, errno
 	}

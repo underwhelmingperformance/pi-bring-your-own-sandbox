@@ -5,12 +5,17 @@ import { promisify } from 'node:util';
 
 const run = promisify(execFile);
 
-async function resolvedPath(filename: string): Promise<string> {
+async function resolvedPath(
+	filename: string,
+	signal?: AbortSignal
+): Promise<string> {
 	let remaining = filename.split('/').filter(Boolean);
 	let resolved = '/';
 	let links = 0;
 
 	while (remaining.length > 0) {
+		signal?.throwIfAborted();
+
 		const component = remaining.shift();
 
 		if (component === undefined) {
@@ -136,7 +141,7 @@ export async function protectedWorkspacePaths(
 	for (const candidate of candidates) {
 		signal?.throwIfAborted();
 
-		for (const absolute of [candidate, await resolvedPath(candidate)]) {
+		for (const absolute of [candidate, await resolvedPath(candidate, signal)]) {
 			const relative = path.relative(workspace, absolute);
 
 			if (

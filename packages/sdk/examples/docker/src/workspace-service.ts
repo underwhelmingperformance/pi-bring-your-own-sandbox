@@ -226,7 +226,9 @@ export class DockerWorkspaceService {
 				'--pull=never',
 				'--read-only',
 				'--network=none',
-				...(staging === undefined ? [] : ['--interactive']),
+				...(staging === undefined
+					? []
+					: ['--interactive', '--log-driver=none']),
 				'--cap-drop=ALL',
 				'--security-opt=no-new-privileges',
 				'--pids-limit=32',
@@ -300,8 +302,8 @@ export class DockerWorkspaceService {
 		);
 	}
 
-	assertConnected() {
-		this.#host?.assertConnected();
+	assertConnected(context?: SandboxOperationContext) {
+		this.#host?.assertConnected(context);
 	}
 
 	get controlVolume() {

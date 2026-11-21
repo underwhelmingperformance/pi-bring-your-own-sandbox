@@ -133,3 +133,60 @@ export async function* hostRequests(channel: Duplex) {
 		throw new Error('Docker closed the workspace channel during a request.');
 	}
 }
+
+export async function beginHostRequests(channel: Duplex, signal: AbortSignal) {
+	const requests = hostRequests(channel);
+	const abort = () => {
+		channel.destroy();
+	};
+
+	signal.addEventListener('abort', abort, { once: true });
+
+	try {
+		signal.throwIfAborted();
+
+		const hello = requests.next();
+
+		channel.write('{"version":1}\n');
+
+		const message = await hello;
+
+		if (message.done || message.value !== '{"version":1}') {
+			throw new Error('Docker did not acknowledge the workspace protocol.');
+		}
+
+		return requests;
+	} catch (error) {
+		channel.destroy();
+
+		throw error;
+	} finally {
+		signal.removeEventListener('abort', abort);
+	}
+}
+
+export function hostReply(stdout: string): string {
+	const result: unknown = JSON.parse(stdout);
+
+	if (
+		typeof result !== 'object' ||
+		result === null ||
+		!('status' in result) ||
+		typeof result.status !== 'string' ||
+		!/^[A-Z][A-Z_0-9]{0,63}$/u.test(result.status) ||
+		('identity' in result &&
+			(typeof result.identity !== 'string' ||
+				!/^[0-9]+\/[0-9]+\/-?[0-9]+$/u.test(result.identity)))
+	) {
+		throw new Error(
+			'The native workspace operation returned an invalid reply.'
+		);
+	}
+
+	return (
+		JSON.stringify({
+			status: result.status,
+			...('identity' in result && { identity: result.identity })
+		}) + '\n'
+	);
+}

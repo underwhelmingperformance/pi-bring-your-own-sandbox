@@ -330,16 +330,18 @@ workspace.
 On macOS the service mounts the checkout read-only and stages each write in a
 private writable directory. Pi attaches to the service's standard streams over
 the local Docker Engine socket. The service sends one filesystem request at a
-time. Pi resolves the current protected paths. For each operation it starts an
-unprivileged macOS child under Seatbelt. The child creates a file or directory,
-renames an editor save, removes a regular file or empty directory, or replaces a
-regular file with staged contents. The child exits after replying. Operations
-accept workspace-relative paths, including nested paths and hidden editor
-temporary files. Native creation preserves the requested permission bits after
-both the workload and host umasks. A file must permit its owner to read it
-because a later partial write reads the previous contents into staging. An open
-handle becomes stale when its path changes, including after the workload renames
-a parent directory.
+time. Pi checks the protocol version at open. Docker logging is disabled for
+this service because the request stream contains workspace paths. Pi resolves
+the current protected paths. For each operation it starts an unprivileged macOS
+child under Seatbelt. The child creates a file or directory, renames an editor
+save, removes a regular file or empty directory, or replaces a regular file with
+staged contents. The child exits after replying. Operations accept
+workspace-relative paths, including nested paths and hidden editor temporary
+files. Native creation preserves the requested permission bits after both the
+workload and host umasks. A file must permit its owner to read it because a
+later partial write reads the previous contents into staging. An open handle
+becomes stale when its path changes, including after the workload renames a
+parent directory.
 
 A file with several hard links can be the destination of an editor save. Pi
 authorises removal of that particular directory entry for the rename. Ordinary

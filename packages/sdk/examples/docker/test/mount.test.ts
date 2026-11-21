@@ -120,9 +120,21 @@ shutdown($peer, 1);
 my $count = sysread($peer, my $reply, 1);
 die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 			]);
-			await expect
-				.poll(() => fixture.docker(['logs', allocation]), { timeout: 5000 })
-				.toContain('mount request from uid 65534: permission denied');
+
+			if (isHostReplacements) {
+				const driver = await fixture.docker([
+					'inspect',
+					'--format',
+					'{{.HostConfig.LogConfig.Type}}',
+					allocation
+				]);
+
+				expect(driver.trim()).toBe('none');
+			} else {
+				await expect
+					.poll(() => fixture.docker(['logs', allocation]), { timeout: 5000 })
+					.toContain('mount request from uid 65534: permission denied');
+			}
 
 			await writeFile(
 				path.join(fixture.workspace, 'source.txt'),
@@ -253,7 +265,9 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 			]);
 
 			if (job.status === 'rejected') {
-				const detail = await fixture.docker(['logs', allocation]);
+				const detail = isHostReplacements
+					? ''
+					: await fixture.docker(['logs', allocation]);
 
 				throw new Error('The mounted job failed. ' + detail, {
 					cause: job.reason
@@ -514,7 +528,20 @@ fs.renameSync('nested/output/.save', 'settings-alias');
 							'Reopen the workspace'
 						);
 					});
-					await expect(sandbox.files.readFile('build.ts')).rejects.toThrow();
+
+					const reportDiagnostic = vi.fn();
+
+					await expect(
+						backend.files?.read?.readFile('build.ts', {
+							...operationContext(),
+							reportDiagnostic
+						})
+					).rejects.toThrow('Reopen');
+					expect(reportDiagnostic).toHaveBeenCalledWith({
+						level: 'warning',
+						message:
+							'The Docker workspace connection closed. Reopen the workspace to resume editing.'
+					});
 				}
 			} finally {
 				await backend.dispose(operationContext());

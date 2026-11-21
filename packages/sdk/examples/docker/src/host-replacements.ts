@@ -2,9 +2,16 @@ import { execFile } from 'node:child_process';
 import { readFile, realpath } from 'node:fs/promises';
 import { promisify } from 'node:util';
 
-import type { SandboxOpenContext } from 'pi-bring-your-own-sandbox/api';
+import type {
+	SandboxOpenContext,
+	SandboxOperationContext
+} from 'pi-bring-your-own-sandbox/api';
 
-import { attachHostChannel, hostRequests } from './host-channel.js';
+import {
+	attachHostChannel,
+	beginHostRequests,
+	hostReply
+} from './host-channel.js';
 import { isWorkspacePath, prepareHostPolicy } from './host-policy.js';
 
 const run = promisify(execFile);
@@ -46,17 +53,18 @@ export async function connectHostReplacements(
 		opening
 	);
 
+	const requests = await beginHostRequests(channel, opening);
 	let channelFailure: Error | undefined;
 
-	function disconnected(cause?: unknown) {
+	function disconnected(
+		cause?: unknown,
+		message = 'The Docker workspace connection closed. Reopen the workspace to resume editing.'
+	) {
 		if (controller.signal.aborted) {
 			return;
 		}
 
-		channelFailure = new Error(
-			'The Docker workspace connection closed. Reopen the workspace to resume editing.',
-			{ cause }
-		);
+		channelFailure = new Error(message, { cause });
 		controller.abort();
 	}
 
@@ -84,11 +92,21 @@ export async function connectHostReplacements(
 			AbortSignal.timeout(4000)
 		]);
 
+		const cancelled = Promise.withResolvers<never>();
+		const abort = () => {
+			cancelled.reject(new Error('Workspace policy resolution was cancelled.'));
+		};
+
+		signal.addEventListener('abort', abort, { once: true });
+
 		try {
-			const policy = await prepare(
-				request.op === 'rename-file' ? request.target : undefined,
-				signal
-			);
+			signal.throwIfAborted();
+
+			const target = request.op === 'rename-file' ? request.target : undefined;
+			const policy = await Promise.race([
+				prepare(target, signal),
+				cancelled.promise
+			]);
 
 			signal.throwIfAborted();
 
@@ -114,16 +132,31 @@ export async function connectHostReplacements(
 				}
 			);
 
-			return result.stdout;
-		} catch {
+			return hostReply(result.stdout);
+		} catch (error) {
+			if (!signal.aborted) {
+				disconnected(
+					error,
+					'The native workspace operation failed. Reopen the Docker workspace to resume editing.'
+				);
+			}
+
 			return '{"status":"EIO"}\n';
+		} finally {
+			signal.removeEventListener('abort', abort);
 		}
 	};
 
 	async function handleRequests() {
 		try {
-			for await (const line of hostRequests(channel)) {
-				channel.write(await serve(line));
+			for await (const line of requests) {
+				const reply = await serve(line);
+
+				channel.write(reply);
+
+				if (controller.signal.aborted) {
+					return;
+				}
 			}
 		} catch (error) {
 			disconnected(error);
@@ -136,10 +169,17 @@ export async function connectHostReplacements(
 	const serving = handleRequests();
 
 	return {
-		assertConnected() {
-			if (channelFailure) {
-				throw channelFailure;
+		assertConnected(context?: SandboxOperationContext) {
+			if (!channelFailure) {
+				return;
 			}
+
+			context?.reportDiagnostic({
+				level: 'warning',
+				message: channelFailure.message
+			});
+
+			throw channelFailure;
 		},
 		async close() {
 			controller.abort();

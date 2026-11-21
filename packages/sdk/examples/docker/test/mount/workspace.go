@@ -87,7 +87,7 @@ func (n *workspaceNode) Lookup(ctx context.Context, name string, out *fuse.Entry
 		// Linux looks up the destination before sending a rename. An opaque entry
 		// permits that lookup without exposing the backing file's attributes or data.
 		out.Attr.Mode = unix.S_IFREG
-		return n.NewInode(ctx, child, fs.StableAttr{Mode: unix.S_IFREG}), 0
+		return n.NewInode(ctx, &opaqueEntry{}, fs.StableAttr{Mode: unix.S_IFREG}), 0
 	}
 	if errno != 0 {
 		return nil, errno
@@ -102,6 +102,20 @@ func (n *workspaceNode) Lookup(ctx context.Context, name string, out *fuse.Entry
 	// inode's first open handle. Separate lookups need separate inodes because
 	// a staged write replaces the file while earlier readers still have it open.
 	return n.NewInode(ctx, child, fs.StableAttr{Mode: stat.Mode & syscall.S_IFMT}), 0
+}
+
+type opaqueEntry struct{ fs.Inode }
+
+func (*opaqueEntry) Getattr(context.Context, fs.FileHandle, *fuse.AttrOut) syscall.Errno {
+	return unix.EACCES
+}
+
+func (*opaqueEntry) Open(context.Context, uint32) (fs.FileHandle, uint32, syscall.Errno) {
+	return nil, 0, unix.EACCES
+}
+
+func (*opaqueEntry) Setattr(context.Context, fs.FileHandle, *fuse.SetAttrIn, *fuse.AttrOut) syscall.Errno {
+	return unix.EACCES
 }
 
 func (n *workspaceNode) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {

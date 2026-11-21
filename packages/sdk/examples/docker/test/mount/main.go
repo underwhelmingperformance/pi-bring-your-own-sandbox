@@ -40,6 +40,20 @@ func serve(writable, hostReplacements bool) error {
 	if err = os.Chmod("/control/service", 0666); err != nil {
 		return err
 	}
+	if workspace.host != nil {
+		var hello struct {
+			Version int `json:"version"`
+		}
+		if err := workspace.host.replies.Decode(&hello); err != nil {
+			return err
+		}
+		if hello.Version != 1 {
+			return fmt.Errorf("unsupported workspace protocol version %d", hello.Version)
+		}
+		if err := json.NewEncoder(os.Stdout).Encode(hello); err != nil {
+			return err
+		}
+	}
 	for {
 		conn, err := listener.AcceptUnix()
 		if err != nil {

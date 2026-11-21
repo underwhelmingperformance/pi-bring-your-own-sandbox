@@ -1,8 +1,12 @@
-import { Duplex } from 'node:stream';
+import { Duplex, PassThrough } from 'node:stream';
 
 import { expect, it } from 'vitest';
 
-import { hostRequests } from '../src/host-channel.js';
+import {
+	beginHostRequests,
+	hostReply,
+	hostRequests
+} from '../src/host-channel.js';
 
 function frame(text: string) {
 	const bytes = Buffer.from(text);
@@ -51,4 +55,24 @@ it.each([
 	const requests = hostRequests(channel);
 
 	await expect(requests.next()).rejects.toThrow();
+});
+
+it('requires the service to acknowledge the protocol before opening', async () => {
+	const channel = Duplex.from({
+		readable: Duplex.from([frame('{"version":2}\n')]),
+		writable: new PassThrough()
+	});
+
+	await expect(
+		beginHostRequests(channel, new AbortController().signal)
+	).rejects.toThrow('acknowledge');
+});
+
+it.each([
+	'',
+	'{}',
+	'{"status":"OK"}\n{"status":"EIO"}',
+	'{"status":"OK","identity":1}'
+])('refuses an incomplete or ambiguous native reply', (stdout) => {
+	expect(() => hostReply(stdout)).toThrow();
 });

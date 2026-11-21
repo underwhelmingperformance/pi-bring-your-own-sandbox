@@ -1,84 +1,38 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { readFile, realpath } from 'node:fs/promises';
-import path from 'node:path';
-
-import { HOST_CONFIGURATION_PROTECTION } from 'pi-bring-your-own-sandbox/api';
 
 import type { DockerConfig } from './contracts.js';
+import { hostPolicy } from './host-policy.js';
 
 export async function connectHostReplacements(
 	config: DockerConfig,
 	container: string,
-	workspace: string,
-	staging: string,
+	workspacePath: string,
+	stagingPath: string,
 	additionalPaths: readonly string[] = []
 ) {
-	const runtime = await realpath(process.execPath);
+	const [runtime, workspace, staging] = await Promise.all([
+		realpath(process.execPath),
+		realpath(workspacePath),
+		realpath(stagingPath)
+	]);
 	const script = await readFile(
 		new URL('host-replace.ts', import.meta.url),
 		'utf8'
 	);
-	const protectedPaths = [
-		...new Set([
-			...HOST_CONFIGURATION_PROTECTION.map((resource) =>
-				resource.kind === 'path' ? resource.path : '.git'
-			),
-			...additionalPaths
-		])
-	];
-
-	for (const relative of protectedPaths) {
-		if (
-			relative
-				.split('/')
-				.some(
-					(part) =>
-						!part || part === '.' || part === '..' || part.includes('\0')
-				)
-		) {
-			throw new TypeError('Expected a relative protected workspace path.');
-		}
-	}
-
-	const profile = await readFile(
-		new URL('host-replace.sb', import.meta.url),
-		'utf8'
-	);
-	const rules = protectedPaths.map((_, index) => {
-		const parameter = '(param "RESOURCE_' + String(index) + '")';
-
-		return (
-			'(deny file-write* (subpath ' +
-			parameter +
-			'))\n' +
-			'(deny file-write-unlink (path-ancestors ' +
-			parameter +
-			'))'
-		);
-	});
+	const policy = await hostPolicy(workspace, staging, runtime, additionalPaths);
 	const host = spawn(
 		'/usr/bin/sandbox-exec',
 		[
-			'-D',
-			'WORKSPACE=' + workspace,
-			'-D',
-			'RUNTIME=' + runtime,
-			'-D',
-			'STAGING=' + staging,
-			...protectedPaths.flatMap((relative, index) => [
-				'-D',
-				'RESOURCE_' + String(index) + '=' + path.join(workspace, relative)
-			]),
-			'-p',
-			[profile, ...rules].join('\n'),
+			...policy.args,
 			runtime,
 			'--input-type=module-typescript',
 			'--eval',
 			script,
 			'--',
 			staging,
-			JSON.stringify(protectedPaths)
+			JSON.stringify(policy.protectedPaths)
 		],
 		{ cwd: workspace, stdio: ['pipe', 'pipe', 'inherit'], env: {} }
 	);

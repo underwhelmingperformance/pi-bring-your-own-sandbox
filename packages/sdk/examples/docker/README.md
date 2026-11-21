@@ -339,14 +339,14 @@ when its path changes, including after the workload renames a parent directory.
 
 The host service restricts writes to regular files with one link and protects
 the preset configuration paths. A caller can also protect additional relative
-paths, including absent entries. The service checks case variants before each
-mutation. Seatbelt denies writes to those subtrees and removal of their
-ancestors. After the rename, the service waits for the old directory entry to
-disappear from the VM's view. A subsequent write or truncate checks the open
-descriptor against the current entry. The formatter test covers a host
-replacement, a host rename, and an open file for which the host adds a hard link
-under `.pi`. The host reads the protected contents independently after the
-formatter exits.
+paths with printable ASCII components, including absent entries. The service
+checks case variants before each mutation. Seatbelt denies writes to those
+subtrees and removal of their ancestors. After the rename, the service waits for
+the old directory entry to disappear from the VM's view. A subsequent write or
+truncate checks the open descriptor against the current entry. The formatter
+test covers a host replacement, a host rename, and an open file for which the
+host adds a hard link under `.pi`. The host reads the protected contents
+independently after the formatter exits.
 
 The prototype stages each FUSE write request separately. A large application
 write can produce several requests and the host can see each intermediate

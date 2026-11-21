@@ -65,7 +65,8 @@ func (n *workspaceNode) remove(name, operation string) syscall.Errno {
 	if err := n.host.change(hostChange{Op: operation, Target: target}); err != nil {
 		return fs.ToErrno(err)
 	}
-	return fs.ToErrno(n.host.waitForEntry(target, previous))
+	n.host.waitForEntry(target, previous)
+	return 0
 }
 
 func (n *workspaceNode) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
@@ -134,8 +135,7 @@ func (n *workspaceNode) Rename(ctx context.Context, name string, newParent fs.In
 	if before.Dev == destination.Dev && before.Ino == destination.Ino {
 		return 0
 	}
-	if err := n.host.waitForEntry(source, before); err != nil {
-		return fs.ToErrno(err)
-	}
-	return fs.ToErrno(n.host.waitForEntry(target, destination))
+	n.host.waitForEntry(source, before)
+	n.host.waitForEntry(target, destination)
+	return 0
 }

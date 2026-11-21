@@ -386,7 +386,7 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 				}
 
 				if (isHostReplacements) {
-					await mkdir(path.join(fixture.workspace, 'nested/policies'));
+					await sandbox.files.mkdir('nested/policies');
 					await sandbox.files.mkdir('nested/output');
 					await sandbox.files.writeFile('nested/output/draft.txt', edit);
 
@@ -404,7 +404,7 @@ fs.writeFileSync('nested/temporary/build.log', 'ready');
 fs.renameSync('nested/temporary', 'nested/renamed');
 fs.unlinkSync('nested/renamed/build.log');
 fs.rmdirSync('nested/renamed');
-for (const target of ['.pi/settings', '.ENVRC', '.Git', '.direnv', '.vscode', '.idea', '.devcontainer', 'nested/.git', 'nested/policies/config', 'settings-alias']) {
+for (const target of ['.pi/settings', '.envrc', '.ENVRC', '.Git', '.direnv', '.vscode', '.idea', '.devcontainer', 'nested/.git', 'nested/policies/config', 'settings-alias']) {
   try { fs.renameSync('nested/output/draft.txt', target); }
   catch (error) { if (error.code === 'EACCES' || error.code === 'EPERM') continue; throw error; }
   throw new Error('A protected editor destination was writable.');

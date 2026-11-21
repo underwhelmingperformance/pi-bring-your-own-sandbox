@@ -33,14 +33,14 @@ type workspaceWriter struct {
 	attributes syscall.Stat_t
 }
 
-func (n *workspaceNode) writer(fd int) (*workspaceWriter, error) {
+func (n *workspaceNode) writer(fd int, id string) (*workspaceWriter, error) {
 	file := os.NewFile(uintptr(fd), n.relative)
-	writer := &workspaceWriter{file: file, backing: n.backing, name: n.relative}
+	writer := &workspaceWriter{file: file, backing: n.backing, name: n.relative, identity: id}
 	if err := syscall.Fstat(fd, &writer.attributes); err != nil {
 		file.Close()
 		return nil, err
 	}
-	if n.host != nil {
+	if n.host != nil && id == "" {
 		var stat unix.Stat_t
 		if err := unix.Fstat(fd, &stat); err != nil {
 			file.Close()
@@ -68,7 +68,7 @@ func (n *workspaceNode) openWriter(flags uint32) (fs.FileHandle, uint32, syscall
 	if errno != 0 {
 		return nil, 0, errno
 	}
-	w, err := n.writer(fd)
+	w, err := n.writer(fd, "")
 	if err != nil {
 		return nil, 0, fs.ToErrno(err)
 	}

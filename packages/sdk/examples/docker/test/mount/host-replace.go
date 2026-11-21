@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"net"
 	"os"
 	"strconv"
@@ -52,10 +53,28 @@ func (p *hostReplacer) change(request hostChange) error {
 	return err
 }
 
+func peerCredentials(conn *net.UnixConn) (*unix.Ucred, error) {
+	socket, err := conn.SyscallConn()
+	if err != nil {
+		return nil, err
+	}
+	var peer *unix.Ucred
+	var peerErr error
+	if err := socket.Control(func(fd uintptr) {
+		peer, peerErr = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
+	}); err != nil {
+		return nil, err
+	}
+	return peer, peerErr
+}
+
 func (p *hostReplacer) exchange(request hostChange) (string, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.conn == nil {
+		if p.listener == nil {
+			return "", unix.EIO
+		}
 		if err := p.listener.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
 			return "", err
 		}
@@ -63,6 +82,13 @@ func (p *hostReplacer) exchange(request hostChange) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		peer, err := peerCredentials(conn)
+		if err != nil || peer.Pid <= 0 || peer.Uid != uint32(os.Geteuid()) {
+			conn.Close()
+			return "", unix.EACCES
+		}
+		p.listener.Close()
+		p.listener = nil
 		p.conn = conn
 		p.replies = json.NewDecoder(conn)
 	}
@@ -118,18 +144,20 @@ func (p *hostReplacer) exchange(request hostChange) (string, error) {
 }
 
 // The VM can cache the old directory entry after macOS has completed the rename.
-func (p *hostReplacer) waitForEntry(target string, previous unix.Stat_t) error {
+func (p *hostReplacer) waitForEntry(target string, previous unix.Stat_t) {
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		entry, err := entryStat(p.root, target)
 		if (err == unix.ENOENT && previous.Ino != 0) || (err == nil && (entry.Dev != previous.Dev || entry.Ino != previous.Ino)) {
-			return nil
+			return
 		}
 		if err != nil && err != unix.ENOENT {
-			return err
+			log.Printf("refreshing workspace entry %q: %v", target, err)
+			return
 		}
 		if time.Now().After(deadline) {
-			return unix.ESTALE
+			log.Printf("Docker still caches the previous entry for %q", target)
+			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

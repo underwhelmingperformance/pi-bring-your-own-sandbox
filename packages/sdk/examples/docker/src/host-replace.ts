@@ -34,9 +34,7 @@ const foldedPath = (relative: string) =>
 	relative.normalize('NFD').toUpperCase();
 const protectedPaths = resources.map((relative) => foldedPath(relative));
 
-process.umask(0);
-
-function isProtected(relative: string): boolean {
+function isProtected(relative: string, isMkdir = false): boolean {
 	const folded = foldedPath(relative);
 
 	return (
@@ -44,7 +42,7 @@ function isProtected(relative: string): boolean {
 		protectedPaths.some(
 			(resource) =>
 				resource === folded ||
-				resource.startsWith(folded + '/') ||
+				(!isMkdir && resource.startsWith(folded + '/')) ||
 				folded.startsWith(resource + '/')
 		)
 	);
@@ -114,7 +112,10 @@ async function change(
 	}
 
 	try {
-		if (isProtected(target) || !(await hasWorkspaceParent(target))) {
+		if (
+			isProtected(target, op === 'mkdir') ||
+			!(await hasWorkspaceParent(target))
+		) {
 			return { status: 'EACCES' };
 		}
 
@@ -136,10 +137,11 @@ async function change(
 					break;
 				}
 
-				const file = await open(target, 'wx', request.mode);
+				await using file = await open(target, 'wx', request.mode);
 
-				await file.close();
-				break;
+				const created = await file.stat({ bigint: true });
+
+				return { status: 'OK', identity: identity(created) };
 			}
 
 			case 'unlink': {

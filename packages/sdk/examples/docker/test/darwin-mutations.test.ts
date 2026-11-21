@@ -13,15 +13,13 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import { expect, it } from 'vitest';
 
+import { hostPolicy } from '../src/host-policy.js';
+
 const execute = promisify(execFile);
-const profile = fileURLToPath(
-	new URL('mount/darwin-mutations.sb', import.meta.url)
-);
 
 it.skipIf(process.platform !== 'darwin')(
 	'authorises editor replacements on the macOS backing filesystem',
@@ -29,7 +27,7 @@ it.skipIf(process.platform !== 'darwin')(
 		const directory = await mkdtemp(path.join(tmpdir(), 'byos-darwin-'));
 		const workspace = await realpath(directory);
 		const file = (name: string) => path.join(workspace, name);
-		const protectedParent = file('config');
+		const runtime = await realpath(process.execPath);
 		const protectedDirectory = file('config/.pi');
 
 		try {
@@ -44,21 +42,27 @@ it.skipIf(process.platform !== 'darwin')(
 			await writeFile(file('src/first-name'), 'shared inode');
 			await link(file('src/first-name'), file('src/second-name'));
 
+			const staging = file('staging');
+
+			await mkdir(staging);
+
+			const policy = await hostPolicy(workspace, staging, runtime, [
+				'config/.pi'
+			]);
+			const workload = await readFile(
+				new URL('mount/host-save.ts', import.meta.url),
+				'utf8'
+			);
 			const result = await execute(
 				'/usr/bin/sandbox-exec',
 				[
-					'-D',
-					'WORKSPACE=' + workspace,
-					'-D',
-					'PROTECTED=' + protectedDirectory,
-					'-D',
-					'PROTECTED_PARENT=' + protectedParent,
-					'-f',
-					profile,
-					process.execPath,
-					fileURLToPath(new URL('mount/host-save.ts', import.meta.url))
+					...policy.args,
+					runtime,
+					'--input-type=module-typescript',
+					'--eval',
+					workload
 				],
-				{ cwd: workspace }
+				{ cwd: workspace, env: {} }
 			);
 
 			expect(JSON.parse(result.stdout)).toStrictEqual({

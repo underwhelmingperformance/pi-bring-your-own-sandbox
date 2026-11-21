@@ -180,6 +180,29 @@ export class DockerFileWorker implements BackendFileReader {
 		return name;
 	}
 
+	#execAs(name: string, directory: string, uid: 65_533 | 65_534) {
+		const user = String(uid);
+
+		if (typeof this.#workspace.mount === 'string') {
+			return ['--user=' + user + ':' + user, '--workdir=' + directory, name];
+		}
+
+		return [
+			'--user=0:0',
+			'--workdir=' + directory,
+			name,
+			'/usr/bin/setpriv',
+			'--reuid=' + user,
+			'--regid=' + user,
+			'--clear-groups',
+			'--no-new-privs',
+			'--bounding-set=-all',
+			'--inh-caps=-all',
+			'--ambient-caps=-all',
+			'--'
+		];
+	}
+
 	async #installMatcher(name: string, context: SandboxOperationContext) {
 		if (this.#matcherWorker === name) {
 			return;
@@ -189,9 +212,7 @@ export class DockerFileWorker implements BackendFileReader {
 			[
 				'exec',
 				'--interactive',
-				'--user=65533:65533',
-				'--workdir=/opt/pi-byos/node_modules/re2js',
-				name,
+				...this.#execAs(name, '/opt/pi-byos/node_modules/re2js', 65_533),
 				'/bin/sh',
 				'-ec',
 				'umask 022; /bin/cat > index.mjs && printf %s \'{"exports":"./index.mjs"}\' > package.json'
@@ -304,9 +325,11 @@ export class DockerFileWorker implements BackendFileReader {
 				args: [
 					'exec',
 					...(input === undefined ? [] : ['--interactive']),
-					'--user=65534:65534',
-					isSearch ? '--workdir=/opt/pi-byos' : '--workdir=/workspace',
-					name,
+					...this.#execAs(
+						name,
+						isSearch ? '/opt/pi-byos' : '/workspace',
+						65_534
+					),
 					'/usr/local/bin/node',
 					'--input-type=module-typescript',
 					'--eval',

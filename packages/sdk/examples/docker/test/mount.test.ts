@@ -435,6 +435,23 @@ for (const target of ['.pi/settings', '.ENVRC', '.Git', '.direnv', '.vscode', '.
 					).rejects.toMatchObject({ code: 'ENOENT' });
 				}
 
+				const workerStatus = new TextDecoder().decode(
+					await sandbox.files.readFile('/proc/self/status')
+				);
+
+				expect(
+					workerStatus
+						.split('\n')
+						.filter((line) =>
+							/^(?:Cap(?:Inh|Prm|Eff|Bnd|Amb)|NoNewPrivs):/u.test(line)
+						)
+				).toStrictEqual([
+					...['CapInh', 'CapPrm', 'CapEff', 'CapBnd', 'CapAmb'].map(
+						(field) => field + ':\t0000000000000000'
+					),
+					'NoNewPrivs:\t1'
+				]);
+
 				const shell = await sandbox.exec({
 					kind: 'shell',
 					dialect: 'bash',

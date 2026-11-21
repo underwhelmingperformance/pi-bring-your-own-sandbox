@@ -9,6 +9,7 @@ export default defineConfig({
 			'examples/docker/test/session.test.ts'
 		],
 		env: { BYOS_DOCKER_TESTS: '1' },
+		testTimeout: 30_000,
 		fileParallelism: false
 	}
 });

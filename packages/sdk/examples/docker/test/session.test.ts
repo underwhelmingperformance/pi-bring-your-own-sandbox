@@ -230,8 +230,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 					'workspace-only',
 					approval
 				);
-			},
-			30_000
+			}
 		);
 
 		it('satisfies the intermediate filesystem request with Docker workspace isolation', async () => {

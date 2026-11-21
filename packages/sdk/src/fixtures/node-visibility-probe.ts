@@ -30,11 +30,21 @@ async function seedAttribute(file: string) {
 	const arguments_ = [file, attribute];
 
 	try {
-		await run('python3', [
+		const { stdout } = await run('python3', [
 			'-c',
-			'import os, sys; os.setxattr(sys.argv[1], sys.argv[2], b"original")',
+			`import errno, os, sys
+try:
+    os.setxattr(sys.argv[1], sys.argv[2], b"original")
+except OSError as error:
+    if error.errno != errno.ENOTSUP:
+        raise
+    print("unsupported")`,
 			...arguments_
 		]);
+
+		if (stdout.trim() === 'unsupported') {
+			return;
+		}
 	} catch (error) {
 		if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
 			return;

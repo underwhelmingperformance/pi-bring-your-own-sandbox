@@ -46,11 +46,15 @@ type ContractRun = (
 	fixture: SandboxProviderTestFixture,
 	backend: SandboxBackend,
 	context: SandboxOperationContext,
-	afterDisposal: (verify: () => Promise<void>) => void
+	resources: {
+		readonly afterDisposal: (verify: () => Promise<void>) => void;
+		readonly peer: SandboxBackend | undefined;
+	}
 ) => Promise<void>;
 
 interface ContractCase {
 	readonly label: string;
+	readonly needsPeer?: boolean;
 	readonly run: ContractRun;
 }
 
@@ -132,8 +136,9 @@ function openFixture<Config>(
 
 export async function usingProviderFixture<Config>(
 	options: SandboxProviderTestOptions<Config>,
-	run: ContractRun
+	scenario: ContractRun | ContractCase
 ): Promise<void> {
+	const run = typeof scenario === 'function' ? scenario : scenario.run;
 	const timeoutMs = options.timeoutMs ?? 10_000;
 
 	expect(Number.isFinite(timeoutMs) && timeoutMs > 0).toBe(true);
@@ -143,8 +148,7 @@ export async function usingProviderFixture<Config>(
 		cleanup: resolveCleanupBudgets(options.cleanup)
 	};
 	const fixture = await options.createFixture();
-	let backend: SandboxBackend | undefined;
-	let isCleanupConfirmed = false;
+	const backends: SandboxBackend[] = [];
 	const afterDisposal: (() => Promise<void>)[] = [];
 	const failures: unknown[] = [];
 
@@ -152,13 +156,26 @@ export async function usingProviderFixture<Config>(
 		expect(isProviderInfo(options.provider)).toBe(true);
 		expect(options.provider.protocolVersion).toBe(1);
 
-		backend = await bounded(deadlines, (context) =>
-			openFixture(options, fixture, context, () => {
-				isCleanupConfirmed = true;
-			})
-		);
-		expect(isCleanupConfirmed).toBe(false);
-		validateBackend(backend, options.provider, fixture.policy);
+		async function open() {
+			let isConfirmed = false;
+			const backend = await bounded(deadlines, (context) =>
+				openFixture(options, fixture, context, () => {
+					isConfirmed = true;
+				})
+			);
+
+			backends.push(backend);
+			expect(isConfirmed).toBe(false);
+			validateBackend(backend, options.provider, fixture.policy);
+
+			return backend;
+		}
+
+		const backend = await open();
+		const peer =
+			typeof scenario !== 'function' && scenario.needsPeer
+				? await open()
+				: undefined;
 
 		const capabilities = options.capabilities ?? options.provider.capabilities;
 
@@ -185,11 +202,12 @@ export async function usingProviderFixture<Config>(
 			expect(backend.capabilities.exitStatus).toBe('guaranteed');
 		}
 
-		const opened = backend;
-
 		await bounded({ ...deadlines, drainOnTimeout: true }, (context) =>
-			run(fixture, opened, context, (verify) => {
-				afterDisposal.push(verify);
+			run(fixture, backend, context, {
+				peer,
+				afterDisposal: (verify) => {
+					afterDisposal.push(verify);
+				}
 			})
 		);
 	} catch (error) {
@@ -197,14 +215,31 @@ export async function usingProviderFixture<Config>(
 		failures.push(error);
 	}
 
-	try {
-		if (isRecord(backend) && typeof backend.dispose === 'function') {
-			const closing = backend;
+	let isDisposed = backends.length > 0;
 
+	for (const backend of backends.toReversed()) {
+		if (!isRecord(backend) || typeof backend.dispose !== 'function') {
+			isDisposed = false;
+			continue;
+		}
+
+		try {
 			await bounded(
 				deadlines,
-				async (context) => {
-					await closing.dispose(context);
+				(context) => backend.dispose(context),
+				'dispose'
+			);
+		} catch (error) {
+			isDisposed = false;
+			failures.push(error);
+		}
+	}
+
+	if (isDisposed) {
+		try {
+			await bounded(
+				deadlines,
+				async () => {
 					await fixture.verifyDisposed();
 
 					for (const verify of afterDisposal) {
@@ -213,9 +248,9 @@ export async function usingProviderFixture<Config>(
 				},
 				'dispose'
 			);
+		} catch (error) {
+			failures.push(error);
 		}
-	} catch (error) {
-		failures.push(error);
 	}
 
 	try {
@@ -311,8 +346,11 @@ async function checkPolicyEffects(
 		);
 	}
 
-	if (backend.capabilities.exitStatus === 'guaranteed') {
+	if (probe.permitted.exit.kind !== 'unavailable') {
 		expect(probe.permitted.exit).toStrictEqual({ kind: 'code', code: 0 });
+	}
+
+	if (probe.denied.exit.kind !== 'unavailable') {
 		expect(probe.denied.exit.kind).toBe('code');
 
 		if (probe.denied.exit.kind === 'code') {
@@ -382,7 +420,9 @@ async function checkPolicyEffects(
 		throw new Error('The declared file operation is missing.');
 	}
 
-	await expect(outcome).rejects.toMatchObject({ name: expected.errorName });
+	await expect(outcome).rejects.toSatisfy((error: unknown) =>
+		isSandboxError(error, expected)
+	);
 	expect(
 		structuredClone(await probe.observe()),
 		'The denied file operation changed the protected resource.'
@@ -518,6 +558,15 @@ async function checkConcurrentCancellation(
 		await cancelReadyJob(fixture, backend, context, cleanup);
 		scope.check();
 
+		if (!fixture.cancellation.verifyStopped) {
+			throw new Error(
+				'Supply an independent termination check for the declared scope.'
+			);
+		}
+
+		await fixture.cancellation.verifyStopped();
+		scope.check();
+
 		const released = await settleOperation(
 			scope,
 			peer.release(response, scope.context)
@@ -627,6 +676,10 @@ export function providerContractCases<Config>(
 					);
 				}
 
+				if (probe.after.exit.kind !== 'unavailable') {
+					expect(probe.after.exit).toStrictEqual({ kind: 'code', code: 0 });
+				}
+
 				await checkProcess(backend, probe.after, context);
 			}
 		},
@@ -668,7 +721,12 @@ export function providerContractCases<Config>(
 	if (options.verifyIndependentAllocations) {
 		cases.push({
 			label: 'independent disposal of allocations from the same source',
-			run: async (fixture, first, context) => {
+			needsPeer: true,
+			run: async (fixture, first, context, { peer: second }) => {
+				if (second === undefined) {
+					throw new Error('Missing peer allocation.');
+				}
+
 				const probe = fixture.peerProcess;
 
 				if (probe === undefined) {
@@ -685,31 +743,16 @@ export function providerContractCases<Config>(
 					);
 				}
 
-				let isConfirmed = false;
-				const second = await openFixture(options, fixture, context, () => {
-					isConfirmed = true;
-				});
-
-				try {
-					expect(isConfirmed).toBe(false);
-					validateBackend(second, options.provider, fixture.policy);
-					await checkProcess(second, probe, context);
-					await bounded(
-						options,
-						async (closing) => {
-							await first.dispose(closing);
-							await verify.call(fixture, first);
-						},
-						'dispose'
-					);
-					await checkProcess(second, probe, context);
-				} finally {
-					await bounded(
-						options,
-						(closing) => second.dispose(closing),
-						'dispose'
-					);
-				}
+				await checkProcess(second, probe, context);
+				await bounded(
+					options,
+					async (closing) => {
+						await first.dispose(closing);
+						await verify.call(fixture, first);
+					},
+					'dispose'
+				);
+				await checkProcess(second, probe, context);
 			}
 		});
 	}
@@ -719,7 +762,7 @@ export function providerContractCases<Config>(
 	if (relationship !== undefined) {
 		cases.push({
 			label: `workspace visibility (${relationship})`,
-			run: (fixture, backend, context, afterDisposal) =>
+			run: (fixture, backend, context, { afterDisposal }) =>
 				checkWorkspaceVisibility(
 					relationship,
 					fixture,
@@ -951,8 +994,11 @@ export function defineSandboxProviderTests<Config>(
 		for (const entry of providerContractCases(options)) {
 			it(
 				entry.label,
-				() => usingProviderFixture(options, entry.run),
-				testTimeout
+				() => usingProviderFixture(options, entry),
+				testTimeout +
+					(entry.needsPeer
+						? (options.timeoutMs ?? 10_000) + cleanup.disposalTimeoutMs
+						: 0)
 			);
 		}
 	});

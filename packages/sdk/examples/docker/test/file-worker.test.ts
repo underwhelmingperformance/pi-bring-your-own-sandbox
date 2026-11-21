@@ -134,6 +134,9 @@ it('confirms an interrupted read and cancels a queued read before dispatch', asy
 		]);
 
 		active.abort();
+		await vi.waitFor(() => {
+			expect(calls).toContain('rm');
+		});
 		await interrupted;
 		expect(queueResult).toMatchObject([
 			{ status: 'rejected', reason: { completion: 'not-started' } }
@@ -149,6 +152,7 @@ it('confirms an interrupted read and cancels a queued read before dispatch', asy
 			'exec'
 		]);
 	} finally {
+		removed.resolve(true);
 		active.abort();
 		lifetime.abort();
 		await worker.close();

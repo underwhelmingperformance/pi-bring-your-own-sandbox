@@ -471,7 +471,7 @@ try {
 
 		it('isolates a host socket created in the workspace after opening', async () => {
 			await withDockerSession(async ({ sandbox, fixture }) => {
-				const socketPath = path.join(fixture.workspace, 's');
+				const socketPath = await fixture.socketEndpoint();
 				let connections = 0;
 				const listener = createServer((peer) => {
 					connections++;

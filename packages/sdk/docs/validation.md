@@ -74,9 +74,9 @@ Windows path tests do not establish Windows host execution support.
 
 The Docker example runs POSIX `sh`, Bash and optional PowerShell jobs in copied
 workspace volumes. File and search operations use the same volume. Workspace
-volumes have no storage quota, and the initial copy container has no job
-resource limits. A host crash requires manual resource cleanup; see the Docker
-guide for recovery instructions.
+volumes have no storage quota. The importer has a limit of 32 processes, 256 MiB
+of memory and one CPU. A host crash requires manual resource cleanup; see the
+Docker guide for recovery instructions.
 
 See the [Pi integration guide][pi] for unsupported tool paths, host transcript
 files and competing shell handlers. Terminal drawing, keyboard navigation and

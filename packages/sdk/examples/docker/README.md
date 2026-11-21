@@ -332,13 +332,21 @@ private writable directory. A Seatbelt-restricted host process creates files and
 directories, renames editor saves, removes regular files and empty directories,
 and replaces regular files with staged writes. Operations accept
 workspace-relative paths, including nested paths and hidden editor temporary
-files. The host policy denies writes to the preset host configuration paths and
-files with multiple hard links. After the rename, the service waits for the old
-directory entry to disappear from the VM's view. A subsequent write or truncate
-checks the open descriptor against the current entry. The formatter test covers
-a host replacement, a host rename, and an open file for which the host adds a
-hard link under `.pi`. The host reads the protected contents independently after
-the formatter exits.
+files. Native creation preserves the requested permission bits after the
+workload umask. A file must permit its owner to read it because a later partial
+write reads the previous contents into staging. An open handle becomes stale
+when its path changes, including after the workload renames a parent directory.
+
+The host service restricts writes to regular files with one link and protects
+the preset configuration paths. A caller can also protect additional relative
+paths, including absent entries. The service checks case variants before each
+mutation. Seatbelt denies writes to those subtrees and removal of their
+ancestors. After the rename, the service waits for the old directory entry to
+disappear from the VM's view. A subsequent write or truncate checks the open
+descriptor against the current entry. The formatter test covers a host
+replacement, a host rename, and an open file for which the host adds a hard link
+under `.pi`. The host reads the protected contents independently after the
+formatter exits.
 
 The prototype stages each FUSE write request separately. A large application
 write can produce several requests and the host can see each intermediate

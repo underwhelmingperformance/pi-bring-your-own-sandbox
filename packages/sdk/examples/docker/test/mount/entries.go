@@ -49,7 +49,7 @@ func (n *workspaceNode) create(name string, mode uint32) (int, error) {
 		if mode&0400 == 0 {
 			return -1, unix.ENOTSUP
 		}
-		if err := b.host.change(hostChange{Op: "create", Target: name, Mode: mode & 0600}); err != nil {
+		if err := b.host.change(hostChange{Op: "create", Target: name, Mode: mode & 0777}); err != nil {
 			return -1, err
 		}
 		return b.openCreated(name)

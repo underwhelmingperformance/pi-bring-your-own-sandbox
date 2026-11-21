@@ -149,7 +149,8 @@ it
 					fixture.config,
 					allocation,
 					fixture.workspace,
-					staging
+					staging,
+					['nested/policies/config']
 				);
 			}
 
@@ -354,7 +355,7 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 					retained: 'workload edit',
 					concurrent: 'workload replacement',
 					renamed: 'workload replacement',
-					mode: 0o600
+					mode: isHostReplacements ? 0o644 : 0o600
 				});
 			}
 
@@ -385,6 +386,7 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 				}
 
 				if (isHostReplacements) {
+					await mkdir(path.join(fixture.workspace, 'nested/policies'));
 					await sandbox.files.mkdir('nested/output');
 					await sandbox.files.writeFile('nested/output/draft.txt', edit);
 
@@ -395,14 +397,14 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 							'-e',
 							`
 const fs = require('node:fs');
-fs.writeFileSync('nested/output/.save', 'editor contents');
-fs.renameSync('nested/output/.save', 'nested/output/draft.txt');
+fs.writeFileSync('nested/output/.save', 'editor contents', {mode: 0o750});
+require('node:child_process').execFileSync('/bin/mv', ['nested/output/.save', 'nested/output/draft.txt']);
 fs.mkdirSync('nested/temporary');
 fs.writeFileSync('nested/temporary/build.log', 'ready');
 fs.renameSync('nested/temporary', 'nested/renamed');
 fs.unlinkSync('nested/renamed/build.log');
 fs.rmdirSync('nested/renamed');
-for (const target of ['.pi/settings', '.envrc', 'settings-alias']) {
+for (const target of ['.pi/settings', '.ENVRC', '.Git', '.direnv', '.vscode', '.idea', '.devcontainer', 'nested/.git', 'nested/policies/config', 'settings-alias']) {
   try { fs.renameSync('nested/output/draft.txt', target); }
   catch (error) { if (error.code === 'EACCES' || error.code === 'EPERM') continue; throw error; }
   throw new Error('A protected editor destination was writable.');
@@ -411,13 +413,23 @@ for (const target of ['.pi/settings', '.envrc', 'settings-alias']) {
 						]
 					});
 
-					expect(save.exit).toStrictEqual({ kind: 'code', code: 0 });
-					expect(
-						await readFile(
-							path.join(fixture.workspace, 'nested/output/draft.txt'),
-							'utf8'
-						)
-					).toBe('editor contents');
+					const savedPath = path.join(
+						fixture.workspace,
+						'nested/output/draft.txt'
+					);
+					const metadata = await stat(savedPath);
+
+					expect({
+						error: new TextDecoder().decode(save.stderr),
+						exit: save.exit,
+						mode: metadata.mode & 0o777,
+						contents: await readFile(savedPath, 'utf8')
+					}).toStrictEqual({
+						error: '',
+						exit: { kind: 'code', code: 0 },
+						mode: 0o750,
+						contents: 'editor contents'
+					});
 					await expect(
 						stat(path.join(fixture.workspace, 'nested/temporary'))
 					).rejects.toMatchObject({ code: 'ENOENT' });

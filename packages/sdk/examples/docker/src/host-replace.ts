@@ -21,6 +21,34 @@ if (!staging || process.platform !== 'darwin' || !path.isAbsolute(staging)) {
 }
 
 const workspace = process.cwd();
+const resources: unknown = JSON.parse(process.argv[2] ?? 'null');
+
+if (
+	!Array.isArray(resources) ||
+	!resources.every((value): value is string => typeof value === 'string')
+) {
+	throw new TypeError('Expected a list of protected workspace paths.');
+}
+
+const foldedPath = (relative: string) =>
+	relative.normalize('NFD').toUpperCase();
+const protectedPaths = resources.map((relative) => foldedPath(relative));
+
+process.umask(0);
+
+function isProtected(relative: string): boolean {
+	const folded = foldedPath(relative);
+
+	return (
+		folded.split('/').includes('.GIT') ||
+		protectedPaths.some(
+			(resource) =>
+				resource === folded ||
+				resource.startsWith(folded + '/') ||
+				folded.startsWith(resource + '/')
+		)
+	);
+}
 
 function isWorkspacePath(value: unknown): value is string {
 	return (
@@ -86,7 +114,7 @@ async function change(
 	}
 
 	try {
-		if (!(await hasWorkspaceParent(target))) {
+		if (isProtected(target) || !(await hasWorkspaceParent(target))) {
 			return { status: 'EACCES' };
 		}
 
@@ -136,6 +164,7 @@ async function change(
 				}
 
 				if (
+					isProtected(request.source) ||
 					!(await hasWorkspaceParent(request.source)) ||
 					!isRegularOrDirectory(await lstat(request.source))
 				) {

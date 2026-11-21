@@ -105,7 +105,7 @@ func (n *workspaceNode) Rename(ctx context.Context, name string, newParent fs.In
 		return unix.EXDEV
 	}
 	if flags != 0 {
-		return unix.ENOTSUP
+		return unix.EINVAL
 	}
 	source, target := path.Join(n.relative, name), path.Join(parent.relative, newName)
 	if !n.writablePath(source) || !n.writablePath(target) {

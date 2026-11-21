@@ -46,15 +46,12 @@ type ContractRun = (
 	fixture: SandboxProviderTestFixture,
 	backend: SandboxBackend,
 	context: SandboxOperationContext,
-	resources: {
-		readonly afterDisposal: (verify: () => Promise<void>) => void;
-		readonly peer: SandboxBackend | undefined;
-	}
+	afterDisposal: (verify: () => Promise<void>) => void
 ) => Promise<void>;
 
 interface ContractCase {
 	readonly label: string;
-	readonly needsPeer?: boolean;
+	readonly operation?: 'dispose' | 'independent-disposal';
 	readonly run: ContractRun;
 }
 
@@ -139,6 +136,8 @@ export async function usingProviderFixture<Config>(
 	scenario: ContractRun | ContractCase
 ): Promise<void> {
 	const run = typeof scenario === 'function' ? scenario : scenario.run;
+	const operation =
+		typeof scenario === 'function' ? undefined : scenario.operation;
 	const timeoutMs = options.timeoutMs ?? 10_000;
 
 	expect(Number.isFinite(timeoutMs) && timeoutMs > 0).toBe(true);
@@ -172,11 +171,6 @@ export async function usingProviderFixture<Config>(
 		}
 
 		const backend = await open();
-		const peer =
-			typeof scenario !== 'function' && scenario.needsPeer
-				? await open()
-				: undefined;
-
 		const capabilities = options.capabilities ?? options.provider.capabilities;
 
 		expect(
@@ -202,14 +196,41 @@ export async function usingProviderFixture<Config>(
 			expect(backend.capabilities.exitStatus).toBe('guaranteed');
 		}
 
-		await bounded({ ...deadlines, drainOnTimeout: true }, (context) =>
-			run(fixture, backend, context, {
-				peer,
-				afterDisposal: (verify) => {
-					afterDisposal.push(verify);
-				}
-			})
-		);
+		const check = (target: SandboxBackend) =>
+			bounded(
+				{ ...deadlines, drainOnTimeout: true },
+				(context) =>
+					run(fixture, target, context, (verify) => {
+						afterDisposal.push(verify);
+					}),
+				operation === 'dispose' ? 'dispose' : 'exec'
+			);
+
+		if (operation === 'independent-disposal') {
+			const verify = fixture.verifyAllocationDisposed;
+
+			if (!verify) {
+				throw new Error(
+					'Supply an independent disposal check for each allocation.'
+				);
+			}
+
+			const peer = await open();
+
+			await check(peer);
+			await bounded(
+				deadlines,
+				async (closing) => {
+					await backend.dispose(closing);
+					await verify.call(fixture, backend);
+				},
+				'dispose'
+			);
+			backends.shift();
+			await check(peer);
+		} else {
+			await check(backend);
+		}
 	} catch (error) {
 		afterDisposal.length = 0;
 		failures.push(error);
@@ -685,18 +706,11 @@ export function providerContractCases<Config>(
 		},
 		{
 			label: 'idempotent disposal',
-			run: (fixture, backend) =>
-				bounded(
-					options,
-					async (context) => {
-						await Promise.all([
-							backend.dispose(context),
-							backend.dispose(context)
-						]);
-						await fixture.verifyDisposed();
-					},
-					'dispose'
-				)
+			operation: 'dispose',
+			run: async (fixture, backend, context) => {
+				await Promise.all([backend.dispose(context), backend.dispose(context)]);
+				await fixture.verifyDisposed();
+			}
 		}
 	];
 
@@ -721,12 +735,8 @@ export function providerContractCases<Config>(
 	if (options.verifyIndependentAllocations) {
 		cases.push({
 			label: 'independent disposal of allocations from the same source',
-			needsPeer: true,
-			run: async (fixture, first, context, { peer: second }) => {
-				if (second === undefined) {
-					throw new Error('Missing peer allocation.');
-				}
-
+			operation: 'independent-disposal',
+			run: async (fixture, peer, context) => {
 				const probe = fixture.peerProcess;
 
 				if (probe === undefined) {
@@ -735,24 +745,7 @@ export function providerContractCases<Config>(
 					);
 				}
 
-				const verify = fixture.verifyAllocationDisposed;
-
-				if (verify === undefined) {
-					throw new Error(
-						'Supply an independent disposal check for each allocation.'
-					);
-				}
-
-				await checkProcess(second, probe, context);
-				await bounded(
-					options,
-					async (closing) => {
-						await first.dispose(closing);
-						await verify.call(fixture, first);
-					},
-					'dispose'
-				);
-				await checkProcess(second, probe, context);
+				await checkProcess(peer, probe, context);
 			}
 		});
 	}
@@ -762,7 +755,7 @@ export function providerContractCases<Config>(
 	if (relationship !== undefined) {
 		cases.push({
 			label: `workspace visibility (${relationship})`,
-			run: (fixture, backend, context, { afterDisposal }) =>
+			run: (fixture, backend, context, afterDisposal) =>
 				checkWorkspaceVisibility(
 					relationship,
 					fixture,
@@ -987,8 +980,8 @@ export function defineSandboxProviderTests<Config>(
 	const cleanup = resolveCleanupBudgets(options.cleanup);
 	const testTimeout =
 		(options.timeoutMs ?? 10_000) * 5 +
-		cleanup.disposalTimeoutMs +
-		cleanup.cancellationGraceMs;
+		3 * cleanup.disposalTimeoutMs +
+		2 * cleanup.cancellationGraceMs;
 
 	describe(options.label, () => {
 		for (const entry of providerContractCases(options)) {
@@ -996,7 +989,7 @@ export function defineSandboxProviderTests<Config>(
 				entry.label,
 				() => usingProviderFixture(options, entry),
 				testTimeout +
-					(entry.needsPeer
+					(entry.operation === 'independent-disposal'
 						? (options.timeoutMs ?? 10_000) + cleanup.disposalTimeoutMs
 						: 0)
 			);

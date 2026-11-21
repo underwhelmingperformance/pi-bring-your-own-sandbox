@@ -1361,71 +1361,77 @@ it.each([
 	}
 );
 
-it('finishes peer disposal before fixture cleanup under its own deadline', async () => {
-	vi.useFakeTimers();
+it.each([1, 2])(
+	'finishes disposal of allocation %i under its own deadline',
+	async (slowAllocation) => {
+		vi.useFakeTimers();
 
-	const base = contractScenario();
-	const events: string[] = [];
-	let opened = 0;
-	const options: SandboxProviderTestOptions<undefined> = {
-		...base,
-		verifyIndependentAllocations: true,
-		timeoutMs: 100,
-		cleanup: { cancellationGraceMs: 20, disposalTimeoutMs: 200 },
-		provider: {
-			...base.provider,
-			async open(...arguments_) {
-				const backend = await base.provider.open(...arguments_);
+		const base = contractScenario();
+		const events: string[] = [];
+		let opened = 0;
+		const options: SandboxProviderTestOptions<undefined> = {
+			...base,
+			verifyIndependentAllocations: true,
+			timeoutMs: 100,
+			cleanup: { cancellationGraceMs: 20, disposalTimeoutMs: 200 },
+			provider: {
+				...base.provider,
+				async open(...arguments_) {
+					const backend = await base.provider.open(...arguments_);
 
-				if (++opened === 1) {
-					return backend;
+					if (++opened !== slowAllocation) {
+						return backend;
+					}
+
+					return {
+						...backend,
+						async dispose(context) {
+							await new Promise<void>((resolve) => setTimeout(resolve, 150));
+							await backend.dispose(context);
+							events.push('disposed');
+						}
+					};
+				}
+			},
+			async createFixture() {
+				const fixture = await base.createFixture();
+				const peerProcess = fixture.processes?.[0];
+
+				if (!peerProcess) {
+					throw new Error('Missing fixture process.');
 				}
 
 				return {
-					...backend,
-					async dispose(context) {
-						await new Promise<void>((resolve) => setTimeout(resolve, 150));
-						await backend.dispose(context);
-						events.push('peer disposed');
+					...fixture,
+					peerProcess,
+					verifyAllocationDisposed: fixture.verifyDisposed,
+					async cleanup() {
+						events.push('cleanup');
+						await fixture.cleanup();
 					}
 				};
 			}
-		},
-		async createFixture() {
-			const fixture = await base.createFixture();
-			const peerProcess = fixture.processes?.[0];
+		};
 
-			if (!peerProcess) {
-				throw new Error('Missing fixture process.');
+		try {
+			const entry = providerContractCases(options).find((test) =>
+				test.label.startsWith('independent disposal')
+			);
+
+			if (!entry) {
+				throw new Error('Missing allocation disposal scenario.');
 			}
 
-			return {
-				...fixture,
-				peerProcess,
-				verifyAllocationDisposed: fixture.verifyDisposed,
-				async cleanup() {
-					events.push('cleanup');
-					await fixture.cleanup();
-				}
-			};
+			const outcome = observe(usingProviderFixture(options, entry));
+
+			await vi.advanceTimersByTimeAsync(300);
+			expect(await outcome).toStrictEqual({
+				kind: 'resolved',
+				value: undefined
+			});
+			expect(events).toStrictEqual(['disposed', 'cleanup']);
+		} finally {
+			vi.useRealTimers();
 		}
-	};
-
-	try {
-		const entry = providerContractCases(options).find((test) =>
-			test.label.startsWith('independent disposal')
-		);
-
-		if (!entry) {
-			throw new Error('Missing allocation disposal scenario.');
-		}
-
-		const outcome = observe(usingProviderFixture(options, entry));
-
-		await vi.advanceTimersByTimeAsync(300);
-		expect(await outcome).toStrictEqual({ kind: 'resolved', value: undefined });
-		expect(events).toStrictEqual(['peer disposed', 'cleanup']);
-	} finally {
-		vi.useRealTimers();
 	}
-});
+);

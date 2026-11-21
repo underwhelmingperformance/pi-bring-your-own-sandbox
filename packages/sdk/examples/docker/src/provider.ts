@@ -631,8 +631,8 @@ export function createDockerProvider(
 		source?: ReviewSnapshotSource
 	) {
 		if (
-			request.policy.filesystemScope !== 'workspace-only' ||
-			request.policy.networkAccess !== 'denied' ||
+			(request.policy.filesystemScope !== 'workspace-only' &&
+				request.policy.filesystemScope !== 'provider-default') ||
 			(request.policy.workspaceRelationship !== undefined &&
 				request.policy.workspaceRelationship !== 'copied') ||
 			(request.policy.workspaceProtection?.length ?? 0) > 0 ||
@@ -730,7 +730,11 @@ export function createDockerProvider(
 		);
 		const backend = new DockerBackend(
 			resources,
-			request.policy,
+			{
+				...request.policy,
+				filesystemScope: 'workspace-only',
+				networkAccess: 'denied'
+			},
 			launcher,
 			client,
 			{ files, search, matcher },
@@ -778,8 +782,8 @@ export function createDockerProvider(
 		policies: {
 			workspaceRelationship: ['copied'],
 			workspaceAccess: ['read-only', 'read-write'],
-			filesystemScope: ['workspace-only'],
-			networkAccess: ['denied']
+			filesystemScope: ['workspace-only', 'provider-default'],
+			networkAccess: ['denied', 'provider-default']
 		},
 		validateConfig: dockerConfig,
 		open: (request, context) => allocate(request, context),

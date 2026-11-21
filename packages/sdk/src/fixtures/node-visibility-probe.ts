@@ -1,9 +1,62 @@
+import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { link, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { promisify } from 'node:util';
 
 import type { ProcessRequest } from '../contracts.js';
 import type { SandboxProviderTestFixture } from '../provider-test-contracts.js';
+
+const run = promisify(execFile);
+const attribute = 'user.byos-conformance';
+
+async function seedAttribute(file: string) {
+	if (process.platform === 'darwin') {
+		await run('/usr/bin/xattr', ['-w', attribute, 'original', file]);
+
+		return async () => {
+			const { stdout } = await run('/usr/bin/xattr', ['-p', attribute, file], {
+				encoding: 'buffer'
+			});
+
+			return { [attribute]: new Uint8Array(stdout) };
+		};
+	}
+
+	if (process.platform !== 'linux') {
+		return;
+	}
+
+	const arguments_ = [file, attribute];
+
+	try {
+		await run('python3', [
+			'-c',
+			'import os, sys; os.setxattr(sys.argv[1], sys.argv[2], b"original")',
+			...arguments_
+		]);
+	} catch (error) {
+		if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+			return;
+		}
+
+		throw error;
+	}
+
+	return async () => {
+		const { stdout } = await run(
+			'python3',
+			[
+				'-c',
+				'import os, sys; sys.stdout.buffer.write(os.getxattr(sys.argv[1], sys.argv[2]))',
+				...arguments_
+			],
+			{ encoding: 'buffer' }
+		);
+
+		return { [attribute]: new Uint8Array(stdout) };
+	};
+}
 
 export function nodeVisibilityProbe(
 	source: string,
@@ -37,6 +90,8 @@ export function nodeVisibilityProbe(
 
 			await link(file, alias);
 
+			const readAttributes = await seedAttribute(alias);
+
 			return async () => {
 				const entry = await stat(alias, { bigint: true });
 
@@ -46,7 +101,8 @@ export function nodeVisibilityProbe(
 					mode: Number(entry.mode),
 					uid: Number(entry.uid),
 					gid: Number(entry.gid),
-					links: Number(entry.nlink)
+					links: Number(entry.nlink),
+					...(readAttributes && { xattrs: await readAttributes() })
 				};
 			};
 		},

@@ -581,6 +581,7 @@ it.each([
 	const open = base.provider.open;
 	let source = Buffer.from('seed');
 	let target = Buffer.from(source);
+	let links = 2;
 	const readTarget = { kind: 'argv', executable: 'read', args: [] } as const;
 	const writeTarget = (bytes: Uint8Array): ProcessRequest => ({
 		kind: 'argv',
@@ -633,6 +634,10 @@ it.each([
 						if (request.kind === 'argv' && request.executable === 'write') {
 							target = Buffer.from(request.args[0] ?? '', 'base64');
 
+							if (defect === 'an editor changing the other hard link') {
+								links--;
+							}
+
 							if (
 								defect === 'a copied write leaking to the source' ||
 								defect === 'an editor changing the other hard link'
@@ -669,7 +674,7 @@ it.each([
 									mode: 0o644,
 									uid: 42,
 									gid: 42,
-									links: 2
+									links
 								})
 							)
 					}),

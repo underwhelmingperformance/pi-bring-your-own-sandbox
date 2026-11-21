@@ -191,7 +191,9 @@ replaces the destination on the host, then asks the fixture to link the current
 destination to another path. The returned observer reads the surviving link
 directly from the host. The suite checks inode identity, contents, permissions,
 ownership and a one-link decrease after the save. Include extended attributes in
-the observation when available.
+the observation when available. The suite calls this probe only for writable
+shared workspaces. A fixture can also supply the same visibility probes for
+read-only workspaces and private copies.
 
 ## Checking policy effects
 

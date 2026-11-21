@@ -308,14 +308,14 @@ The host reads the workload's version. A second file stays open across a host
 rename within the workspace root. A further write to that descriptor returns
 `ESTALE`. The host reads the original contents under the new name.
 
-The writable prototype permits up to 16 successful file creations per service.
-New files must be in the workspace root and have a non-hidden name. The service
-restricts their permissions to owner read and write. The service counts a file
-as soon as the backing filesystem creates it. If a subsequent metadata read
-fails, the file still exists. Writes require the file's group to match the
+The Linux-only mutation prototype permits up to 16 successful file creations per
+service. New files must be in the workspace root and have a non-hidden name. The
+service restricts their permissions to owner read and write. The service counts
+a file as soon as the backing filesystem creates it. If a subsequent metadata
+read fails, the file still exists. Writes require the file's group to match the
 service's group, including when a setgid directory supplies the group. A
-read-only mount rejects creation. The service refuses workload renames and
-removals. Linux resolves the operands of these operations by name, so a host
+read-only mount rejects creation. On Linux the service refuses workload renames
+and removals. Linux resolves the operands of these operations by name, so a host
 process can substitute an entry after the service has checked it. Enabling them
 in a shared workspace requires enforcement at the point of mutation.
 
@@ -327,14 +327,18 @@ search in the same worker see the editor's version. On a read-only mount, an SDK
 write returns a permission error. The production provider still uses a copied
 workspace.
 
-On macOS the service stages each write outside the checkout and asks a
-Seatbelt-restricted host process to rename the staged file. The host process
-accepts only regular files in the checkout root. After the rename, the service
-waits for the old directory entry to disappear from the VM's view. A subsequent
-write or truncate checks the open descriptor against the current entry. The
-formatter test covers a host replacement, a host rename, and an open file for
-which the host adds a hard link under `.pi`. The host reads the protected
-contents independently after the formatter exits.
+On macOS the service mounts the checkout read-only and stages each write in a
+private writable directory. A Seatbelt-restricted host process creates files and
+directories, renames editor saves, removes regular files and empty directories,
+and replaces regular files with staged writes. Operations accept
+workspace-relative paths, including nested paths and hidden editor temporary
+files. The host policy denies writes to the preset host configuration paths and
+files with multiple hard links. After the rename, the service waits for the old
+directory entry to disappear from the VM's view. A subsequent write or truncate
+checks the open descriptor against the current entry. The formatter test covers
+a host replacement, a host rename, and an open file for which the host adds a
+hard link under `.pi`. The host reads the protected contents independently after
+the formatter exits.
 
 The prototype stages each FUSE write request separately. A large application
 write can produce several requests and the host can see each intermediate
@@ -403,10 +407,11 @@ hard-link alias returned `EACCES`. This experiment used a fixed workload and did
 not test confinement of arbitrary SFTP clients or access to the FUSE device from
 the workload.
 
-The macOS replacement service handles regular files in the checkout root. A
-production shared workspace also needs nested writes, editor renames, removals
-and protection for Git metadata. The Linux probe covers rename and unlink.
-Shared sessions require host enforcement for content changes as well.
+Production shared workspaces still require confined reads, protection for
+referenced Git administration directories and hooks, and session-owned
+allocation and cleanup of the host service and mount. The Linux probe covers
+rename and unlink. Shared sessions require host enforcement for content changes
+as well.
 
 [darwin-mutations]: test/darwin-mutations.test.ts
 [write-profile]: test/mount/darwin-mutations.sb

@@ -118,7 +118,7 @@ it
 				'type=bind,source=' +
 					fixture.workspace +
 					',target=/backing' +
-					(mode === 'read-only' ? ',readonly' : ''),
+					(mode === 'read-only' || isHostReplacements ? ',readonly' : ''),
 				...(isHostReplacements
 					? ['--mount', 'type=bind,source=' + staging + ',target=/staging']
 					: []),
@@ -247,7 +247,8 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 							new URL('mount/workload.ts', import.meta.url),
 							'utf8'
 						),
-						mode
+						mode,
+						isHostReplacements ? 'host' : 'guest'
 					]);
 				} finally {
 					finished.abort();
@@ -383,6 +384,45 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 					).rejects.toBeInstanceOf(SandboxPermissionDeniedError);
 				}
 
+				if (isHostReplacements) {
+					await sandbox.files.mkdir('nested/output');
+					await sandbox.files.writeFile('nested/output/draft.txt', edit);
+
+					const save = await sandbox.exec({
+						kind: 'argv',
+						executable: '/usr/local/bin/node',
+						args: [
+							'-e',
+							`
+const fs = require('node:fs');
+fs.writeFileSync('nested/output/.save', 'editor contents');
+fs.renameSync('nested/output/.save', 'nested/output/draft.txt');
+fs.mkdirSync('nested/temporary');
+fs.writeFileSync('nested/temporary/build.log', 'ready');
+fs.renameSync('nested/temporary', 'nested/renamed');
+fs.unlinkSync('nested/renamed/build.log');
+fs.rmdirSync('nested/renamed');
+for (const target of ['.pi/settings', '.envrc', 'settings-alias']) {
+  try { fs.renameSync('nested/output/draft.txt', target); }
+  catch (error) { if (error.code === 'EACCES' || error.code === 'EPERM') continue; throw error; }
+  throw new Error('A protected editor destination was writable.');
+}
+`
+						]
+					});
+
+					expect(save.exit).toStrictEqual({ kind: 'code', code: 0 });
+					expect(
+						await readFile(
+							path.join(fixture.workspace, 'nested/output/draft.txt'),
+							'utf8'
+						)
+					).toBe('editor contents');
+					await expect(
+						stat(path.join(fixture.workspace, 'nested/temporary'))
+					).rejects.toMatchObject({ code: 'ENOENT' });
+				}
+
 				const shell = await sandbox.exec({
 					kind: 'shell',
 					dialect: 'bash',
@@ -445,13 +485,15 @@ die "unexpected mount acknowledgement" unless defined($count) && $count == 0;`
 					aliasWriteDenied: true,
 					aliasTruncateDenied: true,
 					previousSave: 'host contents',
-					createChecks: {
-						limit: true,
-						reserved: true,
-						unlink: true,
-						removeDirectory: true,
-						nestedCreate: true
-					},
+					...(!isHostReplacements && {
+						createChecks: {
+							limit: true,
+							reserved: true,
+							unlink: true,
+							removeDirectory: true,
+							nestedCreate: true
+						}
+					}),
 					oversizedDenied: true,
 					sizes: {
 						truncated: 0,

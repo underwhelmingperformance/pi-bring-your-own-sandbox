@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"os"
+	"path"
 	"strings"
 	"syscall"
 	"unicode/utf8"
@@ -29,16 +30,25 @@ func (n *workspaceNode) removalError() syscall.Errno {
 }
 
 func (n *workspaceNode) Unlink(ctx context.Context, name string) syscall.Errno {
-	return n.removalError()
+	return n.remove(name, "unlink")
 }
 
 func (n *workspaceNode) Rmdir(ctx context.Context, name string) syscall.Errno {
-	return n.removalError()
+	return n.remove(name, "rmdir")
 }
 
 func (b *backing) create(name string, mode uint32) (int, error) {
 	b.mutations.Lock()
 	defer b.mutations.Unlock()
+	if b.host != nil {
+		if mode&0400 == 0 {
+			return -1, unix.ENOTSUP
+		}
+		if err := b.host.change(hostChange{Op: "create", Target: name, Mode: mode & 0600}); err != nil {
+			return -1, err
+		}
+		return b.openCreated(name)
+	}
 	if b.created >= maxCreatedFiles {
 		var stat unix.Stat_t
 		err := unix.Fstatat(b.root, name, &stat, unix.AT_SYMLINK_NOFOLLOW)
@@ -61,10 +71,11 @@ func (n *workspaceNode) Create(ctx context.Context, name string, flags, mode uin
 	if !n.writable {
 		return nil, nil, 0, syscall.EROFS
 	}
-	if n.relative != "." || !writableRootFile(name) || mode&07000 != 0 {
+	relative := path.Join(n.relative, name)
+	if !n.writablePath(relative) || mode&07000 != 0 {
 		return nil, nil, 0, syscall.EACCES
 	}
-	fd, err := n.create(name, mode)
+	fd, err := n.create(relative, mode)
 	if err == unix.EEXIST && flags&unix.O_EXCL == 0 {
 		inode, errno := n.Lookup(ctx, name, out)
 		if errno != 0 {
@@ -85,11 +96,11 @@ func (n *workspaceNode) Create(ctx context.Context, name string, flags, mode uin
 		unix.Close(fd)
 		return nil, nil, 0, fs.ToErrno(err)
 	}
-	child := &workspaceNode{backing: n.backing, relative: name, inode: stat.Ino}
+	child := &workspaceNode{backing: n.backing, relative: relative, inode: stat.Ino}
 	n.attributes(&stat, &out.Attr)
 	inode := n.NewInode(ctx, child, fs.StableAttr{Mode: unix.S_IFREG})
 	if flags&unix.O_ACCMODE == unix.O_RDONLY {
 		return inode, &reader{fd}, fuse.FOPEN_DIRECT_IO, 0
 	}
-	return inode, &workspaceWriter{file: os.NewFile(uintptr(fd), name), backing: n.backing, name: name}, fuse.FOPEN_DIRECT_IO, 0
+	return inode, &workspaceWriter{file: os.NewFile(uintptr(fd), name), backing: n.backing, name: relative}, fuse.FOPEN_DIRECT_IO, 0
 }

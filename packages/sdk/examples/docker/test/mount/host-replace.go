@@ -21,7 +21,24 @@ type hostReplacer struct {
 	replies  *json.Decoder
 }
 
+type hostChange struct {
+	Op     string `json:"op"`
+	Target string `json:"target"`
+	Source string `json:"source,omitempty"`
+	Mode   uint32 `json:"mode"`
+}
+
 func (p *hostReplacer) replace(stage, target string, previous unix.Stat_t) error {
+	if err := p.change(hostChange{Op: "replace", Source: stage, Target: target}); err != nil {
+		if err == unix.ENOENT {
+			return unix.ESTALE
+		}
+		return err
+	}
+	return p.waitForEntry(target, previous)
+}
+
+func (p *hostReplacer) change(request hostChange) error {
 	if p.conn == nil {
 		if err := p.listener.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
 			return err
@@ -37,7 +54,7 @@ func (p *hostReplacer) replace(stage, target string, previous unix.Stat_t) error
 	if err := p.conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		return err
 	}
-	if err := json.NewEncoder(p.conn).Encode([2]string{stage, target}); err != nil {
+	if err := json.NewEncoder(p.conn).Encode(request); err != nil {
 		p.conn.Close()
 		return unix.EIO
 	}
@@ -48,11 +65,31 @@ func (p *hostReplacer) replace(stage, target string, previous unix.Stat_t) error
 	}
 	switch reply {
 	case "OK":
-		return p.waitForEntry(target, previous)
+		return nil
 	case "EPERM", "EACCES":
 		return unix.EACCES
 	case "ENOENT":
-		return unix.ESTALE
+		return unix.ENOENT
+	case "EEXIST":
+		return unix.EEXIST
+	case "EISDIR":
+		return unix.EISDIR
+	case "ENOTDIR":
+		return unix.ENOTDIR
+	case "ENOTEMPTY":
+		return unix.ENOTEMPTY
+	case "EINVAL":
+		return unix.EINVAL
+	case "EXDEV":
+		return unix.EXDEV
+	case "EROFS":
+		return unix.EROFS
+	case "ENOSPC":
+		return unix.ENOSPC
+	case "EDQUOT":
+		return unix.EDQUOT
+	case "ENAMETOOLONG":
+		return unix.ENAMETOOLONG
 	default:
 		return unix.EIO
 	}
@@ -62,12 +99,11 @@ func (p *hostReplacer) replace(stage, target string, previous unix.Stat_t) error
 func (p *hostReplacer) waitForEntry(target string, previous unix.Stat_t) error {
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		var entry unix.Stat_t
-		err := unix.Fstatat(p.root, target, &entry, unix.AT_SYMLINK_NOFOLLOW)
-		if err == unix.ENOENT || (err == nil && (entry.Dev != previous.Dev || entry.Ino != previous.Ino)) {
+		entry, err := entryStat(p.root, target)
+		if (err == unix.ENOENT && previous.Ino != 0) || (err == nil && (entry.Dev != previous.Dev || entry.Ino != previous.Ino)) {
 			return nil
 		}
-		if err != nil {
+		if err != nil && err != unix.ENOENT {
 			return err
 		}
 		if time.Now().After(deadline) {

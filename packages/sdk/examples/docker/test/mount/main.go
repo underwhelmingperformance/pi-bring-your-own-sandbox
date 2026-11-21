@@ -39,7 +39,8 @@ func serve(writable, hostReplacements bool) error {
 			return err
 		}
 		workspace.staging = staging
-		workspace.replace = (&hostReplacer{listener: replacer, root: root}).replace
+		workspace.host = &hostReplacer{listener: replacer, root: root}
+		workspace.replace = workspace.host.replace
 	}
 	listener, err := net.ListenUnix("unixpacket", &net.UnixAddr{Name: "/control/service", Net: "unixpacket"})
 	if err != nil {

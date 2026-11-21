@@ -125,7 +125,7 @@ async function writeAndInspect() {
 					}, constants.errno.EACCES),
 					previousSave,
 					oversizedDenied: isOversizedDenied,
-					createChecks: checkCreates(),
+					...(process.argv[2] !== 'host' && { createChecks: checkCreates() }),
 					sizes: { truncated, written, readerSize }
 				};
 			}

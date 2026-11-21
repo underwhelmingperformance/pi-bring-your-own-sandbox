@@ -32,10 +32,14 @@ type workspaceWriter struct {
 }
 
 func (n *workspaceNode) openWriter(flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
-	if !writableRootFile(n.relative) {
+	if !n.writablePath(n.relative) {
 		return nil, 0, syscall.EACCES
 	}
-	fd, errno := n.open(unix.S_IFREG, unix.O_RDWR)
+	access := unix.O_RDWR
+	if n.host != nil {
+		access = unix.O_RDONLY
+	}
+	fd, errno := n.open(unix.S_IFREG, access)
 	if errno != 0 {
 		return nil, 0, errno
 	}
@@ -49,12 +53,24 @@ func (n *workspaceNode) openWriter(flags uint32) (fs.FileHandle, uint32, syscall
 	return w, fuse.FOPEN_DIRECT_IO, 0
 }
 
+func entryStat(root int, relative string) (unix.Stat_t, error) {
+	var entry unix.Stat_t
+	fd, err := unix.Openat2(root, relative, &unix.OpenHow{Flags: unix.O_PATH | unix.O_NOFOLLOW | unix.O_CLOEXEC, Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS | unix.RESOLVE_NO_XDEV})
+	if err != nil {
+		return entry, err
+	}
+	defer unix.Close(fd)
+	err = unix.Fstat(fd, &entry)
+	return entry, err
+}
+
 func (w *workspaceWriter) current() (unix.Stat_t, error) {
-	var entry, opened unix.Stat_t
-	if err := unix.Fstatat(w.root, w.name, &entry, unix.AT_SYMLINK_NOFOLLOW); err != nil {
-		if err == unix.ENOENT {
-			return entry, unix.ESTALE
-		}
+	var opened unix.Stat_t
+	entry, err := entryStat(w.root, w.name)
+	if err == unix.ENOENT {
+		return entry, unix.ESTALE
+	}
+	if err != nil {
 		return entry, err
 	}
 	if err := unix.Fstat(int(w.file.Fd()), &opened); err != nil {

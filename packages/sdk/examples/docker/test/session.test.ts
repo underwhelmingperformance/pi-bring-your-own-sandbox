@@ -2,8 +2,18 @@ import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { constants } from 'node:fs';
-import { link, open, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+	link,
+	mkdir,
+	open,
+	readFile,
+	rename,
+	rm,
+	stat,
+	writeFile
+} from 'node:fs/promises';
 import { connect, createServer } from 'node:net';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -127,8 +137,20 @@ async function withDockerSession(
 				await fixture.verifyDisposed();
 			},
 			{
+				...(process.platform === 'darwin' &&
+					filesystemScope === 'provider-default' && {
+						temporaryDirectory: homedir()
+					}),
 				prepare: async (directory, agentDirectory) => {
 					fixture = await DockerFixture.create(directory);
+
+					if (filesystemScope === 'provider-default') {
+						await promisify(execFile)('git', ['init', '--quiet', directory]);
+						await mkdir(path.join(directory, '.pi'));
+						await writeFile(path.join(directory, '.pi', 'settings.json'), '{}');
+						await writeFile(path.join(directory, '.envrc'), 'initial');
+					}
+
 					vi.stubEnv('PI_CODING_AGENT_DIR', agentDirectory);
 					config.set({
 						provider: 'example.docker',
@@ -140,7 +162,10 @@ async function withDockerSession(
 						policy: {
 							workspaceAccess: 'read-write',
 							filesystemScope,
-							networkAccess: 'denied'
+							networkAccess:
+								filesystemScope === 'provider-default'
+									? 'provider-default'
+									: 'denied'
 						}
 					});
 				}
@@ -269,6 +294,102 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				'system-read-only'
 			);
 		}, 30_000);
+
+		it('shares editor saves across shell and SDK requests while each review retains its inputs', async () => {
+			await withDockerSession(
+				async ({ sandbox, fixture, pi, context }) => {
+					expect(sandbox.workspace.relationship).toBe('shared');
+
+					for (const [file, contents] of [
+						['.envrc', 'initial'],
+						['.pi/settings.json', '{}']
+					] as const) {
+						await expect(
+							sandbox.files.writeFile(file, Buffer.from('change'))
+						).rejects.toMatchObject({ name: 'SandboxPermissionDeniedError' });
+
+						const denied = await sandbox.exec({
+							kind: 'shell',
+							dialect: 'sh',
+							command: 'echo change > ' + file
+						});
+
+						expect(denied.exit).not.toStrictEqual({ kind: 'code', code: 0 });
+						expect(
+							await readFile(path.join(fixture.workspace, file), 'utf8')
+						).toBe(contents);
+					}
+
+					await sandbox.files.writeFile('created.txt', Buffer.from('agent'));
+
+					const filename = path.join(fixture.workspace, 'created.txt');
+
+					expect(await readFile(filename, 'utf8')).toBe('agent');
+
+					const metadata = await stat(filename);
+
+					expect(metadata.uid).toBe(process.getuid?.());
+
+					const review = await sandboxClient.openReviewSnapshot(pi, context, {
+						kind: 'sandbox',
+						providerId: sandbox.providerId,
+						generationId: sandbox.generationId,
+						backendId: sandbox.backendId
+					});
+
+					try {
+						const replacement = path.join(fixture.workspace, 'editor.tmp');
+
+						await writeFile(replacement, 'editor');
+						await rename(replacement, filename);
+
+						const shell = await sandbox.exec({
+							kind: 'shell',
+							dialect: 'sh',
+							command: 'cat created.txt'
+						});
+
+						await writeFile(replacement, 'replacement');
+						await rename(replacement, path.join(fixture.workspace, '.envrc'));
+						expect({
+							shell: new TextDecoder().decode(shell.stdout),
+							worker: new TextDecoder().decode(
+								await sandbox.files.readFile('created.txt')
+							),
+							configuration: new TextDecoder().decode(
+								await sandbox.files.readFile('.envrc')
+							),
+							review: new TextDecoder().decode(
+								await review.sandbox.files.readFile('created.txt')
+							)
+						}).toStrictEqual({
+							shell: 'editor',
+							worker: 'editor',
+							configuration: 'replacement',
+							review: 'agent'
+						});
+					} finally {
+						await review.close();
+					}
+
+					await mkdir(path.join(fixture.workspace, 'hooks'));
+					await promisify(execFile)('git', [
+						'-C',
+						fixture.workspace,
+						'config',
+						'core.hooksPath',
+						'hooks'
+					]);
+					await expect(
+						sandbox.files.writeFile('hooks/config-test', Buffer.from('example'))
+					).rejects.toMatchObject({ name: 'SandboxPermissionDeniedError' });
+					await closeSandboxSession(pi, context);
+					expect(await readFile(filename, 'utf8')).toBe('editor');
+				},
+				[],
+				'provider-default'
+			);
+		});
 
 		it('takes fresh independent review snapshots from the proposed command destination', async () => {
 			await withDockerSession(async ({ pi, context, sandbox }) => {

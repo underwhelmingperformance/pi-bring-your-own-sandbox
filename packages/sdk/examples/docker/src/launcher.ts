@@ -7,9 +7,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function isNonRootId(value: unknown): boolean {
+	return (
+		typeof value === 'number' &&
+		Number.isSafeInteger(value) &&
+		value > 0 &&
+		value < 0xff_ff_ff_ff
+	);
+}
+
 function isInvocation(value: unknown): value is TargetInvocation {
 	return (
 		isRecord(value) &&
+		(value['identity'] === undefined ||
+			(isRecord(value['identity']) &&
+				isNonRootId(value['identity']['uid']) &&
+				value['identity']['uid'] !== 65_533 &&
+				isNonRootId(value['identity']['gid']))) &&
 		typeof value['executable'] === 'string' &&
 		Array.isArray(value['args']) &&
 		value['args'].every((argument: unknown) => typeof argument === 'string') &&
@@ -44,8 +58,8 @@ function launch(invocation: TargetInvocation): void {
 	const child = spawn(invocation.executable, invocation.args, {
 		cwd: invocation.cwd,
 		env: Object.fromEntries(environment),
-		uid: 65_534,
-		gid: 65_534,
+		uid: invocation.identity?.uid ?? 65_534,
+		gid: invocation.identity?.gid ?? 65_534,
 		stdio: ['ignore', 'pipe', 'pipe']
 	});
 

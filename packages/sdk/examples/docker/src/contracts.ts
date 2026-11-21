@@ -104,6 +104,7 @@ export interface DockerClient {
 Literal child invocation passed to the isolated launcher as JSON.
 */
 export interface TargetInvocation {
+	readonly identity?: { readonly uid: number; readonly gid: number };
 	/**
 	Target executable, resolved by Node using the child's environment.
 	*/

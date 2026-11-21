@@ -1,4 +1,6 @@
-import { readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 import type {
 	BackendProcessContext,
@@ -9,6 +11,7 @@ import {
 	closeSandboxSession,
 	getSandbox,
 	initialiseSandboxHost,
+	negotiateSandbox,
 	SandboxTransportError
 } from 'pi-bring-your-own-sandbox/api';
 import { expect, it } from 'vitest';
@@ -24,6 +27,7 @@ import type {
 	DockerCommandResult,
 	DockerConfig
 } from '../src/contracts.js';
+import dockerExtension from '../src/extension.js';
 import { DOCKER_IMAGE } from '../src/image.js';
 import { createDockerProvider } from '../src/provider.js';
 import { cleanupContext } from '../src/resources.js';
@@ -32,6 +36,9 @@ class FakeDocker implements DockerClient {
 	readonly commands: DockerCommand[] = [];
 	readonly containers = new Set<string>();
 	readonly waiting = new Map<string, () => void>();
+	info = 'Linux';
+	apiVersion = '1.45';
+	mountProbeStatus = 0;
 	isVolumePresent = false;
 	isRunningProbe = false;
 	hasLostRemoval = false;
@@ -91,6 +98,14 @@ class FakeDocker implements DockerClient {
 				stderr: new Uint8Array()
 			});
 
+		if (operation === 'version') {
+			return result(this.apiVersion);
+		}
+
+		if (operation === 'info') {
+			return result(this.info);
+		}
+
 		if (operation === 'volume') {
 			if (arguments_[0] === 'create') {
 				this.isVolumePresent = true;
@@ -147,7 +162,11 @@ class FakeDocker implements DockerClient {
 				JSON.stringify({
 					Running: false,
 					Status: 'exited',
-					ExitCode: isLauncher ? 0 : this.bootstrapStatus,
+					ExitCode: isLauncher
+						? 0
+						: created?.args.includes('--entrypoint=/bin/sh')
+							? this.mountProbeStatus
+							: this.bootstrapStatus,
 					Error: isLauncher ? this.runtimeError : ''
 				})
 			);
@@ -235,6 +254,103 @@ const request: SandboxOpenRequest<DockerConfig> = {
 		socketPath: '/fixture/docker.sock'
 	}
 };
+
+it.each([true, false])(
+	'selects the Docker development policy for project trust %s',
+	async (projectTrusted) => {
+		await withPiRuntime(
+			[
+				{ name: 'docker', factory: dockerExtension },
+				{
+					name: 'consumer',
+					factory(pi) {
+						pi.registerCommand('policy-test', {
+							description: 'Read the negotiated policy.',
+							async handler(_arguments, context) {
+								expect(await negotiateSandbox(pi, context)).toStrictEqual({
+									ok: true,
+									policy: {
+										workspaceAccess: 'read-write',
+										filesystemScope: projectTrusted
+											? 'provider-default'
+											: 'workspace-only',
+										networkAccess: projectTrusted
+											? 'provider-default'
+											: 'denied'
+									}
+								});
+							}
+						});
+					}
+				}
+			],
+			async (runtime, errors) => {
+				await runtime.session.prompt('/policy-test');
+				expect(errors).toStrictEqual([]);
+			},
+			{ projectTrusted }
+		);
+	}
+);
+
+it.each([
+	['Docker Desktop', '1.45', 0, 'shared'],
+	['Linux', '1.52', 0, 'shared'],
+	['Linux', '1.44', 0, 'copied'],
+	['Linux', '1.52', 1, 'copied']
+] as const)(
+	'selects a workspace for %s API %s with mount check %d',
+	async (os, api, probe, relationship) => {
+		const hostWorkspace = await mkdtemp(path.join(tmpdir(), 'byos-sharing-'));
+
+		try {
+			await mkdir(path.join(hostWorkspace, '.pi'));
+
+			const docker = new FakeDocker();
+
+			docker.info = os;
+			docker.apiVersion = api;
+			docker.mountProbeStatus = probe;
+
+			const provider = createDockerProvider(() => docker);
+			const messages: string[] = [];
+			const backend = await provider.open(
+				{
+					...request,
+					hostWorkspace,
+					policy: {
+						workspaceAccess: 'read-write',
+						networkAccess: 'provider-default',
+						filesystemScope: 'provider-default'
+					}
+				},
+				{
+					...context(),
+					reportDiagnostic(warning) {
+						messages.push(warning.message);
+					},
+					reportRecovery() {
+						return;
+					},
+					confirmCleanup() {
+						return;
+					}
+				}
+			);
+
+			try {
+				expect(backend.workspace.relationship).toBe(relationship);
+				expect(
+					messages.some((message) => message.includes('private copy'))
+				).toBe(relationship === 'copied');
+			} finally {
+				await backend.dispose(context());
+			}
+		} finally {
+			await rm(hostWorkspace, { recursive: true, force: true });
+		}
+	}
+);
 
 it('reports confirmed broker cleanup after Docker opening releases partial allocations', async () => {
 	const docker = new FakeDocker();

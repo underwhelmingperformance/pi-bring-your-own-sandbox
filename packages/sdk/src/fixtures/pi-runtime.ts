@@ -24,6 +24,7 @@ import {
 } from '@earendil-works/pi-coding-agent';
 
 interface RuntimeOptions {
+	readonly temporaryDirectory?: string;
 	readonly prepare?: (
 		directory: string,
 		agentDirectory: string
@@ -42,7 +43,12 @@ export async function withPiRuntime(
 	) => Promise<void>,
 	fixtureOptions?: RuntimeOptions
 ): Promise<void> {
-	const directory = await mkdtemp(path.join(tmpdir(), 'pi-byos-runtime-'));
+	const directory = await mkdtemp(
+		path.join(
+			fixtureOptions?.temporaryDirectory ?? tmpdir(),
+			'pi-byos-runtime-'
+		)
+	);
 	const agentDirectory = path.join(directory, 'agent');
 
 	await mkdir(agentDirectory);

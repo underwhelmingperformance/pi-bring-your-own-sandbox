@@ -72,7 +72,9 @@ function shellDefinition(
 		],
 		async execute(id, input, signal, update, context) {
 			const isOutside = input.execution === 'outside-sandbox';
-			const reviewed = reviews.executing(id, input.command, isOutside);
+			const prefix =
+				dialect === 'bash' ? pi.getSettings().shellCommandPrefix : undefined;
+			const reviewed = reviews.executing(id, input.command, prefix, isOutside);
 
 			if (isOutside && input.justification === undefined) {
 				throw new InvalidApprovalRequestError();
@@ -82,8 +84,6 @@ function shellDefinition(
 				throw new InvalidApprovalRequestError();
 			}
 
-			const prefix =
-				dialect === 'bash' ? pi.getSettings().shellCommandPrefix : undefined;
 			const tool = create(context.cwd, {
 				...(prefix !== undefined && { commandPrefix: prefix }),
 				exposeSessionEnvironment: isOutside,

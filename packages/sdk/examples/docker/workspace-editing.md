@@ -2,19 +2,18 @@
 
 Pi fixes a failing test. The developer sees the change in their editor and saves
 a correction. Pi's next read sees the correction, and its next test run uses it.
-This is the intended default for trusted development with the Docker provider.
-Today Docker edits a private copy. The [provider guide][docker] describes the
-current implementation. The SDK lets callers require a workspace relationship
-and isolation guarantees. The defaults below apply to this Docker example.
+Docker selects this workflow for eligible trusted development sessions. The
+[provider guide][docker] describes the runtime requirements. The SDK lets
+callers require a workspace relationship and isolation guarantees. The defaults
+below apply to this Docker example.
 
 [docker]: README.md
 
 ## Shared checkout
 
-Shared editing is proposed. Docker would select it automatically in eligible
-trusted sessions. A caller that requires live editing can set
-`workspaceRelationship: 'shared'` in its acquisition policy. The current Docker
-provider rejects that request.
+A caller can require live editing by setting `workspaceRelationship: 'shared'`
+in its acquisition policy. Docker checks the checkout and mounts before it
+returns a shared backend.
 
 Use this when all three conditions apply.
 
@@ -25,35 +24,34 @@ Use this when all three conditions apply.
 - Docker can meet the caller's requirements and keep host extension installation
   within the authority granted to the workload.
 
-Shell commands, SDK file operations and searches should see the same checkout.
-Once the sandbox authorises an edit, the change should be visible on the host
-without an export command or a second prompt. The last successful save wins. The
-developer should own files that Pi creates and be able to edit or delete them
-with ordinary permissions. Opening a session should leave absent project files
-and directories absent.
+Shell commands, file operations and searches use the same checkout. The sandbox
+applies authorised edits directly, and the last successful save wins. Jobs run
+with the developer's user and group IDs. Opening a session leaves absent project
+files and directories absent.
 
-Use the [`HOST_CONFIGURATION_PROTECTION` preset][protection] to identify
-existing host configuration paths to expose read-only. A hard link elsewhere may
-still allow writes to the same file. Callers can require immutability through
-aliases by requesting workspace protection. Docker should reject any guarantee
-it cannot enforce.
+Docker mounts existing paths from the [host configuration preset][protection]
+read-only. Docker also checks the Git directory, common directory and hooks
+directory inside the checkout. Git metadata outside the checkout remains on the
+host. For example, Git commands in a linked worktree can fail if the gitdir is
+outside the mount.
 
-Project trust alone does not authorise Pi to install host extensions. For
-example, if `.pi` is absent, a workload could create an extension there that a
-later trusted Pi session loads on the host. If the proposed design permits that,
-use the private-copy fallback until the maintainer explicitly accepts that
-authority or the provider can prevent it.
+Pi extensions cooperate with the host. Docker guards direct project extension
+registration under `.pi`. Ordinary source that a trusted extension imports
+remains editable. An absent `.pi` directory cannot be mounted read-only without
+creating a directory in the checkout, so Docker selects a private copy.
 
-Docker should disable container networking during live editing. Checkout entries
-can still refer to files or services on the host, so the live backend should
-report `provider-default` for both filesystem scope and network access.
+Container networking is disabled. Checkout entries can refer to files or
+services on the host. For example, a hard link can refer to the same contents as
+a file outside the checkout. The live backend reports `provider-default` for
+filesystem scope and network access. It rejects requests for strict workspace
+protection.
 
 [protection]: ../../docs/workspace-protection.md
 
 ## Private workspace copy
 
-Docker uses a copy by default today. A caller can also require one by setting
-`workspaceRelationship: 'copied'` in its acquisition policy.
+A caller can require a copy by setting `workspaceRelationship: 'copied'` in its
+acquisition policy.
 
 Use this when any of the following applies.
 
@@ -64,7 +62,7 @@ Use this when any of the following applies.
   in a copy.
 
 Edits stay in the copy until disposal. If Docker falls back to a copy in a
-trusted development session, it should tell the developer before they start
+trusted development session, the example tells the developer before they start
 editing that changes will stay in the copy. If the caller explicitly requires
 sharing, return an error when sharing is unavailable.
 

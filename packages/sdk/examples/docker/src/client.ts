@@ -96,8 +96,6 @@ export class NodeDockerClient implements DockerClient {
 			return Promise.reject(failure(error));
 		}
 
-		child.stdin.end();
-
 		const pending = Promise.withResolvers<DockerCommandResult>();
 		const stdout: Uint8Array[] = [];
 		const stderr: Uint8Array[] = [];
@@ -187,6 +185,8 @@ export class NodeDockerClient implements DockerClient {
 			deliver('stderr', bytes);
 		});
 		child.on('error', stop);
+		child.stdin.on('error', stop);
+		child.stdin.end(command.input);
 		child.on('close', (status) => {
 			if (isFinished) {
 				return;

@@ -1,15 +1,21 @@
+import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { readFile, rm } from 'node:fs/promises';
+import { once } from 'node:events';
+import { constants } from 'node:fs';
+import { link, open, readFile, rm, writeFile } from 'node:fs/promises';
+import { connect, createServer } from 'node:net';
 import path from 'node:path';
+import { promisify } from 'node:util';
 
 import type {
 	AgentSessionRuntime,
+	ExtensionContext,
 	InlineExtension
 } from '@earendil-works/pi-coding-agent';
 import type {
+	ReviewSnapshot,
 	Sandbox,
 	SandboxBackend,
-	SandboxContext,
 	SandboxHost,
 	SandboxPolicy
 } from 'pi-bring-your-own-sandbox/api';
@@ -23,6 +29,8 @@ import { ScriptedModel } from '../../../src/fixtures/scripted-model.js';
 import sandboxTools from '../../../src/pi-tools.js';
 import { snapshotProcessRequest } from '../../../src/process-input.js';
 import { inspectWorkspace } from '../../consumer/src/workspace.js';
+import { DOCKER_IMAGE } from '../src/image.js';
+import { createDockerOutsideDestination } from '../src/outside.js';
 import { createDockerProvider } from '../src/provider.js';
 
 import {
@@ -39,17 +47,21 @@ interface DockerSession {
 	readonly runtime: AgentSessionRuntime;
 	readonly sandbox: Sandbox;
 	readonly pi: SandboxHost;
-	readonly context: SandboxContext;
+	readonly context: ExtensionContext;
 	readonly fixture: DockerFixture;
 }
+
+const readSnapshot = async (snapshot: ReviewSnapshot) =>
+	new TextDecoder().decode(await snapshot.sandbox.files.readFile('source.txt'));
 
 async function withDockerSession(
 	run: (session: DockerSession) => Promise<void>,
 	extensions: readonly InlineExtension[] = [],
-	filesystemScope: SandboxPolicy['filesystemScope'] = 'workspace-only'
+	filesystemScope: SandboxPolicy['filesystemScope'] = 'workspace-only',
+	outsideApproval?: 'always' | 'never'
 ): Promise<void> {
 	let fixture: DockerFixture | undefined;
-	const current: { pi?: SandboxHost; context?: SandboxContext } = {};
+	const current: { pi?: SandboxHost; context?: ExtensionContext } = {};
 
 	try {
 		const config = new FixtureConfig();
@@ -65,10 +77,15 @@ async function withDockerSession(
 
 						const prepared = fixture;
 
-						config.activate(
-							pi,
-							createDockerProvider(() => prepared.providerClient())
-						);
+						config.activate(pi, {
+							...createDockerProvider(() => prepared.providerClient()),
+							...(outsideApproval && {
+								outsideSandbox: createDockerOutsideDestination(
+									prepared.config,
+									{ createClient: () => prepared.providerClient() }
+								)
+							})
+						});
 						current.pi = pi;
 						pi.on('session_start', (_event, context) => {
 							current.context = context;
@@ -116,6 +133,10 @@ async function withDockerSession(
 					config.set({
 						provider: 'example.docker',
 						providerConfig: fixture.config,
+						...(outsideApproval && {
+							approval: { policy: outsideApproval },
+							outsideSandbox: { destination: 'provider' }
+						}),
 						policy: {
 							workspaceAccess: 'read-write',
 							filesystemScope,
@@ -133,6 +154,85 @@ async function withDockerSession(
 describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 	'Docker SDK integration (pnpm test:provider requires a local daemon and the pinned image)',
 	() => {
+		it.each(['always', 'never'] as const)(
+			'applies %s approval to a separate Docker workspace',
+			async (approval) => {
+				await withDockerSession(
+					async ({ pi, context, sandbox, fixture }) => {
+						await sandbox.files.writeFile(
+							'source.txt',
+							new TextEncoder().encode('ordinary')
+						);
+
+						const outside = await sandboxClient.getOutsideSandboxExecutor(
+							pi,
+							context
+						);
+
+						expect(outside.destination.kind).toBe('provider');
+						expect(outside.destination.id).not.toBe(sandbox.backendId);
+
+						const running = outside.exec(
+							{
+								kind: 'shell',
+								dialect: 'sh',
+								command: 'printf approved > source.txt'
+							},
+							{
+								justification:
+									'Test a file change in the separate Docker allocation.'
+							}
+						);
+
+						if (approval === 'never') {
+							await expect(running).rejects.toMatchObject({
+								name: 'ApprovalDeniedError'
+							});
+						} else {
+							const result = await running;
+
+							expect(result.exit).toStrictEqual({ kind: 'code', code: 0 });
+						}
+
+						const after = await fixture.docker([
+							'run',
+							'--rm',
+							'--pull=never',
+							'--network=none',
+							'--cap-drop=ALL',
+							'--user=65534:65534',
+							'--read-only',
+							'--mount',
+							'type=volume,source=' +
+								outside.destination.id +
+								',target=/workspace,readonly',
+							DOCKER_IMAGE,
+							'cat',
+							'/workspace/source.txt'
+						]);
+
+						expect({
+							outside: after,
+							ordinary: new TextDecoder().decode(
+								await sandbox.files.readFile('source.txt')
+							),
+							host: await readFile(
+								path.join(fixture.workspace, 'source.txt'),
+								'utf8'
+							)
+						}).toStrictEqual({
+							outside: approval === 'always' ? 'approved' : 'original',
+							ordinary: 'ordinary',
+							host: 'original'
+						});
+					},
+					[],
+					'workspace-only',
+					approval
+				);
+			}
+		);
+
 		it('satisfies the intermediate filesystem request with Docker workspace isolation', async () => {
 			await withDockerSession(
 				async ({ sandbox, fixture }) => {
@@ -170,65 +270,368 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 			);
 		}, 30_000);
 
-		it('routes an approved model Bash call through the isolated Docker target', async () => {
-			const model = new ScriptedModel([
-				{
-					type: 'toolCall',
-					id: 'docker-bash',
-					name: 'bash',
-					arguments: {
-						command:
-							'[[ -n "$BASH_VERSION" ]] && printf "target bash\\n" && id -u && test ! -e /source'
-					}
+		it('takes fresh independent review snapshots from the proposed command destination', async () => {
+			await withDockerSession(async ({ pi, context, sandbox }) => {
+				const source = {
+					kind: 'sandbox' as const,
+					providerId: sandbox.providerId,
+					generationId: sandbox.generationId,
+					backendId: sandbox.backendId
+				};
+
+				await sandbox.files.writeFile('source.txt', Buffer.from('first'));
+
+				const first = await sandboxClient.openReviewSnapshot(
+					pi,
+					context,
+					source
+				);
+
+				await sandbox.files.writeFile('source.txt', Buffer.from('second'));
+
+				const second = await sandboxClient.openReviewSnapshot(
+					pi,
+					context,
+					source
+				);
+				const host = await sandboxClient.openReviewSnapshot(pi, context, {
+					kind: 'host'
+				});
+
+				try {
+					expect(
+						await Promise.all([
+							readSnapshot(first),
+							readSnapshot(second),
+							readSnapshot(host)
+						])
+					).toStrictEqual(['first', 'second', 'original']);
+					await first.close();
+
+					const shell = await second.sandbox.exec({
+						kind: 'shell',
+						dialect: 'sh',
+						command: 'cat source.txt'
+					});
+
+					expect(new TextDecoder().decode(shell.stdout)).toBe('second');
+					await expect(
+						host.sandbox.files.writeFile('source.txt', Uint8Array.of(9))
+					).rejects.toMatchObject({ name: 'SandboxPermissionDeniedError' });
+				} finally {
+					await Promise.all([first.close(), second.close(), host.close()]);
 				}
-			]);
-			let approvals = 0;
+			});
+		}, 30_000);
 
-			await withDockerSession(
-				async ({ runtime }) => {
-					runtime.session.setActiveToolsByName(['bash']);
+		it('counts each inode once when importing hard-linked files', async () => {
+			await withDockerSession(async ({ pi, context, sandbox }) => {
+				const prepared = await sandbox.exec({
+					kind: 'shell',
+					dialect: 'sh',
+					command:
+						'set -e; truncate -s 9M data; for i in $(seq 1 57); do ln data "alias$i"; done'
+				});
 
-					const selected = runtime.session.modelRuntime.getModel(
-						'scripted',
-						'scripted'
-					);
+				expect(prepared.exit).toStrictEqual({ kind: 'code', code: 0 });
 
-					if (selected === undefined) {
-						throw new Error('The scripted model was not registered.');
+				const review = await sandboxClient.openReviewSnapshot(pi, context, {
+					kind: 'sandbox',
+					providerId: sandbox.providerId,
+					generationId: sandbox.generationId,
+					backendId: sandbox.backendId
+				});
+
+				try {
+					const result = await review.sandbox.exec({
+						kind: 'shell',
+						dialect: 'sh',
+						command: 'test data -ef alias57 && stat -c "%h %s" alias57'
+					});
+
+					expect(new TextDecoder().decode(result.stdout)).toBe('58 9437184\n');
+				} finally {
+					await review.close();
+				}
+			});
+		}, 30_000);
+
+		it.each([
+			[
+				'external hard link',
+				'A regular file has a hard link outside the workspace.'
+			],
+			[
+				'oversized file',
+				'The Docker workspace exceeds the snapshot import limits.'
+			]
+		])(
+			'rejects a host snapshot with an %s and preserves the active backend',
+			async (defect, message) => {
+				await withDockerSession(async ({ pi, context, fixture, sandbox }) => {
+					const added = path.join(fixture.workspace, 'added');
+
+					if (defect === 'external hard link') {
+						await link(fixture.outside, added);
+					} else {
+						await using file = await open(added, 'wx');
+						await file.truncate(512 * 1024 * 1024 + 1);
 					}
 
-					await runtime.session.setModel(selected);
-					await runtime.session.prompt('Run the approved Bash tool.');
+					await expect(
+						sandboxClient.openReviewSnapshot(pi, context, { kind: 'host' })
+					).rejects.toMatchObject({
+						name: 'SandboxOperationError',
+						operation: 'open',
+						cause: { cause: { message } }
+					});
+					await expect(
+						sandbox.files.readFile('source.txt')
+					).resolves.toStrictEqual(new TextEncoder().encode('original'));
+				});
+			},
+			30_000
+		);
+		it('keeps a host file unchanged when a hard link appears after opening', async () => {
+			await withDockerSession(async ({ sandbox, fixture }) => {
+				await link(fixture.outside, path.join(fixture.workspace, 'alias'));
 
-					const results = model.requests
-						.at(1)
-						?.messages.filter((message) => message.role === 'toolResult')
-						.map(({ content, isError }) => ({ content, isError }));
+				const result = await sandbox.exec({
+					kind: 'argv',
+					executable: '/usr/local/bin/node',
+					args: [
+						'-e',
+						`
+const fs = require('node:fs');
+fs.writeFileSync('ordinary', 'edited');
+try {
+  fs.writeFileSync('alias', 'edited');
+} catch (error) {
+  if (!['EACCES', 'EPERM', 'EMLINK'].includes(error.code)) throw error;
+}
+`
+					]
+				});
 
-					expect({ approvals, results }).toStrictEqual({
-						approvals: 1,
-						results: [
-							{
-								content: [{ type: 'text', text: 'target bash\n65534\n' }],
-								isError: false
-							}
+				expect({
+					exit: result.exit,
+					outside: await readFile(fixture.outside, 'utf8')
+				}).toStrictEqual({
+					exit: { kind: 'code', code: 0 },
+					outside: 'host-only'
+				});
+			});
+		}, 30_000);
+
+		it('isolates a host FIFO created in the workspace after opening', async () => {
+			await withDockerSession(async ({ sandbox, fixture }) => {
+				const channel = path.join(fixture.workspace, 'channel');
+
+				await promisify(execFile)('mkfifo', [channel]);
+
+				await using reader = await open(
+					channel,
+					constants.O_RDONLY | constants.O_NONBLOCK
+				);
+
+				const byte = Buffer.alloc(1);
+
+				await writeFile(channel, 'x');
+
+				const control = await reader.read(byte);
+
+				expect([control.bytesRead, byte.toString()]).toStrictEqual([1, 'x']);
+
+				const result = await sandbox.exec({
+					kind: 'argv',
+					executable: '/usr/local/bin/node',
+					args: [
+						'-e',
+						`
+const fs = require('node:fs');
+try {
+  const fd = fs.openSync('channel', fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
+  fs.writeSync(fd, 'y');
+  fs.closeSync(fd);
+} catch (error) {
+  if (!['ENOENT', 'EACCES', 'EPERM', 'ENXIO'].includes(error.code)) throw error;
+}
+`
+					]
+				});
+
+				const { bytesRead } = await reader.read(byte);
+
+				expect({ exit: result.exit, bytesRead }).toStrictEqual({
+					exit: { kind: 'code', code: 0 },
+					bytesRead: 0
+				});
+			});
+		}, 30_000);
+
+		it('isolates a host socket created in the workspace after opening', async () => {
+			await withDockerSession(async ({ sandbox, fixture }) => {
+				const socketPath = path.join(fixture.workspace, 's');
+				let connections = 0;
+				const listener = createServer((peer) => {
+					connections++;
+					peer.end();
+				});
+
+				try {
+					listener.listen(socketPath);
+					await once(listener, 'listening');
+
+					const control = connect(socketPath);
+
+					await once(control, 'close');
+
+					const result = await sandbox.exec({
+						kind: 'argv',
+						executable: '/usr/local/bin/node',
+						args: [
+							'-e',
+							`
+const socket = require('node:net').connect('/workspace/s');
+socket.on('connect', () => { process.exitCode = 1; });
+socket.on('error', error => {
+  if (!['ENOENT', 'EACCES', 'EPERM'].includes(error.code)) throw error;
+});
+`
 						]
 					});
-				},
-				[
-					{ name: 'sandbox-tools', factory: sandboxTools },
-					model.extension,
+
+					expect({ exit: result.exit, connections }).toStrictEqual({
+						exit: { kind: 'code', code: 0 },
+						connections: 1
+					});
+				} finally {
+					await listener[Symbol.asyncDispose]();
+				}
+			});
+		}, 30_000);
+
+		it.each([
+			{
+				execution: 'sandbox',
+				contents: 'target-only edit',
+				text: 'target bash\n65534\n',
+				blocked: false
+			},
+			{
+				execution: 'outside-sandbox',
+				contents: 'original',
+				text: 'Host command reviewed.',
+				blocked: true
+			}
+		])(
+			'reviews the destination of a model Bash call with execution $execution',
+			async ({ execution, contents, text, blocked }) => {
+				const model = new ScriptedModel([
 					{
-						name: 'fake-approver',
-						factory(pi) {
-							pi.on('tool_call', () => {
-								approvals++;
-							});
+						type: 'toolCall',
+						id: 'docker-bash',
+						name: 'bash',
+						arguments: {
+							execution,
+							...(blocked && { justification: 'Review the host checkout.' }),
+							command:
+								'[[ -n "$BASH_VERSION" ]] && printf "target bash\\n" && id -u && test ! -e /source'
 						}
 					}
-				]
-			);
-		}, 30_000);
+				]);
+				const reviewed: string[] = [];
+
+				await withDockerSession(
+					async ({ runtime, sandbox }) => {
+						await sandbox.files.writeFile(
+							'source.txt',
+							Buffer.from('target-only edit')
+						);
+						runtime.session.setActiveToolsByName(['bash']);
+
+						const selected = runtime.session.modelRuntime.getModel(
+							'scripted',
+							'scripted'
+						);
+
+						if (selected === undefined) {
+							throw new Error('The scripted model was not registered.');
+						}
+
+						await runtime.session.setModel(selected);
+						await runtime.session.prompt('Run the approved Bash tool.');
+
+						const results = model.requests
+							.at(1)
+							?.messages.filter((message) => message.role === 'toolResult')
+							.map(({ content, isError }) => ({ content, isError }));
+
+						expect({ reviewed, results }).toStrictEqual({
+							reviewed: [contents],
+							results: [
+								{
+									content: [{ type: 'text', text }],
+									isError: blocked
+								}
+							]
+						});
+					},
+					[
+						{
+							name: 'sandbox-tools',
+							factory: (pi) => {
+								sandboxTools(pi, '<inline:sandbox-tools>');
+							}
+						},
+						model.extension,
+						{
+							name: 'fake-approver',
+							factory(pi) {
+								pi.on('tool_call', async (event, context) => {
+									const routes: ((
+										signal: AbortSignal
+									) => Promise<ReviewSnapshot>)[] = [];
+
+									pi.events.emit('pi-byos:review:tool-call:v1', {
+										sessionId: context.sessionManager.getSessionId(),
+										toolName: event.toolName,
+										toolCallId: event.toolCallId,
+										reply: (
+											open: (signal: AbortSignal) => Promise<ReviewSnapshot>
+										) => {
+											routes.push(open);
+										}
+									});
+
+									const [open] = routes;
+
+									if (!open || routes.length !== 1) {
+										return {
+											block: true,
+											reason: 'The proposed tool has no review destination.'
+										};
+									}
+
+									const review = await open(new AbortController().signal);
+
+									try {
+										reviewed.push(await readSnapshot(review));
+									} finally {
+										await review.close();
+									}
+
+									return blocked
+										? { block: true, reason: 'Host command reviewed.' }
+										: {};
+								});
+							}
+						}
+					]
+				);
+			},
+			30_000
+		);
 
 		it('runs the shared consumer example through the selected Docker provider', async () => {
 			await withDockerSession(async ({ pi, context, fixture }) => {
@@ -324,9 +727,9 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 		it('persists target changes between jobs, keeps host files unchanged and excludes host environment', async () => {
 			vi.stubEnv('BYOS_DOCKER_SENTINEL', 'synthetic-host-secret');
 			await withDockerSession(async ({ sandbox, fixture }) => {
-				await expect(
-					sandbox.files.readFile('source.txt')
-				).rejects.toMatchObject({ name: 'UnsupportedSandboxCapabilityError' });
+				expect(await sandbox.files.readFile('source.txt')).toStrictEqual(
+					new TextEncoder().encode('original')
+				);
 
 				const removed: unknown = JSON.parse('null');
 				const environment = await sandbox.exec(
@@ -427,6 +830,112 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 			},
 			30_000
 		);
+
+		it('rejects backreferences and keeps the grep worker usable', async () => {
+			await withDockerSession(async ({ sandbox }) => {
+				const path = 'source.txt';
+
+				await expect(
+					sandbox.search.grep({ path, pattern: '(a)\\1' })
+				).rejects.toMatchObject({
+					name: 'SandboxOperationError'
+				});
+
+				for (const asset of ['index.mjs', 'package.json']) {
+					await expect(
+						sandbox.files.writeFile(
+							'/opt/pi-byos/node_modules/re2js/' + asset,
+							Uint8Array.of(1)
+						)
+					).rejects.toMatchObject({ name: 'SandboxPermissionDeniedError' });
+				}
+
+				expect(
+					await sandbox.search.grep({
+						path,
+						pattern: '^ORIG\\p{L}+$',
+						ignoreCase: true
+					})
+				).toStrictEqual({
+					matches: [{ path, line: 1, text: 'original', before: [], after: [] }],
+					truncated: false
+				});
+			});
+		});
+
+		it('searches dense text through a root symlink and skips oversized and binary files', async () => {
+			await withDockerSession(async ({ sandbox }) => {
+				const setup = await sandbox.exec({
+					kind: 'argv',
+					executable: '/usr/local/bin/node',
+					args: [
+						'-e',
+						`const fs=require('node:fs');fs.mkdirSync('tree');fs.symlinkSync('tree','view');fs.writeFileSync('tree/binary',Buffer.from('needle\\0'));fs.writeFileSync('tree/large','needle');fs.truncateSync('tree/large',17*1024*1024);fs.writeFileSync('tree/dense','before\\nneedle\\nafter\\n'+'\\n'.repeat(8000000));`
+					]
+				});
+
+				expect(setup.exit).toStrictEqual({ kind: 'code', code: 0 });
+				expect(
+					await sandbox.search.grep({
+						path: 'view',
+						pattern: 'needle',
+						literal: true,
+						context: 1,
+						limit: 1
+					})
+				).toStrictEqual({
+					matches: [
+						{
+							path: 'dense',
+							line: 2,
+							text: 'needle',
+							before: ['before'],
+							after: ['after']
+						}
+					],
+					truncated: false
+				});
+			});
+		}, 30_000);
+
+		it('searches representable filenames and truncates before reading omitted context', async () => {
+			await withDockerSession(async ({ sandbox }) => {
+				const setup = await sandbox.exec({
+					kind: 'argv',
+					executable: '/usr/local/bin/node',
+					args: [
+						'-e',
+						`const fs=require('node:fs');fs.mkdirSync('scope');fs.writeFileSync('scope/a','hit\\n');fs.writeFileSync('scope/b','hit\\n'+'\\n'.repeat(65537));fs.writeFileSync(Buffer.concat([Buffer.from('scope/'),Buffer.from([255])]),'hit');`
+					]
+				});
+
+				expect(setup.exit).toStrictEqual({ kind: 'code', code: 0 });
+				expect(
+					await sandbox.search.grep({
+						path: 'scope',
+						pattern: 'hit',
+						literal: true,
+						context: 65_537,
+						limit: 1
+					})
+				).toStrictEqual({
+					matches: [{ path: 'a', line: 1, text: 'hit', before: [], after: [] }],
+					truncated: true
+				});
+				expect(
+					await sandbox.search.find({ path: 'scope', pattern: '*' })
+				).toStrictEqual({ paths: ['a', 'b'], truncated: false });
+
+				const listed = await sandbox.files.listDirectory('scope');
+
+				expect(
+					listed.toSorted((a, b) => a.name.localeCompare(b.name))
+				).toStrictEqual([
+					{ name: 'a', kind: 'file' },
+					{ name: 'b', kind: 'file' }
+				]);
+			});
+		}, 30_000);
 
 		it('bounds captured target output while draining the complete stream', async () => {
 			await withDockerSession(async ({ sandbox }) => {

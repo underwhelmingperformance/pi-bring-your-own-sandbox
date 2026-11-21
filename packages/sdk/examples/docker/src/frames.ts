@@ -21,6 +21,7 @@ const frameValidator = Compile(launchFrameSchema);
 Decodes bounded launcher frames and forwards only child output to SDK consumers.
 */
 export class LaunchFrames {
+	readonly #operation: 'open' | 'exec';
 	readonly #onOutput: (output: ProcessOutput) => void;
 	readonly #recovery: RecoveryDescriptor;
 	readonly #decoder = new TextDecoder('utf-8', { fatal: true });
@@ -31,8 +32,10 @@ export class LaunchFrames {
 
 	constructor(
 		onOutput: (output: ProcessOutput) => void,
-		recovery: RecoveryDescriptor
+		recovery: RecoveryDescriptor,
+		operation: 'open' | 'exec' = 'exec'
 	) {
+		this.#operation = operation;
 		this.#onOutput = onOutput;
 		this.#recovery = recovery;
 	}
@@ -40,7 +43,7 @@ export class LaunchFrames {
 	#invalid(): never {
 		throw new SandboxTransportError(
 			{
-				operation: 'exec',
+				operation: this.#operation,
 				providerId: 'example.docker',
 				recovery: this.#recovery
 			},
@@ -66,7 +69,7 @@ export class LaunchFrames {
 		}
 
 		const identity = {
-			operation: 'exec',
+			operation: this.#operation,
 			providerId: 'example.docker',
 			recovery: this.#recovery
 		} as const;

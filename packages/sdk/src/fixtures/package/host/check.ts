@@ -93,7 +93,7 @@ const dockerLoader = new DefaultResourceLoader({
 	noThemes: true,
 	noPromptTemplates: true,
 	noContextFiles: true,
-	additionalExtensionPaths: [path.join(sdkRoot, 'examples/docker/src/index.ts')]
+	additionalExtensionPaths: [path.join(root, '.pi/extensions/docker/index.ts')]
 });
 
 await dockerLoader.reload();

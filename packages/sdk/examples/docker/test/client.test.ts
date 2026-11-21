@@ -88,7 +88,7 @@ it('streams attached bytes without retaining a second copy', async () => {
 				executable,
 				[
 					'-e',
-					'process.stdout.write(Buffer.from([0,255,10]));process.stderr.write("error")',
+					'process.stdin.pipe(process.stdout);process.stderr.write("error")',
 					'--',
 					...arguments_
 				],
@@ -99,6 +99,7 @@ it('streams attached bytes without retaining a second copy', async () => {
 	const stderr: Uint8Array[] = [];
 	const result = await client.command({
 		...command([]),
+		input: Uint8Array.of(0, 255, 10),
 		onOutput(output) {
 			(output.stream === 'stdout' ? stdout : stderr).push(
 				new Uint8Array(output.data)

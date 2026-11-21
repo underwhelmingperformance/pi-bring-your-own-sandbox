@@ -98,3 +98,17 @@ it('does not construct a replacement for an incompatible advertisement', () => {
 		expect.objectContaining({ name: 'IncompatibleSandboxProtocolError' })
 	);
 });
+
+it('reports snapshot acquisition against a broker without review snapshots', async () => {
+	const service = ensureBroker(
+		createEventBus(),
+		(id) => brokerReply(id).service
+	);
+
+	await expect(
+		service.openReviewSnapshot?.(fixtureContext(), { kind: 'host' })
+	).rejects.toMatchObject({
+		name: 'UnsupportedSandboxCapabilityError',
+		operation: 'acquire'
+	});
+});

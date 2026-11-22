@@ -16,11 +16,13 @@ uses a private copy or copies a workspace for a review.
 
 ## Load and select the provider
 
-Use a local Unix-socket Docker daemon on Linux or macOS. The configuration
-defaults to `/usr/bin/docker` and `/var/run/docker.sock`. Set absolute
-`executable` and `socketPath` values for another local installation. The
-management CLI receives an empty environment and an explicit daemon address;
-Docker context and environment settings do not select another daemon.
+Use a local Unix-socket Docker daemon on Linux or macOS. When a session starts,
+the provider finds `docker` on `PATH` and asks it for the current context's
+endpoint, so `DOCKER_HOST`, `DOCKER_CONTEXT` and `docker context use` decide the
+daemon. The endpoint must be a `unix://` socket. A `docker` executable inside
+the workspace is ignored. Later management commands run with an empty
+environment and the recorded daemon address, so the session keeps the same
+daemon if the context changes.
 
 Run these commands from `packages/sdk`. Pull the pinned image before opening a
 backend:
@@ -62,9 +64,10 @@ example requests live editing and reports when changes will stay in a private
 copy. Untrusted projects and the shell-only profile use a copy. To customise the
 provider, write an extension factory that calls `registerSandboxProvider` with
 the declaration returned by `createDockerProvider` and a `configure` callback.
-Return raw Docker input under `configuration`, and provide a complete policy or
-use the declaration's default. The callback can read your extension's own
-settings.
+Return the result of `resolveDockerConfig` from `config.ts` under
+`configuration`, and provide a complete policy or use the declaration's default.
+Pass absolute `executable` or `socketPath` values to `resolveDockerConfig` to
+override discovery. The callback can read your extension's own settings.
 
 Use `read-only` for a read-only copy of the workspace. The provider rejects
 unsupported filesystem or network policies before allocation. An extension can
@@ -263,7 +266,7 @@ workspace visibility checks against that installation. Dependency installation
 requires registry access or a populated pnpm store. GitHub Actions runs the gate
 in a dedicated Linux job.
 
-For a non-default installation:
+The gate finds Docker in the same way as the provider. To override discovery:
 
 ```sh
 BYOS_DOCKER_EXECUTABLE=/absolute/path/to/docker \
@@ -289,8 +292,8 @@ image repository][node-image] documents the official runtime image.
 ## Measuring a copied workspace
 
 From `packages/sdk`, run the benchmark against a local daemon with the pinned
-image already present. Set `BYOS_DOCKER_EXECUTABLE` and `BYOS_DOCKER_SOCKET` if
-the daemon uses different paths.
+image already present. Set `BYOS_DOCKER_EXECUTABLE` and `BYOS_DOCKER_SOCKET` to
+override discovery.
 
 ```sh
 pnpm build

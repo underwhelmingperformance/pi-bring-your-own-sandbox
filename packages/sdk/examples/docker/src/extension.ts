@@ -1,16 +1,18 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { registerSandboxProvider } from 'pi-bring-your-own-sandbox/api';
 
+import { resolveDockerConfig } from './config.js';
 import type { DockerConfig } from './contracts.js';
 import { createDockerProvider } from './provider.js';
 
 /**
 Registers the Docker example; allocation waits until a consumer acquires it.
+Each session uses the Docker CLI and daemon that are current when it starts.
 */
 export default function dockerExtension(pi: ExtensionAPI): void {
 	const provider = createDockerProvider();
 
-	registerSandboxProvider<DockerConfig, Partial<DockerConfig>>(
+	registerSandboxProvider<DockerConfig>(
 		pi,
 		{
 			...provider,
@@ -32,9 +34,12 @@ export default function dockerExtension(pi: ExtensionAPI): void {
 			}
 		},
 		{
-			configure({ pi: session }) {
+			async configure({ pi: session, signal, reportDiagnostic }) {
 				return {
-					configuration: {},
+					configuration: await resolveDockerConfig(
+						{},
+						{ workspace: session.cwd, signal, reportDiagnostic }
+					),
 					...(session.isProjectTrusted?.() === true && {
 						policy: {
 							workspaceAccess: 'read-write',

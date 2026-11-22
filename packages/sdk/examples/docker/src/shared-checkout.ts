@@ -1,6 +1,5 @@
 import { execFile } from 'node:child_process';
-import { constants } from 'node:fs';
-import { access, lstat, realpath } from 'node:fs/promises';
+import { lstat, realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -15,6 +14,7 @@ import {
 } from 'pi-bring-your-own-sandbox/api';
 
 import type { DockerClient } from './contracts.js';
+import { findHostExecutable } from './host-executable.js';
 
 export function mount(fields: readonly string[]): string {
 	return fields.map((field) => `"${field.replaceAll('"', '""')}"`).join(',');
@@ -50,39 +50,6 @@ function hasVolumeSubpaths(version: string): boolean {
 	return major > 1 || (major === 1 && Number(api[2]) >= 45);
 }
 
-async function hostGit(root: string): Promise<string | undefined> {
-	const directories = (process.env['PATH'] ?? '').split(path.delimiter);
-
-	for (const directory of directories) {
-		if (!path.isAbsolute(directory)) {
-			continue;
-		}
-
-		try {
-			const executable = await realpath(path.join(directory, 'git'));
-			const relative = path.relative(root, executable);
-
-			if (!relative.startsWith('../')) {
-				continue;
-			}
-
-			await access(executable, constants.X_OK);
-
-			return executable;
-		} catch (error) {
-			if (!(
-				error instanceof Error &&
-				'code' in error &&
-				['ENOENT', 'ENOTDIR', 'EACCES'].includes(String(error.code))
-			)) {
-				throw error;
-			}
-		}
-	}
-
-	return;
-}
-
 export class SharedCheckout {
 	static async select(
 		directory: string,
@@ -106,7 +73,12 @@ export class SharedCheckout {
 			return 'The checkout needs a non-root owner matching the Pi process.';
 		}
 
-		const checkout = new SharedCheckout(root, uid, gid, await hostGit(root));
+		const checkout = new SharedCheckout(
+			root,
+			uid,
+			gid,
+			await findHostExecutable('git', root)
+		);
 		const guards = await checkout.#guards(context);
 
 		if (typeof guards === 'string') {

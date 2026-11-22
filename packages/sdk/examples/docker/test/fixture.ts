@@ -25,6 +25,7 @@ import { expect } from 'vitest';
 import { nodeVisibilityProbe } from '../../../src/fixtures/node-visibility-probe.js';
 import { remainingBudget } from '../../../src/fixtures/remaining-budget.js';
 import { NodeDockerClient } from '../src/client.js';
+import { resolveDockerConfig } from '../src/config.js';
 import type { DockerClient, DockerConfig } from '../src/contracts.js';
 import { DOCKER_IMAGE } from '../src/image.js';
 import { ALLOCATION_LABEL } from '../src/resources.js';
@@ -91,11 +92,27 @@ child.on('exit', code => { process.exitCode = code ?? 1; });
 
 export class DockerFixture {
 	static async create(workspace?: string): Promise<DockerFixture> {
+		const executable = process.env['BYOS_DOCKER_EXECUTABLE'];
+		const socketPath = process.env['BYOS_DOCKER_SOCKET'];
+		const config = await resolveDockerConfig(
+			{
+				...(executable !== undefined && { executable }),
+				...(socketPath !== undefined && { socketPath })
+			},
+			{
+				workspace: process.cwd(),
+				signal: AbortSignal.timeout(30_000),
+				reportDiagnostic() {
+					return;
+				}
+			}
+		);
 		const temporary = await mkdtemp(path.join(tmpdir(), 'pi-byos-docker-'));
 		const directory = await realpath(temporary);
 		const fixture = new DockerFixture(
 			directory,
-			workspace ?? path.join(directory, 'workspace')
+			workspace ?? path.join(directory, 'workspace'),
+			config
 		);
 
 		try {
@@ -122,14 +139,16 @@ export class DockerFixture {
 	readonly outside: string;
 	readonly server = `pi-byos-network-${randomUUID()}`;
 	hasServer = false;
-	readonly config: DockerConfig = {
-		executable: process.env['BYOS_DOCKER_EXECUTABLE'] ?? '/usr/bin/docker',
-		socketPath: process.env['BYOS_DOCKER_SOCKET'] ?? '/var/run/docker.sock'
-	};
+	readonly config: DockerConfig;
 
-	private constructor(directory: string, workspace: string) {
+	private constructor(
+		directory: string,
+		workspace: string,
+		config: DockerConfig
+	) {
 		this.#directory = directory;
 		this.workspace = workspace;
+		this.config = config;
 		this.outside = path.join(directory, 'outside');
 		this.#client = new NodeDockerClient(this.config);
 	}

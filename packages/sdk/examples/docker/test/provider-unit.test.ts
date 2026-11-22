@@ -12,9 +12,10 @@ import {
 	getSandbox,
 	initialiseSandboxHost,
 	negotiateSandbox,
+	registerSandboxDiagnostics,
 	SandboxTransportError
 } from 'pi-bring-your-own-sandbox/api';
-import { expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 
 import { FakeClock } from '../../../src/fixtures/clock.js';
 import { FixtureConfig } from '../../../src/fixtures/config.js';
@@ -31,6 +32,28 @@ import dockerExtension from '../src/extension.js';
 import { DOCKER_IMAGE } from '../src/image.js';
 import { createDockerProvider } from '../src/provider.js';
 import { cleanupContext } from '../src/resources.js';
+
+import { writeFakeDockerCli } from './fixtures/fake-cli.js';
+
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
+
+/**
+Puts only a fake Docker CLI on `PATH` while `run` executes, so the extension's
+discovery does not depend on the test machine.
+*/
+async function withFakeDockerCli(run: () => Promise<void>): Promise<void> {
+	const tools = await mkdtemp(path.join(tmpdir(), 'byos-docker-cli-'));
+
+	try {
+		vi.stubEnv('PATH', path.dirname(await writeFakeDockerCli(tools)));
+		vi.stubEnv('BYOS_TEST_ENDPOINT', 'unix:///fixture/docker.sock');
+		await run();
+	} finally {
+		await rm(tools, { recursive: true, force: true });
+	}
+}
 
 class FakeDocker implements DockerClient {
 	readonly commands: DockerCommand[] = [];
@@ -258,40 +281,74 @@ const request: SandboxOpenRequest<DockerConfig> = {
 it.each([true, false])(
 	'selects the Docker development policy for project trust %s',
 	async (projectTrusted) => {
-		await withPiRuntime(
-			[
-				{ name: 'docker', factory: dockerExtension },
-				{
-					name: 'consumer',
-					factory(pi) {
-						pi.registerCommand('policy-test', {
-							description: 'Read the negotiated policy.',
-							async handler(_arguments, context) {
-								expect(await negotiateSandbox(pi, context)).toStrictEqual({
-									ok: true,
-									policy: {
-										workspaceAccess: 'read-write',
-										filesystemScope: projectTrusted
-											? 'provider-default'
-											: 'workspace-only',
-										networkAccess: projectTrusted
-											? 'provider-default'
-											: 'denied'
-									}
-								});
-							}
-						});
+		await withFakeDockerCli(() =>
+			withPiRuntime(
+				[
+					{ name: 'docker', factory: dockerExtension },
+					{
+						name: 'consumer',
+						factory(pi) {
+							pi.registerCommand('policy-test', {
+								description: 'Read the negotiated policy.',
+								async handler(_arguments, context) {
+									expect(await negotiateSandbox(pi, context)).toStrictEqual({
+										ok: true,
+										policy: {
+											workspaceAccess: 'read-write',
+											filesystemScope: projectTrusted
+												? 'provider-default'
+												: 'workspace-only',
+											networkAccess: projectTrusted
+												? 'provider-default'
+												: 'denied'
+										}
+									});
+								}
+							});
+						}
 					}
-				}
-			],
-			async (runtime, errors) => {
-				await runtime.session.prompt('/policy-test');
-				expect(errors).toStrictEqual([]);
-			},
-			{ projectTrusted }
+				],
+				async (runtime, errors) => {
+					await runtime.session.prompt('/policy-test');
+					expect(errors).toStrictEqual([]);
+				},
+				{ projectTrusted }
+			)
 		);
 	}
 );
+
+it('reports a missing Docker CLI through status when configuration fails', async () => {
+	vi.stubEnv('PATH', '');
+	await withPiRuntime(
+		[
+			{ name: 'docker', factory: dockerExtension },
+			{ name: 'diagnostics', factory: registerSandboxDiagnostics }
+		],
+		async (runtime, errors) => {
+			await runtime.session.prompt('/byos status');
+
+			const output = JSON.stringify(
+				runtime.session.messages.filter(
+					(message) =>
+						message.role === 'custom' && message.customType === 'byos'
+				)
+			);
+
+			expect({
+				hasStartupError: errors.length > 0,
+				hasFailure: output.includes('InvalidSandboxConfigError'),
+				hasDiagnostic: output.includes(
+					'Docker: Install the Docker CLI on PATH or set executable to its absolute path.'
+				)
+			}).toStrictEqual({
+				hasStartupError: true,
+				hasFailure: true,
+				hasDiagnostic: true
+			});
+		}
+	);
+});
 
 it.each([
 	['Docker Desktop', '1.45 1.45', 0, 'shared'],

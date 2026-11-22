@@ -75,6 +75,7 @@ export {
 } from './protocol.js';
 export { registerSandboxProvider } from './provider-registration.js';
 export { registerSandboxRequirement } from './requirements.js';
+export { findShellReviewSource, hasShellReviewRoute } from './review-route.js';
 export {
 	configureExecutionApproval,
 	configureOutsideExecution

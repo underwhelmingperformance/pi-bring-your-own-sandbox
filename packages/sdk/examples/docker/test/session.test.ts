@@ -746,22 +746,13 @@ socket.on('error', error => {
 							name: 'fake-approver',
 							factory(pi) {
 								pi.on('tool_call', async (event, context) => {
-									const routes: {
-										readonly copy: () => Promise<SandboxCopy>;
-									}[] = [];
+									const source = sandboxClient.findShellReviewSource(
+										pi,
+										context,
+										event
+									);
 
-									pi.events.emit('pi-byos:review:tool-call:v2', {
-										sessionId: context.sessionManager.getSessionId(),
-										toolName: event.toolName,
-										toolCallId: event.toolCallId,
-										reply: (source: (typeof routes)[number]) => {
-											routes.push(source);
-										}
-									});
-
-									const [source] = routes;
-
-									if (!source || routes.length !== 1) {
+									if (!source) {
 										return {
 											block: true,
 											reason: 'The proposed tool has no review destination.'

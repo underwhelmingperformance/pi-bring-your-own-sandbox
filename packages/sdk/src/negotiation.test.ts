@@ -25,6 +25,15 @@ const RESTRICTED: SandboxPolicy = {
 	networkAccess: 'denied'
 };
 
+const RESTRICTING = {
+	guarantees: [
+		'no-workspace-writes',
+		'no-host-user-data',
+		'no-host-system-files',
+		'no-network'
+	]
+} as const;
+
 const ALL_POLICIES: SupportedSandboxPolicies = {
 	workspaceAccess: ['read-only', 'read-write'],
 	filesystemScope: ['workspace-only', 'system-read-only', 'provider-default'],
@@ -113,10 +122,8 @@ function fixture(options: FixtureOptions = {}) {
 it('opens a backend for each distinct configuration and reuses it', async () => {
 	const { generation, context, opened } = fixture();
 	const unrestricted = await generation.acquire(context);
-	const restricted = await generation.acquire(context, {
-		policy: RESTRICTED
-	});
-	const again = await generation.acquire(context, { policy: RESTRICTED });
+	const restricted = await generation.acquire(context, RESTRICTING);
+	const again = await generation.acquire(context, RESTRICTING);
 
 	expect({
 		backends: [unrestricted.backendId, restricted.backendId, again.backendId],
@@ -138,13 +145,13 @@ it('allocates a separate backend for an explicit workspace relationship', async 
 	const { generation, context, opened } = fixture({
 		policies: { ...ALL_POLICIES, workspaceRelationship: ['remote'] }
 	});
-	const policy = { workspaceRelationship: 'remote' } as const;
+	const requested = { workspaceRelationship: 'remote' } as const;
 
 	await generation.acquire(context);
-	await generation.acquire(context, { policy });
-	await generation.acquire(context, { policy });
+	await generation.acquire(context, requested);
+	await generation.acquire(context, requested);
 
-	expect(opened).toStrictEqual([PERSONAL, { ...PERSONAL, ...policy }]);
+	expect(opened).toStrictEqual([PERSONAL, { ...PERSONAL, ...requested }]);
 	await generation.close();
 });
 
@@ -155,23 +162,22 @@ it('rejects a backend that returns another workspace relationship', async () => 
 	});
 
 	await expect(
-		generation.acquire(context, {
-			policy: { workspaceRelationship: 'copied' }
-		})
+		generation.acquire(context, { workspaceRelationship: 'copied' })
 	).rejects.toMatchObject({ name: 'UnsupportedSandboxPolicyError' });
 	await generation.close();
 });
 
-it('keeps a personal restriction when a request delegates that field', async () => {
+it('keeps a personal restriction when a request requires another guarantee', async () => {
 	const personal: SandboxPolicy = { ...PERSONAL, networkAccess: 'denied' };
 	const { generation, context, opened } = fixture({ personal });
 	const sandbox = await generation.acquire(context, {
-		policy: { networkAccess: 'provider-default' }
+		guarantees: ['no-workspace-writes']
 	});
+	const expected = { ...personal, workspaceAccess: 'read-only' };
 
 	expect({ policy: sandbox.policy, opened }).toStrictEqual({
-		policy: personal,
-		opened: [personal]
+		policy: expected,
+		opened: [expected]
 	});
 	await generation.close();
 });
@@ -193,22 +199,43 @@ it.each([
 		name: 'a value that the provider does not declare',
 		personal: PERSONAL,
 		policies: { ...ALL_POLICIES, workspaceAccess: ['read-write'] },
-		requested: { workspaceAccess: 'read-only' }
+		requested: { guarantees: ['no-workspace-writes'] }
 	},
 	{
-		name: 'a request that loosens the personal policy',
+		name: 'a need for writes that the personal policy does not grant',
 		personal: { ...PERSONAL, workspaceAccess: 'read-only' },
 		policies: ALL_POLICIES,
-		requested: { workspaceAccess: 'read-write' }
+		requested: { needs: ['workspace-writes'] }
+	},
+	{
+		name: 'a need for network access that the personal policy denies',
+		personal: { ...PERSONAL, networkAccess: 'denied' },
+		policies: ALL_POLICIES,
+		requested: { needs: ['network'] }
+	},
+	{
+		name: 'a need that a required guarantee removes',
+		personal: PERSONAL,
+		policies: ALL_POLICIES,
+		requested: { guarantees: ['no-network'], needs: ['network'] }
+	},
+	{
+		name: 'a need for system files with a guarantee that excludes them',
+		personal: PERSONAL,
+		policies: ALL_POLICIES,
+		requested: {
+			guarantees: ['no-host-system-files'],
+			needs: ['host-system-files']
+		}
 	}
 ] as const)(
 	'rejects $name without opening a backend',
 	async ({ personal, policies, requested }) => {
 		const { generation, context, opened } = fixture({ personal, policies });
 
-		await expect(
-			generation.acquire(context, { policy: requested })
-		).rejects.toMatchObject({ name: 'UnsupportedSandboxPolicyError' });
+		await expect(generation.acquire(context, requested)).rejects.toMatchObject({
+			name: 'UnsupportedSandboxPolicyError'
+		});
 		expect(opened).toStrictEqual([]);
 		await generation.close();
 	}
@@ -231,10 +258,10 @@ it('shares one startup between concurrent requests for a configuration', async (
 	});
 	const caller = new AbortController();
 	const cancelled = generation.acquire(context, {
-		policy: RESTRICTED,
+		...RESTRICTING,
 		signal: caller.signal
 	});
-	const waiting = generation.acquire(context, { policy: RESTRICTED });
+	const waiting = generation.acquire(context, RESTRICTING);
 	const rejected = expect(cancelled).rejects.toMatchObject({
 		name: 'SandboxCancelledError',
 		completion: 'not-started'
@@ -257,7 +284,7 @@ it('disposes every backend when the generation closes', async () => {
 	const { generation, context, disposed } = fixture();
 
 	await generation.acquire(context);
-	await generation.acquire(context, { policy: RESTRICTED });
+	await generation.acquire(context, RESTRICTING);
 
 	expect({
 		report: await generation.close(),
@@ -276,15 +303,15 @@ it('keeps other backends usable after one fails to open', async () => {
 				: Promise.resolve(new PolicyBackend(policy))
 	});
 
-	await expect(
-		generation.acquire(context, { policy: RESTRICTED })
-	).rejects.toMatchObject({ name: 'SandboxStartupError' });
+	await expect(generation.acquire(context, RESTRICTING)).rejects.toMatchObject({
+		name: 'SandboxStartupError'
+	});
 
 	const sandbox = await generation.acquire(context);
 
-	await expect(
-		generation.acquire(context, { policy: RESTRICTED })
-	).rejects.toMatchObject({ name: 'SandboxStartupError' });
+	await expect(generation.acquire(context, RESTRICTING)).rejects.toMatchObject({
+		name: 'SandboxStartupError'
+	});
 	expect({ backendId: sandbox.backendId, opened }).toStrictEqual({
 		backendId: 'memory:read-write:provider-default',
 		opened: [RESTRICTED, PERSONAL]
@@ -299,7 +326,7 @@ it('lists negotiated and effective policies for every open backend', async () =>
 	});
 
 	await generation.acquire(context);
-	await generation.acquire(context, { policy: RESTRICTED });
+	await generation.acquire(context, RESTRICTING);
 
 	const status = await generation.status();
 
@@ -334,11 +361,9 @@ it('negotiates a configuration without opening a backend', async () => {
 		policies: { ...ALL_POLICIES, networkAccess: ['provider-default'] }
 	});
 	const satisfiable = await generation.negotiate(context, {
-		policy: { workspaceAccess: 'read-only' }
+		guarantees: ['no-workspace-writes']
 	});
-	const unsatisfiable = await generation.negotiate(context, {
-		policy: RESTRICTED
-	});
+	const unsatisfiable = await generation.negotiate(context, RESTRICTING);
 
 	expect({
 		satisfiable,
@@ -357,7 +382,7 @@ it('negotiates a configuration without opening a backend', async () => {
 	});
 
 	const sandbox = await generation.acquire(context, {
-		policy: { workspaceAccess: 'read-only' }
+		guarantees: ['no-workspace-writes']
 	});
 
 	expect(sandbox.policy).toStrictEqual(
@@ -367,17 +392,17 @@ it('negotiates a configuration without opening a backend', async () => {
 });
 
 it.each([
-	['provider-default', 'provider-default', 'provider-default'],
-	['provider-default', 'system-read-only', 'system-read-only'],
-	['provider-default', 'workspace-only', 'workspace-only'],
-	['system-read-only', 'provider-default', 'system-read-only'],
-	['system-read-only', 'system-read-only', 'system-read-only'],
-	['system-read-only', 'workspace-only', 'workspace-only'],
-	['workspace-only', 'provider-default', 'workspace-only'],
-	['workspace-only', 'system-read-only', 'workspace-only'],
-	['workspace-only', 'workspace-only', 'workspace-only']
+	['provider-default', [], 'provider-default'],
+	['provider-default', ['no-host-user-data'], 'system-read-only'],
+	['provider-default', ['no-host-system-files'], 'workspace-only'],
+	['system-read-only', [], 'system-read-only'],
+	['system-read-only', ['no-host-user-data'], 'system-read-only'],
+	['system-read-only', ['no-host-system-files'], 'workspace-only'],
+	['workspace-only', [], 'workspace-only'],
+	['workspace-only', ['no-host-user-data'], 'workspace-only'],
+	['workspace-only', ['no-host-system-files'], 'workspace-only']
 ] as const)(
-	'negotiates personal scope %s with consumer scope %s',
+	'negotiates personal scope %s with consumer guarantees %j',
 	async (personal, requested, expected) => {
 		const { generation, context, opened } = fixture({
 			personal: { ...PERSONAL, filesystemScope: personal }
@@ -385,7 +410,7 @@ it.each([
 
 		try {
 			const sandbox = await generation.acquire(context, {
-				policy: { filesystemScope: requested }
+				guarantees: requested
 			});
 			const expectedPolicy = { ...PERSONAL, filesystemScope: expected };
 
@@ -407,7 +432,7 @@ it('rejects a system-read-only request before opening an unsupported provider', 
 	try {
 		await expect(
 			generation.acquire(context, {
-				policy: { filesystemScope: 'system-read-only' }
+				guarantees: ['no-host-user-data']
 			})
 		).rejects.toMatchObject({ name: 'UnsupportedSandboxPolicyError' });
 		expect(opened).toStrictEqual([]);
@@ -423,7 +448,7 @@ it('uses a stronger supported scope when the provider has no intermediate mode',
 
 	try {
 		const sandbox = await generation.acquire(context, {
-			policy: { filesystemScope: 'system-read-only' }
+			guarantees: ['no-host-user-data']
 		});
 		const expected = { ...PERSONAL, filesystemScope: 'workspace-only' };
 
@@ -442,7 +467,7 @@ it('rejects unsupported workspace protection before opening a writable backend',
 	try {
 		await expect(
 			generation.acquire(context, {
-				policy: { workspaceProtection: [{ kind: 'git-metadata' }] }
+				workspaceProtection: [{ kind: 'git-metadata' }]
 			})
 		).rejects.toMatchObject({ name: 'UnsupportedSandboxPolicyError' });
 		expect(opened).toStrictEqual([]);
@@ -465,7 +490,7 @@ it('combines personal and consumer workspace protections without sharing their a
 
 	try {
 		const sandbox = await generation.acquire(context, {
-			policy: { workspaceProtection: requested }
+			workspaceProtection: requested
 		});
 
 		requested.push({ kind: 'path', path: '.extra' });
@@ -496,7 +521,7 @@ it.each(['/absolute', '../parent', 'a/../b', 'a//b', 'a\\b', 'C:drive', '.'])(
 		try {
 			await expect(
 				generation.acquire(context, {
-					policy: { workspaceProtection: [{ kind: 'path', path }] }
+					workspaceProtection: [{ kind: 'path', path }]
 				})
 			).rejects.toMatchObject({ name: 'InvalidSandboxRequestError' });
 			expect(opened).toStrictEqual([]);
@@ -516,7 +541,7 @@ it.each([{ kind: 'path', path: '.pi' }, { kind: 'git-metadata' }] as const)(
 		try {
 			await expect(
 				generation.acquire(context, {
-					policy: { workspaceProtection: [resource] }
+					workspaceProtection: [resource]
 				})
 			).rejects.toMatchObject({ name: 'UnsupportedSandboxPolicyError' });
 			expect(opened).toStrictEqual([]);
@@ -536,7 +561,7 @@ it.each([{ kind: 'path', path: '.pi' }, { kind: 'git-metadata' }] as const)(
 
 		try {
 			const sandbox = await generation.acquire(context, {
-				policy: { workspaceProtection: [resource] }
+				workspaceProtection: [resource]
 			});
 			const expected = {
 				...PERSONAL,
@@ -559,23 +584,19 @@ it('shares equivalent protection sets while separating different resources', asy
 
 	try {
 		const first = await generation.acquire(context, {
-			policy: {
-				workspaceProtection: [
-					{ kind: 'path', path: '.a' },
-					{ kind: 'path', path: '.b' }
-				]
-			}
+			workspaceProtection: [
+				{ kind: 'path', path: '.a' },
+				{ kind: 'path', path: '.b' }
+			]
 		});
 		const repeated = await generation.acquire(context, {
-			policy: {
-				workspaceProtection: [
-					{ kind: 'path', path: '.b' },
-					{ kind: 'path', path: '.a' }
-				]
-			}
+			workspaceProtection: [
+				{ kind: 'path', path: '.b' },
+				{ kind: 'path', path: '.a' }
+			]
 		});
 		const other = await generation.acquire(context, {
-			policy: { workspaceProtection: [{ kind: 'path', path: '.c' }] }
+			workspaceProtection: [{ kind: 'path', path: '.c' }]
 		});
 
 		const status = await generation.status();
@@ -645,7 +666,7 @@ it('rejects an opened backend that omits a promised protected resource and dispo
 	try {
 		await expect(
 			generation.acquire(context, {
-				policy: { workspaceProtection: [{ kind: 'git-metadata' }] }
+				workspaceProtection: [{ kind: 'git-metadata' }]
 			})
 		).rejects.toMatchObject({ name: 'UnsupportedSandboxPolicyError' });
 		expect(disposals).toBe(1);
@@ -673,7 +694,7 @@ it('rejects an oversized combined resource set before opening a backend', async 
 	try {
 		await expect(
 			generation.acquire(context, {
-				policy: { workspaceProtection: protectionResources('consumer') }
+				workspaceProtection: protectionResources('consumer')
 			})
 		).rejects.toMatchObject({ name: 'UnsupportedSandboxPolicyError' });
 		expect(opened).toStrictEqual([]);

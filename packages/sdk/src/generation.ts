@@ -4,7 +4,7 @@ import { Type } from 'typebox';
 
 import { acquireOptions, checkRequirements } from './acquire-options.js';
 import { snapshotBackend, snapshotRecovery } from './backend-snapshot.js';
-import { isPolicySatisfied, validateBackend } from './backend-validation.js';
+import { validateBackend } from './backend-validation.js';
 import {
 	DEFAULT_CLEANUP_BUDGETS,
 	resolveCleanupBudgets
@@ -44,6 +44,7 @@ import {
 } from './errors.js';
 import type { SandboxOwner } from './facade.js';
 import { createSandbox } from './facade.js';
+import { hasRequiredGuarantees } from './guarantees.js';
 import type { Settlement } from './lifecycle.js';
 import {
 	observe,
@@ -71,11 +72,13 @@ import type { DiagnosticStore } from './provider-diagnostics.js';
 import { ProviderDiagnostics } from './provider-diagnostics.js';
 import {
 	rethrowSnapshotError,
+	reviewPolicy,
 	reviewRequirements,
 	snapshotSource
 } from './review-requirements.js';
 import { callable, checker } from './schemas.js';
 import { isRecord, isRecovery, snapshotProviderInfo } from './validation.js';
+import { isWorkspaceProtectionSatisfied } from './workspace-protection.js';
 
 export interface GenerationDependencies {
 	readonly diagnostics?: DiagnosticStore;
@@ -741,7 +744,7 @@ export class SandboxGeneration {
 
 		checkDeclaredCapabilities(provider.capabilities, options, identity);
 
-		return resolvePolicy(selection.policy, provider, options.policy, identity);
+		return resolvePolicy(selection.policy, provider, options, identity);
 	}
 
 	async initialize(): Promise<void> {
@@ -879,7 +882,7 @@ export class SandboxGeneration {
 			}
 
 			const policy = {
-				...reviewRequirements.policy,
+				...reviewPolicy,
 				...(this.#selection?.policy.workspaceProtection !== undefined && {
 					workspaceProtection: this.#selection.policy.workspaceProtection
 				})
@@ -888,8 +891,15 @@ export class SandboxGeneration {
 			if (
 				this.#requirements.some(
 					(requirement) =>
-						requirement.policy !== undefined &&
-						!isPolicySatisfied(policy, requirement.policy)
+						(requirement.workspaceRelationship !== undefined &&
+							requirement.workspaceRelationship !==
+								policy.workspaceRelationship) ||
+						!hasRequiredGuarantees(
+							policy,
+							requirement.guarantees ?? [],
+							requirement.needs ?? []
+						) ||
+						!isWorkspaceProtectionSatisfied(policy, requirement)
 				)
 			) {
 				throw new UnsupportedSandboxPolicyError({

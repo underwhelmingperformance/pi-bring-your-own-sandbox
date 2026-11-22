@@ -149,7 +149,37 @@ it('rejects an unsupported configured relationship and conflicting registered re
 					workspaceRelationship: ['shared', 'copied']
 				}
 			},
-			[{ policy: copied }, { policy: shared }]
+			[copied, shared]
 		)
 	).toThrow(expect.objectContaining({ name: 'UnsupportedSandboxPolicyError' }));
 });
+
+it.each([
+	[[{ needs: ['network'] }, { guarantees: ['no-network'] }]],
+	[[{ guarantees: ['no-network'] }, { needs: ['network'] }]]
+] as const)(
+	'rejects registered requirements that conflict in either order: %j',
+	(requirements) => {
+		const provider = service('fixture');
+
+		expect(() =>
+			applySandboxRequirements(
+				resolveSandboxConfig(
+					provider,
+					{ configuration: {}, policy: defaultPolicy },
+					'extension'
+				),
+				{
+					...provider,
+					policies: {
+						...provider.policies,
+						networkAccess: ['provider-default', 'denied']
+					}
+				},
+				requirements
+			)
+		).toThrow(
+			expect.objectContaining({ name: 'UnsupportedSandboxPolicyError' })
+		);
+	}
+);

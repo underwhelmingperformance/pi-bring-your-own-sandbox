@@ -170,7 +170,7 @@ it.each([
 		error: 'UnsupportedSandboxCapabilityError'
 	},
 	{
-		requirements: { policy: { filesystemScope: 'workspace-only' } },
+		requirements: { guarantees: ['no-host-system-files'] },
 		error: 'UnsupportedSandboxPolicyError'
 	}
 ] as const)(
@@ -216,8 +216,8 @@ it('combines guard policies and rejects a consumer request that loosens them', a
 
 	await scenario(
 		[
-			guard({ policy: { workspaceAccess: 'read-only' } }),
-			guard({ policy: { networkAccess: 'denied' } }),
+			guard({ guarantees: ['no-workspace-writes'] }),
+			guard({ guarantees: ['no-network'] }),
 			{
 				name: 'provider',
 				factory(pi) {
@@ -234,7 +234,7 @@ it('combines guard policies and rejects a consumer request that loosens them', a
 				networkAccess: 'denied'
 			});
 			await expect(
-				getSandbox(pi, context, { policy: { workspaceAccess: 'read-write' } })
+				getSandbox(pi, context, { needs: ['workspace-writes'] })
 			).rejects.toMatchObject({ name: 'UnsupportedSandboxPolicyError' });
 			expect(open.mock.calls).toHaveLength(1);
 		}

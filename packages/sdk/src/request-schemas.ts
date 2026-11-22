@@ -3,9 +3,11 @@ import { Type } from 'typebox';
 import { cleanupSelectionSchema } from './cleanup-budgets.js';
 import type { ProcessOptions } from './contracts.js';
 import {
+	accessSchema,
 	callable,
 	capabilitySchema,
 	denseArray,
+	guaranteeSchema,
 	nonEmptyStringSchema,
 	nonNegativeIntegerSchema,
 	policySchema,
@@ -16,7 +18,9 @@ import {
 	signalSchema,
 	targetPathSchema,
 	terminationScopeSchema,
-	timeoutSchema
+	timeoutSchema,
+	workspaceProtectionSchema,
+	workspaceRelationshipSchema
 } from './schemas.js';
 
 export const MAX_CAPTURE_BYTES = 1_048_576;
@@ -98,10 +102,6 @@ export const writeOptionsSchema = Type.Object(
 	{ additionalProperties: false }
 );
 
-const partialPolicySchema = Type.Partial(policySchema, {
-	additionalProperties: false
-});
-
 export const acquireOptionsSchema = Type.Object(
 	{
 		terminationScope: Type.Optional(terminationScopeSchema),
@@ -114,7 +114,12 @@ export const acquireOptionsSchema = Type.Object(
 		capabilities: Type.Optional(
 			denseArray(capabilitySchema, { uniqueItems: true })
 		),
-		policy: Type.Optional(partialPolicySchema)
+		guarantees: Type.Optional(
+			denseArray(guaranteeSchema, { uniqueItems: true })
+		),
+		needs: Type.Optional(denseArray(accessSchema, { uniqueItems: true })),
+		workspaceRelationship: Type.Optional(workspaceRelationshipSchema),
+		workspaceProtection: Type.Optional(workspaceProtectionSchema)
 	},
 	{ additionalProperties: false }
 );

@@ -12,7 +12,9 @@ import type {
 import type { environmentSchema } from './request-schemas.js';
 import type { processExitSchema } from './result-schemas.js';
 import type {
+	accessSchema,
 	capabilitySchema,
+	guaranteeSchema,
 	shellSchema,
 	terminationScopeSchema
 } from './schemas.js';
@@ -108,6 +110,31 @@ Paths identify a workspace-relative subtree, including absent entries and aliase
 export type WorkspaceProtection =
 	| { readonly kind: 'git-metadata' }
 	| { readonly kind: 'path'; readonly path: string };
+
+/**
+A restriction that a backend promises to enforce on every operation.
+
+- `no-workspace-writes`: workspace files cannot be changed.
+- `no-network`: outbound network access is denied, including through host
+  services.
+- `no-host-user-data`: host files outside the workspace are inaccessible,
+  except read-only operating-system files and installed runtime dependencies.
+- `no-host-system-files`: those operating-system and runtime files are also
+  inaccessible. A provider may still expose its own isolated runtime image.
+
+Each guarantee corresponds to a policy value: `read-only` workspace access,
+`denied` network access, and `system-read-only` or `workspace-only` filesystem
+scope.
+*/
+export type SandboxGuarantee = Static<typeof guaranteeSchema>;
+
+/**
+Access that a consumer needs. Each access is the opposite of one guarantee:
+`workspace-writes` of `no-workspace-writes`, `network` of `no-network`,
+`host-user-data` of `no-host-user-data` and `host-system-files` of
+`no-host-system-files`.
+*/
+export type SandboxAccess = Static<typeof accessSchema>;
 
 /**
 Protection requirements for opening a backend, or effective protections
@@ -307,10 +334,27 @@ export interface SandboxAcquireOptions extends SandboxOperationOptions {
 	readonly capabilities?: readonly SandboxCapability[];
 
 	/**
-	Additional protection requirements checked against the effective backend
-	policy.
+	Guarantees that the backend must provide. Each one tightens the selected
+	policy where the provider supports a stronger value.
 	*/
-	readonly policy?: Partial<SandboxPolicy>;
+	readonly guarantees?: readonly SandboxGuarantee[];
+
+	/**
+	Access that the consumer must keep. An acquisition cannot gain access that
+	the configured policy does not grant.
+	*/
+	readonly needs?: readonly SandboxAccess[];
+
+	/**
+	Required relationship between the target and host workspace.
+	*/
+	readonly workspaceRelationship?: SandboxWorkspace['relationship'];
+
+	/**
+	Workspace resources that must remain immutable, in addition to those in
+	the configured policy.
+	*/
+	readonly workspaceProtection?: readonly WorkspaceProtection[];
 }
 
 /**

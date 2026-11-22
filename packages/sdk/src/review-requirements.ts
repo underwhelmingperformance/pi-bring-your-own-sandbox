@@ -4,18 +4,27 @@ import type {
 	ReviewSnapshotSource,
 	SandboxAcquireOptions,
 	SandboxCloseReport,
-	SandboxErrorContext
+	SandboxErrorContext,
+	SandboxPolicy
 } from './contracts.js';
 import { InvalidSandboxRequestError, SandboxCleanupError } from './errors.js';
 import { checker, nonEmptyStringSchema } from './schemas.js';
 
+export const reviewPolicy = {
+	workspaceAccess: 'read-only',
+	workspaceRelationship: 'copied',
+	filesystemScope: 'workspace-only',
+	networkAccess: 'denied'
+} as const satisfies SandboxPolicy;
+
 export const reviewRequirements = {
-	policy: {
-		workspaceAccess: 'read-only',
-		workspaceRelationship: 'copied',
-		filesystemScope: 'workspace-only',
-		networkAccess: 'denied'
-	},
+	guarantees: [
+		'no-workspace-writes',
+		'no-network',
+		'no-host-user-data',
+		'no-host-system-files'
+	],
+	workspaceRelationship: 'copied',
 	exitStatus: 'guaranteed',
 	terminationScope: 'process-group',
 	capabilities: ['exec', 'files.read'],

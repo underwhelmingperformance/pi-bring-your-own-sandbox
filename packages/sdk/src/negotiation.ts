@@ -1,6 +1,7 @@
 import type {
 	SandboxAcquireOptions,
 	SandboxCapabilities,
+	SandboxGuarantee,
 	SandboxPolicy
 } from './contracts.js';
 import {
@@ -8,6 +9,7 @@ import {
 	UnsupportedSandboxPolicyError
 } from './errors.js';
 import { selectFilesystemScope } from './filesystem-scope.js';
+import { hasRequiredGuarantees } from './guarantees.js';
 import type { ProviderInfo } from './protocol.js';
 import {
 	canProtectWorkspace,
@@ -19,12 +21,40 @@ interface NegotiationIdentity {
 	readonly providerId: string;
 }
 
+/**
+The policy requirements of one acquisition or session-wide registration.
+*/
+export type PolicyRequirement = Pick<
+	SandboxAcquireOptions,
+	'guarantees' | 'needs' | 'workspaceRelationship' | 'workspaceProtection'
+>;
+
+function requiredScope(
+	guarantees: readonly SandboxGuarantee[]
+): SandboxPolicy['filesystemScope'] | undefined {
+	if (guarantees.includes('no-host-system-files')) {
+		return 'workspace-only';
+	}
+
+	return guarantees.includes('no-host-user-data')
+		? 'system-read-only'
+		: undefined;
+}
+
+/**
+Tighten the configured policy until it provides every required guarantee. The
+result keeps the configured access wherever no guarantee removes it. A need for
+access that the configured policy does not grant, or that a required guarantee
+removes, rejects the acquisition.
+*/
 export function resolvePolicy(
 	personal: SandboxPolicy,
 	provider: ProviderInfo,
-	requested: Partial<SandboxPolicy> | undefined,
+	requested: PolicyRequirement | undefined,
 	identity: NegotiationIdentity
 ): SandboxPolicy {
+	const guarantees = requested?.guarantees ?? [];
+	const needs = requested?.needs ?? [];
 	const workspaceRelationship =
 		requested?.workspaceRelationship ?? personal.workspaceRelationship;
 
@@ -37,16 +67,13 @@ export function resolvePolicy(
 		throw new UnsupportedSandboxPolicyError(identity);
 	}
 
-	if (
-		requested?.workspaceAccess === 'read-write' &&
-		personal.workspaceAccess === 'read-only'
-	) {
+	if (!hasRequiredGuarantees(personal, [], needs)) {
 		throw new UnsupportedSandboxPolicyError(identity);
 	}
 
 	const filesystemScope = selectFilesystemScope(
 		personal.filesystemScope,
-		requested?.filesystemScope,
+		requiredScope(guarantees),
 		provider.policies.filesystemScope
 	);
 
@@ -62,13 +89,17 @@ export function resolvePolicy(
 	const policy: SandboxPolicy = Object.freeze({
 		...(workspaceRelationship !== undefined && { workspaceRelationship }),
 		...(protection.length > 0 && { workspaceProtection: protection }),
-		workspaceAccess: requested?.workspaceAccess ?? personal.workspaceAccess,
+		workspaceAccess: guarantees.includes('no-workspace-writes')
+			? 'read-only'
+			: personal.workspaceAccess,
 		filesystemScope,
-		networkAccess:
-			requested?.networkAccess === 'denied' ? 'denied' : personal.networkAccess
+		networkAccess: guarantees.includes('no-network')
+			? 'denied'
+			: personal.networkAccess
 	});
 
 	if (
+		!hasRequiredGuarantees(policy, guarantees, needs) ||
 		!canProtectWorkspace(provider.capabilities, policy) ||
 		!provider.policies.workspaceAccess.includes(policy.workspaceAccess) ||
 		!provider.policies.filesystemScope.includes(policy.filesystemScope) ||

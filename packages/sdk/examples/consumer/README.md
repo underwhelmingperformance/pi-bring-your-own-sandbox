@@ -100,16 +100,18 @@ returned facade exposes immutable metadata and operations. The broker owns
 allocation and disposal. Consumer code does not choose another provider for
 individual requests.
 
-Require additional capabilities or policy only when the extension needs them. A
-stricter policy request, such as `read-only` or `denied` network access, gets a
-backend opened with that policy from the selected provider, provided that the
-provider supports it. A request cannot loosen the user's policy. For example, a
-denied-network requirement rejects acquisition from passthrough. Use
-`negotiateSandbox` with the same options to find out without opening a backend:
+Require additional capabilities, guarantees or needs only when the extension
+depends on them. A guarantee such as `no-workspace-writes` or `no-network` gets
+a backend opened with the matching restriction from the selected provider,
+provided that the provider supports it. A need such as `workspace-writes` fails
+if the user's policy does not grant that access, so a request cannot loosen the
+user's policy. For example, a `no-network` requirement rejects acquisition from
+passthrough. Use `negotiateSandbox` with the same options to find out without
+opening a backend:
 
 ```typescript
 const negotiation = await negotiateSandbox(pi, context, {
-  policy: { workspaceAccess: 'read-only', networkAccess: 'denied' }
+  guarantees: ['no-workspace-writes', 'no-network']
 });
 
 if (!negotiation.ok) {

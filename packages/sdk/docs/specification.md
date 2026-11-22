@@ -297,10 +297,10 @@ bindings before first use; reload to change them.
 
 `registerSandboxRequirement(pi, requirements = {})` requires explicit provider
 activation for this runtime. Optional `providerId`, capability, process-kind,
-shell, exit-status, termination-scope and policy requirements apply to every
-ordinary acquisition. Multiple registrations apply together. Policy requirements
-tighten the base policy before consumer negotiation; consumers cannot loosen
-them.
+shell, exit-status, termination-scope, guarantee, need, relationship and
+protection requirements apply to every ordinary acquisition. Multiple
+registrations apply together. Guarantees tighten the base policy before consumer
+negotiation; consumers cannot loosen them.
 
 The separate `pi-bring-your-own-sandbox-guard` package supplies a default Pi
 extension and `createSandboxGuard(requirements = {})`. The default accepts any
@@ -352,12 +352,14 @@ The shared policy vocabulary is deliberately small:
 [workspace-protection]: workspace-protection.md
 
 Filesystem scope requirements have this ordering, from weakest to strongest:
-`provider-default`, `system-read-only`, `workspace-only`. Negotiation chooses
-the least restrictive supported value that satisfies both base and consumer
-requirements. A backend must satisfy the same ordering after opening. A provider
-cannot advertise a restrictive value until independent probes verify normal
-access, denied host-home files, runtime symlink targets and conflicting grants.
-The provider test kit requires `verifyPolicy` for either restrictive value.
+`provider-default`, `system-read-only`, `workspace-only`. Negotiation keeps the
+base scope when the provider supports it and no required guarantee needs a
+stronger one. Otherwise it chooses the weakest supported scope that is at least
+as strong as the base scope and the scope that the guarantees need. A backend
+must satisfy the same ordering after opening. A provider cannot advertise a
+restrictive value until independent probes verify normal access, denied
+host-home files, runtime symlink targets and conflicting grants. The provider
+test kit requires `verifyPolicy` for either restrictive value.
 
 A provider may declare a complete `defaultPolicy`. Each value must be among its
 supported policy values. When extension settings omit `policy`, use the selected
@@ -387,17 +389,36 @@ effective behaviour without claiming a common restriction. Host-side
 control-plane traffic needed to operate a remote provider is separate from
 sandbox egress.
 
-Consumers can require capabilities and stricter common policy values when
-acquiring a handle. The broker negotiates each request against the base policy
-and the selected provider's declaration. Omitted fields, and fields that request
-`provider-default`, keep the base value. A request can tighten a field
-(`read-only` instead of `read-write`, `workspace-only` or `denied` instead of
-`provider-default`) but cannot loosen one, so the base policy is both the
-default and the limit. The broker opens one backend from the selected provider
-for each distinct negotiated policy, and consumers that negotiate the same
-policy share it. A request that the declaration cannot satisfy fails before any
-backend is opened. A consumer must not change policy through a command argument
-or request a different provider.
+Consumers state what they require in terms of guarantees and needs, not policy
+values. A guarantee is a restriction that the backend must enforce:
+
+| Guarantee              | Policy value                                 |
+| ---------------------- | -------------------------------------------- |
+| `no-workspace-writes`  | `read-only` workspace access                 |
+| `no-network`           | `denied` network access                      |
+| `no-host-user-data`    | `system-read-only` or `workspace-only` scope |
+| `no-host-system-files` | `workspace-only` scope                       |
+
+A need is access that the consumer must keep: `workspace-writes`, `network`,
+`host-user-data` or `host-system-files`. Each need excludes the guarantee of the
+same name. A consumer lists only the guarantees and needs that its feature
+depends on, and BYOS checks them against the selected provider and the opened
+backend.
+
+The broker negotiates each request against the base policy and the selected
+provider's declaration. The negotiated policy is the base policy with each field
+tightened only as far as a required guarantee needs. `no-workspace-writes` sets
+`read-only` workspace access, and `no-network` sets `denied` network access. A
+filesystem-scope guarantee selects a scope as described above, so a provider
+without `system-read-only` gives `no-host-user-data` the `workspace-only` scope.
+Fields without a required guarantee keep the base value. A need for access that
+the base policy does not grant, or that a required guarantee removes, rejects
+the request. The base policy is therefore both the default and the limit. The
+broker opens one backend from the selected provider for each distinct negotiated
+policy, and consumers that negotiate the same policy share it. A request that
+the declaration cannot satisfy fails before any backend is opened. A consumer
+must not change policy through a command argument or request a different
+provider.
 
 Every backend of a generation is opened for the same host workspace. A provider
 that copies the workspace gives each backend its own copy, so changes made
@@ -411,10 +432,11 @@ ordinary consumer call is `getSandbox(pi, ctx, { signal })`; it works with
 default host execution or the user's configured provider. No provider-specific
 branch or separate opt-in to the framework is required in the consumer.
 `SandboxAcquireOptions` contains optional `capabilities`, `processKinds`,
-`shells`, `exitStatus`, `terminationScope` and `policy` requirements, plus an
-explicit caller `signal` and waiting `timeoutMs`. The waiting deadline defaults
-to 60 seconds. It limits this acquisition only; the broker independently owns
-the shared provisioning deadline. A cancelled waiter rejects immediately without
+`shells`, `exitStatus`, `terminationScope`, `guarantees`, `needs`,
+`workspaceRelationship` and `workspaceProtection` requirements, plus an explicit
+caller `signal` and waiting `timeoutMs`. The waiting deadline defaults to 60
+seconds. It limits this acquisition only; the broker independently owns the
+shared provisioning deadline. A cancelled waiter rejects immediately without
 cancelling provisioning for other consumers. If all waiters cancel, provisioning
 continues under the broker's deadline and the resulting backend remains
 available for this generation. Shutdown still cancels provisioning. Check abort
@@ -447,7 +469,7 @@ cannot enforce the requirement:
 ```typescript
 const sandbox = await getSandbox(pi, ctx, {
   capabilities: ['exec'],
-  policy: { networkAccess: 'denied' },
+  guarantees: ['no-network'],
   signal,
   timeoutMs: 15_000
 });

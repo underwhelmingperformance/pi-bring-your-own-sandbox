@@ -912,31 +912,29 @@ it('rejects an attempt to erase outstanding recovery metadata', async () => {
 	}).toStrictEqual({ confirmed: false, recoveries: [recovery] });
 });
 
-it.each(['workspaceAccess', 'filesystemScope', 'networkAccess'] as const)(
-	'treats undefined %s requirements as omitted',
-	async (field) => {
-		const options = acquireOptions({ policy: { [field]: undefined } });
+it.each([
+	'guarantees',
+	'needs',
+	'workspaceRelationship',
+	'workspaceProtection'
+] as const)('treats undefined %s requirements as omitted', async (field) => {
+	const options = acquireOptions({ [field]: undefined });
 
-		expect(options).toStrictEqual({
-			signal: undefined,
-			timeoutMs: undefined,
-			policy: {}
-		});
+	expect(options).toStrictEqual({ signal: undefined, timeoutMs: undefined });
 
-		const { generation, context } = fixture();
+	const { generation, context } = fixture();
 
-		try {
-			const sandbox = await generation.acquire(context, options);
+	try {
+		const sandbox = await generation.acquire(context, options);
 
-			expect(sandbox.backendId).toBe('memory');
-		} finally {
-			await generation.close();
-		}
+		expect(sandbox.backendId).toBe('memory');
+	} finally {
+		await generation.close();
 	}
-);
+});
 
-it('rejects unknown acquisition policy keys even when undefined', () => {
-	expect(() => acquireOptions({ policy: { unrecognised: undefined } })).toThrow(
+it('rejects unknown acquisition options even when undefined', () => {
+	expect(() => acquireOptions({ unrecognised: undefined })).toThrow(
 		expect.objectContaining({ name: 'InvalidSandboxRequestError' })
 	);
 });

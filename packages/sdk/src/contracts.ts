@@ -1138,6 +1138,26 @@ export interface SandboxCopy {
 }
 
 /**
+A pending Pi tool call, identified by the tool's name and the call's ID.
+*/
+export interface ReviewedToolCall {
+	readonly toolName: string;
+	readonly toolCallId: string;
+}
+
+/**
+The destination of a pending shell tool call. A reviewer can copy the files
+that the command will see, but cannot run anything in the destination itself.
+*/
+export interface ShellReviewSource {
+	/**
+	Open a private copy of the destination. The copy is checked against the
+	options in the caller's SDK, and a copy that fails the check is closed.
+	*/
+	readonly copy: (options?: SandboxCopyOptions) => Promise<SandboxCopy>;
+}
+
+/**
 Provider-owned target execution environment. Consumers receive a broker
 facade. All operations must respect cancellation, deadlines and effective
 policy; paths refer to the target.

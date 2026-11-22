@@ -104,17 +104,26 @@ independent allocation-disposal contracts.
 
 ## Permission review of a shell call
 
-The shell extension answers synchronous queries on Pi's
-`pi-byos:review:tool-call:v2` event channel. A reviewer can send
-`{ kind: 'available', reply }` to discover whether Pi has a routed shell. For a
-local permission request, send `{ sessionId, toolName, toolCallId, reply }`
-during the pending tool call. That request requires exactly one synchronous
-reply. The reply supplies the pending call's destination as an object with one
-method, `copy(options?)`, which opens a [private copy][copies] of the files that
-the command will see. The reviewer cannot run commands in the destination
-itself. Pass the guarantees and needs that the review depends on, for example
+A permission reviewer can inspect the files that a pending shell call will see.
+Call `hasShellReviewRoute(pi)` to discover whether a BYOS shell route is loaded.
+During the pending tool call, call
+`findShellReviewSource(pi, ctx, { toolName, toolCallId })`. It returns
+`undefined` unless exactly one route claims the call. The source has one method,
+`copy(options?)`, which opens a [private copy][copies] of the files that the
+command will see. The reviewer cannot run commands in the destination itself.
+Pass the guarantees and needs that the review depends on, for example
 `{ guarantees: ['no-network', 'no-host-user-data'], signal }`. Close the copy
 when the review ends.
+
+The route can belong to another SDK installation. `copy` checks the returned
+copy against the options in the caller's SDK, as `getSandbox` does for a shared
+sandbox, and closes a copy that fails the check.
+
+The shell extension answers these queries synchronously on Pi's
+`pi-byos:review:tool-call:v2` event channel. A query is either
+`{ kind: 'available', reply }` or `{ sessionId, toolName, toolCallId, reply }`,
+and the route replies with an object that has the `copy` method. Use the helper
+functions so the caller's SDK checks each copy.
 
 When an extension wraps the routing factory, pass its own Pi entry path as the
 second argument to the factory. Pi reports this path on the selected tool.

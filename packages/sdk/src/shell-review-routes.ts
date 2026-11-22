@@ -12,11 +12,10 @@ import {
 } from './errors.js';
 import { boundedApproval } from './execution-approval.js';
 import { OperationScope } from './lifecycle.js';
+import { SHELL_REVIEW_CHANNEL } from './review-route.js';
 import { runtimeSettings } from './runtime-settings.js';
 import { copyOptions, rethrowCopyError } from './sandbox-copy.js';
 import { isRecord } from './validation.js';
-
-const channel = 'pi-byos:review:tool-call:v2';
 
 type BoundDestination =
 	{ kind: 'host' } | { kind: 'sandbox'; sandbox: Sandbox };
@@ -88,7 +87,7 @@ export class ShellReviewRoutes {
 				isOutside: input['execution'] === 'outside-sandbox'
 			});
 		});
-		pi.events.on(channel, (message: unknown) => {
+		pi.events.on(SHELL_REVIEW_CHANNEL, (message: unknown) => {
 			if (isAvailabilityQuery(message)) {
 				if (isSelected()) {
 					message.reply();

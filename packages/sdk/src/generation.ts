@@ -15,17 +15,18 @@ import type { SessionIdentity } from './context.js';
 import { inspectContext } from './context.js';
 import type {
 	RecoveryDescriptor,
-	ReviewSnapshot,
-	ReviewSnapshotSource,
 	Sandbox,
 	SandboxAcquireOptions,
 	SandboxBackend,
 	SandboxCloseReport,
 	SandboxContext,
+	SandboxCopy,
+	SandboxCopyOptions,
+	SandboxCopySource,
 	SandboxErrorInfo,
+	SandboxOpenContext,
 	SandboxOperation,
 	SandboxOperationContext,
-	SandboxOperationOptions,
 	SandboxPolicy,
 	SandboxRequirements
 } from './contracts.js';
@@ -39,12 +40,10 @@ import {
 	SandboxStartupError,
 	StaleSandboxHandleError,
 	UnconfirmedSandboxTerminationError,
-	UnsupportedSandboxCapabilityError,
-	UnsupportedSandboxPolicyError
+	UnsupportedSandboxCapabilityError
 } from './errors.js';
 import type { SandboxOwner } from './facade.js';
 import { createSandbox } from './facade.js';
-import { hasRequiredGuarantees } from './guarantees.js';
 import type { Settlement } from './lifecycle.js';
 import {
 	observe,
@@ -56,11 +55,13 @@ import { MutationQueue } from './mutation-queue.js';
 import {
 	checkDeclaredCapabilities,
 	policyKey,
+	resolveCopyPolicy,
 	resolvePolicy
 } from './negotiation.js';
 import type {
 	BrokerState,
 	ConfiguredProviderV1,
+	CopySourceIdentity,
 	ProviderInfo,
 	ProviderSelection,
 	ProviderServiceV1,
@@ -70,20 +71,20 @@ import type {
 } from './protocol.js';
 import type { DiagnosticStore } from './provider-diagnostics.js';
 import { ProviderDiagnostics } from './provider-diagnostics.js';
-import {
-	rethrowSnapshotError,
-	reviewPolicy,
-	reviewRequirements,
-	snapshotSource
-} from './review-requirements.js';
+import { copyOptions, copySource, rethrowCopyError } from './sandbox-copy.js';
 import { callable, checker } from './schemas.js';
 import { isRecord, isRecovery, snapshotProviderInfo } from './validation.js';
-import { isWorkspaceProtectionSatisfied } from './workspace-protection.js';
 
 export interface GenerationDependencies {
 	readonly diagnostics?: DiagnosticStore;
 	readonly providers: () => readonly ProviderServiceV1[];
 	readonly readConfig: (context: SandboxContext) => Promise<SandboxConfig>;
+	/**
+	The configured policy of the session that this generation copies from. A
+	copy's own policy is usually stricter, so needs in a copy of a copy are
+	checked against this policy.
+	*/
+	readonly copyLimit?: SandboxPolicy;
 }
 interface Prepared {
 	readonly provider: ProviderServiceV1;
@@ -99,6 +100,7 @@ interface BackendSlot {
 		| Promise<Exclude<Settlement<SandboxBackend>, { kind: 'abandoned' }>>
 		| undefined;
 	backend: SandboxBackend | undefined;
+	provided: SandboxBackend | undefined;
 	candidate: unknown;
 	recovery: RecoveryDescriptor;
 	candidateRecovery: RecoveryDescriptor | undefined;
@@ -138,7 +140,7 @@ export class SandboxGeneration {
 	#configurationSource: 'extension' | undefined;
 	#prepared: Promise<Prepared> | undefined;
 	readonly #slots = new Map<string, BackendSlot>();
-	readonly #reviews = new Set<ReviewSnapshot['close']>();
+	readonly #copies = new Set<SandboxCopy['close']>();
 	#failure: SandboxErrorInfo | undefined;
 	#closing: Promise<SandboxCloseReport> | undefined;
 	readonly #cleanupFailures: SandboxErrorInfo[] = [];
@@ -313,6 +315,7 @@ export class SandboxGeneration {
 			state: 'opening',
 			opening: undefined,
 			backend: undefined,
+			provided: undefined,
 			candidate: undefined,
 			recovery: { kind: 'none' },
 			candidateRecovery: undefined,
@@ -425,9 +428,8 @@ export class SandboxGeneration {
 			throw scope.cancellationError(isDisposed ? 'confirmed' : 'unknown');
 		}
 
-		const backend = snapshotBackend(
-			validateBackend(candidate, prepared.provider, slot.policy)
-		);
+		const provided = validateBackend(candidate, prepared.provider, slot.policy);
+		const backend = snapshotBackend(provided);
 
 		if (
 			(backend.recovery.kind === 'allocation' && !slot.hasRecovery) ||
@@ -442,6 +444,7 @@ export class SandboxGeneration {
 		slot.recovery = snapshotRecovery(backend.recovery);
 		slot.candidate = backend;
 		slot.backend = backend;
+		slot.provided = provided;
 		slot.state = 'ready';
 
 		return backend;
@@ -557,7 +560,18 @@ export class SandboxGeneration {
 			},
 			markUnhealthy: (failure) => {
 				this.#failSlot(slot, failure);
-			}
+			},
+			copy: (options) =>
+				this.copy(
+					context,
+					{
+						kind: 'sandbox',
+						providerId: selection.providerId,
+						generationId: this.#id,
+						backendId: backend.id
+					},
+					options
+				)
 		};
 	}
 
@@ -686,8 +700,8 @@ export class SandboxGeneration {
 				)
 			);
 
-			const reviews = await Promise.all(
-				this.#reviews.values().map((close) => close())
+			const copies = await Promise.all(
+				this.#copies.values().map((close) => close())
 			);
 
 			await this.#operations.drain();
@@ -709,7 +723,7 @@ export class SandboxGeneration {
 
 			const report = this.#closeReport(unconfirmed, failures);
 
-			const reports = [report, ...reviews];
+			const reports = [report, ...copies];
 			const recoveries = reports.flatMap((child) => child.recoveries);
 			const cleanupFailures = reports.flatMap((child) => child.failures);
 
@@ -745,6 +759,41 @@ export class SandboxGeneration {
 		checkDeclaredCapabilities(provider.capabilities, options, identity);
 
 		return resolvePolicy(selection.policy, provider, options, identity);
+	}
+
+	#copyOrigin(
+		source: CopySourceIdentity,
+		providerId: string
+	): SandboxCopySource {
+		if (source.kind === 'host') {
+			return source;
+		}
+
+		const slots = this.#slots
+			.values()
+			.filter((slot) => slot.backend?.id === source.backendId)
+			.toArray();
+		const [slot] = slots;
+
+		if (
+			source.generationId !== this.#id ||
+			source.providerId !== providerId ||
+			slots.length !== 1 ||
+			slot?.state !== 'ready' ||
+			slot.provided === undefined
+		) {
+			throw new StaleSandboxHandleError({ operation: 'acquire' });
+		}
+
+		if (!slot.provided.capabilities.operations.includes('copy')) {
+			throw new UnsupportedSandboxCapabilityError({
+				operation: 'acquire',
+				providerId,
+				backendId: slot.provided.id
+			});
+		}
+
+		return { kind: 'backend', backend: slot.provided };
 	}
 
 	async initialize(): Promise<void> {
@@ -820,15 +869,16 @@ export class SandboxGeneration {
 		}
 	}
 
-	async openReviewSnapshot(
+	async copy(
 		context: SandboxContext,
-		input: ReviewSnapshotSource,
-		options: SandboxOperationOptions = {}
-	): Promise<ReviewSnapshot> {
+		input: CopySourceIdentity,
+		settings?: SandboxCopyOptions
+	): Promise<SandboxCopy> {
 		this.#assertContext(context, 'acquire');
 		this.#assertOpen('acquire');
 
-		const source = snapshotSource(input);
+		const source = copySource(input);
+		const options = copyOptions(settings);
 		const scope = new OperationScope(
 			{ operation: 'acquire' },
 			this.#lifetime.signal,
@@ -856,66 +906,50 @@ export class SandboxGeneration {
 			scope.check();
 
 			const { provider, configured } = ready.value;
-			const open = configured.openReviewSnapshot;
-
-			if (typeof open !== 'function') {
-				throw new UnsupportedSandboxCapabilityError({
-					operation: 'acquire',
-					providerId: provider.id
-				});
-			}
-
-			if (source.kind === 'sandbox') {
-				const slots = this.#slots
-					.values()
-					.filter((slot) => slot.backend?.id === source.backendId)
-					.toArray();
-
-				if (
-					source.generationId !== this.#id ||
-					source.providerId !== provider.id ||
-					slots.length !== 1 ||
-					slots[0]?.state !== 'ready'
-				) {
-					throw new StaleSandboxHandleError({ operation: 'acquire' });
-				}
-			}
-
-			const policy = {
-				...reviewPolicy,
-				...(this.#selection?.policy.workspaceProtection !== undefined && {
-					workspaceProtection: this.#selection.policy.workspaceProtection
-				})
+			const copy = configured.copy;
+			const identity = {
+				operation: 'acquire' as const,
+				providerId: provider.id
 			};
 
-			if (
-				this.#requirements.some(
-					(requirement) =>
-						(requirement.workspaceRelationship !== undefined &&
-							requirement.workspaceRelationship !==
-								policy.workspaceRelationship) ||
-						!hasRequiredGuarantees(
-							policy,
-							requirement.guarantees ?? [],
-							requirement.needs ?? []
-						) ||
-						!isWorkspaceProtectionSatisfied(policy, requirement)
-				)
-			) {
-				throw new UnsupportedSandboxPolicyError({
-					operation: 'acquire',
-					providerId: provider.id
-				});
+			if (typeof copy !== 'function') {
+				throw new UnsupportedSandboxCapabilityError(identity);
 			}
 
-			const review = new SandboxGeneration(context, {
+			const origin = this.#copyOrigin(source, provider.id);
+			const selection = this.#selection;
+
+			if (selection === undefined) {
+				throw new SandboxInitialisationError({ operation: 'acquire' });
+			}
+
+			checkDeclaredCapabilities(provider.capabilities, options, identity);
+
+			const limit = this.#dependencies.copyLimit ?? selection.policy;
+			const policy = resolveCopyPolicy(
+				limit,
+				provider,
+				[options, ...this.#requirements],
+				identity
+			);
+			const copier = (
+				request: Parameters<typeof copy>[0],
+				opening: SandboxOpenContext
+			) => copy.call(configured, request, opening);
+			const generation = new SandboxGeneration(context, {
 				diagnostics: this.#diagnostics,
+				copyLimit: limit,
 				providers: () => [
 					{
 						...provider,
+						policies: {
+							...provider.policies,
+							workspaceRelationship: ['copied']
+						},
 						configure: () => ({
 							open: (request, opening) =>
-								open.call(configured, { ...request, source }, opening)
+								copier({ ...request, source: origin }, opening),
+							copy: copier
 						})
 					}
 				],
@@ -931,10 +965,10 @@ export class SandboxGeneration {
 			const close = async () => {
 				options.signal?.removeEventListener('abort', cancel);
 
-				const report = await review.close();
+				const report = await generation.close();
 
 				if (report.confirmed) {
-					this.#reviews.delete(close);
+					this.#copies.delete(close);
 				}
 
 				return report;
@@ -944,12 +978,17 @@ export class SandboxGeneration {
 				void close();
 			};
 
-			this.#reviews.add(close);
+			this.#copies.add(close);
 			options.signal?.addEventListener('abort', cancel, { once: true });
 
 			try {
-				const sandbox = await review.acquire(context, {
-					...reviewRequirements,
+				const {
+					signal: _signal,
+					timeoutMs: _timeout,
+					...requirements
+				} = options;
+				const sandbox = await generation.acquire(context, {
+					...requirements,
 					signal: scope.context.signal
 				});
 
@@ -957,7 +996,7 @@ export class SandboxGeneration {
 
 				return Object.freeze({ sandbox, close });
 			} catch (error) {
-				rethrowSnapshotError(error, await close(), {
+				rethrowCopyError(error, await close(), {
 					operation: 'dispose',
 					providerId: provider.id
 				});

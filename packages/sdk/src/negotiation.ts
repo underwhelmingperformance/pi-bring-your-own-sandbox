@@ -9,7 +9,7 @@ import {
 	UnsupportedSandboxPolicyError
 } from './errors.js';
 import { selectFilesystemScope } from './filesystem-scope.js';
-import { hasRequiredGuarantees } from './guarantees.js';
+import { hasRequiredGuarantees, policyGuarantees } from './guarantees.js';
 import type { ProviderInfo } from './protocol.js';
 import {
 	canProtectWorkspace,
@@ -105,6 +105,75 @@ export function resolvePolicy(
 		!provider.policies.filesystemScope.includes(policy.filesystemScope) ||
 		!provider.policies.networkAccess.includes(policy.networkAccess)
 	) {
+		throw new UnsupportedSandboxPolicyError(identity);
+	}
+
+	return policy;
+}
+
+/**
+Choose the policy for a copy. Unlike the session sandbox, a copy starts from
+the strictest supported policy and loosens only for its needs. Every
+requirement applies, and needs cannot exceed the access that the configured
+policy grants. The supported values form a chain in each field, so one
+candidate provides the most guarantees.
+*/
+export function resolveCopyPolicy(
+	personal: SandboxPolicy,
+	provider: ProviderInfo,
+	requirements: readonly PolicyRequirement[],
+	identity: NegotiationIdentity
+): SandboxPolicy {
+	const guarantees = requirements.flatMap(
+		(requirement) => requirement.guarantees ?? []
+	);
+	const needs = requirements.flatMap((requirement) => requirement.needs ?? []);
+
+	if (
+		requirements.some(
+			(requirement) =>
+				requirement.workspaceRelationship !== undefined &&
+				requirement.workspaceRelationship !== 'copied'
+		) ||
+		!hasRequiredGuarantees(personal, [], needs)
+	) {
+		throw new UnsupportedSandboxPolicyError(identity);
+	}
+
+	const candidates = provider.policies.workspaceAccess.flatMap(
+		(workspaceAccess) =>
+			provider.policies.filesystemScope.flatMap((filesystemScope) =>
+				provider.policies.networkAccess.map((networkAccess) => ({
+					workspaceAccess,
+					filesystemScope,
+					networkAccess
+				}))
+			)
+	);
+	const [strictest] = candidates
+		.filter((candidate) => hasRequiredGuarantees(candidate, guarantees, needs))
+		.toSorted(
+			(left, right) =>
+				policyGuarantees(right).size - policyGuarantees(left).size
+		);
+
+	if (strictest === undefined) {
+		throw new UnsupportedSandboxPolicyError(identity);
+	}
+
+	const protection = snapshotWorkspaceProtection([
+		...(personal.workspaceProtection ?? []),
+		...requirements.flatMap(
+			(requirement) => requirement.workspaceProtection ?? []
+		)
+	]);
+	const policy: SandboxPolicy = Object.freeze({
+		workspaceRelationship: 'copied',
+		...(protection.length > 0 && { workspaceProtection: protection }),
+		...strictest
+	});
+
+	if (!canProtectWorkspace(provider.capabilities, policy)) {
 		throw new UnsupportedSandboxPolicyError(identity);
 	}
 

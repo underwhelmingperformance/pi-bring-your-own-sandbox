@@ -5,14 +5,21 @@ import type {
 	SandboxAcquireOptions,
 	SandboxCloseReport,
 	SandboxContext,
+	SandboxCopy,
+	SandboxCopyOptions,
 	SandboxHost
 } from './contracts.js';
 import { ensureSandboxService } from './default-broker.js';
-import { isSandboxError, SandboxCleanupError } from './errors.js';
+import {
+	isSandboxError,
+	SandboxCleanupError,
+	UnsupportedSandboxCapabilityError
+} from './errors.js';
 import { closeApprovals } from './execution-approval.js';
 import { closeOutsideExecution } from './outside-execution.js';
 import type { SandboxNegotiation } from './protocol.js';
 import { runtimeSettings } from './runtime-settings.js';
+import { copyOptions, rethrowCopyError } from './sandbox-copy.js';
 
 /**
 Acquire the selected sandbox from a live Pi event, command or tool context.
@@ -35,6 +42,44 @@ export async function getSandbox(
 	checkRequirements(sandbox, settings);
 
 	return sandbox;
+}
+
+/**
+Copy the host workspace into a private sandbox from the selected provider. The
+broker opens the strictest policy that satisfies the options and the session's
+configured access. Close the copy when it is no longer needed. Use
+`sandbox.copy` instead to copy a sandbox whose files can differ from the host.
+*/
+export async function copyHostWorkspace(
+	pi: SandboxHost,
+	context: SandboxContext,
+	options?: SandboxCopyOptions
+): Promise<SandboxCopy> {
+	inspectContext(context, 'acquire');
+
+	const settings = copyOptions(options);
+	const broker = ensureSandboxService(pi);
+
+	if (broker.copy === undefined) {
+		throw new UnsupportedSandboxCapabilityError({ operation: 'acquire' });
+	}
+
+	const copy = await broker.copy(context, { kind: 'host' }, settings);
+
+	try {
+		checkRequirements(copy.sandbox, {
+			...settings,
+			workspaceRelationship: 'copied'
+		});
+
+		return copy;
+	} catch (error) {
+		rethrowCopyError(error, await copy.close(), {
+			operation: 'dispose',
+			providerId: copy.sandbox.providerId,
+			backendId: copy.sandbox.backendId
+		});
+	}
 }
 
 /**

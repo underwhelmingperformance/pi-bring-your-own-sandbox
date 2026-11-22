@@ -221,7 +221,7 @@ try {
 
 	const routes: string[] = [];
 
-	live.pi.events.emit('pi-byos:review:tool-call:v1', {
+	live.pi.events.emit('pi-byos:review:tool-call:v2', {
 		kind: 'available',
 		reply() {
 			routes.push('available');

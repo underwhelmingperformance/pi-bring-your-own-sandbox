@@ -76,10 +76,7 @@ export const providerServiceSchema = Type.Intersect([
 
 export const brokerServiceSchema = Type.Object({
 	guardVersion: Type.Literal(1),
-	openReviewSnapshot:
-		Type.Optional(
-			callable<NonNullable<BrokerServiceV1['openReviewSnapshot']>>()
-		),
+	copy: Type.Optional(callable<NonNullable<BrokerServiceV1['copy']>>()),
 	id: nonEmptyStringSchema,
 	acquire: callable<BrokerServiceV1['acquire']>(),
 	negotiate: callable<BrokerServiceV1['negotiate']>(),
@@ -88,23 +85,27 @@ export const brokerServiceSchema = Type.Object({
 	providers: callable<BrokerServiceV1['providers']>()
 });
 
-const reviewOpener =
-	callable<NonNullable<SandboxProvider<unknown>['openReviewSnapshot']>>();
+const copier = callable<NonNullable<SandboxProvider<unknown>['copy']>>();
 
-export const providerDeclarationSchema = Type.Intersect([
-	providerInfoSchema,
-	Type.Object({
-		id: Type.Refine(
-			nonEmptyStringSchema,
-			(value) => !builtinProviders.has(value)
-		),
-		protocolVersion: Type.Literal(1),
-		validateConfig: callable<SandboxProvider<unknown>['validateConfig']>(),
-		open: callable<SandboxProvider<unknown>['open']>(),
-		openReviewSnapshot: Type.Optional(reviewOpener),
-		outsideSandbox: Type.Optional(outsideDeclarationSchema)
-	})
-]);
+const providerIdSchema = Type.Refine(
+	nonEmptyStringSchema,
+	(value) => !builtinProviders.has(value)
+);
+const providerMethodsSchema = Type.Object({
+	id: providerIdSchema,
+	protocolVersion: Type.Literal(1),
+	validateConfig: callable<SandboxProvider<unknown>['validateConfig']>(),
+	open: callable<SandboxProvider<unknown>['open']>(),
+	copy: Type.Optional(copier),
+	outsideSandbox: Type.Optional(outsideDeclarationSchema)
+});
+
+export const providerDeclarationSchema = Type.Refine(
+	Type.Intersect([providerInfoSchema, providerMethodsSchema]),
+	(provider) =>
+		provider.capabilities.operations.includes('copy') ===
+		(provider.copy !== undefined)
+);
 
 export const approvalPolicyDeclarationSchema = Type.Object({
 	id: Type.Refine(

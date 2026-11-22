@@ -99,14 +99,14 @@ it('does not construct a replacement for an incompatible advertisement', () => {
 	);
 });
 
-it('reports snapshot acquisition against a broker without review snapshots', async () => {
+it('reports a copy against a broker without copies', async () => {
 	const service = ensureBroker(
 		createEventBus(),
 		(id) => brokerReply(id).service
 	);
 
 	await expect(
-		service.openReviewSnapshot?.(fixtureContext(), { kind: 'host' })
+		service.copy?.(fixtureContext(), { kind: 'host' })
 	).rejects.toMatchObject({
 		name: 'UnsupportedSandboxCapabilityError',
 		operation: 'acquire'

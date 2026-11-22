@@ -70,21 +70,21 @@ trusted development session, the example tells the developer before they start
 editing that changes will stay in the copy. If the caller explicitly requires
 sharing, return an error when sharing is unavailable.
 
-## Read-only review snapshot
+## Read-only copy for a review
 
 Use this when a reviewer needs a stable view of the inputs to a proposed
-command. Call `openReviewSnapshot` once at the start of the review. Docker
-supports both sources today.
+command. Copy the command's destination once at the start of the review through
+the [shell review route][review-route]. Docker supports both sources today.
 
-- For a command that would run on the host, take a fresh snapshot of the host
-  checkout.
-- For a command that would run in an agent's sandbox, take a fresh snapshot of
-  that sandbox's workspace so the reviewer sees any edits made there.
+- For a command that would run on the host, the copy contains the host checkout.
+- For a command that would run in an agent's sandbox, the copy contains that
+  sandbox's workspace, so the reviewer sees any edits made there.
 
-Use the same snapshot for all reads and commands in that review. A later review
-gets its own snapshot. Requests to run outside the sandbox follow the [approval
+Use the same copy for all reads and commands in that review. A later review gets
+its own copy. Requests to run outside the sandbox follow the [approval
 policy][approval].
 
+[review-route]: ../../docs/pi-integration.md#permission-review-of-a-shell-call
 [approval]: ../../docs/approval-execution.md
 
 ## Keeping the work in scope

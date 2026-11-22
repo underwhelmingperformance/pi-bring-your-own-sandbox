@@ -7,9 +7,9 @@ import type {
 	BackendProcessOutcome,
 	BackendSearch,
 	ProcessRequest,
-	ReviewSnapshotSource,
 	SandboxBackend,
 	SandboxCapabilities,
+	SandboxCopySource,
 	SandboxOpenContext,
 	SandboxOpenRequest,
 	SandboxOperationContext,
@@ -95,7 +95,8 @@ const defaultCapabilities = {
 		'files.write',
 		'files.list',
 		'search.find',
-		'search.grep'
+		'search.grep',
+		'copy'
 	],
 	shells: ['sh', 'bash']
 } as const;
@@ -141,7 +142,7 @@ class DockerBackend implements SandboxBackend {
 		helpers: DockerFileHelpers,
 		onClose: () => void,
 		toolchain: { image: string; capabilities: SandboxCapabilities },
-		source?: ReviewSnapshotSource,
+		source?: SandboxCopySource,
 		shared?: SharedCheckout
 	) {
 		this.#shared = shared;
@@ -161,8 +162,8 @@ class DockerBackend implements SandboxBackend {
 						...copiedWorkspace,
 						description:
 							source.kind === 'host'
-								? 'Read-only snapshot of the host checkout.'
-								: 'Read-only snapshot of the proposed command’s Docker workspace.'
+								? 'Private copy of the host checkout.'
+								: 'Private copy of another Docker workspace.'
 					};
 		this.#onClose = onClose;
 		this.#image = toolchain.image;
@@ -726,7 +727,6 @@ export function createDockerProvider(
 		string,
 		{
 			backend: DockerBackend;
-			generationId: string;
 			sessionId: string;
 			socketPath: string;
 		}
@@ -735,7 +735,7 @@ export function createDockerProvider(
 	async function allocate(
 		request: SandboxOpenRequest<DockerConfig>,
 		context: SandboxOpenContext,
-		source?: ReviewSnapshotSource
+		source?: SandboxCopySource
 	) {
 		if (
 			(request.policy.filesystemScope !== 'workspace-only' &&
@@ -743,8 +743,7 @@ export function createDockerProvider(
 			(request.policy.workspaceRelationship !== undefined &&
 				request.policy.workspaceRelationship !== 'copied' &&
 				request.policy.workspaceRelationship !== 'shared') ||
-			(request.policy.workspaceProtection?.length ?? 0) > 0 ||
-			(source !== undefined && request.policy.workspaceAccess !== 'read-only')
+			(request.policy.workspaceProtection?.length ?? 0) > 0
 		) {
 			throw new UnsupportedSandboxPolicyError({
 				operation: 'open',
@@ -767,13 +766,12 @@ export function createDockerProvider(
 		}
 
 		const parent =
-			source?.kind === 'sandbox' ? active.get(source.backendId) : undefined;
+			source?.kind === 'backend' ? active.get(source.backend.id) : undefined;
 
 		if (
-			source?.kind === 'sandbox' &&
+			source?.kind === 'backend' &&
 			(parent === undefined ||
-				source.providerId !== 'example.docker' ||
-				source.generationId !== parent.generationId ||
+				parent.backend !== source.backend ||
 				parent.sessionId !== request.sessionId ||
 				parent.socketPath !== request.configuration.socketPath)
 		) {
@@ -939,14 +937,11 @@ export function createDockerProvider(
 			backend = await openWorkspace(undefined);
 		}
 
-		if (source === undefined) {
-			active.set(backend.id, {
-				backend,
-				generationId: request.generationId,
-				sessionId: request.sessionId,
-				socketPath: request.configuration.socketPath
-			});
-		}
+		active.set(backend.id, {
+			backend,
+			sessionId: request.sessionId,
+			socketPath: request.configuration.socketPath
+		});
 
 		return backend;
 	}
@@ -969,7 +964,6 @@ export function createDockerProvider(
 		},
 		validateConfig: dockerConfig,
 		open: (request, context) => allocate(request, context),
-		openReviewSnapshot: (request, context) =>
-			allocate(request, context, request.source)
+		copy: (request, context) => allocate(request, context, request.source)
 	};
 }

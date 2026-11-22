@@ -1,23 +1,34 @@
 import type {
-	ReviewSnapshot,
-	ReviewSnapshotSource,
 	Sandbox,
 	SandboxAcquireOptions,
 	SandboxBackend,
 	SandboxCapabilities,
 	SandboxCloseReport,
 	SandboxContext,
+	SandboxCopy,
+	SandboxCopyOptions,
+	SandboxCopySource,
 	SandboxDiagnosticRecord,
 	SandboxErrorInfo,
 	SandboxOpenContext,
 	SandboxOpenRequest,
-	SandboxOperationOptions,
 	SandboxPolicy,
 	SandboxWorkspace,
 	ShellDialect,
 	SupportedSandboxPolicies
 } from './contracts.js';
 import type { OutsideProviderServiceV1 } from './outside-execution.js';
+
+/**
+The source of a copy across SDK copies: the host workspace, or a ready backend
+identified by the identities of its sandbox handle.
+*/
+export type CopySourceIdentity =
+	| { readonly kind: 'host' }
+	| ({ readonly kind: 'sandbox' } & Pick<
+			Sandbox,
+			'providerId' | 'generationId' | 'backendId'
+	  >);
 
 /**
 Synchronous Pi event-bus channel for discovering the runtime broker,
@@ -90,9 +101,13 @@ Provider configuration captured in a closure after synchronous validation.
 Opening preserves the provider configuration type.
 */
 export interface ConfiguredProviderV1 {
-	readonly openReviewSnapshot?: (
+	/**
+	Copy the host workspace or one of this provider's backends using the
+	captured configuration.
+	*/
+	readonly copy?: (
 		request: Omit<SandboxOpenRequest, 'configuration'> & {
-			readonly source: ReviewSnapshotSource;
+			readonly source: SandboxCopySource;
 		},
 		context: SandboxOpenContext
 	) => Promise<SandboxBackend>;
@@ -336,11 +351,15 @@ Version 1 broker service discovered through Pi. A runtime has one service;
 session generations allocate a backend for each negotiated policy lazily.
 */
 export interface BrokerServiceV1 {
-	readonly openReviewSnapshot?: (
+	/**
+	Open a private copy of the host workspace or of a ready backend in this
+	generation. A sandbox handle's `copy` method uses the same operation.
+	*/
+	readonly copy?: (
 		context: SandboxContext,
-		source: ReviewSnapshotSource,
-		options?: SandboxOperationOptions
-	) => Promise<ReviewSnapshot>;
+		source: CopySourceIdentity,
+		options?: SandboxCopyOptions
+	) => Promise<SandboxCopy>;
 
 	/**
  Required guard enforcement contract for cooperating SDK copies.

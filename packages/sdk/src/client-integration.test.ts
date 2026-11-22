@@ -147,7 +147,7 @@ it('provides a shared host backend with only a consumer and no configuration', a
 it('negotiates requirements against the host backend without provisioning it', async () => {
 	await fixture(async ({ pi, context, errors }) => {
 		const denied = await negotiateSandbox(pi, context, {
-			policy: { networkAccess: 'denied' }
+			guarantees: ['no-network']
 		});
 		const unrestricted = await negotiateSandbox(pi, context);
 		const status = await discoverBroker(pi.events)?.status(context);
@@ -457,10 +457,11 @@ it.each([true, false])(
 
 it.each([
 	{ workspaceProtection: [{ kind: 'git-metadata' }] },
-	{ filesystemScope: 'system-read-only' }
+	{ guarantees: ['no-host-user-data'] },
+	{ workspaceRelationship: 'copied' }
 ] as const)(
 	'rejects an independent broker that ignores the requested policy: %j',
-	async (policy) => {
+	async (requirement) => {
 		const backend = new MemoryBackend();
 		const sandbox = createSandbox(new TestBackendOwner(backend));
 
@@ -477,7 +478,7 @@ it.each([
 				providers: () => Promise.resolve([])
 			}));
 
-			await expect(getSandbox(pi, context, { policy })).rejects.toMatchObject({
+			await expect(getSandbox(pi, context, requirement)).rejects.toMatchObject({
 				name: 'UnsupportedSandboxPolicyError'
 			});
 			expect(backend.calls).toStrictEqual([]);

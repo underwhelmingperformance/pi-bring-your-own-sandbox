@@ -33,17 +33,15 @@ export default createSandboxGuard({
   capabilities: ['exec'],
   processKinds: ['argv'],
   terminationScope: 'process-group',
-  policy: {
-    workspaceAccess: 'read-only',
-    filesystemScope: 'system-read-only'
-  }
+  guarantees: ['no-workspace-writes', 'no-host-user-data']
 });
 ```
 
 Omit `providerId` to accept any activated provider. Requirements use the SDK's
-capability and policy vocabulary. Multiple guards apply together. Incompatible
-requirements block acquisition. Consumers cannot loosen guard requirements.
-Reload Pi to change providers, configuration or guard requirements.
+capability, guarantee and need vocabulary. Multiple guards apply together.
+Incompatible requirements block acquisition. Consumers cannot loosen guard
+requirements. Reload Pi to change providers, configuration or guard
+requirements.
 
 The SDK checks declarations before allocation and checks ordinary backends again
 after opening. The guard also applies before outside execution is prepared or

@@ -14,7 +14,7 @@ export default function dockerShellProfile(pi: ExtensionAPI): void {
 		capabilities: ['exec'],
 		shells: ['bash'],
 		processKinds: ['shell'],
-		policy: { networkAccess: 'denied', filesystemScope: 'workspace-only' }
+		guarantees: ['no-network', 'no-host-user-data', 'no-host-system-files']
 	});
 	registerShellOnlyTools(pi, import.meta.filename);
 }

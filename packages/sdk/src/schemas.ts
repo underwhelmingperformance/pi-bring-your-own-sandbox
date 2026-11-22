@@ -99,6 +99,19 @@ const filesystemScopeSchema = Type.Enum([
 ]);
 const networkAccessSchema = Type.Enum(['denied', 'provider-default']);
 
+export const guaranteeSchema = Type.Enum([
+	'no-workspace-writes',
+	'no-network',
+	'no-host-user-data',
+	'no-host-system-files'
+]);
+export const accessSchema = Type.Enum([
+	'workspace-writes',
+	'network',
+	'host-user-data',
+	'host-system-files'
+]);
+
 export const protectedPathSchema = Type.Refine(
 	targetPathSchema,
 	(value) =>

@@ -27,12 +27,20 @@ interface BootstrapModule {
 }
 
 it.each([
-	{ filesystemScope: 'provider-default', protection: false },
-	{ filesystemScope: 'system-read-only', protection: false },
-	{ filesystemScope: 'system-read-only', protection: true }
+	{ filesystemScope: 'provider-default', guarantees: [], protection: false },
+	{
+		filesystemScope: 'system-read-only',
+		guarantees: ['no-host-user-data'],
+		protection: false
+	},
+	{
+		filesystemScope: 'system-read-only',
+		guarantees: ['no-host-user-data'],
+		protection: true
+	}
 ] as const)(
 	'shares execution contracts across independent SDK instances under $filesystemScope with protection $protection',
-	async ({ filesystemScope, protection }) => {
+	async ({ filesystemScope, guarantees, protection }) => {
 		const config = new FixtureConfig();
 
 		await withPiRuntime(
@@ -109,7 +117,7 @@ it.each([
 							description: 'Check independently installed execution contracts.',
 							async handler(_arguments, context) {
 								const sandbox = await second.getSandbox(pi, context, {
-									policy: { filesystemScope },
+									guarantees,
 									processKinds: ['shell'],
 									shells: ['sh'],
 									terminationScope: 'process-group'

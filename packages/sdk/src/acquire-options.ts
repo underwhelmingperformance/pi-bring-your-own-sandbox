@@ -1,4 +1,3 @@
-import { isPolicySatisfied } from './backend-validation.js';
 import type {
 	Sandbox,
 	SandboxAcquireOptions,
@@ -11,10 +10,14 @@ import {
 	UnsupportedSandboxPolicyError
 } from './errors.js';
 import { operationOptions } from './file-input.js';
+import { hasRequiredGuarantees } from './guarantees.js';
 import { acquireOptionsSchema } from './request-schemas.js';
 import { checker } from './schemas.js';
 import { isTerminationScopeSatisfied } from './termination-scope.js';
-import { snapshotWorkspaceProtection } from './workspace-protection.js';
+import {
+	isWorkspaceProtectionSatisfied,
+	snapshotWorkspaceProtection
+} from './workspace-protection.js';
 
 const isAcquireOptions = checker(acquireOptionsSchema);
 
@@ -45,26 +48,19 @@ export function acquireOptions(input: unknown): SandboxAcquireOptions {
 		...(value.capabilities !== undefined && {
 			capabilities: Object.freeze([...value.capabilities])
 		}),
-		...(value.policy !== undefined && {
-			policy: Object.freeze({
-				...(value.policy.workspaceRelationship !== undefined && {
-					workspaceRelationship: value.policy.workspaceRelationship
-				}),
-				...(value.policy.workspaceProtection !== undefined && {
-					workspaceProtection: snapshotWorkspaceProtection(
-						value.policy.workspaceProtection
-					)
-				}),
-				...(value.policy.workspaceAccess !== undefined && {
-					workspaceAccess: value.policy.workspaceAccess
-				}),
-				...(value.policy.filesystemScope !== undefined && {
-					filesystemScope: value.policy.filesystemScope
-				}),
-				...(value.policy.networkAccess !== undefined && {
-					networkAccess: value.policy.networkAccess
-				})
-			})
+		...(value.guarantees !== undefined && {
+			guarantees: Object.freeze([...value.guarantees])
+		}),
+		...(value.needs !== undefined && {
+			needs: Object.freeze([...value.needs])
+		}),
+		...(value.workspaceRelationship !== undefined && {
+			workspaceRelationship: value.workspaceRelationship
+		}),
+		...(value.workspaceProtection !== undefined && {
+			workspaceProtection: snapshotWorkspaceProtection(
+				value.workspaceProtection
+			)
 		})
 	});
 }
@@ -82,14 +78,14 @@ export function checkRequirements(
 	checkCapabilityRequirements(sandbox.capabilities, options, identity);
 
 	if (
-		options.policy !== undefined &&
-		!isPolicySatisfied(
-			{
-				...sandbox.policy,
-				workspaceRelationship: sandbox.workspace.relationship
-			},
-			{ ...sandbox.policy, ...options.policy }
-		)
+		(options.workspaceRelationship !== undefined &&
+			options.workspaceRelationship !== sandbox.workspace.relationship) ||
+		!hasRequiredGuarantees(
+			sandbox.policy,
+			options.guarantees ?? [],
+			options.needs ?? []
+		) ||
+		!isWorkspaceProtectionSatisfied(sandbox.policy, options)
 	) {
 		throw new UnsupportedSandboxPolicyError(identity);
 	}

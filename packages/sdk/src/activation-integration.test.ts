@@ -652,9 +652,7 @@ it('rejects an incompatible session-wide workspace requirement before copying', 
 			},
 			openReviewSnapshot: copy
 		});
-		registerSandboxRequirement(pi, {
-			policy: { workspaceAccess: 'read-write' }
-		});
+		registerSandboxRequirement(pi, { needs: ['workspace-writes'] });
 		await expect(
 			openReviewSnapshot(pi, context, { kind: 'host' })
 		).rejects.toMatchObject({

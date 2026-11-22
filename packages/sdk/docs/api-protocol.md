@@ -87,17 +87,19 @@ configuration.
 
 Acquisition negotiates a complete policy from the request and the base policy,
 then uses the generation's backend for that policy, opening it if necessary.
-Omitted fields and `provider-default` requests keep the base value. `read-only`
-tightens `read-write`; filesystem scopes progress from `provider-default`
-through `system-read-only` to `workspace-only`. `networkAccess: 'denied'`
-tightens network delegation. Requesting `read-write` when the base policy is
-`read-only` loosens it and fails with `UnsupportedSandboxPolicyError`. A
-negotiated value that the provider does not declare fails the same way, and a
-requested operation, process kind or shell that the declaration lacks fails with
-`UnsupportedSandboxCapabilityError`; both happen before any backend is opened.
-Exit status and termination scope are checked after opening, because a backend
-may strengthen its declaration. Every requested capability must then be present
-in the opened backend. Negotiation never selects another provider.
+`no-workspace-writes` selects `read-only`, `no-network` selects `denied`, and
+`no-host-user-data` and `no-host-system-files` select at least
+`system-read-only` and `workspace-only` respectively. Fields without a required
+guarantee keep the base value. A need for access that the base policy does not
+grant, such as `workspace-writes` under a `read-only` base policy, fails with
+`UnsupportedSandboxPolicyError`. A need that a required guarantee removes fails
+the same way. A negotiated value that the provider does not declare fails the
+same way, and a requested operation, process kind or shell that the declaration
+lacks fails with `UnsupportedSandboxCapabilityError`; both happen before any
+backend is opened. Exit status and termination scope are checked after opening,
+because a backend may strengthen its declaration. Every requested capability
+must then be present in the opened backend. Negotiation never selects another
+provider.
 
 An explicit `workspaceRelationship` must match the base policy when both specify
 a value. The provider must declare support and return that relationship in its

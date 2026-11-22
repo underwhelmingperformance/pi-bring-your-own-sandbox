@@ -12,9 +12,11 @@ import type { SandboxHost, SandboxRequirements } from './contracts.js';
 import {
 	InvalidSandboxRequestError,
 	SandboxProviderMismatchError,
-	SandboxProviderRequiredError
+	SandboxProviderRequiredError,
+	UnsupportedSandboxPolicyError
 } from './errors.js';
 import { discoverServices, publishService } from './extension-services.js';
+import { hasRequiredGuarantees } from './guarantees.js';
 import { resolvePolicy } from './negotiation.js';
 import type { ProviderServiceV1 } from './protocol.js';
 import { sandboxRequirementsSchema } from './request-schemas.js';
@@ -121,11 +123,18 @@ export function applySandboxRequirements(
 
 	let policy = config.selection.policy;
 
+	const identity = { operation: 'acquire' as const, providerId: provider.id };
+
 	for (const required of requirements) {
-		policy = resolvePolicy(policy, provider, required.policy, {
-			operation: 'acquire',
-			providerId: provider.id
-		});
+		policy = resolvePolicy(policy, provider, required, identity);
+	}
+
+	if (
+		requirements.some(
+			(required) => !hasRequiredGuarantees(policy, [], required.needs ?? [])
+		)
+	) {
+		throw new UnsupportedSandboxPolicyError(identity);
 	}
 
 	return Object.freeze({

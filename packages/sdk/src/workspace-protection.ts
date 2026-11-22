@@ -87,8 +87,8 @@ export function canProtectWorkspace(
 }
 
 export function isWorkspaceProtectionSatisfied(
-	effective: SandboxPolicy,
-	required: Partial<SandboxPolicy>
+	effective: Pick<SandboxPolicy, 'workspaceProtection'>,
+	required: Pick<SandboxPolicy, 'workspaceProtection'>
 ): boolean {
 	return (required.workspaceProtection ?? []).every((resource) =>
 		(effective.workspaceProtection ?? []).some((candidate) =>

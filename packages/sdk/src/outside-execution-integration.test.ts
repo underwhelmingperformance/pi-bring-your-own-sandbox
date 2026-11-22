@@ -15,6 +15,7 @@ import { closeSandboxSession, getSandbox } from './client.js';
 import type {
 	SandboxBackend,
 	SandboxConfigContext,
+	SandboxGuarantee,
 	SandboxOpenRequest,
 	SandboxProvider
 } from './contracts.js';
@@ -432,12 +433,10 @@ it('snapshots acquisition requirements before awaiting configuration', async () 
 	await scenario({
 		config: { approval: { policy: 'always' } },
 		async run(pi, context) {
-			const policy: { networkAccess: 'denied' | 'provider-default' } = {
-				networkAccess: 'denied'
-			};
-			const acquiring = getOutsideSandboxExecutor(pi, context, { policy });
+			const guarantees: SandboxGuarantee[] = ['no-network'];
+			const acquiring = getOutsideSandboxExecutor(pi, context, { guarantees });
 
-			policy.networkAccess = 'provider-default';
+			guarantees.pop();
 			await expect(acquiring).rejects.toMatchObject({
 				name: 'UnsupportedSandboxPolicyError'
 			});
@@ -526,7 +525,7 @@ it.each(['normal', 'provider'] as const)(
 			],
 			async run(pi, context) {
 				const executor = await getOutsideSandboxExecutor(pi, context, {
-					policy: { workspaceRelationship: backend.workspace.relationship }
+					workspaceRelationship: backend.workspace.relationship
 				});
 
 				await expect(

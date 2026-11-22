@@ -1086,12 +1086,15 @@ export interface SandboxProvider<Config> {
 	readonly validateConfig: (input: unknown) => Config;
 
 	/**
-	Copy the validated destination into a fresh read-only backend. Providers
-	must reject a changing source if they cannot obtain a consistent copy.
+	Copy the host workspace, or a backend that this provider opened, into a
+	fresh backend that reports a `copied` workspace. Required exactly when
+	`capabilities.operations` includes `copy`. The request's policy is the
+	negotiated policy for the copy, which can be stricter or looser than the
+	source backend's policy. Report recovery metadata before allocation.
 	*/
-	readonly openReviewSnapshot?: (
+	readonly copy?: (
 		request: SandboxOpenRequest<Config> & {
-			readonly source: ReviewSnapshotSource;
+			readonly source: SandboxCopySource;
 		},
 		context: SandboxOpenContext
 	) => Promise<SandboxBackend>;
@@ -1107,20 +1110,29 @@ export interface SandboxProvider<Config> {
 }
 
 /**
-The resolved destination of the proposed command. Use the identities from the
-live sandbox handle for commands that will execute in that sandbox.
+What a provider copies: the host workspace, or one of its own open backends.
 */
-export type ReviewSnapshotSource =
+export type SandboxCopySource =
 	| { readonly kind: 'host' }
-	| ({ readonly kind: 'sandbox' } & Pick<
-			Sandbox,
-			'providerId' | 'generationId' | 'backendId'
-	  >);
+	| { readonly kind: 'backend'; readonly backend: SandboxBackend };
 
 /**
-A fresh read-only sandbox owned by one review. Close it when the review ends.
+Requirements for a copy. The broker opens the strictest policy that the
+provider supports, that provides every required guarantee and that keeps every
+need. Needs cannot exceed the access that the session's configured policy
+grants. Session-wide requirements also apply.
 */
-export interface ReviewSnapshot {
+export type SandboxCopyOptions = Omit<
+	SandboxAcquireOptions,
+	'workspaceRelationship'
+>;
+
+/**
+A private copy owned by its caller. The copy is not shared with other
+consumers. Close it when it is no longer needed; closing the session also
+disposes it.
+*/
+export interface SandboxCopy {
 	readonly sandbox: Sandbox;
 	readonly close: () => Promise<SandboxCloseReport>;
 }
@@ -1368,6 +1380,13 @@ export interface Sandbox {
 	invocation.
 	*/
 	readonly search: SandboxSearch;
+
+	/**
+	Copy this sandbox's workspace into a private sandbox. Rejects with
+	`UnsupportedSandboxCapabilityError` unless `capabilities.operations`
+	includes `copy`.
+	*/
+	readonly copy: (options?: SandboxCopyOptions) => Promise<SandboxCopy>;
 }
 
 /**

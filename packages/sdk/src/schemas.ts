@@ -56,7 +56,8 @@ export const capabilitySchema = Type.Enum([
 	'files.list',
 	'search.find',
 	'search.grep',
-	'workspace.protection'
+	'workspace.protection',
+	'copy'
 ]);
 export const processKindSchema = Type.Enum(['argv', 'shell']);
 export const exitStatusSchema = Type.Enum(['guaranteed', 'optional']);

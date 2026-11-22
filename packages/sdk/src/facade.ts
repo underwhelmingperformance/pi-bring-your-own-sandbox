@@ -13,6 +13,8 @@ import type {
 	GrepResult,
 	RecoveryDescriptor,
 	Sandbox,
+	SandboxCopy,
+	SandboxCopyOptions,
 	SandboxFiles,
 	SandboxOperation,
 	SandboxOperationOptions,
@@ -58,6 +60,7 @@ export interface SandboxOwner extends BackendOwner {
 	};
 	readonly generationId: string;
 	readonly mutations: MutationQueue;
+	readonly copy: (options?: SandboxCopyOptions) => Promise<SandboxCopy>;
 }
 
 class Files implements SandboxFiles {
@@ -440,6 +443,18 @@ export function createSandbox(owner: SandboxOwner): Sandbox {
 		policyDescription: backend.policyDescription,
 		exec: (request, options) => executeProcess(owner, request, options),
 		files: Object.freeze(new Files(owner)),
-		search: Object.freeze(new Search(owner))
+		search: Object.freeze(new Search(owner)),
+		copy: async (options) => {
+			owner.assertLive('acquire');
+
+			if (!backend.capabilities.operations.includes('copy')) {
+				throw new UnsupportedSandboxCapabilityError({
+					...owner.identity,
+					operation: 'acquire'
+				});
+			}
+
+			return owner.copy(options);
+		}
 	} satisfies Sandbox);
 }

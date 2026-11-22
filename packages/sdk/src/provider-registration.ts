@@ -83,7 +83,7 @@ export function registerSandboxProvider<Config, Input = Config>(
 	const { id } = provider;
 	const validate = provider.validateConfig.bind(provider);
 	const open = provider.open.bind(provider);
-	const openSnapshot = provider.openReviewSnapshot?.bind(provider);
+	const copy = provider.copy?.bind(provider);
 	const validateConfig = (input: unknown): Config => {
 		try {
 			const config = validate(input);
@@ -137,9 +137,9 @@ export function registerSandboxProvider<Config, Input = Config>(
 			const config = validateConfig(input);
 
 			return Object.freeze<ConfiguredProviderV1>({
-				...(openSnapshot !== undefined && {
-					openReviewSnapshot: (request, context) =>
-						openSnapshot({ ...request, configuration: config }, context)
+				...(copy !== undefined && {
+					copy: (request, context) =>
+						copy({ ...request, configuration: config }, context)
 				}),
 				open: (request, context) =>
 					open({ ...request, configuration: config }, context)

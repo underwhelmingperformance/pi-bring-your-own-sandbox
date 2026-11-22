@@ -3,20 +3,20 @@ import type {
 	ExtensionContext
 } from '@earendil-works/pi-coding-agent';
 
-import { getSandbox } from './client.js';
-import type { ReviewSnapshot, Sandbox } from './contracts.js';
+import { checkRequirements } from './acquire-options.js';
+import { copyHostWorkspace, getSandbox } from './client.js';
+import type { Sandbox, SandboxCopy, SandboxCopyOptions } from './contracts.js';
 import {
 	StaleSandboxHandleError,
 	UnsupportedSandboxCapabilityError
 } from './errors.js';
 import { boundedApproval } from './execution-approval.js';
 import { OperationScope } from './lifecycle.js';
-import { rethrowSnapshotError } from './review-requirements.js';
-import { openReviewSnapshot } from './review-snapshot.js';
 import { runtimeSettings } from './runtime-settings.js';
+import { copyOptions, rethrowCopyError } from './sandbox-copy.js';
 import { isRecord } from './validation.js';
 
-const channel = 'pi-byos:review:tool-call:v1';
+const channel = 'pi-byos:review:tool-call:v2';
 
 type BoundDestination =
 	{ kind: 'host' } | { kind: 'sandbox'; sandbox: Sandbox };
@@ -39,13 +39,20 @@ function isAvailabilityQuery(
 	);
 }
 
+/**
+The pending tool call's destination, narrowed to one operation. A reviewer can
+copy the files that the command will see, but cannot run anything in the
+destination itself.
+*/
+interface ReviewSource {
+	readonly copy: (options?: SandboxCopyOptions) => Promise<SandboxCopy>;
+}
+
 interface ReviewQuery {
 	readonly toolName: string;
 	readonly toolCallId: string;
 	readonly sessionId: string;
-	readonly reply: (
-		open: (signal: AbortSignal) => Promise<ReviewSnapshot>
-	) => void;
+	readonly reply: (source: ReviewSource) => void;
 }
 
 function isReviewQuery(message: unknown): message is ReviewQuery {
@@ -105,13 +112,16 @@ export class ShellReviewRoutes {
 				return;
 			}
 
-			message.reply((signal) =>
-				this.#open(
-					pi,
-					route,
-					signal,
-					() => this.#routes.get(id) === route && isSelected()
-				)
+			message.reply(
+				Object.freeze({
+					copy: (options?: SandboxCopyOptions) =>
+						this.#copy(
+							pi,
+							route,
+							options,
+							() => this.#routes.get(id) === route && isSelected()
+						)
+				})
 			);
 		});
 
@@ -128,14 +138,16 @@ export class ShellReviewRoutes {
 		});
 	}
 
-	async #open(
+	async #copy(
 		pi: ExtensionAPI,
 		route: Route,
-		signal: AbortSignal,
+		input: SandboxCopyOptions | undefined,
 		isCurrent: () => boolean
-	): Promise<ReviewSnapshot> {
+	): Promise<SandboxCopy> {
+		const options = copyOptions(input);
+		const signal = options.signal;
 		const check = () => {
-			signal.throwIfAborted();
+			signal?.throwIfAborted();
 
 			if (!isCurrent()) {
 				throw new StaleSandboxHandleError({ operation: 'acquire' });
@@ -144,57 +156,37 @@ export class ShellReviewRoutes {
 
 		check();
 
+		const settings = runtimeSettings(pi);
+		const scope = new OperationScope(
+			{ operation: 'acquire' },
+			settings.lifetime,
+			options,
+			60_000
+		);
 		let destination: BoundDestination;
+		let copying: Promise<SandboxCopy>;
 
-		if (route.isOutside) {
-			const settings = runtimeSettings(pi);
-			const scope = new OperationScope(
-				{ operation: 'acquire' },
-				settings.lifetime,
-				{ signal },
-				60_000
+		try {
+			destination = await boundedApproval(scope, () =>
+				this.#destination(pi, route, scope)
 			);
-
-			try {
-				const config = await boundedApproval(scope, () =>
-					settings.read(route.context)
-				);
-
-				if (
-					config.outsideSandbox?.destination === 'provider' ||
-					settings.normalExecutor !== undefined
-				) {
-					throw new UnsupportedSandboxCapabilityError({ operation: 'acquire' });
-				}
-			} finally {
-				scope.dispose();
-			}
-
-			destination = { kind: 'host' };
-		} else {
-			const sandbox = await getSandbox(pi, route.context, { signal });
-
-			destination = { kind: 'sandbox', sandbox };
+			check();
+			copying = this.#copyDestination(pi, route, destination, {
+				...options,
+				timeoutMs: scope.remainingMs
+			});
+		} finally {
+			scope.dispose();
 		}
 
-		check();
-
-		const source =
-			destination.kind === 'host'
-				? destination
-				: {
-						kind: 'sandbox' as const,
-						generationId: destination.sandbox.generationId,
-						backendId: destination.sandbox.backendId,
-						providerId: destination.sandbox.providerId
-					};
-
-		const snapshot = await openReviewSnapshot(pi, route.context, source, {
-			signal
-		});
+		const copy = await copying;
 
 		try {
 			check();
+			checkRequirements(copy.sandbox, {
+				...options,
+				workspaceRelationship: 'copied'
+			});
 
 			const previous = route.destination;
 
@@ -210,14 +202,52 @@ export class ShellReviewRoutes {
 
 			route.destination = destination;
 
-			return snapshot;
+			return copy;
 		} catch (error) {
-			rethrowSnapshotError(error, await snapshot.close(), {
+			rethrowCopyError(error, await copy.close(), {
 				operation: 'dispose',
-				providerId: snapshot.sandbox.providerId,
-				backendId: snapshot.sandbox.backendId
+				providerId: copy.sandbox.providerId,
+				backendId: copy.sandbox.backendId
 			});
 		}
+	}
+
+	async #destination(
+		pi: ExtensionAPI,
+		route: Route,
+		scope: OperationScope
+	): Promise<BoundDestination> {
+		if (!route.isOutside) {
+			const sandbox = await getSandbox(pi, route.context, {
+				signal: scope.context.signal,
+				timeoutMs: scope.remainingMs
+			});
+
+			return { kind: 'sandbox', sandbox };
+		}
+
+		const settings = runtimeSettings(pi);
+		const config = await settings.read(route.context);
+
+		if (
+			config.outsideSandbox?.destination === 'provider' ||
+			settings.normalExecutor !== undefined
+		) {
+			throw new UnsupportedSandboxCapabilityError({ operation: 'acquire' });
+		}
+
+		return { kind: 'host' };
+	}
+
+	#copyDestination(
+		pi: ExtensionAPI,
+		route: Route,
+		destination: BoundDestination,
+		options: SandboxCopyOptions
+	): Promise<SandboxCopy> {
+		return destination.kind === 'sandbox'
+			? destination.sandbox.copy(options)
+			: copyHostWorkspace(pi, route.context, options);
 	}
 
 	executing(

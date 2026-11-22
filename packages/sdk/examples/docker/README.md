@@ -10,7 +10,7 @@ not contact the daemon. Docker is required when a consumer acquires an
 explicitly selected `example.docker` backend.
 
 See the [workspace editing goals][editing] for when Docker shares the checkout,
-uses a private copy or takes a review snapshot.
+uses a private copy or copies a workspace for a review.
 
 [editing]: workspace-editing.md
 
@@ -162,10 +162,11 @@ a second time before the backend opens. The bootstrap container has one CPU, 256
 MiB of memory and a limit of 32 processes. The writable workspace volume has no
 storage quota after import.
 
-Review snapshots use the same importer with a fresh volume. A review of a
-sandbox command copies the live backend volume, including edits made by shell
-and file operations. A host-command review copies the host checkout. Each review
-mounts its copy read-only and can release it independently.
+Copies use the same importer with a fresh volume. A copy of a sandbox copies the
+live backend volume, including edits made by shell and file operations. A copy
+of the host checkout imports the checkout. A copy is mounted read-only unless it
+needs workspace writes. Writes to a copy stay in its volume. Each copy can be
+released independently.
 
 Each foreground command creates a separate container. Containers have a
 read-only runtime image, a private 16 MiB `/tmp`, a limit of 64 processes, a 128

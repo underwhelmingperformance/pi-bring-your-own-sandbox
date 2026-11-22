@@ -596,7 +596,8 @@ it('uses literal argv, isolated mounts and explicit target environment overrides
 				'files.write',
 				'files.list',
 				'search.find',
-				'search.grep'
+				'search.grep',
+				'copy'
 			],
 			shells: ['sh', 'bash']
 		},
@@ -1010,8 +1011,8 @@ it.each([-1_000_000, 1_000_000])(
 	}
 );
 
-it.each(['session', 'socket', 'provider', 'generation', 'backend'])(
-	'rejects a review snapshot with a mismatched %s before allocation',
+it.each(['session', 'socket', 'backend'])(
+	'rejects a copy with a mismatched %s before allocation',
 	async (field) => {
 		const docker = new FakeDocker();
 		const provider = createDockerProvider(() => docker);
@@ -1027,14 +1028,14 @@ it.each(['session', 'socket', 'provider', 'generation', 'backend'])(
 		const parent = await provider.open(request, opening);
 
 		try {
-			if (!provider.openReviewSnapshot) {
-				throw new Error('Expected Docker snapshot support.');
+			if (!provider.copy) {
+				throw new Error('Expected Docker copy support.');
 			}
 
 			const before = docker.commands.length;
 
 			await expect(
-				provider.openReviewSnapshot(
+				provider.copy(
 					{
 						...request,
 						sessionId: field === 'session' ? 'different' : request.sessionId,
@@ -1047,11 +1048,9 @@ it.each(['session', 'socket', 'provider', 'generation', 'backend'])(
 						},
 						policy: { ...request.policy, workspaceAccess: 'read-only' },
 						source: {
-							kind: 'sandbox',
-							backendId: field === 'backend' ? 'other' : parent.id,
-							providerId: field === 'provider' ? 'other' : provider.id,
-							generationId:
-								field === 'generation' ? 'other' : request.generationId
+							kind: 'backend',
+							backend:
+								field === 'backend' ? { ...parent, id: parent.id } : parent
 						}
 					},
 					opening
@@ -1066,6 +1065,46 @@ it.each(['session', 'socket', 'provider', 'generation', 'backend'])(
 		}
 	}
 );
+
+it('accepts a copy as the source of another copy', async () => {
+	const docker = new FakeDocker();
+	const provider = createDockerProvider(() => docker);
+
+	if (!provider.copy) {
+		throw new Error('Expected Docker copy support.');
+	}
+
+	const opening = {
+		...context(),
+		reportRecovery() {
+			return;
+		},
+		confirmCleanup() {
+			return;
+		}
+	};
+	const copyRequest = {
+		...request,
+		policy: { ...request.policy, workspaceAccess: 'read-only' as const }
+	};
+	const parent = await provider.open(request, opening);
+	const first = await provider.copy(
+		{ ...copyRequest, source: { kind: 'backend', backend: parent } },
+		opening
+	);
+
+	try {
+		const second = await provider.copy(
+			{ ...copyRequest, source: { kind: 'backend', backend: first } },
+			opening
+		);
+
+		await second.dispose(context());
+	} finally {
+		await first.dispose(context());
+		await parent.dispose(context());
+	}
+});
 
 it('advertises PowerShell only for a trusted image selected by immutable ID', () => {
 	const image = 'sha256:' + 'a'.repeat(64);

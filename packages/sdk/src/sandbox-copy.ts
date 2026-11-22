@@ -1,36 +1,14 @@
 import { Type } from 'typebox';
 
+import { acquireOptions } from './acquire-options.js';
 import type {
-	ReviewSnapshotSource,
-	SandboxAcquireOptions,
 	SandboxCloseReport,
-	SandboxErrorContext,
-	SandboxPolicy
+	SandboxCopyOptions,
+	SandboxErrorContext
 } from './contracts.js';
 import { InvalidSandboxRequestError, SandboxCleanupError } from './errors.js';
+import type { CopySourceIdentity } from './protocol.js';
 import { checker, nonEmptyStringSchema } from './schemas.js';
-
-export const reviewPolicy = {
-	workspaceAccess: 'read-only',
-	workspaceRelationship: 'copied',
-	filesystemScope: 'workspace-only',
-	networkAccess: 'denied'
-} as const satisfies SandboxPolicy;
-
-export const reviewRequirements = {
-	guarantees: [
-		'no-workspace-writes',
-		'no-network',
-		'no-host-user-data',
-		'no-host-system-files'
-	],
-	workspaceRelationship: 'copied',
-	exitStatus: 'guaranteed',
-	terminationScope: 'process-group',
-	capabilities: ['exec', 'files.read'],
-	shells: ['sh'],
-	processKinds: ['shell']
-} as const satisfies SandboxAcquireOptions;
 
 const hostSource = Type.Object(
 	{ kind: Type.Literal('host') },
@@ -47,7 +25,7 @@ const sandboxSource = Type.Object(
 );
 const isSource = checker(Type.Union([hostSource, sandboxSource]));
 
-export function snapshotSource(input: unknown): ReviewSnapshotSource {
+export function copySource(input: unknown): CopySourceIdentity {
 	if (!isSource(input)) {
 		throw new InvalidSandboxRequestError({ operation: 'acquire' });
 	}
@@ -55,7 +33,17 @@ export function snapshotSource(input: unknown): ReviewSnapshotSource {
 	return Object.freeze({ ...input });
 }
 
-export function rethrowSnapshotError(
+export function copyOptions(input: unknown): SandboxCopyOptions {
+	const options = acquireOptions(input);
+
+	if (options.workspaceRelationship !== undefined) {
+		throw new InvalidSandboxRequestError({ operation: 'acquire' });
+	}
+
+	return options;
+}
+
+export function rethrowCopyError(
 	error: unknown,
 	report: SandboxCloseReport,
 	identity: SandboxErrorContext

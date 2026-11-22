@@ -1,9 +1,13 @@
 import type {
 	SandboxBackend,
+	SandboxCopy,
 	SandboxErrorInfo,
 	SandboxOperation
 } from '../contracts.js';
-import { StaleSandboxHandleError } from '../errors.js';
+import {
+	StaleSandboxHandleError,
+	UnsupportedSandboxCapabilityError
+} from '../errors.js';
 import type { SandboxOwner } from '../facade.js';
 import { OperationRegistry } from '../lifecycle.js';
 import { MutationQueue } from '../mutation-queue.js';
@@ -35,6 +39,12 @@ export class TestBackendOwner implements SandboxOwner {
 		if (this.failures[0] !== undefined) {
 			throw this.failures[0];
 		}
+	}
+
+	copy(): Promise<SandboxCopy> {
+		return Promise.reject(
+			new UnsupportedSandboxCapabilityError({ operation: 'acquire' })
+		);
 	}
 
 	markUnhealthy(failure: SandboxErrorInfo): void {

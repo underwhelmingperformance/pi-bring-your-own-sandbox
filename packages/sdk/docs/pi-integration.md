@@ -105,13 +105,16 @@ independent allocation-disposal contracts.
 ## Permission review of a shell call
 
 The shell extension answers synchronous queries on Pi's
-`pi-byos:review:tool-call:v1` event channel. A reviewer can send
+`pi-byos:review:tool-call:v2` event channel. A reviewer can send
 `{ kind: 'available', reply }` to discover whether Pi has a routed shell. For a
 local permission request, send `{ sessionId, toolName, toolCallId, reply }`
 during the pending tool call. That request requires exactly one synchronous
-reply. The reply supplies a function that takes the review's abort signal and
-opens a fresh [review snapshot][review-protocol]. Close the snapshot when the
-review ends.
+reply. The reply supplies the pending call's destination as an object with one
+method, `copy(options?)`, which opens a [private copy][copies] of the files that
+the command will see. The reviewer cannot run commands in the destination
+itself. Pass the guarantees and needs that the review depends on, for example
+`{ guarantees: ['no-network', 'no-host-user-data'], signal }`. Close the copy
+when the review ends.
 
 When an extension wraps the routing factory, pass its own Pi entry path as the
 second argument to the factory. Pi reports this path on the selected tool.
@@ -119,10 +122,10 @@ second argument to the factory. Pi reports this path on the selected tool.
 Load the routing extension before the permission gate so the router can record
 the pending call. An unknown call, an overridden tool or a forwarded request
 requires transcript-only review. The default shell destination uses its active
-backend. Once the reviewer opens a snapshot, BYOS rejects execution if a later
-tool hook changes the reviewed command, its Bash prefix or its destination. The
+backend. Once the reviewer opens a copy, BYOS rejects execution if a later tool
+hook changes the reviewed command, its Bash prefix or its destination. The
 built-in normal outside destination uses the host checkout. Custom outside
-executors require their own destination resolver. Opening a snapshot does not
+executors require their own destination resolver. Opening a copy does not
 approve or execute the proposed command.
 
-[review-protocol]: api-protocol.md
+[copies]: api-protocol.md#copies

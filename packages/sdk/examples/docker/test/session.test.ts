@@ -23,9 +23,9 @@ import type {
 	InlineExtension
 } from '@earendil-works/pi-coding-agent';
 import type {
-	ReviewSnapshot,
 	Sandbox,
 	SandboxBackend,
+	SandboxCopy,
 	SandboxHost,
 	SandboxPolicy
 } from 'pi-bring-your-own-sandbox/api';
@@ -33,6 +33,7 @@ import * as sandboxClient from 'pi-bring-your-own-sandbox/api';
 import { closeSandboxSession, getSandbox } from 'pi-bring-your-own-sandbox/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { copyHostWorkspace } from '../../../src/client.js';
 import { FixtureConfig } from '../../../src/fixtures/config.js';
 import { withPiRuntime } from '../../../src/fixtures/pi-runtime.js';
 import { ScriptedModel } from '../../../src/fixtures/scripted-model.js';
@@ -61,8 +62,8 @@ interface DockerSession {
 	readonly fixture: DockerFixture;
 }
 
-const readSnapshot = async (snapshot: ReviewSnapshot) =>
-	new TextDecoder().decode(await snapshot.sandbox.files.readFile('source.txt'));
+const readCopy = async (copy: SandboxCopy) =>
+	new TextDecoder().decode(await copy.sandbox.files.readFile('source.txt'));
 
 async function withDockerSession(
 	run: (session: DockerSession) => Promise<void>,
@@ -330,12 +331,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 
 					expect(metadata.uid).toBe(process.getuid?.());
 
-					const review = await sandboxClient.openReviewSnapshot(pi, context, {
-						kind: 'sandbox',
-						providerId: sandbox.providerId,
-						generationId: sandbox.generationId,
-						backendId: sandbox.backendId
-					});
+					const review = await sandbox.copy();
 
 					try {
 						const replacement = path.join(fixture.workspace, 'editor.tmp');
@@ -397,42 +393,31 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 			);
 		});
 
-		it('takes fresh independent review snapshots from the proposed command destination', async () => {
+		it('takes fresh independent copies of a sandbox and the host checkout', async () => {
 			await withDockerSession(async ({ pi, context, sandbox }) => {
-				const source = {
-					kind: 'sandbox' as const,
-					providerId: sandbox.providerId,
-					generationId: sandbox.generationId,
-					backendId: sandbox.backendId
-				};
-
 				await sandbox.files.writeFile('source.txt', Buffer.from('first'));
 
-				const first = await sandboxClient.openReviewSnapshot(
-					pi,
-					context,
-					source
-				);
+				const first = await sandbox.copy();
 
 				await sandbox.files.writeFile('source.txt', Buffer.from('second'));
 
-				const second = await sandboxClient.openReviewSnapshot(
-					pi,
-					context,
-					source
-				);
-				const host = await sandboxClient.openReviewSnapshot(pi, context, {
-					kind: 'host'
-				});
+				const second = await sandbox.copy();
+				const host = await copyHostWorkspace(pi, context);
 
 				try {
 					expect(
 						await Promise.all([
-							readSnapshot(first),
-							readSnapshot(second),
-							readSnapshot(host)
+							readCopy(first),
+							readCopy(second),
+							readCopy(host)
 						])
 					).toStrictEqual(['first', 'second', 'original']);
+					expect(host.sandbox.policy).toStrictEqual({
+						workspaceRelationship: 'copied',
+						workspaceAccess: 'read-only',
+						filesystemScope: 'workspace-only',
+						networkAccess: 'denied'
+					});
 					await first.close();
 
 					const shell = await second.sandbox.exec({
@@ -451,8 +436,43 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 			});
 		}, 30_000);
 
+		it('writes in a copy that needs workspace writes without changing its source', async () => {
+			await withDockerSession(async ({ sandbox }) => {
+				const copy = await sandbox.copy({ needs: ['workspace-writes'] });
+
+				try {
+					await copy.sandbox.files.writeFile('source.txt', Buffer.from('copy'));
+
+					const shell = await copy.sandbox.exec({
+						kind: 'shell',
+						dialect: 'sh',
+						command: 'cat source.txt'
+					});
+
+					expect({
+						policy: copy.sandbox.policy,
+						copy: new TextDecoder().decode(shell.stdout),
+						source: new TextDecoder().decode(
+							await sandbox.files.readFile('source.txt')
+						)
+					}).toStrictEqual({
+						policy: {
+							workspaceRelationship: 'copied',
+							workspaceAccess: 'read-write',
+							filesystemScope: 'workspace-only',
+							networkAccess: 'denied'
+						},
+						copy: 'copy',
+						source: 'original'
+					});
+				} finally {
+					await copy.close();
+				}
+			});
+		}, 30_000);
+
 		it('counts each inode once when importing hard-linked files', async () => {
-			await withDockerSession(async ({ pi, context, sandbox }) => {
+			await withDockerSession(async ({ sandbox }) => {
 				const prepared = await sandbox.exec({
 					kind: 'shell',
 					dialect: 'sh',
@@ -462,12 +482,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 
 				expect(prepared.exit).toStrictEqual({ kind: 'code', code: 0 });
 
-				const review = await sandboxClient.openReviewSnapshot(pi, context, {
-					kind: 'sandbox',
-					providerId: sandbox.providerId,
-					generationId: sandbox.generationId,
-					backendId: sandbox.backendId
-				});
+				const review = await sandbox.copy();
 
 				try {
 					const result = await review.sandbox.exec({
@@ -493,7 +508,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				'The Docker workspace exceeds the snapshot import limits.'
 			]
 		])(
-			'rejects a host snapshot with an %s and preserves the active backend',
+			'rejects a host copy with an %s and preserves the active backend',
 			async (defect, message) => {
 				await withDockerSession(async ({ pi, context, fixture, sandbox }) => {
 					const added = path.join(fixture.workspace, 'added');
@@ -505,9 +520,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 						await file.truncate(512 * 1024 * 1024 + 1);
 					}
 
-					await expect(
-						sandboxClient.openReviewSnapshot(pi, context, { kind: 'host' })
-					).rejects.toMatchObject({
+					await expect(copyHostWorkspace(pi, context)).rejects.toMatchObject({
 						name: 'SandboxOperationError',
 						operation: 'open',
 						cause: { cause: { message } }
@@ -733,34 +746,32 @@ socket.on('error', error => {
 							name: 'fake-approver',
 							factory(pi) {
 								pi.on('tool_call', async (event, context) => {
-									const routes: ((
-										signal: AbortSignal
-									) => Promise<ReviewSnapshot>)[] = [];
+									const routes: {
+										readonly copy: () => Promise<SandboxCopy>;
+									}[] = [];
 
-									pi.events.emit('pi-byos:review:tool-call:v1', {
+									pi.events.emit('pi-byos:review:tool-call:v2', {
 										sessionId: context.sessionManager.getSessionId(),
 										toolName: event.toolName,
 										toolCallId: event.toolCallId,
-										reply: (
-											open: (signal: AbortSignal) => Promise<ReviewSnapshot>
-										) => {
-											routes.push(open);
+										reply: (source: (typeof routes)[number]) => {
+											routes.push(source);
 										}
 									});
 
-									const [open] = routes;
+									const [source] = routes;
 
-									if (!open || routes.length !== 1) {
+									if (!source || routes.length !== 1) {
 										return {
 											block: true,
 											reason: 'The proposed tool has no review destination.'
 										};
 									}
 
-									const review = await open(new AbortController().signal);
+									const review = await source.copy();
 
 									try {
-										reviewed.push(await readSnapshot(review));
+										reviewed.push(await readCopy(review));
 									} finally {
 										await review.close();
 									}

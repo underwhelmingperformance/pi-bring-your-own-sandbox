@@ -602,25 +602,34 @@ ordinary handles or preparing outside execution.
 capability and policy errors report unsupported guarantees. Diagnostics and
 cleanup remain available when requirements cannot be satisfied.
 
-## Review snapshots
+## Copies
 
-Call `openReviewSnapshot(pi, context, source, { signal })` once when a review
-first needs workspace evidence. For a host command, pass `{ kind: 'host' }`. For
-a sandbox command, pass `kind: 'sandbox'` and the `providerId`, `generationId`
-and `backendId` of its execution handle. The broker checks the identity against
-its ready backends before asking the provider to copy data.
+`sandbox.copy(options?)` copies a sandbox's workspace into a private sandbox and
+returns `{ sandbox, close }`. The [shell review route][review-route] also copies
+the host checkout when a reviewed command would run on the host. Each copy opens
+its own allocation, which no other consumer shares. Call `close()` when the copy
+is no longer needed and inspect its cleanup report. Aborting the options' signal
+or closing the session also disposes the copy.
 
-The returned `sandbox` supports file reads and POSIX shell commands in a
-read-only copy with external networking denied. Call `close()` when the review
-ends and inspect its cleanup report. Aborting the review signal or closing the
-session also disposes the snapshot. Concurrent reviews own separate allocations.
-Session-wide requirements also apply to reviews. Set the ordinary workspace's
-write access or shared relationship in the provider configuration or on the
-ordinary acquisition. A session-wide requirement for either conflicts with a
-read-only copied snapshot and rejects the review before allocation.
+[review-route]: pi-integration.md#permission-review-of-a-shell-call
 
-Providers implement the optional `openReviewSnapshot` method to copy the source
-described by the broker. Report recovery before allocation, as for ordinary
-opening. A broker or provider without snapshot support rejects acquisition. Use
-transcript-only review when the execution destination is unknown or the snapshot
-cannot be acquired.
+A copy's policy is negotiated differently from the session sandbox. The broker
+chooses the strictest policy that the provider supports and that provides every
+required guarantee. It loosens a field only for a need. For example, a copy with
+no options from a provider that supports every value is `read-only`,
+`workspace-only` and `denied`. A copy with `needs: ['workspace-writes']` is
+`read-write` in the same scope. A need for access that the session's configured
+policy does not grant rejects the copy. Session-wide requirements also apply,
+including their needs. A copy always reports a `copied` workspace, and a
+session-wide requirement for another relationship rejects it.
+
+Copying is available when the sandbox's capabilities include `copy`. A provider
+declares `copy` in its capabilities exactly when it implements the `copy`
+method. The broker calls that method with `source: { kind: 'host' }` or with
+`source: { kind: 'backend', backend }`, where `backend` is the object that the
+provider's `open` returned. The method opens a backend with the requested policy
+and a `copied` workspace even when the provider declares only `shared` or
+`remote` for ordinary opening. The declared `workspaceRelationship` list
+therefore describes only `open`. The broker rejects a copy that reports another
+relationship. Report recovery before allocation, as for ordinary opening. A
+provider can reject a policy that it cannot apply to a copy.

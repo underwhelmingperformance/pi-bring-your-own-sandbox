@@ -54,13 +54,13 @@ export function ensureBroker(
 
 	const service = Object.freeze<BrokerServiceV1>({
 		guardVersion: 1,
-		openReviewSnapshot: (context, source, options) =>
+		copy: (context, source, options) =>
 			invoke((broker) => {
-				return broker.openReviewSnapshot === undefined
+				return broker.copy === undefined
 					? Promise.reject(
 							new UnsupportedSandboxCapabilityError({ operation: 'acquire' })
 						)
-					: broker.openReviewSnapshot(context, source, options);
+					: broker.copy(context, source, options);
 			}),
 		id,
 		acquire: (context, options) =>

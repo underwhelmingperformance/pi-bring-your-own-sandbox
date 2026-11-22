@@ -164,26 +164,24 @@ it.each([
 					}
 
 					pi.on('tool_call', async (event, context) => {
-						const routes: ((signal: AbortSignal) => Promise<unknown>)[] = [];
+						const routes: { copy: () => Promise<unknown> }[] = [];
 
-						pi.events.emit('pi-byos:review:tool-call:v1', {
+						pi.events.emit('pi-byos:review:tool-call:v2', {
 							sessionId: context.sessionManager.getSessionId(),
 							toolName: event.toolName,
 							toolCallId: event.toolCallId,
-							reply: (open: (signal: AbortSignal) => Promise<unknown>) => {
-								routes.push(open);
+							reply: (source: { copy: () => Promise<unknown> }) => {
+								routes.push(source);
 							}
 						});
 
-						const [open] = routes;
+						const [source] = routes;
 
-						if (!open || routes.length !== 1) {
+						if (!source || routes.length !== 1) {
 							throw new Error('Expected one route for the pending tool call.');
 						}
 
-						await expect(
-							open(new AbortController().signal)
-						).rejects.toMatchObject({
+						await expect(source.copy()).rejects.toMatchObject({
 							name: 'UnsupportedSandboxCapabilityError'
 						});
 						opensDuringInvestigation.push(outsideOpens);
@@ -495,3 +493,111 @@ it('includes configuration loading in the outside shell deadline', async () => {
 		}
 	);
 });
+
+it.each(['sandbox', 'outside-sandbox'] as const)(
+	'applies a review copy timeout to %s destination preparation',
+	async (execution) => {
+		const model = new ScriptedModel([
+			{
+				type: 'toolCall',
+				id: 'review',
+				name: 'bash',
+				arguments: {
+					command: 'printf reviewed',
+					...(execution === 'outside-sandbox' && {
+						execution,
+						justification: 'Check the review deadline.'
+					})
+				}
+			}
+		]);
+		const reviews: { name: string; isPrompt: boolean }[] = [];
+
+		await withPiRuntime(
+			[
+				{
+					name: 'stalled-settings',
+					factory(pi) {
+						const lifetime = new AbortController();
+						const settings = {
+							id: 'stalled-settings',
+							diagnostics: new ProviderDiagnostics(),
+							configurationVersion: 1 as const,
+							guardVersion: 1 as const,
+							assertConfigurable: vi.fn(),
+							lifetime: lifetime.signal,
+							close() {
+								lifetime.abort();
+							},
+							read: () => Promise.withResolvers<SandboxConfig>().promise
+						};
+
+						publishService(pi.events, 'pi-byos:settings:v1', settings);
+					}
+				},
+				{
+					name: 'shell',
+					factory: (pi) => {
+						sandboxTools(pi, '<inline:shell>');
+					}
+				},
+				{
+					name: 'reviewer',
+					factory(pi) {
+						pi.on('tool_call', async (event, context) => {
+							const sources: {
+								copy: (options: { timeoutMs: number }) => Promise<unknown>;
+							}[] = [];
+
+							pi.events.emit('pi-byos:review:tool-call:v2', {
+								sessionId: context.sessionManager.getSessionId(),
+								toolName: event.toolName,
+								toolCallId: event.toolCallId,
+								reply: (source: (typeof sources)[number]) => {
+									sources.push(source);
+								}
+							});
+
+							const started = performance.now();
+							let name = 'resolved';
+
+							try {
+								await sources[0]?.copy({ timeoutMs: 50 });
+							} catch (error) {
+								name = error instanceof Error ? error.name : String(error);
+							}
+
+							reviews.push({
+								name,
+								isPrompt: performance.now() - started < 2000
+							});
+
+							return { block: true, reason: 'Reviewed.' };
+						});
+					}
+				},
+				model.extension
+			],
+			async (runtime) => {
+				runtime.session.setActiveToolsByName(['bash']);
+
+				const selected = runtime.session.modelRuntime.getModel(
+					'scripted',
+					'scripted'
+				);
+
+				if (selected === undefined) {
+					throw new Error('The scripted model was not registered.');
+				}
+
+				await runtime.session.setModel(selected);
+				await runtime.session.prompt('Review the command.');
+
+				expect(reviews).toStrictEqual([
+					{ name: 'SandboxTimeoutError', isPrompt: true }
+				]);
+			}
+		);
+	},
+	15_000
+);

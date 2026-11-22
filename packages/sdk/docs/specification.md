@@ -45,8 +45,8 @@ zero-configuration host execution; user-selected sandbox providers; diagnostics;
 provider/consumer examples; and tests of the real Pi loader and dispatch path.
 The framework does not require a particular production sandbox runtime.
 
-PTYs, interactive stdin, detached jobs, port forwarding, snapshots, automatic
-file synchronisation, provider hot-switching and cross-process discovery are
+PTYs, interactive stdin, detached jobs, port forwarding, automatic file
+synchronisation, provider hot-switching and cross-process discovery are
 unsupported. The API must reject requirements for those features. Additional
 capabilities can be specified in later protocol versions.
 
@@ -445,6 +445,16 @@ again before returning a facade.
 `negotiateSandbox(pi, ctx, options?)` applies the same negotiation without
 opening a backend. It returns either the policy that acquisition would open or
 the typed error that it would throw.
+
+`sandbox.copy(options?)` opens a private copy of a sandbox's workspace. The
+shell review route uses the same operation to copy the host checkout. A copy
+uses the strictest policy that the provider supports and that satisfies the
+options: it provides every required guarantee and loosens only for needs. Needs
+cannot exceed the access that the configured policy grants. Copying requires the
+`copy` capability. [Copies][copies] in the API protocol specifies the provider
+contract.
+
+[copies]: api-protocol.md#copies
 
 The facade exposes immutable identity, workspace, effective policy and
 capabilities, plus methods for supported operations. It does not expose the

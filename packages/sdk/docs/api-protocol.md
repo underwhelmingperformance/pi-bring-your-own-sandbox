@@ -1,635 +1,506 @@
 # API and protocol appendix
 
-This appendix is normative for service protocol version 1. The exported
-[structural declarations][contracts] specify the exact fields and signatures;
-the [protocol declarations][protocol] specify discovery and service objects. The
-[specification][spec] specifies execution, policy and lifecycle behaviour. These
-documents and declarations must change together.
+This appendix specifies the shapes for the target SDK, protocol major 1 at
+feature level 0. The [specification][spec] defines behaviour and identifies the
+consumers of the contract. Runtime schemas define the types when the
+implementation reaches this design.
 
-[contracts]: ../src/contracts.ts
-[protocol]: ../src/protocol.ts
 [spec]: specification.md
 
-The [development guide][validation] describes test commands and platform limits.
-The [Pi integration guide][pi] specifies supported tool routing and upstream
-extension-point gaps.
+## Public entry points
 
-[validation]: validation.md
-[pi]: pi-integration.md
+| Entry point | Operations and types                                                                                            |
+| ----------- | --------------------------------------------------------------------------------------------------------------- |
+| `/consumer` | `getSandbox`, `negotiateSandbox`, `Sandbox`, `SandboxRequirements`, operation types and structural error checks |
+| `/provider` | `registerSandboxProvider`, provider declarations, backend operations and provider kit                           |
+| `/host`     | `initialiseSandboxHost`, `closeSandboxSession`, host options and diagnostic registration                        |
+| `/review`   | `findShellReviewSource` and review results                                                                      |
+| `/pi-tools` | Pi tool integration factory                                                                                     |
+| `/guard`    | `createSandboxGuard` and guard requirements                                                                     |
+| `/testing`  | Provider conformance runner, fixtures and probe interfaces                                                      |
 
-## Public API
-
-`/api` exports the consumer operations and provider registration specified by
-`SandboxClient`, plus explicit host initialisation:
+The package prefix is `pi-bring-your-own-sandbox`. Wire schemas, channel
+constants, broker objects and identity constructors are internal.
 
 ```typescript
-initialiseSandboxHost(pi: SandboxHost, options: SandboxHostOptions): void;
-
-registerSandboxRequirement(pi: SandboxHost,
-  requirements?: SandboxRequirements): void;
-
-configureExecutionApproval(pi: SandboxHost,
-  resolve: SandboxConfigResolver<ApprovalSelection>): void;
-
-configureOutsideExecution(pi: SandboxHost,
-  resolve: SandboxConfigResolver<{ readonly destination: 'normal' | 'provider' }>): void;
-
 getSandbox(pi: SandboxHost, context: SandboxContext,
   options?: SandboxAcquireOptions): Promise<Sandbox>;
-
-registerSandboxProvider<Config, Input = Config>(pi: SandboxHost,
-  provider: SandboxProvider<Config>,
-  options?: NoInfer<SandboxProviderRegistration<Input>>): void;
-
-closeSandboxSession(pi: SandboxHost,
-  context: SandboxContext): Promise<SandboxCloseReport>;
+negotiateSandbox(pi: SandboxHost, context: SandboxContext,
+  options?: SandboxRequirements): Promise<SandboxNegotiation>;
+registerSandboxProvider<Config, Input = Config>(
+  pi: SandboxHost, provider: SandboxProvider<Config>,
+  options?: NoInfer<SandboxProviderRegistration<Input>>
+): void;
+initialiseSandboxHost(pi: SandboxHost, options: SandboxHostOptions): void;
+closeSandboxSession(pi: SandboxHost, context: SandboxContext): Promise<SandboxCloseReport>;
+createSandboxGuard(requirements?: SandboxRequirements & { providerId?: string }): ExtensionFactory;
 ```
 
-`SandboxHost` uses Pi's public event bus, lifecycle registration, custom message
-and custom entry writers. `SandboxContext` uses its live workspace, decision and
-session manager. Callers pass a real live Pi context. Structural compatibility
-does not authorise constructing a context that bypasses Pi's lifecycle checks.
+## Requirements and profiles
 
-`SandboxProviderRegistration<Input>` types the raw configuration returned by the
-resolver. `Config` is the validator's output and the input to backend opening.
-`Input` defaults to `Config` and is not inferred from the resolver. Specify both
-type arguments when validation transforms the input, for example from
-`{ endpoint: string }` to `{ endpoint: URL }`. Runtime validation still accepts
-unknown values at the discovery boundary.
+<!-- `violations` is provisional in milestone 1. -->
+<!--
+Types `AccessProperty`, `Access`, `FileAccess` and `Profile` are provisional
+in milestone 1.
+-->
+<!-- The policy field value types are provisional in milestone 1. -->
 
-An embedding host can call `initialiseSandboxHost(pi, options)` before any SDK
-service is created to supply cleanup defaults or a normal executor. Late or
-repeated binding fails. Each runtime requires a separate event bus.
+```typescript
+type AccessProperty =
+  'network' | 'hostWorkspaceWrites' | 'hostUserData' | 'hostSystemFiles';
 
-Provider activation and configuration callbacks are specified in [selection and
-configuration][configuration]. `configureExecutionApproval` and
-`configureOutsideExecution` bind independent configuration callbacks. All
-callbacks are lazy and shared per runtime generation. The SDK performs no
-configuration file I/O.
+type Access = Readonly<
+  Partial<Record<AccessProperty, 'needed' | 'prevented' | 'preferred'>>
+>;
 
-[configuration]: specification.md#selection-and-configuration
+type Capability =
+  | 'exec'
+  | 'files.read'
+  | 'files.write'
+  | 'files.list'
+  | 'search.find'
+  | 'search.grep'
+  | 'copy'
+  | 'violations';
+type ProcessKind = 'argv' | 'shell';
+type ExitStatus = 'guaranteed' | 'optional';
+type TerminationScope = 'none' | 'process-group' | 'workload';
 
-Registration is synchronous, validates the declaration and installs a discovery
-responder. It does not validate configuration, create a backend or allocate an
-external resource. The built-in registry supplies its default provider and
-reserves the IDs of its registered implementations. External IDs are non-empty
-strings; duplicate IDs are errors even when unselected. The initial registry
-uses passthrough as its default implementation.
+interface SandboxRequirements {
+  readonly access?: Access;
+  readonly capabilities?: readonly Capability[];
+  readonly processKinds?: readonly ProcessKind[];
+  readonly shells?: readonly ShellDialect[];
+  readonly exitStatus?: 'guaranteed';
+  readonly terminationScope?: TerminationScope;
+}
 
-Provider metadata may include a complete `defaultPolicy`. Its values must appear
-in the provider's supported policies. Extension settings may omit `policy` when
-the selected provider declares a default. An explicit complete base policy
-replaces that default; partial policies remain invalid. The broker snapshots and
-freezes defaults during registration, discovery and enumeration. Status retains
-the selected declaration's `providerLabel`, including after closure. Formatting
-that label uses the captured metadata without additional discovery or
-configuration.
+type FileAccess = 'denied' | 'read-only' | 'read-write';
 
-Acquisition negotiates a complete policy from the request and the base policy,
-then uses the generation's backend for that policy, opening it if necessary.
-`no-workspace-writes` selects `read-only`, `no-network` selects `denied`, and
-`no-host-user-data` and `no-host-system-files` select at least
-`system-read-only` and `workspace-only` respectively. Fields without a required
-guarantee keep the base value. A need for access that the base policy does not
-grant, such as `workspace-writes` under a `read-only` base policy, fails with
-`UnsupportedSandboxPolicyError`. A need that a required guarantee removes fails
-the same way. A negotiated value that the provider does not declare fails the
-same way, and a requested operation, process kind or shell that the declaration
-lacks fails with `UnsupportedSandboxCapabilityError`; both happen before any
-backend is opened. Exit status and termination scope are checked after opening,
-because a backend may strengthen its declaration. Every requested capability
-must then be present in the opened backend. Negotiation never selects another
-provider.
+interface SandboxPolicy {
+  readonly hostWorkspaceWrites: boolean;
+  readonly network: boolean;
+  readonly hostUserData: FileAccess;
+  readonly hostSystemFiles: FileAccess;
+}
 
-An explicit `workspaceRelationship` must match the base policy when both specify
-a value. The provider must declare support and return that relationship in its
-workspace descriptor. Each relationship, including the unspecified default, has
-its own allocation key. Provider discovery uses service version 2 when the
-provider declares workspace relationships or requires one for outside execution.
-A host normal executor with a required relationship uses settings configuration
-version 2. Older peers reject these declarations before they can discard the
-requirement.
+interface SandboxWorkspace {
+  readonly root: string;
+  readonly pathFlavor: 'posix' | 'win32';
+  readonly relationship: 'shared' | 'copied';
+}
 
-`negotiate(context, options)` on the broker, exposed as `negotiateSandbox`,
-performs the same checks without opening a backend. It resolves to
-`{ ok: true, policy }` or `{ ok: false, error }`, where `error` is the typed
-error that acquisition would throw. Status includes one entry under `backends`
-for each distinct negotiated policy that an acquisition has requested. The
-entry's `state` is `opening`, `ready` or `failed`. After a backend opens, its
-entry includes the backend ID and `effectivePolicy`. The effective policy
-includes the actual workspace relationship and any additional restrictions that
-the backend enforces.
+interface Profile {
+  readonly policy: SandboxPolicy;
+  readonly capabilities: readonly Capability[];
+  readonly processKinds: readonly ProcessKind[];
+  readonly shells: readonly ShellDialect[];
+  readonly exitStatus: ExitStatus;
+  readonly terminationScope: TerminationScope;
+}
 
-The top-level backend fields describe the allocation for the base policy. The
-top-level `policy` includes the actual relationship. Older brokers can omit
-`effectivePolicy` and the relationship in the top-level policy. On an acquired
-sandbox, `sandbox.policy` is a snapshot of `SandboxBackend.policy`. A backend
-can omit `workspaceRelationship` from this policy.
-`sandbox.workspace.relationship` always gives the actual relationship.
+type SandboxNegotiation =
+  | { readonly ok: true; readonly profile: Profile }
+  | { readonly ok: false; readonly error: SandboxErrorInfo };
+```
 
-`WorkspaceProtection` is either `{ kind: 'git-metadata' }` or
-`{ kind: 'path', path: string }`. `SandboxPolicy.workspaceProtection` is an
-optional readonly resource array. Any nonempty requirement needs the
-`workspace.protection` operation capability. Effective resources must cover
-every requested resource, including base requirements. A protected parent covers
-a child; Git metadata protection includes external repository administration
-data. Registration rejects protected defaults without the capability. See
-[protected workspace resources][workspace-protection] for path syntax, preset
-expansion, immutability and independent enforcement requirements.
+`SandboxAcquireOptions` extends `SandboxRequirements` with the optional
+operation fields `signal` and `timeoutMs`. `ShellDialect` at level 0 is
+`sh | bash | powershell`. The scope order is `none`, `process-group`,
+`workload`. Profile lists contain unique entries. Capability, process-kind and
+shell arrays contain unique literals. The `shells` array is non-empty exactly
+when `processKinds` includes `shell`.
 
-[workspace-protection]: specification.md#provider-kit-and-conformance
+This table is the level 0 access mapping. The property and policy field use the
+same identifier.
 
-Facade methods always exist, including `files` and `search`. Unsupported methods
-reject with `UnsupportedSandboxCapabilityError` before provider invocation. This
-keeps consumer code independent of optional backend method groups. A facade has
-no disposer, provider configuration or raw backend client.
+| Access property and policy field | Supported values, most to least restrictive | `prevented` | `needed`                       |
+| -------------------------------- | ------------------------------------------- | ----------- | ------------------------------ |
+| `network`                        | `false`, `true`                             | `false`     | `true`                         |
+| `hostWorkspaceWrites`            | `false`, `true`                             | `false`     | `true` on a `shared` workspace |
+| `hostUserData`                   | `denied`, `read-only`, `read-write`         | `denied`    | At least `read-only`           |
+| `hostSystemFiles`                | `denied`, `read-only`, `read-write`         | `denied`    | At least `read-only`           |
 
-## Values, ownership and validation
+The specification defines the [profile ranking][access].
 
-All metadata is a readonly snapshot. The broker copies and freezes metadata
-before publishing a facade or status. Providers must not mutate declarations
-after registration. Arrays contain unique supported literals; capabilities
-always include `exec`. Shell dialects require execution support.
+[access]: specification.md#configuration-and-negotiation
 
-Execution metadata also requires non-empty `processKinds` (`argv`, `shell`, or
-both), `exitStatus` (`guaranteed` or `optional`) and `terminationScope` (`none`,
-`process-group` or `workload`). Shell dialects are non-empty exactly when
-`processKinds` includes `shell`. Acquisition can require `processKinds`,
-`shells`, `exitStatus: "guaranteed"` and a minimum `terminationScope`.
-Termination scopes increase from `none` through `process-group` to `workload`;
-an opened backend cannot weaken its declaration. Unsupported requests fail
-before provider invocation. An optional-status provider may open a backend with
-guaranteed status; a guaranteed provider cannot weaken that guarantee.
+Metadata returned to another caller is readonly and frozen. The runtime
+validates shape and profile consistency. It snapshots input data before
+asynchronous work. Abort signals and synchronous callbacks retain their
+identity.
 
-An opened backend may advertise fewer capabilities than its provider. It must
-not advertise an undeclared capability, dialect or policy value. Its effective
-policy must satisfy the opening request. The broker validates the backend before
-publishing any consumer handle. Invalid backends are disposed and fail startup.
+## Provider contract
 
-Backend method groups and capabilities must agree in both directions:
+<!--
+The provider profile fields, outside declaration and request and backend
+profile fields are provisional in milestone 1.
+-->
 
-| Capability    | Required backend operations                |
-| ------------- | ------------------------------------------ |
-| `exec`        | `exec`                                     |
-| `files.read`  | `files.read.readFile`, `access`, `stat`    |
-| `files.write` | `files.write.writeFile`, `access`, `mkdir` |
-| `files.list`  | `files.list.listDirectory`, `stat`         |
-| `search.find` | `search.find`                              |
-| `search.grep` | `search.grep`                              |
+```typescript
+interface SandboxProvider<Config> {
+  readonly id: string;
+  readonly label: string;
+  readonly defaultPolicy?: SandboxPolicy;
+  readonly profiles: {
+    readonly open: readonly Profile[];
+    readonly copy: readonly Profile[];
+  };
+  readonly validateConfig: (input: unknown) => Config;
+  readonly open: (
+    request: SandboxOpenRequest<Config>,
+    context: SandboxOpenContext
+  ) => Promise<SandboxBackend>;
+  readonly copy?: (
+    request: SandboxOpenRequest<Config> & {
+      readonly source: SandboxCopySource;
+    },
+    context: SandboxOpenContext
+  ) => Promise<SandboxBackend>;
+  readonly outside?: {
+    readonly profiles: readonly Profile[];
+    readonly open: SandboxProvider<Config>['open'];
+  };
+}
 
-`files.stat` uses the read group when available, otherwise the list group.
-`files.access` chooses the requested read or write group. `files.updateText`
-requires both read and write capabilities. File sizes are non-negative safe
-integers. Directory entries contain entry basenames and their kinds; they do not
-contain host paths. `stat` follows the final symlink and reports the target
-kind; a dangling link fails with `SandboxPathNotFoundError`. Directory-entry
-kinds describe each entry without following its symlink. Access checks, reads
-and writes resolve links inside the backend's policy boundary. The broker does
-not authorise access based on the unresolved path.
+interface SandboxOpenRequest<Config> {
+  readonly generationId: string;
+  readonly sessionId: string;
+  readonly hostWorkspace: string;
+  readonly configuration: Config;
+  readonly profile: Profile;
+}
 
-Runtime validators reject missing fields, wrong primitive types, invalid
-discriminants, non-callable methods and inconsistent declarations. Unknown
-fields on protocol and metadata objects are ignored for forward compatibility.
-Unknown framework configuration keys, operation keys and capability literals are
-errors. Each provider defines validation of its own configuration keys. Explicit
-`undefined` is treated as omission for optional fields. Required fields cannot
-be `undefined` or `null`.
+type SandboxCopySource =
+  | { readonly kind: 'host' }
+  | { readonly kind: 'backend'; readonly backend: SandboxBackend };
 
-The configuration validator receives `unknown` and returns the provider's own
-`Config` type. Its `open` receives that same type. The event-bus provider
-service does not erase this relationship with a cast: `configure(input)`
-validates and returns a closure whose `open` already includes the typed
-configuration. Configuration validation must not allocate resources. Throwing a
-validation error becomes `InvalidSandboxConfigError`; raw configuration is not
-included in routine diagnostics.
+interface SandboxOpenContext extends SandboxOperationContext {
+  readonly reportRecovery: (recovery: RecoveryDescriptor) => void;
+  readonly confirmCleanup: () => void;
+}
 
-Providers transfer each output chunk to the broker for the synchronous callback
-only. The broker copies any bytes retained for capture and supplies a separate
-copy to the consumer callback. Providers may reuse their original buffer after
-the callback returns. The broker copies a write's input at facade entry so later
-caller mutation cannot alter a queued write. Returned file and captured process
-buffers belong to the consumer. Readonly properties do not make `Uint8Array`
-elements immutable. At facade entry the broker also snapshots process arguments
-and environment overrides, search inputs, and acquisition requirements before
-awaiting any work. Caller mutation after invocation cannot change a pending
-operation. Abort signals and synchronous callbacks retain their identity and are
-not cloned.
+interface SandboxBackend {
+  readonly id: string;
+  readonly workspace: SandboxWorkspace;
+  readonly profile: Profile;
+  readonly recovery: RecoveryDescriptor;
+  readonly exec: (
+    request: ProcessRequest,
+    context: BackendProcessContext
+  ) => Promise<BackendProcessOutcome>;
+  readonly files?: BackendFiles;
+  readonly search?: BackendSearch;
+  readonly dispose: (context: SandboxOperationContext) => Promise<void>;
+}
 
-## Provider diagnostics
+type RecoveryDescriptor =
+  | { readonly kind: 'none' }
+  | {
+      readonly kind: 'allocation';
+      readonly id: string;
+      readonly instructions: string;
+      readonly lease: string;
+      readonly expiresAt?: string;
+    };
+```
 
-Every provider operation context supplies synchronous `reportDiagnostic` for
-`{ level: "warning", message: string }`. Warnings are separate from workload
-stdout and stderr. The broker adds the operation ID, operation kind and known
-provider/backend identities. Provider messages must be suitable for user display
-and must not include credentials or raw configuration.
+The provider's `copy` method is present exactly when its copy profiles are
+non-empty. A copy profile always has `hostWorkspaceWrites: false` because a copy
+cannot change the host checkout. The provider decides whether the copy's own
+files accept writes.
 
-Each generation retains at most 64 warnings. Messages contain from 1 to 2,048
-UTF-16 code units. Invalid, oversized and excess diagnostics are discarded and
-increment a bounded counter. The status snapshot exposes immutable `diagnostics`
-and `diagnosticsDropped` fields when populated. Reports after an operation
-finishes are ignored. Diagnostics never satisfy missing capabilities, relax
-requested policies or establish termination.
+A registration resolver supplies `SandboxProviderConfig<Input>` with
+`configuration`, optional complete `policy`, optional `userShell` and optional
+`cleanup`.
 
-The optional diagnostic extension displays ordinary and outside-execution
-warnings through `/byos status`. Status inspection does not allocate execution
-resources. Providers do not need their own Pi notifications.
+`reportRecovery` supplies one aggregate descriptor before allocation. Updates
+describe all outstanding allocations. The final backend's `recovery` matches the
+latest descriptor. Use `none` only if there are no persistent allocations. An
+update cannot replace an allocation with `none`. For an allocation, `lease`
+describes the cleanup mechanism and `expiresAt` is a parseable absolute
+timestamp. The provider calls `confirmCleanup` after releasing all allocations
+from a failed opening. The provider then rejects the opening without allocating
+anything else. Both callbacks expire when opening ends.
+
+```typescript
+interface SandboxDiagnostic {
+  readonly level: 'warning';
+  readonly message: string;
+}
+
+interface SandboxDiagnosticRecord extends SandboxDiagnostic {
+  readonly operationId: string;
+  readonly operation: SandboxOperation;
+  readonly providerId?: string;
+  readonly backendId?: string;
+}
+```
+
+Every operation context has
+`reportDiagnostic(diagnostic: SandboxDiagnostic): void`. A generation retains up
+to 64 warnings of 1 to 2,048 UTF-16 code units each. Rejected and excess
+warnings increment the bounded `diagnosticsDropped` counter. Reports after the
+operation ends are ignored. Status exposes the retained `diagnostics` and
+`diagnosticsDropped` fields.
 
 ## Process, files and search
 
-`ProcessRequest` discriminates `argv` and `shell`. Argv requires `executable`
-and an argument array; shell requires `command` and `dialect`. Neither variant
-accepts fields from the other. An empty executable is invalid. Empty arguments
-and an empty shell command are valid. NUL bytes in executable, arguments,
-command, paths or environment keys/values are invalid.
+```typescript
+type ProcessRequest =
+  | {
+      readonly kind: 'argv';
+      readonly executable: string;
+      readonly args: readonly string[];
+    }
+  | {
+      readonly kind: 'shell';
+      readonly command: string;
+      readonly dialect: ShellDialect;
+    };
 
-Argv execution preserves literal argument values and boundaries. Providers may
-use a fixed, trusted transport shell with a validated, lossless encoding, as
-specified in [Process execution][process-execution]. Caller data must not become
-shell syntax. Executable lookup, target working directory and environment
-semantics remain unchanged. Caller overrides must not affect bootstrap
-execution, and transport diagnostics must not enter target stdout or stderr.
-Failure to start remains a typed operation error, distinct from a target exit
-status, including code 127.
+type ProcessExit =
+  | { readonly kind: 'code'; readonly code: number }
+  | {
+      readonly kind: 'signal';
+      readonly signal: string;
+      readonly signalNumber: number;
+    }
+  | { readonly kind: 'unavailable' };
 
-`ProcessExit` also accepts `{ kind: "unavailable" }` for optional-status
-backends. Completion follows the declared termination scope. Unavailable details
-do not mean success or uncertain termination, and do not quarantine a healthy
-backend. A guaranteed-status backend returning this variant violates its
-declaration. Pi shell adapters convert this variant to `exitCode: null`, which
-Pi reports as a failed command while preserving captured output.
+type Completion = 'not-started' | 'confirmed' | 'unknown' | 'not-guaranteed';
 
-[process-execution]: specification.md#process-execution
+type BackendProcessOutcome =
+  | { readonly kind: 'exited'; readonly exit: ProcessExit }
+  | {
+      readonly kind: 'cancelled';
+      readonly termination: 'confirmed' | 'unconfirmed' | 'not-guaranteed';
+    };
+```
 
-`env` replaces individual target environment entries. A string sets a value;
-`null` removes the variable. An omitted key preserves the provider's runtime
-default. Environment keys are non-empty and cannot contain `=`. External
-providers never receive inherited host environment values implicitly.
+Both process request variants accept optional `cwd` and `env`. `env` maps
+non-empty keys to strings or `null`. A null value removes a variable. Keys
+exclude `=`. Paths and arguments exclude NUL. The executable must be non-empty.
+Exit codes are safe integers. Signal identifiers are non-empty strings and
+signal numbers are positive integers from the target.
 
-`onOutput` is synchronous, ordered across the delivered stdout/stderr chunks and
-receives bytes without text decoding. `maxCaptureBytes` is a non-negative safe
-integer at most 1,048,576. The default is 1,048,576 across both streams in
-delivery order. Zero disables capture while preserving streaming. Omitted byte
-counts include every drained byte beyond the shared limit. `durationMs` is a
-non-negative duration measured with a monotonic clock. Exit codes are integers;
-signal exits use a non-empty target signal identifier.
+Execution options add
+`onOutput(chunk: { stream: 'stdout' | 'stderr'; data: Uint8Array }): void` and
+`maxCaptureBytes`. The latter is a safe integer from 0 to 1,048,576 and defaults
+to 1,048,576. The result contains `exit`, `stdout`, `stderr`,
+`omittedBytes: { stdout: number; stderr: number }` and `durationMs`.
 
-Every provider operation receives a unique operation ID, a composed abort signal
-and a live `remainingMs()` function based on monotonic time. The absolute
-Unix-epoch `deadline` is diagnostic metadata. Public `timeoutMs` values are
-finite and positive. Providers must respond to the signal as well as respect the
-deadline. Public defaults and bounded termination grace periods are specified in
-the process section of the specification.
+| Capability    | Backend operations                                    |
+| ------------- | ----------------------------------------------------- |
+| `exec`        | `exec`                                                |
+| `files.read`  | `files.read.readFile`, `access`, `stat`               |
+| `files.write` | `files.write.writeFile`, `access`, `mkdir`            |
+| `files.list`  | `files.list.listDirectory`, `stat`                    |
+| `search.find` | `search.find`                                         |
+| `search.grep` | `search.grep`                                         |
+| `copy`        | Provider `copy` with a matching copy profile          |
+| `violations`  | Optional structured `violations` on execution results |
 
-The operation context includes a stable `cleanup` object. Its
-`remainingMs(): number | undefined` reports the current monotonic cleanup
-allowance. Cancellation publishes this allowance before abort listeners run;
-disposal supplies it from the start. The separate `cleanup.deadline` is a
-Unix-epoch timestamp for diagnostics. Retaining or spreading the context must
-preserve the live budget function. Sequential cleanup commands consume the same
-allowance. Remote transports must account for transit and queue time without
-assuming a shared monotonic origin. Expiry does not establish termination;
-providers must still acknowledge that work stopped.
+<!-- Violation fields are provisional in milestone 1. -->
 
-`SandboxHostOptions.cleanup` and provider callbacks' `cleanup` accept partial
-`SandboxCleanupBudgets`. Provider callback values override host defaults. Both
-`cancellationGraceMs` and `disposalTimeoutMs` accept integers from 1 to 300,000;
-their defaults are 5,000 and 10,000. Facades and outside executors expose the
-frozen effective `cleanupBudgets` for their generation.
+Each violation includes an `operation: string`, an
+`accessProperty: AccessProperty` and an optional `resource: string`.
 
-Paths use the advertised target path flavour. Relative paths resolve from the
-target root, including search roots and process working directories. The SDK
-does not translate a host prefix or expand `~`; those are adapter operations.
-`mkdir` creates missing parents. `writeFile` replaces the complete file and does
-not create parents implicitly. `readFile` returns complete bytes. Text updates
-decode strict UTF-8 and encode UTF-8 without changing line endings; an invalid
-encoding fails before calling the transform or writing.
+The facade adds `files.updateText(path, transform, options)` when both file read
+and file write are available. The synchronous transform maps strict UTF-8 text
+to replacement text. The result has `before` and `after` strings. The optional
+`createParents` on `writeFile` defaults to false. `readFile` and process
+captures return consumer-owned bytes.
 
-Find defaults to 1,000 paths; grep defaults to 100 matching lines. Supplied
-limits are positive safe integers. Grep defaults are regex mode, case-sensitive,
-zero context lines and no glob filter. Context is a non-negative safe integer.
-Match line numbers are one-based. `before` and `after` contain adjacent lines
-without newline terminators, nearest available context in file order. A matching
-line produces one result even if the pattern matches several times. Paths are
-relative to the search root. A grep restricted to a single file returns its
-basename. The `text` field excludes its newline terminator. `truncated` means at
-least one additional result was omitted. It is false when the total exactly
-equals the limit. Providers document regex/glob syntax, ignore behaviour and
-result selection. The framework does not require a Pi search profile or impose a
-shared result order. Returned paths retain the target path flavour. Duplicate
-paths or matching lines are invalid even when results use a provider-specific
-order.
+Find and grep results contain target-relative paths and `truncated: boolean`.
+Find defaults to 1,000 paths. Grep defaults to 100 matching lines, regex
+matching, case-sensitive matching and zero lines of context. Limits are positive
+safe integers. Grep entries have a path, a one-based line number, the matching
+text and arrays of preceding and following context lines. Lines exclude newline
+terminators. Duplicate paths in find and duplicate path/line pairs in grep are
+invalid. `truncated` is true exactly when the provider omits at least one
+additional result.
 
-## Discovery envelopes and service identity
+Operation deadlines use finite positive milliseconds. Acquisition waiting and
+broker-owned opening each default to 60,000 ms. Foreground execution defaults to
+120,000 ms. File and search operations default to 30,000 ms. Acquisition
+`timeoutMs` changes only the waiting deadline.
 
-The SDK emits this object on either `pi-byos:discovery:v1:brokers` or
-`pi-byos:discovery:v1:providers`:
+`BackendProcessContext` extends `SandboxOperationContext` with a synchronous
+`onOutput(output: ProcessOutput): void`. `ProcessOutput` contains `stream` and
+`data` as for the consumer callback.
+
+Provider contexts contain `operationId`, `signal`, a Unix-epoch `deadline`,
+`remainingMs()` and `cleanup`. The cleanup context has its own `deadline` and
+`remainingMs(): number | undefined`. Both remaining time functions use a
+monotonic clock. The host and provider can specify partial cleanup budgets. The
+provider's values take precedence. The `cancellationGraceMs` and
+`disposalTimeoutMs` fields accept integers from 1 to 300,000 and default to
+5,000 and 10,000 respectively. `SandboxCloseReport` contains
+`confirmed: boolean`, `failures: readonly SandboxErrorInfo[]` and
+`recoveries: readonly RecoveryDescriptor[]`.
+
+## Outside tool and review
+
+<!--
+`bash_outside`, `outsideApproval`, `outsideDestinations` and the outside
+configuration literals are provisional in milestone 1.
+-->
+
+The Pi tool `bash_outside` takes `command: string`, `access: Access`,
+`justification: string` and optional `timeout: number` in seconds. The
+justification is non-empty after trimming. The trusted host extension supplies
+these fields of `SandboxHostOptions` to `initialiseSandboxHost`.
 
 ```typescript
-{
-  kind: 'pi-byos.discover',
-  discoveryVersion: 1,
-  reply: (advertisement: unknown) => void
+interface SandboxHostOptions {
+  readonly cleanup?: Partial<SandboxCleanupBudgets>;
+  readonly outsideApproval?: 'byos' | 'permission-extension';
+  readonly outsideDestinations?: readonly (
+    | { readonly kind: 'provider'; readonly policy: SandboxPolicy }
+    | { readonly kind: 'passthrough' }
+  )[];
 }
 ```
 
-A responder synchronously calls `reply` exactly once with:
+The defaults are `byos` and an empty destination list. Each destination kind
+occurs at most once. The [specification][destinations] describes outside
+profiles and the decision boundary.
+
+[destinations]: specification.md#destinations-and-permission
+
+<!--
+Review source, destination and reply types and the reason literals are
+provisional in milestone 1.
+-->
 
 ```typescript
-{
-  kind: 'pi-byos.broker' | 'pi-byos.provider',
-  discoveryVersion: 1,
-  serviceVersions: [1],
-  id: 'non-empty service identity',
-  service: brokerOrProviderService
+type ReviewUnavailableReason =
+  | 'unknown-call'
+  | 'unsupported-tool'
+  | 'destination-unavailable'
+  | 'invalid-source'
+  | 'incompatible-protocol';
+
+type ReviewReply =
+  | {
+      readonly ok: true;
+      readonly toolCallId: string;
+      readonly sourceId: ReviewSourceId;
+    }
+  | {
+      readonly ok: false;
+      readonly toolCallId: string;
+      readonly reason: ReviewUnavailableReason;
+    };
+
+interface DestinationDescription {
+  readonly providerId: string;
+  readonly label: string;
+  readonly workspace: SandboxWorkspace;
+  readonly policy: SandboxPolicy;
+}
+
+interface ReviewSource {
+  readonly destination: DestinationDescription;
+  negotiateCopy(
+    requirements?: SandboxRequirements
+  ): Promise<SandboxNegotiation>;
+  copy(options?: SandboxAcquireOptions): Promise<SandboxCopy>;
 }
 ```
 
-The reply kind must match the channel. `serviceVersions` is a non-empty array of
-unique positive safe integers. It advertises every compatible interface
-implemented by this service object. Version 1 clients require `1` in that array.
-The service's `id` must equal the envelope's `id`. A broker ID identifies the
-shared service, not its changing runtime generation. A provider ID identifies
-the registered provider and remains stable across its allocations. No ID depends
-on object identity or module location.
+`ReviewSourceId` is opaque. Each reply correlates with one query and one pending
+tool call. `findShellReviewSource` accepts the host, live context and tool call
+ID. Its success result contains the broker-resolved source. Its failure result
+contains a `ReviewUnavailableReason`.
+`Sandbox.copy(options?: SandboxAcquireOptions): Promise<SandboxCopy>` uses the
+acquired sandbox's workspace as the source. `SandboxCopy` contains
+`sandbox: Sandbox` and `close(): Promise<SandboxCloseReport>`.
 
-The collector records replies without throwing inside `reply`. It closes the
-collection as soon as synchronous `events.emit` returns, then validates every
-recorded reply before choosing a result. This matters because Pi catches handler
-exceptions. An async handler can reply only before its first await. Callbacks
-after collection closes are ignored and cannot alter the outcome. Repeated
-callbacks before closure count as separate replies. Repeated IDs, including
-repeated replies with the same object, are duplicate-service errors.
+## Internal protocol
 
-Malformed replies fail with `InvalidSandboxDeclarationError`; valid discovery
-envelopes whose service versions exclude `1` fail with
-`IncompatibleSandboxProtocolError`. Duplicate IDs fail with
-`DuplicateProviderError` on the provider channel. More than one broker reply
-fails with `DuplicateBrokerError`, even when the broker IDs differ. Validation
-does not silently discard an invalid reply because another reply is usable.
+<!--
+Channel names and the envelope and payload shapes are provisional in
+milestone 1.
+-->
 
-Provider discovery returns a `ProviderServiceV1`: immutable identity,
-capabilities and supported policies, plus synchronous `configure`. The result
-contains `open(request, context)` without a configuration field in the request.
-Broker discovery returns `BrokerServiceV1`, with promise-returning `acquire`,
-`close`, `status` and `providers` methods. These are direct in-process calls.
-Functions, errors and abort signals are not serialised.
+| Channel            | Operations                                        |
+| ------------------ | ------------------------------------------------- |
+| `pi-byos:runtime`  | SDK build advertisements and broker discovery     |
+| `pi-byos:provider` | Provider advertisements and registration exchange |
+| `pi-byos:review`   | Pending call queries and review source replies    |
 
-## Service bootstrap and lifecycle
-
-No broker reply permits synchronous creation and publication of one service.
-Discovery, creation, lifecycle registration and installation of its responder
-must happen in one call stack before asynchronous configuration or provider
-collection begins. Re-entrant discovery during incomplete publication must fail
-with `SandboxInitialisationError`, not create a second service.
-
-An invalid, incompatible or conflicting reply forbids new service creation. A
-closed or stale service does not permit replacement within the same runtime. It
-returns `StaleSandboxHandleError` or `SandboxSessionClosingError` as
-appropriate. Session replacement and reload invalidate the old runtime and its
-subscriptions. The replacement runtime uses a fresh event bus and creates a new
-service on first use. The optional diagnostic extension uses this same bootstrap
-operation.
-
-Closing a generation retains the service's discovery responder and lifecycle
-handlers until Pi invalidates that runtime. The responder advertises the closed
-service so later calls cannot interpret shutdown as permission to recreate a
-broker. Close removes only generation-owned operation listeners. A closed
-service cannot initialise another generation; session replacement requires a
-fresh runtime and event bus.
-
-An opening recovery callback remains valid until `open` settles. It must be
-called before allocation, may be updated synchronously or asynchronously during
-opening, and must not be used afterwards. An opening reports one aggregate
-recovery descriptor for all its resources. Each update replaces the previous
-snapshot and must still cover all outstanding resources. The final backend must
-include that descriptor unchanged. `lease` describes cleanup and is not an
-allocation key. Replacing an allocation descriptor with `none` is rejected;
-failed-open cleanup uses `confirmCleanup()`.
-
-A close report is a snapshot of recovery information received before its
-deadline. A provider that completes late still releases its allocation; a close
-report cannot certify that cleanup in advance.
-
-Before rejecting a failed opening, a provider calls
-`SandboxOpenContext.confirmCleanup()` after releasing every reported allocation.
-The acknowledgement excludes subsequent allocation and a successful backend
-return. Recovery reporting and cleanup acknowledgement expire when opening
-completes. Without acknowledgement, a rejected opening with reported allocations
-retains manual recovery metadata. Cancellation completion alone does not
-acknowledge allocation cleanup.
-
-Status reports the generation state, effective selection and optional backend
-metadata. Selection distinguishes implicit default and extension configuration.
-The user-shell dialect is explicit when configured. Status never allocates a
-backend. Provider enumeration validates configuration and declarations but does
-not provision.
-
-The optional diagnostic command queries loaded shell integration factories on
-`pi-byos:diagnostics:v1:shell-integration`. It emits the same `pi-byos.discover`
-request with `discoveryVersion: 1` and a synchronous reply callback. A loaded
-factory replies with
-`{ kind: 'pi-byos.shell-integration', discoveryVersion: 1 }`. Replies after
-collection closes are ignored. No replies means not requested; unrecognised
-replies make request status unavailable. This diagnostic query allocates no
-backend and does not change broker or provider discovery. Routing remains
-unverified because Pi does not expose competing user-shell handlers through its
-public API.
-
-Close is idempotent and returns the same completed report for its generation.
-`confirmed` is true only when all generation-owned work and allocation cleanup
-have been confirmed. Reports include non-secret recovery descriptors and typed
-failures. Consumers cannot close a backend through a facade; an embedding host
-uses the explicit session helper. Ordinary shutdown displays incomplete cleanup
-and non-secret recovery instructions through Pi custom messages. If a turn is
-active, Pi defers the message; the broker also writes the warning to a
-`byos-cleanup` custom entry and sends a UI warning before runtime invalidation.
-Status displays outstanding recovery from failed startup before explicit close.
-
-## Structural errors and compatibility
-
-The SDK exports a concrete class for each error, including
-`ProviderNotFoundError`, `SandboxTimeoutError` and `SandboxTransportError`.
-`SandboxError` is their abstract base. Each class accepts typed context and
-optional `{ cause }`, then sets its stable literal `name` and display message.
-Consumers do not supply message strings or free-form detail fields.
-
-`SandboxErrorInfo` is the union of the concrete error types. Errors expose the
-version marker `sandboxErrorVersion: 1`, `name`, `message`, `operation` and
-optional provider/backend/recovery context directly. Configuration errors can
-identify the extension source through `configurationSource`.
-
-Use `isSandboxError(value)` to recognise supported structural errors, or
-`isSandboxError(value, SandboxTimeoutError)` to narrow to a concrete type across
-SDK copies. Each class supplies a static `errorName` with the same literal as
-its instance `name`. The guard validates the version, identity and typed
-context; it does not depend on constructor identity or parse display messages.
-Causes are diagnostic values and must not be serialised or printed
-automatically.
-
-Cancellation errors include `reason: 'caller' | 'shutdown'` and completion.
-Timeouts set reason `deadline`; output callback errors set reason `output`.
-Transport errors and unconfirmed termination within a promised scope set
-completion `unknown`, with an optional original cancellation reason.
-`not-started` excludes provider invocation. For execution, `confirmed` excludes
-later effects within the backend's declared termination scope. `process-group`
-covers the direct process and its supervised POSIX group; `workload` also covers
-descendants that change group or session. Those descendants may continue under
-`process-group`, including when their parent waited for them.
-
-Scope `none` makes no termination promise. Cancellation returns without waiting
-for an acknowledgement and uses completion `not-guaranteed`, which is valid only
-for execution and does not quarantine the backend. Late results are observed
-without output delivery or health changes. A backend with a stronger scope must
-not report `not-guaranteed`. Normal completion still waits for the command's
-result. Unknown mutation or promised execution completion remains unhealthy.
-Allocation disposal remains a separate obligation for every scope.
-
-For example, a provider reports a known missing executable with
-`new SandboxPathNotFoundError({ operation: 'exec', providerId }, { cause })`. A
-consumer can recognise that error with
-`isSandboxError(error, SandboxPathNotFoundError)` even when the provider and
-consumer load separate SDK copies.
-
-Adding optional metadata fields preserves version 1. New capability literals,
-required fields, operation meanings or error variants require a new service
-version. A future service version must still answer discovery-v1 with its
-supported versions so version 1 clients can report incompatibility. The protocol
-requires neither package deduplication nor a globally shared SDK constructor.
-
-## Approval and outside execution services
-
-The [approval guide][approval-guide] defines the exported contracts and
-execution semantics. The framework package exports these APIs through `/api`;
-policy extensions do not need to install or open a sandbox backend.
-
-[approval-guide]: specification.md#destinations-and-permission
-
-The independent service channels use discovery envelope version 1. Requests use
-`{ kind: "pi-byos.discover", discoveryVersion: 1, reply }`. Replies use this
-envelope:
-
-```ts
-{
-  kind: "pi-byos.service",
-  discoveryVersion: 1,
-  serviceVersions: [1],
-  id,
-  service
+```typescript
+interface BuildIdentity {
+  readonly buildId: string;
+  readonly extensionSource: string;
+  readonly major: number;
+  readonly featureLevel: number;
 }
+
+type Envelope<Payload> = BuildIdentity & {
+  readonly requestId: string;
+  readonly kind: 'advertisement' | 'request' | 'reply';
+  readonly payload: Payload;
+};
 ```
 
-Service IDs must match the advertisement. Replies must arrive synchronously;
-late replies are ignored. Duplicate identities, malformed replies and
-unsupported versions are errors. Callbacks, signals and service objects remain
-in-process.
+| Channel  | Envelope kind   | Payload                                                                                                                     |
+| -------- | --------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Runtime  | `advertisement` | `{ type: 'build' }`                                                                                                         |
+| Runtime  | `request`       | `{ type: 'get-broker' }`                                                                                                    |
+| Runtime  | `reply`         | `{ type: 'broker', brokerId: BrokerId }`                                                                                    |
+| Provider | `advertisement` | `{ type: 'provider', providerId: ProviderId, profiles: { open: Profile[], copy: Profile[] }, outsideProfiles?: Profile[] }` |
+| Review   | `request`       | `{ type: 'find-source', toolCallId: string }`                                                                               |
+| Review   | `reply`         | `{ type: 'source', result: ReviewReply }`                                                                                   |
 
-| Channel                                  | Service methods and metadata                                                                                                                                             |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `pi-byos:discovery:v1:approval-policies` | `id`, `label`, `configure(input)` returning a bound `decide` method.                                                                                                     |
-| `pi-byos:discovery:v1:approvals`         | `id`, `request(context, request, options?)`, `policies()`, `close()`.                                                                                                    |
-| `pi-byos:settings:v1`                    | `id`, `configurationVersion: 1`, `guardVersion: 1`, `diagnostics`, `lifetime`, `close()`, `assertConfigurable()`, `read(context)`, optional host-bound `normalExecutor`. |
-| `pi-byos:discovery:v1:outside-execution` | `id`, `guardVersion: 1`, `lifetime`, `acquire`, `track`, `assertLive`, `close`, `status`.                                                                                |
+The envelope version fields are integers. The major is positive and the feature
+level is non-negative. Replies repeat the request ID. Broker and provider
+identities are opaque. Schemas annotate the feature level for each addition.
+Offer reduction omits fields and values above the shared level. A profile whose
+policy uses an unsupported field or value is omitted from the offer.
+`/byos status` includes the chosen build identity. See [broker
+discovery][broker] for compatibility rules.
 
-Configuration bindings and guard requirements use the same service envelope:
+[broker]: specification.md#broker-discovery
 
-| Channel                              | Service payload                              |
-| ------------------------------------ | -------------------------------------------- |
-| `pi-byos:configuration:v1:providers` | `{ id: providerId, resolve(context) }`       |
-| `pi-byos:configuration:v1:approval`  | `{ id: 'approval', resolve(context) }`       |
-| `pi-byos:configuration:v1:outside`   | `{ id: 'outside', resolve(context) }`        |
-| `pi-byos:requirements:v1`            | `{ id: uniqueRegistrationId, requirements }` |
+## Errors
 
-Provider registration publishes both its declaration and activation binding.
-Provider resolvers return `SandboxProviderConfig<unknown>`; the provider's
-validator receives `configuration` unchanged. Approval resolvers return
-`ApprovalSelection`, and outside resolvers return
-`{ destination: 'normal' | 'provider' }`. Resolvers receive
-`SandboxConfigContext` and may return a promise. The shared resolution budget is
-60 seconds. Its abort signal and monotonic remaining time apply to configuration
-only; backend allocation has a separate startup scope. One caller's cancellation
-does not abort shared resolution.
+`isSandboxError(value)` recognises the structural error union across SDK copies.
+A constructor as the second argument narrows to its literal error identity. An
+error includes `name`, `message`, `operation` and the applicable provider,
+backend, extension or recovery context. A requirement failure includes the field
+and rejected value. Providers can supply an underlying cause for debugging.
+User-facing diagnostics omit raw settings.
 
-The SDK permits one provider activation, one approval binding and one outside
-binding. Duplicate binding IDs and multiple provider activations fail before
-resolution. Requirement registration IDs are unique so multiple guards apply
-together. Discoveries collect all replies before validation; malformed or
-incompatible services fail without creating replacements. Registration calls
-`assertConfigurable()` before publication. The first configuration read and SDK
-shutdown permanently close registration for that runtime.
+This is the complete feature level 0 error list.
 
-The settings service's `diagnostics` contains `record(identity, diagnostic)` and
-`snapshot()`. The snapshot returns immutable `entries` and a `dropped` count.
-The ordinary broker uses this store for both configuration and backend warnings;
-the existing 64-entry and 2,048-character limits apply across both phases.
-Warnings remain available after failed configuration without exposing exception
-causes. Outside backend operations retain their separate store. Configuration
-warnings are visible through ordinary broker status even when outside execution
-was the first caller to resolve settings.
-
-The runtime settings and outside execution services are internal SDK protocols;
-the public APIs acquire their shared instances. Settings are bound before use
-and cached for the runtime. Closing a service preserves its closed tombstone.
-The runtime settings lifetime also prevents creating new services after SDK
-shutdown. Service construction publishes a bootstrap reservation before invoking
-extension callbacks; re-entrant creation fails without allocating another
-service. An approval service is independent of the ordinary sandbox broker and
-its allocation state. SDK copies discover the same services through the live Pi
-bus.
-
-The provider-v1 service accepts optional `outsideSandbox` metadata with `label`,
-`capabilities`, `policy` and `configure(input)`. That configure method returns
-an allocation closure for the outside backend. Existing declarations without
-this optional member retain their behaviour. The framework validates and
-snapshots the optional metadata before use.
-
-## Guard requirements
-
-`SandboxRequirements` includes acquisition capability and policy requirements,
-plus optional `providerId`. It excludes `signal` and `timeoutMs`. Any
-registration requires explicit activation; an empty object accepts any activated
-provider. Registration is synchronous and snapshots arrays and policies.
-Requirements are fixed before lazy configuration resolution starts, and multiple
-registrations apply together.
-
-The broker, runtime settings and outside-execution service require
-`guardVersion: 1` in their structural service contracts. A service without this
-field is invalid. The baseline service protocol remains version 1. Independent
-SDK copies must discover and enforce the same requirements before returning
-ordinary handles or preparing outside execution.
-
-`SandboxProviderRequiredError` reports missing activation.
-`SandboxProviderMismatchError` reports a mismatched expected ID. Existing typed
-capability and policy errors report unsupported guarantees. Diagnostics and
-cleanup remain available when requirements cannot be satisfied.
-
-## Copies
-
-`sandbox.copy(options?)` copies a sandbox's workspace into a private sandbox and
-returns `{ sandbox, close }`. The [shell review route][review-route] also copies
-the host checkout when a reviewed command would run on the host. Each copy opens
-its own allocation, which no other consumer shares. Call `close()` when the copy
-is no longer needed and inspect its cleanup report. Aborting the options' signal
-or closing the session also disposes the copy.
-
-[review-route]: pi-integration.md#permission-review-of-a-shell-call
-
-A copy's policy is negotiated differently from the session sandbox. The broker
-chooses the strictest policy that the provider supports and that provides every
-required guarantee. It loosens a field only for a need. For example, a copy with
-no options from a provider that supports every value is `read-only`,
-`workspace-only` and `denied`. A copy with `needs: ['workspace-writes']` is
-`read-write` in the same scope. A need for access that the session's configured
-policy does not grant rejects the copy. Session-wide requirements also apply,
-including their needs. A copy always reports a `copied` workspace, and a
-session-wide requirement for another relationship rejects it.
-
-Copying is available when the sandbox's capabilities include `copy`. A provider
-declares `copy` in its capabilities exactly when it implements the `copy`
-method. The broker calls that method with `source: { kind: 'host' }` or with
-`source: { kind: 'backend', backend }`, where `backend` is the object that the
-provider's `open` returned. The method opens a backend with the requested policy
-and a `copied` workspace even when the provider declares only `shared` or
-`remote` for ordinary opening. The declared `workspaceRelationship` list
-therefore describes only `open`. The broker rejects a copy that reports another
-relationship. Report recovery before allocation, as for ordinary opening. A
-provider can reject a policy that it cannot apply to a copy.
+| Error                                | Detail                                                                                         |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| `SandboxInitialisationError`         | Runtime or host initialisation failure                                                         |
+| `DuplicateBrokerError`               | Conflicting broker identities                                                                  |
+| `IncompatibleSandboxProtocolError`   | Both build identities for a major mismatch, or the unsupported feature and extension to update |
+| `SandboxProviderMismatchError`       | Required and selected provider IDs                                                             |
+| `SandboxProviderRequiredError`       | Guard requires explicit activation                                                             |
+| `InvalidSandboxDeclarationError`     | Provider and rejected declaration detail                                                       |
+| `InvalidSandboxConfigError`          | Extension source and invalid setting or factory failure                                        |
+| `InvalidSandboxRequestError`         | Invalid field and rejected value                                                               |
+| `ProviderNotFoundError`              | Selected provider ID                                                                           |
+| `ConflictingSandboxProviderError`    | Conflicting provider selections                                                                |
+| `ConflictingSandboxConfigError`      | Conflicting configuration sources                                                              |
+| `DuplicateProviderError`             | Duplicate provider ID                                                                          |
+| `UnsupportedSandboxCapabilityError`  | Capability, process kind, dialect, exit status or termination scope and value                  |
+| `UnsupportedSandboxPolicyError`      | Access property and requested state, including any conflicting guard state                     |
+| `SandboxStartupError`                | Startup failure and outstanding recovery, when applicable                                      |
+| `StaleSandboxHandleError`            | Expired facade or runtime identity                                                             |
+| `SandboxSessionClosingError`         | Session closure prevents new work                                                              |
+| `SandboxPermissionDeniedError`       | Rejected operation or access                                                                   |
+| `SandboxPathNotFoundError`           | Target path or executable                                                                      |
+| `SandboxOperationError`              | Target operation failure                                                                       |
+| `SandboxCleanupError`                | Unconfirmed disposal and recovery details                                                      |
+| `SandboxCancelledError`              | `caller` or `shutdown`, with completion                                                        |
+| `SandboxTimeoutError`                | `deadline`, with completion                                                                    |
+| `SandboxOutputCallbackError`         | `output`, with completion                                                                      |
+| `SandboxTransportError`              | Transport failure and unknown completion                                                       |
+| `UnconfirmedSandboxTerminationError` | Termination scope and unknown completion                                                       |

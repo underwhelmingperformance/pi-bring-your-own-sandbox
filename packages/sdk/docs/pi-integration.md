@@ -93,7 +93,7 @@ and PowerShell. Omitted execution selection retains the ordinary sandbox route.
 The normal destination delegates to Pi's public native shell operations; a
 provider-defined destination delegates through the SDK backend contract.
 
-[approval]: approval-execution.md
+[approval]: specification.md#destinations-and-permission
 
 Pi 1.5.0's native shell operations wait for the shell, then stop tracking its
 PID. A background descendant can continue in the original process group after

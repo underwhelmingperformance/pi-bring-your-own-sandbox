@@ -79,7 +79,7 @@ outside environment independently. See [approvals and outside
 execution][approvals] for configuration and examples.
 
 [integration]: docs/pi-integration.md
-[approvals]: docs/approval-execution.md
+[approvals]: docs/specification.md#destinations-and-permission
 
 ## Development
 

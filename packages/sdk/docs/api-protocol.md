@@ -137,7 +137,7 @@ data. Registration rejects protected defaults without the capability. See
 [protected workspace resources][workspace-protection] for path syntax, preset
 expansion, immutability and independent enforcement requirements.
 
-[workspace-protection]: workspace-protection.md
+[workspace-protection]: specification.md#provider-kit-and-conformance
 
 Facade methods always exist, including `files` and `search`. Unsupported methods
 reject with `UnsupportedSandboxCapabilityError` before provider invocation. This
@@ -502,7 +502,7 @@ The [approval guide][approval-guide] defines the exported contracts and
 execution semantics. The framework package exports these APIs through `/api`;
 policy extensions do not need to install or open a sandbox backend.
 
-[approval-guide]: approval-execution.md
+[approval-guide]: specification.md#destinations-and-permission
 
 The independent service channels use discovery envelope version 1. Requests use
 `{ kind: "pi-byos.discover", discoveryVersion: 1, reply }`. Replies use this

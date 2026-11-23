@@ -169,7 +169,7 @@ Protected-resource scenarios also need the independent mutation probes specified
 in [workspace protection][workspace-protection]. The test kit requires the
 probe; it cannot establish runtime enforcement from a capability declaration.
 
-[workspace-protection]: workspace-protection.md
+[workspace-protection]: specification.md#provider-kit-and-conformance
 
 Set `verifyIndependentAllocations: true` to check two allocations from the same
 source. Supply a repeatable `peerProcess` probe. The suite checks its output and

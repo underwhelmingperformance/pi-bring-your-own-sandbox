@@ -50,7 +50,7 @@ during an operation take effect on the next operation. The live backend reports
 `provider-default` for filesystem scope and network access. It rejects requests
 for strict workspace protection.
 
-[protection]: ../../docs/workspace-protection.md
+[protection]: ../../docs/specification.md#provider-kit-and-conformance
 
 ## Private workspace copy
 
@@ -85,7 +85,7 @@ its own copy. Requests to run outside the sandbox follow the [approval
 policy][approval].
 
 [review-route]: ../../docs/pi-integration.md#permission-review-of-a-shell-call
-[approval]: ../../docs/approval-execution.md
+[approval]: ../../docs/specification.md#destinations-and-permission
 
 ## Keeping the work in scope
 

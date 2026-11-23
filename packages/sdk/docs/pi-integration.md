@@ -1,11 +1,10 @@
 # Pi integration
 
-The optional `/pi-tools` entry connects public Pi operation hooks to the shared
-sandbox. Pi 1.5.0 supplies tool execution, schemas, rendering, output
-accumulation and transcript files. The framework supplies command execution
-through `BashOperations` and the `user_bash` event.
-
-Load the entry explicitly from a project extension:
+The target `/pi-tools` entry routes Pi's shell, file and search tools through
+the BYOS facade. Load it explicitly. The SDK is a dependency and Pi does not
+load a default extension from it. From a trusted directory outside the
+workspace, add a `sandbox-tools.ts` extension and load the file with Pi's `-e`
+option.
 
 ```typescript
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
@@ -16,125 +15,86 @@ export default function extension(pi: ExtensionAPI): void {
 }
 ```
 
-The package's default extension remains diagnostics only. Loading `/pi-tools`
-preserves the active tool selection, including explicit allowlists and default
-tool modifiers. Bash uses the `bash` target dialect and PowerShell uses
-`powershell`; user shell commands use configured `userShell` or the provider's
-advertised default. Unsupported target dialects and selected-provider failures
-return errors. Without configuration, the SDK uses the built-in host passthrough
-provider.
+## Tool routing
 
-## Supported execution paths
+Pi's `bash`, `user_bash`, file and search tools use ordinary acquisition. They
+set `network`, `hostWorkspaceWrites`, `hostUserData` and `hostSystemFiles` to
+`preferred` and use the [shared negotiation rule][negotiation]. A configured
+read-only checkout stays read-only, and acquisition succeeds.
 
-| Path                      | Integration                                                |
-| ------------------------- | ---------------------------------------------------------- |
-| Model Bash and PowerShell | Pi definition factories use SDK-backed `BashOperations`.   |
-| User shell                | `user_bash` supplies SDK-backed `BashOperations`.          |
-| Direct SDK consumers      | `/api` exposes the provider's advertised operation groups. |
+The integration preserves Pi's selected tools, explicit allowlists and tool
+modifiers. Pi owns input validation, tool permission hooks, rendering and output
+storage. The shell adapter runs `bash` in the target Bash dialect. The
+user-shell handler uses `userShell` or the provider's default shell. Available
+dialects come from the selected profile. The file and search adapters share the
+same workspace as Bash and fail with a typed reason if a capability is
+unavailable. The [adapter guide][adapters] specifies the required delegation and
+acceptance cases.
 
-Pi owns tool validation, approval hooks, rendering and output storage. Direct
-SDK calls do not invoke Pi tool approval hooks.
+Pi applies its shell command prefix in the target. Full output files stored by
+Pi remain on the Pi host. Access from the sandbox depends on its policy. Direct
+SDK calls follow the [execution contract][spec]. They bypass Pi's tool
+permission hooks because they are not Pi tool calls.
 
-Bash preserves Pi's configured `shellCommandPrefix` through the public settings
-and definition APIs. The prefix executes in the target shell. An explicit tool
-`timeout` includes startup and execution. When omitted, the SDK allows 60
-seconds for startup and 120 seconds for execution; the tool schema describes
-those limits. Unconfirmed termination retains deadline classification and
-unknown completion.
+Loading the integration does not control competing handlers registered by other
+extensions. Use an [outer sandbox][outer] to confine Pi, its extensions and
+local MCP servers.
 
-SDK execution does not inherit the host environment supplied to
-`BashOperations`. The provider supplies target defaults and the SDK enforces
-capabilities, cancellation and completion semantics. Pi full-output references
-refer to host transcript files. A remote sandbox may not be able to read those
-files. The integration does not copy transcript files into the target or create
-its own output accumulator.
+[negotiation]: specification.md#configuration-and-negotiation
+[adapters]: pi-file-adapters.md
+[spec]: specification.md#execution-and-capabilities
+[outer]: outer-runtime.md
 
-`/byos status` reports whether a loaded shell integration factory answered its
-diagnostic query. Routing remains unverified: Pi exposes no public way to
-enumerate competing `user_bash` handlers or guarantee that this integration
-receives every command. Loading the factory does not establish universal
-interception. An unrecognised diagnostic reply reports request status as
-unavailable.
+## Model descriptions and outside execution
 
-Other extensions can replace the shell definitions or consume `user_bash` before
-this integration. Pi controls registration and event ordering. Restricting Pi,
-its extensions and local MCP servers requires an [outer sandbox][outer-runtime].
-Remote MCP servers run under their own host's security policy.
+<!--
+`bash_outside`, `outsideApproval`, `outsideDestinations` and `violations`
+are provisional in milestone 1.
+-->
 
-[outer-runtime]: outer-runtime.md
+The integration describes the effective restrictions of each destination to the
+model, using a description generated from the negotiated policy. Providers that
+support `violations` can attach structured policy violations to results. BYOS
+renders these separately from command output.
 
-## Upstream extension-point gaps
+The separate `bash_outside` tool takes an `access` record and a justification.
+The user's trusted host extension sets `outsideDestinations` and
+`outsideApproval` with `initialiseSandboxHost` from `/host`. It can enable
+profiles declared by the selected provider or explicitly enable passthrough.
+When a permission extension decides the call, add a rule for that tool. A rule
+for `bash` does not approve it. With the default BYOS confirmation, the user
+sees the negotiated destination and the exact command before dispatch. See the
+[destination rules][destinations] and [tool arguments][api].
 
-File and search tools retain Pi's own execution paths. They are not routed by
-this entry. The following boundaries need upstream Pi support before the
-framework can claim general target-filesystem routing:
+[destinations]: specification.md#destinations-and-permission
+[api]: api-protocol.md#outside-tool-and-review
 
-| Path         | Pi 1.5.0 behaviour                                                                 | Required extension point                                                                         |
-| ------------ | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Read         | Read-path resolution can check host file existence before custom `ReadOperations`. | Target path resolution must be delegated alongside file operations.                              |
-| Write/edit   | The mutation queue resolves host real paths outside custom operations.             | Providers need control over mutation identity and the complete read/transform/write transaction. |
-| Edit preview | `renderCall` can read host content to compute a preview before approval.           | Preview reads must use an explicit backend boundary and approval policy.                         |
-| List/find    | Path resolution and joins use host path semantics before custom operations.        | A target path resolver must cover roots, home expansion and native separators.                   |
-| Grep         | Pi starts host ripgrep even when `GrepOperations` is supplied.                     | A complete search operation hook must replace process execution and context reads.               |
-| Shell output | Pi stores full output in host temporary files and publishes those paths.           | An output-storage hook is needed for target-readable full-output references.                     |
+## Permission review
 
-These gaps require upstream public hooks. BYOS does not use private Pi imports
-or replace Pi's tool algorithms. The [adapter prerequisites][file-adapters]
-describe the required hooks. The [boundary tests][boundary-tests] check the
-unsupported paths against the installed Pi version.
+Pi awaits `tool_execution_start` before running the `tool_call` permission
+hooks. BYOS records the pending call at the earlier event. A permission
+extension uses `/review` to request the source for that tool call ID. The review
+route supplies an identity and the reviewer's broker resolves it. The resulting
+source describes the destination and lets the reviewer negotiate or create a
+copy. The original workload remains pending.
 
-[file-adapters]: pi-file-adapters.md
-[boundary-tests]: ../src/pi-boundaries.test.ts
+The pi-permission-auto-review extension can show investigation only when copy
+negotiation succeeds. An unavailable route includes a typed reason. The
+extension must inspect copy cleanup and report unconfirmed disposal. See the
+[review contract][review] for isolation and lifetime.
 
-## Explicit outside execution
+[review]: specification.md#copies-and-review
 
-The [approval service][approval] supports explicit outside execution for Bash
-and PowerShell. Omitted execution selection retains the ordinary sandbox route.
-The normal destination delegates to Pi's public native shell operations; a
-provider-defined destination delegates through the SDK backend contract.
+## Extension load order
 
-[approval]: specification.md#destinations-and-permission
+Pi 1.5.0 loads extensions in this order.
 
-Pi 1.5.0's native shell operations wait for the shell, then stop tracking its
-PID. A background descendant can continue in the original process group after
-that shell exits. Framework shutdown does not confirm termination of those
-descendants. The native Pi route therefore uses termination scope `none`. SDK
-passthrough and provider routes use their declared termination scopes and
-independent allocation-disposal contracts.
+1. Extensions passed with `-e`.
+2. Project `extensions` settings entries, then `.pi/extensions/` in the project.
+3. Personal `extensions` settings entries, then `~/.pi/agent/extensions/`.
+4. Project packages, then personal packages, each in settings array order.
+5. Built-in extensions.
 
-## Permission review of a shell call
-
-A permission reviewer can inspect the files that a pending shell call will see.
-Call `hasShellReviewRoute(pi)` to discover whether a BYOS shell route is loaded.
-During the pending tool call, call
-`findShellReviewSource(pi, ctx, { toolName, toolCallId })`. It returns
-`undefined` unless exactly one route claims the call. The source has one method,
-`copy(options?)`, which opens a [private copy][copies] of the files that the
-command will see. The reviewer cannot run commands in the destination itself.
-Pass the guarantees and needs that the review depends on, for example
-`{ guarantees: ['no-network', 'no-host-user-data'], signal }`. Close the copy
-when the review ends.
-
-The route can belong to another SDK installation. `copy` checks the returned
-copy against the options in the caller's SDK, as `getSandbox` does for a shared
-sandbox, and closes a copy that fails the check.
-
-The shell extension answers these queries synchronously on Pi's
-`pi-byos:review:tool-call:v2` event channel. A query is either
-`{ kind: 'available', reply }` or `{ sessionId, toolName, toolCallId, reply }`,
-and the route replies with an object that has the `copy` method. Use the helper
-functions so the caller's SDK checks each copy.
-
-When an extension wraps the routing factory, pass its own Pi entry path as the
-second argument to the factory. Pi reports this path on the selected tool.
-
-Load the routing extension before the permission gate so the router can record
-the pending call. An unknown call, an overridden tool or a forwarded request
-requires transcript-only review. The default shell destination uses its active
-backend. Once the reviewer opens a copy, BYOS rejects execution if a later tool
-hook changes the reviewed command, its Bash prefix or its destination. The
-built-in normal outside destination uses the host checkout. Custom outside
-executors require their own destination resolver. Opening a copy does not
-approve or execute the proposed command.
-
-[copies]: api-protocol.md#copies
+`pi install` appends new packages to the relevant `packages` array. The review
+route works whichever extension loads first because Pi awaits
+`tool_execution_start` before invoking permission hooks.

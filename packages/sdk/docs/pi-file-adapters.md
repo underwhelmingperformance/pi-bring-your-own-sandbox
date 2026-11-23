@@ -1,59 +1,42 @@
-# Pi file and search adapter prerequisites
+# Pi file and search adapters
 
-Pi 1.5.0's public tool factories do not provide a complete target-filesystem
-boundary. Host path resolution, mutation identities, edit previews and grep
-execution need additional public hooks. The [Pi integration guide][integration]
-lists the current limits. Until those hooks exist, `/pi-tools` routes shell
-tools only.
+Pi's `read`, `write`, `edit`, `ls`, `find` and `grep` use the same BYOS
+workspace as `bash`. The adapters use the facade's file and search operations.
+Pi keeps its argument handling, edit algorithm, image handling and output
+formatting. The [Pi integration guide][integration] describes installation and
+routing.
 
-[integration]: pi-integration.md#upstream-extension-point-gaps
+[integration]: pi-integration.md
 
-Complete adapters require changes in Pi. BYOS must preserve Pi's editing,
-search, image and presentation algorithms. Private imports, duplicated edit
-logic and host reads hidden behind an SDK filename check do not establish the
-required boundary.
+## Required delegation
 
-## Required public hooks
+- Resolve paths and inspect file types through target operations. The adapter
+  must account for cwd, roots, home expansion, separators and filename variants
+  without probing the host filesystem.
+- Run the edit read, transform and write in the facade's mutation queue.
+  Delegate the pure transformation to Pi through a supported API. Preview reads
+  use the target boundary and follow the call's permission rules.
+- Run searches and context reads in the target. Host binary discovery and
+  spawning belong only to passthrough.
+- Detect image type from target bytes. A local file-based helper cannot inspect
+  a path that only exists inside the sandbox.
+- Report unavailable operations as typed capability failures. The adapter cannot
+  fill missing capability with a host operation.
 
-These are requirements for upstream APIs, not APIs available in Pi 1.5.0:
+Milestone 8 routes every listed tool through the facade. The [boundary
+tests][boundary] show gaps in Pi 1.5.0. Some paths resolve against the host
+before reaching an adapter. The edit queue, edit previews, search process
+invocation and image detection also contain host-side steps. Milestone 8 decides
+how to close each gap while preserving Pi's argument and output behaviour.
 
-- Delegate target path resolution, including cwd, roots, home expansion,
-  separators and filename variants. Resolution must use target operations and
-  must not inspect host files. Workspace display paths can remain separate.
-- Delegate mutation identity and the complete edit transaction. Pi should expose
-  its pure edit transformation through a supported API, or supply an operation
-  callback that executes that transformation within the backend transaction.
-  BYOS can then use `files.updateText` without copying Pi's algorithm. An
-  asynchronous Pi read/transform/write sequence cannot be passed directly as the
-  SDK's synchronous text transform.
-- Route edit-preview reads through an explicit boundary. Define whether preview
-  reads require approval and when they can execute. Renderers must not read host
-  content independently before approval, and must handle missing target
-  capabilities without falling back to host reads.
-- Provide a complete grep execution operation, including context reads and
-  cancellation. Pi can retain search argument validation and output formatting;
-  a supplied operation must replace host ripgrep discovery and spawning.
-- Detect image content from backend bytes through a supported byte-based API. A
-  file-based MIME helper cannot inspect a remote path safely.
+[boundary]: ../src/pi-boundaries.test.ts
 
-Pi also owns full shell-output transcript files. An output-storage hook would
-make those references readable from a remote target; the current integration
-reports host paths according to Pi's public behaviour.
+## Acceptance cases
 
-## Adapter acceptance after upstream support
-
-Adapters must pass target-boundary regressions against the supported Pi version.
-Use one operation adapter per public file/search factory, preserve Pi's tool
-selection and modifiers, and acquire the user's provider through the SDK.
-Capability failures must be typed and happen without host fallback.
-
-Integration cases must distinguish host-only and target-only marker contents,
-remote POSIX and Windows paths, images, edit previews before approval, mutation
-transactions, unsupported methods and shells, cancellation, result transforms
-and explicit tool allowlists. Exercise the real Pi runtime with scripted model
-and approval decisions. Provider conformance must independently inspect actual
-target reads and mutations.
-
-Providers implement and verify their own file/search operations and access
-restrictions. Complete Pi hooks would allow adapters to use those capabilities;
-the framework's interfaces alone do not implement them.
+Run the adapters in a real Pi session with scripted model calls and permission
+decisions. Use different markers in the host and target to show which tree each
+tool reads and writes. Check POSIX and Windows target paths, images, preview
+reads, edit ordering, cancellation, result transforms and explicit tool
+allowlists. Check that Bash sees a completed edit in the same workspace and that
+a missing operation produces no host effects. Provider conformance tests inspect
+the target independently of Pi's rendered output.

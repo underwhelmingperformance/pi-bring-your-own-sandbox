@@ -1,11 +1,10 @@
 # Development and validation
 
-The framework targets Pi 1.5.0 and Node 24 or later. Use the development Node
-version in `.node-version` and the pnpm version in `package.json`. Native search
-tests require fd (`fdfind` on Debian) and ripgrep. Commit hooks require
-pre-commit and Deno.
+Use the Node version in `.node-version` and the pnpm version in `package.json`.
+The workspace targets Pi 1.5.0 and Node 24 or later. Native search tests require
+fd (`fdfind` on Debian) and ripgrep. Commit hooks require pre-commit and Deno.
 
-## Run the checks
+## Run repository checks
 
 ```sh
 pnpm install --frozen-lockfile
@@ -13,79 +12,43 @@ pre-commit install
 pnpm check
 ```
 
-`pnpm check` builds the SDK, then checks formatting, dependency usage, lint,
-Markdown, tests and types. Builds and type checks use TypeScript 7. ESLint keeps
-TypeScript 6's compiler API for type-aware Unicorn rules.
+`pnpm check` builds the packages and checks formatting, dependencies, lint,
+Markdown, tests and types. Build and type checking use TypeScript 7. ESLint uses
+the TypeScript 6 compiler API for type-aware Unicorn rules. Use
+`pnpm fix:format` for formatting.
 
-Linting runs Oxlint/tsgolint for the typed typescript-eslint rules, then ESLint
-for the remaining checks. `pnpm fix` applies Oxlint, ESLint and Prettier fixes
-in that order.
+| Command                 | Coverage                                      | Requirements                         |
+| ----------------------- | --------------------------------------------- | ------------------------------------ |
+| `pnpm test:integration` | Real Pi sessions and CLI/RPC tool dispatch    | Local fixtures                       |
+| `pnpm test:package`     | Installed archives and independent SDK copies | Dependency installation access       |
+| `pnpm test:provider`    | Real Docker operations, isolation and cleanup | Local Docker daemon and pinned image |
 
-Additional test commands run specific suites:
+The ordinary test run includes integration tests. Package and Docker tests have
+separate commands. Package tests compile source exports in an isolated consumer
+with `noPropertyAccessFromIndexSignature` enabled. Model and permission fixtures
+require no live model requests.
 
-| Command                 | Purpose                                                      | Requirements                          |
-| ----------------------- | ------------------------------------------------------------ | ------------------------------------- |
-| `pnpm test:integration` | Real Pi sessions, CLI/RPC approval and consumer integration. | Local fixtures; no model credentials. |
-| `pnpm test:package`     | Packed archives, exports and independent SDK copies.         | Dependency installation access.       |
-| `pnpm test:provider`    | Real Docker execution, isolation and cleanup.                | Local Docker daemon and pinned image. |
+The [CI workflow][workflow] runs tests on Linux and macOS, and static, package
+and Docker checks on Linux. Separate workflows check Actions security, commit
+messages and CodeQL.
 
-Package tests compile every source export in an isolated consumer with
-`noPropertyAccessFromIndexSignature` enabled. Source and compiled consumers use
-the project's TypeScript compiler version.
-
-The ordinary test run includes integration tests but skips the package and
-Docker suites. Run their dedicated commands separately. The [Docker
-guide][docker] explains daemon configuration and image preparation. Model and
-approval fixtures require no live model requests.
-
-The [CI workflow][workflow] runs tests on Linux and macOS, and static checks,
-package installation and Docker tests on Linux. The required `check` job depends
-on all of those jobs. Separate workflows check Actions security, commit messages
-and CodeQL results.
-
-[docker]: ../examples/docker/README.md
 [workflow]: ../../../.github/workflows/check.yml
 
-## Try the checkout
+## Check the redesign
 
-From `packages/sdk`, load the Docker provider:
+The documentation describes the target design. The [user-flow coverage][flows]
+specifies the integration evidence that each later milestone needs. The
+[provider testing guide][testing] specifies the conformance cases and how they
+inspect runtime effects. The [Docker guide][docker] explains daemon and image
+preparation from this checkout.
 
-```sh
-pi --no-extensions -e ./examples/docker/src/index.ts
-```
+Use actual Pi registration, dispatch and lifecycle events for integration tests.
+Run protocol tests across independent SDK builds and vary the load order. Check
+SDK behaviour with broker and passthrough fixtures. Use the real provider suite
+to verify isolation and cleanup on each provider's platform. POSIX process-group
+tests do not establish Windows process-tree cancellation, and a scripted
+PowerShell backend does not establish native PowerShell support.
 
-Provider extensions can call `registerSandboxDiagnostics(pi)` to expose
-`/byos status`, `/byos providers` and `/byos approval-policies`. These commands
-inspect configuration without allocating a sandbox. Pi loads extension source
-directly. `pnpm build` produces the compiled SDK used by archive exports.
-
-## Test boundaries
-
-The [user-flow coverage][user-flows] maps supported flows to integration tests.
-The [provider testing guide][provider-testing] explains independent target
-checks. The [specification][spec] and [API appendix][api] define the shared
-contract.
-
-Host execution uses POSIX process groups. Windows host process-tree cancellation
-is unsupported. A descendant that creates another session or process group can
-continue after completion, cancellation or disposal under a `process-group`
-guarantee. Tests must clean up surviving children independently. Target-native
-Windows path tests do not establish Windows host execution support.
-
-The Docker example runs POSIX `sh`, Bash and optional PowerShell jobs in copied
-workspace volumes. File and search operations use the same volume. Workspace
-volumes have no storage quota. The importer has a limit of 32 processes, 256 MiB
-of memory and one CPU. A host crash requires manual resource cleanup; see the
-Docker guide for recovery instructions.
-
-See the [Pi integration guide][pi] for unsupported tool paths, host transcript
-files and competing shell handlers. Terminal drawing, keyboard navigation and
-literal interactive `!`/`!!` parsing have no terminal automation here.
-PowerShell approval tests use a provider fixture, not a native PowerShell
-installation.
-
-[user-flows]: user-flow-coverage.md
-[provider-testing]: provider-testing.md
-[spec]: specification.md
-[api]: api-protocol.md
-[pi]: pi-integration.md
+[flows]: user-flow-coverage.md
+[testing]: provider-testing.md
+[docker]: ../examples/docker/README.md

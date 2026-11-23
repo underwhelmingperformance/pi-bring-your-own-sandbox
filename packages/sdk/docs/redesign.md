@@ -10,16 +10,22 @@ redesign is complete.
 
 ## Decisions
 
-- Consumers state restrictions and needs. "Guarantee" is retired. A restriction
-  is something that the sandbox must prevent, such as `no-network`. A need is a
-  kind of access without which the consumer cannot work.
-- One negotiation rule applies to every acquisition, copy and outside
-  destination: start from the most restrictive profile, relax only for needs,
-  and never exceed the configured policy.
-- Working on the user's live files is a need (`host-workspace-writes`).
-  `no-workspace-writes` means that the sandbox cannot change the host checkout.
-  A private workspace exists only through `copy`. The workspace relationship is
-  part of the workspace and not of the policy.
+- Consumers pass one `access` record. Its properties are `network`,
+  `hostWorkspaceWrites`, `hostUserData` and `hostSystemFiles`. A property marked
+  `prevented` is a restriction. A property marked `needed` is a need.
+  `preferred` requests access when available. An omitted property gets the most
+  restrictive setting that the provider supports. Passthrough supports only full
+  access, so omission prevents nothing there and a restriction fails before
+  allocation.
+- One [negotiation rule][negotiation] applies to acquisition, copy, guard and
+  outside destination selection.
+- Set `hostWorkspaceWrites` to `needed` to work on the user's live files. Set it
+  to `prevented` to prevent changes to the host checkout. Private workspaces
+  exist only through `copy`. The provider decides whether writes to a copy are
+  allowed. The workspace relationship is part of the workspace.
+- Pi's shell, file and search tools mark all access properties `preferred`. The
+  tools use the live checkout, which may be read-only. Project trust selects
+  neither the workspace nor the policy.
 - Providers declare profiles separately for `open` and `copy`. A profile is a
   combination of policy settings with the capabilities, exit status and
   termination scope that hold under it. Negotiation chooses a profile before
@@ -39,9 +45,9 @@ redesign is complete.
   channels and the built-in `user`, `always` and `never` policies are removed.
 - Running outside the selected sandbox uses a separate Pi tool, registered next
   to the sandboxed `bash`, so a permission extension can give it its own rules.
-  The tool takes needs and a justification. BYOS negotiates the least
-  restrictive destination that satisfies the needs within the user's
-  configuration, and uses the host only when the configuration allows it. A
+  The tool takes an `access` record and a justification. BYOS negotiates the
+  destination using the shared rule. Access can exceed the ordinary configured
+  policy only at a destination that the user's configuration allows. A
   configuration setting decides who approves these calls: BYOS itself (the
   default, which asks the user) or the permission extension (BYOS runs the call
   once it reaches execution).
@@ -67,6 +73,8 @@ redesign is complete.
   from each provider's declared profiles and capabilities, and covers copies,
   cancellation, cleanup after a failed open and recovery.
 
+[negotiation]: specification.md#configuration-and-negotiation
+
 ## Work
 
 Each milestone ends with every repository check passing and with a review by the
@@ -88,13 +96,12 @@ changes use red/green TDD.
    number and feature level, a schema snapshot test, build identity in
    advertisements and `/byos status`, and broker creation after load by the
    highest build.
-4. Policy model: restrictions and needs, profiles for `open` and `copy`, one
-   negotiation function, decisions before allocation, removal of workspace
-   protection and of the relationship from the policy, and errors with
-   structured detail.
+4. Policy model: access record, profiles for `open` and `copy`, one negotiation
+   function, decisions before allocation, removal of workspace protection and of
+   the relationship from the policy, and errors with structured detail.
 5. Outside execution and model feedback: removal of the approval system, the
-   separate outside tool, escalation by needs, the approval setting, the policy
-   description for the model, and the violation capability.
+   separate outside tool, escalation through the access record, the approval
+   setting, the policy description for the model, and the violation capability.
 6. Review route: identity replies, copies through the reviewer's broker,
    negotiation without allocation, typed reasons and a destination description.
 7. Surface: audience entry points, a committed public API report, import
@@ -117,7 +124,7 @@ changes use red/green TDD.
 1. Corrections that do not depend on the SDK: the stale SDK pin note in
    `docs/codex-parity.md`, a footer that reports what the last review actually
    did, logging of unconfirmed copy closes, and the documented install order.
-2. After SDK milestones 4 to 6: restrictions vocabulary, the review route's
-   identities and typed reasons, offering investigation only when a copy can be
-   negotiated, the destination description in the review prompt, and reviewing
-   the outside tool as its own tool.
+2. After SDK milestones 4 to 6: access record, the review route's identities and
+   typed reasons, offering investigation only when a copy can be negotiated, the
+   destination description in the review prompt, and reviewing the outside tool
+   as its own tool.

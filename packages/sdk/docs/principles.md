@@ -64,16 +64,17 @@ Enforced by:
 [destination]: #destination
 [sandbox]: #sandbox
 
-## 3. Consumers say what they require, not how to configure the sandbox
+## 3. Consumers state access requirements and preferences
 
-A [consumer] states [restrictions][restriction], which are things that the
-sandbox must prevent, such as network access (`no-network`). It also states
-[needs][need], which are kinds of access without which it cannot work, such as
-writing to the user's files. It never sets [policy] values.
+A [consumer] uses an [access record] to state [restrictions][restriction],
+[needs][need] and [preferences][preference]. It leaves other properties
+unspecified. It never sets [policy] values.
 
-Every [acquisition], [copy], guard and [outside destination] uses the same rule:
-start from the most restrictive setup that the [provider] supports, relax it
-only as far as the needs require, and never go beyond the [configured policy].
+Every [acquisition], [copy], guard and [outside destination] uses the same
+[negotiation rule][negotiation]. Stay within each destination's [configured
+policy], satisfy every need and restriction, and grant as many preferences as
+possible. An omitted property gets the most restrictive setting that the
+provider supports.
 
 A consumer knows what it requires but not what each provider can do. If
 consumers set policy values, each consumer would have to understand every
@@ -84,25 +85,27 @@ Enforced by:
 
 - option types that have no policy fields;
 - one negotiation function, used everywhere;
-- conformance cases that check that the chosen policy is the most restrictive
-  one that satisfies the request.
+- conformance cases that check that the chosen profile follows the same ordering
+  regardless of declaration order.
 
 [consumer]: #consumer
+[access record]: #access-record
+[preference]: #preference
 [restriction]: #restriction
 [need]: #need
 [policy]: #policy
 [acquisition]: #acquisition
 [copy]: #copy
 [outside destination]: #outside-destination
-[provider]: #provider
 [configured policy]: #configured-policy
+[negotiation]: specification.md#configuration-and-negotiation
 
 ## 4. A requirement changes only what it is about
 
 Asking for a restriction or a need changes only that property of the sandbox.
-Asking for `no-network`, for example, removes network access and nothing else.
-Anything else that a consumer depends on, such as working directly on the user's
-files, is a need of its own.
+Setting `network: 'prevented'`, for example, removes network access and nothing
+else. Anything else that a consumer depends on, such as working directly on the
+user's files, is a need of its own.
 
 When one requirement quietly changes something unrelated, the consumer receives
 a sandbox that differs from what it expects, and no error tells it so. A
@@ -368,6 +371,12 @@ terms.
 
 ## Glossary
 
+### Access record
+
+The consumer's access requirements and preferences, with one entry per requested
+property. Each entry is a need, a restriction or a preference. An omitted
+property gets the most restrictive setting that the provider supports.
+
 ### Acquisition
 
 Asking the broker for a sandbox with `getSandbox`.
@@ -384,7 +393,8 @@ backends for a Pi session.
 ### Configured policy
 
 The most access that the user's configuration allows. No negotiated policy goes
-beyond it.
+beyond it. The ordinary sandbox and each allowed outside destination have their
+own configured policy.
 
 ### Consumer
 
@@ -401,19 +411,38 @@ or of the user's files. Changes stay in the copy.
 Where a shell tool call runs: in the selected sandbox, or at an outside
 destination.
 
+### Feature level
+
+The revision within one protocol major number. Each addition raises this number.
+
 ### Generation
 
 The backends that one provider runs for one Pi session.
 
+### Host system files
+
+Files installed and maintained for the host operating system or a system-wide
+runtime, such as OS binaries in `/bin` or `/usr/bin`, machine configuration in
+`/etc` and macOS system files in `/System`.
+
+### Host user data
+
+Host files outside the checkout and outside the host system files. This includes
+user data in system-managed directories.
+
 ### Need
 
-A kind of access that a consumer cannot work without, such as writing to the
-user's files.
+Access without which a consumer cannot work. The consumer marks the property
+`needed` in the access record.
 
 ### Outside destination
 
 A place to run a command outside the selected sandbox, such as directly on the
 host.
+
+### Outside tool
+
+The Pi tool that requests command execution at an outside destination.
 
 ### Permission extension
 
@@ -425,6 +454,12 @@ user or by having a model review the call.
 The settings that control what a sandbox can reach: the workspace, the rest of
 the filesystem, and the network.
 
+### Preference
+
+Access that benefits a consumer without being necessary. The consumer marks the
+property `preferred`. The broker grants access when the configured policy and
+the provider allow it, and continues without that access when they do not.
+
 ### Profile
 
 A combination of policy settings that a provider can provide together, with the
@@ -434,10 +469,19 @@ capabilities that work under it.
 
 An extension that registers with the broker and starts backends.
 
+### Provider kit
+
+The shared SDK helpers that providers use to implement backend operations.
+
 ### Restriction
 
-Something that a sandbox must prevent, such as network access (`no-network`) or
-changes to the workspace (`no-workspace-writes`).
+Access that a sandbox must prevent. The consumer marks the property `prevented`
+in the access record.
+
+### Review route
+
+The exchange that identifies a pending tool call's review source or reports why
+it is unavailable.
 
 ### Review source
 

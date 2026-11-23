@@ -1,63 +1,38 @@
-# pi-bring-your-own-sandbox-guard
+# BYOS guard
 
-An optional Pi extension that requires an activated sandbox provider before BYOS
-SDK calls can proceed. Use it when a missing provider extension should block
-execution instead of using the SDK's default host implementation.
+Use the optional guard when SDK consumers must have an explicitly activated
+provider. The guard can also require a specific provider, restrictions, needs or
+operation capabilities. The broker combines the guard and consumer requests
+before acquiring a sandbox or copy. A need or restriction takes precedence over
+a preference. Conflicting hard states fail before allocation.
 
-The default guard accepts any explicitly activated provider. It has no
-configuration file or command-line flags. Your chosen provider extension owns
-its configuration.
+The guard moves into the SDK as `/guard` in milestone 7. This checkout still has
+the standalone [extension][extension]. The example below describes the target
+API.
 
-## Use from this checkout
+[extension]: src/index.ts
 
-Install workspace dependencies, then load the guard alongside your provider:
-
-```sh
-pnpm install --frozen-lockfile
-pi --no-extensions -e ./packages/guard -e /path/to/provider-extension.ts
-```
-
-Pi loads the TypeScript extension source. Archive exports for Node consumers use
-the compiled factory. These packages remain private development packages; this
-command does not require publication.
-
-## Require a provider or guarantees
-
-A local extension can use the exported factory:
+## Require a provider and restrictions
 
 ```typescript
-import { createSandboxGuard } from 'pi-bring-your-own-sandbox-guard';
+import { createSandboxGuard } from 'pi-bring-your-own-sandbox/guard';
 
 export default createSandboxGuard({
-  providerId: 'example.native',
+  providerId: 'example.docker',
   capabilities: ['exec'],
-  processKinds: ['argv'],
-  terminationScope: 'process-group',
-  guarantees: ['no-workspace-writes', 'no-host-user-data']
+  access: { network: 'prevented', hostUserData: 'prevented' },
+  terminationScope: 'process-group'
 });
 ```
 
-Omit `providerId` to accept any activated provider. Requirements use the SDK's
-capability, guarantee and need vocabulary. Multiple guards apply together.
-Incompatible requirements block acquisition. Consumers cannot loosen guard
-requirements. Reload Pi to change providers, configuration or guard
-requirements.
+Omit `providerId` to accept any explicitly activated provider. Multiple guards
+apply together, and consumers cannot weaken the combined requirements. A guard
+that requires only activation accepts an explicitly activated passthrough
+provider. Add the restrictions that the model's tools depend on. Reload Pi when
+configuration changes.
 
-The SDK checks declarations before allocation and checks ordinary backends again
-after opening. The guard also applies before outside execution is prepared or
-approved. Once the ordinary provider satisfies the guard, explicitly approved
-outside execution can use its independently selected destination without opening
-the ordinary backend.
+The guard checks declarations and cannot enforce isolation itself. The
+[specification][spec] describes negotiation and the boundary of the cooperative
+SDK.
 
-## Boundary
-
-The guard applies to cooperating extensions that use BYOS. It does not replace
-Pi tools or intercept direct host I/O. Provider IDs and advertised capabilities
-are declarations, not authenticated extension metadata. A malicious extension
-can register a matching declaration and misrepresent its behaviour. Users must
-trust installed extensions and the provider's implementation.
-
-An explicitly activated host provider can satisfy a guard that requires only
-activation. Specify policy and capability requirements when activation alone is
-insufficient. Provider startup and configuration failures remain errors; the SDK
-does not select another provider after a failure.
+[spec]: ../sdk/docs/specification.md

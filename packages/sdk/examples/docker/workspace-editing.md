@@ -1,103 +1,35 @@
-# Workspace editing goals for the Docker provider
+# Workspace editing with Docker
 
-Pi fixes a failing test. The developer sees the change in their editor and saves
-a correction. Pi's next read sees the correction, and its next test run uses it.
-Docker selects this workflow for eligible trusted development sessions. The
-[provider guide][docker] describes the runtime requirements. The SDK lets
-callers require a workspace relationship and isolation guarantees. The defaults
-below apply to this Docker example.
+Pi's shell, file and search tools use the ordinary sandbox on the live checkout.
+The configured policy can make that checkout read-only. The project's trust
+setting selects neither the workspace nor the policy. Consumers such as
+permission reviewers can explicitly request a separate copy.
 
-[docker]: README.md
+## Edit the live checkout
 
-## Shared checkout
+Pi's tools set `hostWorkspaceWrites` to `preferred`. If live writes are allowed
+by the configured policy and available in the selected profile, Pi can edit the
+checkout. Otherwise the tools use a read-only checkout and acquisition succeeds.
 
-A caller can require live editing by setting `workspaceRelationship: 'shared'`
-in its acquisition policy. Docker checks the checkout and mounts before it
-returns a shared backend.
+The provider's protected-path settings cover files that host tools may later
+interpret as configuration. The provider kit supplies defaults and a matcher.
+Keep the provider and SDK installed outside the checkout so workload changes
+cannot replace the running integration.
 
-Use this when all three conditions apply.
+## Use a private copy
 
-- Pi and the developer are working in a trusted project and need to see each
-  other's changes as they edit, build or run tests.
-- The session delegates both `filesystemScope` and `networkAccess` to the
-  provider (`provider-default`).
-- Docker can meet the caller's requirements and keep host extension installation
-  within the authority granted to the workload.
+Request a copy explicitly. The broker resolves the source and the provider
+imports its files into a separate volume. The source can be the host checkout or
+a sandbox workspace. The provider decides whether the copy accepts local writes.
+Changes to the copy stay in its volume.
 
-Shell commands, file operations and searches use the same checkout. The sandbox
-applies authorised edits directly, and the last successful save wins. Jobs run
-with the developer's user and group IDs. Opening a session leaves absent project
-files and directories absent.
+## Investigate a pending call
 
-Docker mounts existing paths from the [host configuration preset][protection]
-read-only. Docker also checks the Git directory, common directory and hooks
-directory inside the checkout. Git metadata outside the checkout remains on the
-host. For example, Git commands in a linked worktree can fail if the gitdir is
-outside the mount.
+A permission reviewer uses the [review route][review] to identify the
+destination and negotiate a copy before allocating it. For example,
+pi-permission-auto-review sets `hostWorkspaceWrites`, `network` and
+`hostUserData` to `prevented`. The execution and read capabilities let the
+reviewer collect evidence while the original workload remains pending. The
+reviewer closes the copy and reports unconfirmed cleanup.
 
-Pi extensions cooperate with the host. Docker guards direct project extension
-registration under `.pi`. It requires a single link to the registration file
-`.pi/settings.json` when that file exists. Ordinary source that a trusted
-extension imports remains editable. An absent `.pi` directory cannot be mounted
-read-only without creating a directory in the checkout, so Docker selects a
-private copy.
-
-Container networking is disabled. Checkout entries can refer to files or
-services on the host. For example, a hard link can refer to the same contents as
-a file outside the checkout or inside a read-only configuration directory.
-Docker checks the protected paths at the start of each operation. Host changes
-during an operation take effect on the next operation. The live backend reports
-`provider-default` for filesystem scope and network access. It rejects requests
-for strict workspace protection.
-
-[protection]: ../../docs/specification.md#provider-kit-and-conformance
-
-## Private workspace copy
-
-A caller can require a copy by setting `workspaceRelationship: 'copied'` in its
-acquisition policy.
-
-Use this when any of the following applies.
-
-- Pi reports that the project is untrusted or cannot report project trust.
-- A build or test needs to write files, and the caller wants those changes to
-  stay out of the developer's checkout.
-- The caller permits a copy and requires isolation that Docker can enforce only
-  in a copy.
-
-Edits stay in the copy until disposal. If Docker falls back to a copy in a
-trusted development session, the example tells the developer before they start
-editing that changes will stay in the copy. If the caller explicitly requires
-sharing, return an error when sharing is unavailable.
-
-## Read-only copy for a review
-
-Use this when a reviewer needs a stable view of the inputs to a proposed
-command. Copy the command's destination once at the start of the review through
-the [shell review route][review-route]. Docker supports both sources today.
-
-- For a command that would run on the host, the copy contains the host checkout.
-- For a command that would run in an agent's sandbox, the copy contains that
-  sandbox's workspace, so the reviewer sees any edits made there.
-
-Use the same copy for all reads and commands in that review. A later review gets
-its own copy. Requests to run outside the sandbox follow the [approval
-policy][approval].
-
-[review-route]: ../../docs/pi-integration.md#permission-review-of-a-shell-call
-[approval]: ../../docs/specification.md#destinations-and-permission
-
-## Keeping the work in scope
-
-The editing workflow should work on a supported Docker installation without an
-additional host service or privileged host setup. Choose the workspace from the
-session policy. Add a setting only when users have a reason to choose between
-the outcomes.
-
-Keep the Docker example small enough for another provider author to follow.
-Judge changes against the editing workflow and the requested SDK guarantees. Fix
-review findings that show a regression or a broken guarantee. If a finding calls
-for a new guarantee or gives the workload new authority, describe the
-consequence for the developer and bring that decision to the maintainer. For
-example, whether Pi may install an extension that runs on the host is a product
-decision. Choosing how long to reuse a file worker belongs in code review.
+[review]: ../../docs/specification.md#copies-and-review

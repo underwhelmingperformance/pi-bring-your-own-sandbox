@@ -1,31 +1,21 @@
 # Docker reference provider
 
-This example implements the public provider contract with a local Docker daemon.
-It supports argv, POSIX `sh`, Bash, optional PowerShell, and the file operations
-for reading, writing and listing. Shell commands, file operations, `search.find`
-and `search.grep` use the same workspace volume.
+The Docker provider runs commands and file operations through a local
+Unix-socket daemon on Linux or macOS. It supports argv, POSIX `sh`, Bash and an
+optional PowerShell image. It uses the same workspace for shell, file and search
+operations. The provider moves to `packages/provider-docker` in milestone 7. The
+paths below refer to this checkout.
 
-The framework's runtime does not depend on Docker. Registering the example does
-not contact the daemon. Docker is required when a consumer acquires an
-explicitly selected `example.docker` backend.
+Keep the provider extension, its dependencies and the BYOS SDK in a trusted
+directory outside the writable workspace. For example, install them in a
+separate package under `~/.pi/agent/` and load the extension by absolute path.
+Commands with write access to a checkout can rewrite packages installed in that
+checkout. Project trust allows extension code to load. Live checkout writes
+require an explicit provider setting.
 
-See the [workspace editing goals][editing] for when Docker shares the checkout,
-uses a private copy or copies a workspace for a review.
+## Run this checkout
 
-[editing]: workspace-editing.md
-
-## Load and select the provider
-
-Use a local Unix-socket Docker daemon on Linux or macOS. When a session starts,
-the provider finds `docker` on `PATH` and asks it for the current context's
-endpoint, so `DOCKER_HOST`, `DOCKER_CONTEXT` and `docker context use` decide the
-daemon. The endpoint must be a `unix://` socket. A `docker` executable inside
-the workspace is ignored. Later management commands run with an empty
-environment and the recorded daemon address, so the session keeps the same
-daemon if the context changes.
-
-Run these commands from `packages/sdk`. Pull the pinned image before opening a
-backend:
+From `packages/sdk`, pull the pinned image and build the SDK.
 
 ```sh
 image=$(node --input-type=module -e 'import { DOCKER_IMAGE } from "./examples/docker/src/image.ts"; process.stdout.write(DOCKER_IMAGE)')
@@ -33,283 +23,73 @@ docker pull "$image"
 pnpm build
 ```
 
-From this checkout, load the provider:
+Start Pi from the project that you want to work on. Load the provider by
+absolute path from a separate checkout outside that project.
 
 ```sh
-pi --no-extensions -e ./examples/docker/src/index.ts
+pi -e /absolute/path/to/byos/packages/sdk/examples/docker/src/index.ts
 ```
 
-For development with only the BYOS Bash tool, load the shell profile from
-`packages/sdk`. The profile routes Pi's interactive shell through Docker too.
+The provider resolves the local Docker CLI and the daemon endpoint at
+configuration time. `DOCKER_HOST`, `DOCKER_CONTEXT` and the current Docker
+context can select the endpoint. Use trusted absolute overrides for the
+executable and socket when needed. The daemon socket remains outside the
+workload. Load the [Pi integration][pi] to use the provider for Pi tools.
 
-```sh
-pi --no-extensions --tools bash -e ./examples/docker/src/shell-profile.ts
-```
+For the checkout's offline shell preset, load `src/shell-profile.ts` in place of
+`src/index.ts` with Pi's `--tools bash` option. The preset uses a guard to
+require Docker, network denial and isolation from host user data and system
+files.
 
-The profile preserves a narrower Pi tool selection. It checks every model tool
-call, including indirect calls and tools that another extension reactivates.
-Bash can request outside execution through BYOS's configured approval policy.
+[pi]: ../../docs/pi-integration.md
 
-For another project, copy `examples/docker/src` into `.pi/extensions/docker`. Pi
-loads its `index.ts`, which re-exports the extension factory. Keep the launcher
-file beside the provider modules. The example uses public imports from
-`pi-bring-your-own-sandbox/api` and needs the framework as a normal project
-dependency.
+## Workspace configuration
 
-Pi supplies TypeBox at runtime. Add `typebox` as a development dependency to
-type-check the copied example outside Pi.
+<!-- `outsideDestinations` and `outsideApproval` are provisional. -->
 
-Loading the example activates `example.docker`. In trusted Pi projects, the
-example requests live editing and reports when changes will stay in a private
-copy. Untrusted projects and the shell-only profile use a copy. To customise the
-provider, write an extension factory that calls `registerSandboxProvider` with
-the declaration returned by `createDockerProvider` and a `configure` callback.
-Return the result of `resolveDockerConfig` from `config.ts` under
-`configuration`, and provide a complete policy or use the declaration's default.
-Pass absolute `executable` or `socketPath` values to `resolveDockerConfig` to
-override discovery. The callback can read your extension's own settings.
+Ordinary opening uses the live checkout. Pi's tools share it, with write access
+only when the configured policy allows it. The provider declares separate
+profiles for explicit copies. The project's trust setting selects neither the
+workspace nor the policy. The [workspace guide][editing] describes live work and
+explicit copies for permission review.
 
-Use `read-only` for a read-only copy of the workspace. The provider rejects
-unsupported filesystem or network policies before allocation. An extension can
-also call `registerSandboxDiagnostics(pi)` to expose `/byos status`.
+The provider owns protection for configuration paths and uses the SDK provider
+kit's default list and matcher. For commands that need more access, the user's
+trusted host extension can allow provider outside profiles or passthrough. Pass
+`outsideDestinations` and `outsideApproval` to
+[`initialiseSandboxHost`][outside] from `/host`.
 
-SDK consumers use the selected provider automatically. The example supplies `sh`
-for user commands and Bash for the model `bash` tool. The optional image
-described below adds PowerShell. Load `/pi-tools` separately to route supported
-Pi shell hooks. See the [integration coverage table][coverage] for those hooks
-and the upstream file/search gaps.
-
-[coverage]: ../../docs/pi-integration.md
+[editing]: workspace-editing.md
+[outside]: ../../docs/api-protocol.md#outside-tool-and-review
 
 ## Optional PowerShell image
 
-Build the reference toolchain once from `packages/sdk` with BuildKit on amd64 or
-arm64. The launcher uses Node from the pinned Debian 12 image, and PowerShell
-uses the Debian 12 package `libicu72`. The Dockerfile requires support for
-`ADD --checksum`. Docker verifies the PowerShell archive for the daemon's
-architecture before it unpacks the runtime.
+Build the image from `packages/sdk` with BuildKit on amd64 or arm64.
 
 ```sh
 image=$(node --input-type=module -e 'import { DOCKER_IMAGE } from "./examples/docker/src/image.ts"; process.stdout.write(DOCKER_IMAGE)')
 docker build --build-arg NODE_IMAGE="$image" --iidfile /tmp/byos-powershell-image examples/docker/src/powershell
 ```
 
-In your trusted extension, pass the full image ID from that file to
-`createDockerProvider({ powerShellImage })` when registering the provider. The
-provider runs a PowerShell startup check on opening. Shell and argv jobs use the
-selected image and the same workspace. PowerShell starts without profiles and
-runs non-interactively with the same 128 MiB memory and 64-process limits as
-other jobs. File operations continue to use the pinned Node helper image. To
-include the PowerShell conformance scenario, set `BYOS_DOCKER_POWERSHELL_IMAGE`
-to the image ID when running `pnpm test:provider`.
+Pass the image ID to `createDockerProvider({ powerShellImage })`. Set
+`BYOS_DOCKER_POWERSHELL_IMAGE` to test that image in the real-provider suite.
+PowerShell jobs are non-interactive and use the same workspace as file
+operations.
 
-## Separate Docker destination for outside execution
+## Cleanup and verification
 
-A trusted extension can register a second local Docker destination for approved
-commands. For example, use a writable copy for a package build while the
-ordinary session has read-only access. The destination imports the host checkout
-when it opens. Edits in either Docker volume affect only that volume.
+An allocation's recovery descriptor identifies its daemon and allocation ID.
+After a host crash, inspect containers on that daemon with the label
+`io.pi-byos.reference=<allocation-id>`. Remove the matching containers and then
+the volume from the descriptor. A disconnected client cannot establish that the
+daemon stopped the workload. Inspect the reported allocation before removing
+resources.
 
-```typescript
-import {
-  configureOutsideExecution,
-  registerSandboxProvider
-} from 'pi-bring-your-own-sandbox/api';
+Run `pnpm test:provider` with a local daemon and the pinned image available. Set
+`BYOS_DOCKER_EXECUTABLE` and `BYOS_DOCKER_SOCKET` to override discovery. The
+[provider testing guide][testing] describes the target conformance suite. The
+[Docker session tests][session] exercise the real Pi and Docker runtime from
+this checkout.
 
-import { createDockerOutsideDestination } from './outside.js';
-import { createDockerProvider } from './provider.js';
-
-registerSandboxProvider(pi, {
-  ...createDockerProvider(),
-  outsideSandbox: createDockerOutsideDestination({
-    executable: '/usr/bin/docker',
-    socketPath: '/var/run/docker.sock'
-  })
-});
-configureOutsideExecution(pi, () => ({ destination: 'provider' }));
-```
-
-The SDK requests approval for each outside invocation. The Docker destination
-keeps external networking disabled and uses a separate allocation even when both
-connections use the same daemon. Set the optional second argument to
-`{ powerShellImage }` for an outside destination with the PowerShell toolchain.
-
-## Workspace and process behaviour
-
-Live editing requires volume subpath support in the Docker CLI and local daemon,
-and matching host and workload user IDs. Docker checks that the checkout is
-writable and that the volume refers to the host checkout. Docker requires an
-existing `.pi` directory and checks that its mount is read-only. In Git
-checkouts, the provider runs a host Git installation outside the checkout to
-locate the current metadata and hooks before each operation. Git uses the
-configuration environment of the Pi process. A reused file worker restarts when
-a guarded path appears, disappears or is replaced. Disposing the backend removes
-the Docker volume and leaves the host checkout in place.
-
-On OrbStack, Docker uses a copy for checkouts in the macOS per-user temporary
-directory. In that location, an atomic save followed by a container read
-returned the new contents truncated to the old file size.
-
-Opening a private copy creates a labelled Docker volume and copies the host
-workspace into `/workspace`. The copy includes hidden files and preserves
-symbolic links. Jobs mount only the copied volume. Host changes after opening
-are not synchronised, and target changes are not copied back. Disposal deletes
-the volume. An empty workspace is writable in read-write mode.
-
-Import accepts up to 512 MiB of regular-file contents, 100,000 entries and 128
-directory levels, including entries under dependency directories. Filenames must
-be valid UTF-8. The importer preserves internal hard links and symbolic links.
-It omits sockets, FIFOs and devices, and rejects regular files with links
-outside the source tree. It checks file contents and metadata against the source
-a second time before the backend opens. The bootstrap container has one CPU, 256
-MiB of memory and a limit of 32 processes. The writable workspace volume has no
-storage quota after import.
-
-Copies use the same importer with a fresh volume. A copy of a sandbox copies the
-live backend volume, including edits made by shell and file operations. A copy
-of the host checkout imports the checkout. A copy is mounted read-only unless it
-needs workspace writes. Writes to a copy stay in its volume. Each copy can be
-released independently.
-
-Each foreground command creates a separate container. Containers have a
-read-only runtime image, a private 16 MiB `/tmp`, a limit of 64 processes, a 128
-MiB memory limit and one CPU. Network mode is `none`. The Docker socket stays
-outside the container. Docker disables logging for job containers and streams
-stdout and stderr to the SDK.
-
-A protected Node launcher starts commands as the developer in a shared checkout
-and as UID and GID 65534 in a copy. The launcher retains a different UID so a
-child cannot modify its control stream through `/proc`. The container grants the
-launcher only the capabilities needed for privilege changes and target-directory
-access. `no-new-privileges` prevents the child from gaining privilege through
-executable file attributes.
-
-The launcher passes argv without a shell, applies target environment overrides
-and deletions, and reports code exits, signal exits and spawn failures. Shell
-requests explicitly invoke `/bin/sh` or `/bin/bash` for the selected dialect.
-Child stdout and stderr are encoded in bounded frames; the SDK receives the
-original bytes. The runtime image is pinned by digest and includes the Node
-version needed to run the typed launcher. Caller environment overrides affect
-the child, including when the child itself is Node. They do not configure the
-launcher.
-
-The target home is `/tmp` and resets between operations. Workspace files persist
-between operations; processes and changes to private scratch space do not.
-Detached background jobs are unsupported. On foreground completion, Docker must
-confirm that the container exited and was removed before the provider returns
-the child's result.
-
-Cancellation removes the job container through the daemon and waits for the
-attached client to finish. A confirmed cancellation permits another operation
-against the same workspace volume. Failure to confirm removal reports
-unconfirmed termination, which makes the shared SDK backend unhealthy. Losing
-the CLI transport does not establish that the target stopped.
-
-File operations share an unprivileged worker container for the open backend. The
-first request starts the worker. After 30 idle seconds the provider removes the
-worker. The workspace volume persists. A read returns the complete contents of a
-regular file up to 16 MiB. Writes accept up to 16 MiB and check the length of
-the received input before opening the destination. Directory listings report
-symlinks as entries. A read-only workspace rejects write-access checks, file
-writes and directory creation. Cancellation removes the worker so later
-operations start with a fresh worker.
-
-Search runs in the file worker. Find uses Node's POSIX `path.matchesGlob`.
-Patterns containing a slash match paths relative to the search root. Other
-patterns match basenames. Wildcards skip leading dots unless the pattern
-explicitly matches them. Both searches visit directories in depth-first order
-with entries sorted by name. They skip `.git` and `node_modules` at every depth
-and ignore repository ignore files. Find reports directory symlinks as entries.
-An explicit search root can be a symlink. Below the root, search skips directory
-symlinks. Directory listings and searches skip entries whose names contain
-invalid UTF-8.
-
-Grep accepts RE2 regular expressions or literal text. RE2 supports Unicode
-character classes and case-insensitive matching. It rejects backreferences and
-lookaround. The worker loads the matcher from its own read-only package
-directory. Grep searches regular files and skips files larger than 16 MiB or
-containing NUL bytes. Each returned match can include up to 65,536 context lines
-on either side. A larger context request fails only when more than 65,536 lines
-exist on one side of a returned match. Both find and grep reject encoded
-responses over 16 MiB. Both searches report truncation when another result
-exists beyond the requested count.
-
-## Cleanup and recovery
-
-The provider reports a recovery descriptor before allocating the volume. The
-descriptor specifies its daemon socket, volume ID and allocation label. The
-allocation has no automatic expiry. A host crash requires manual recovery.
-Failed opening attempts cleanup and acknowledges successful allocation release
-before rejecting. A failure to confirm cleanup preserves the descriptor in the
-SDK error. Shutdown cancels active jobs, waits for their completion and removes
-the labelled resources. Bare SDK hosts must call `closeSandboxSession` before
-disposing a raw Pi session.
-
-A local CLI deadline or output failure rejects immediately, stops its POSIX
-process group and closes its pipes. This does not confirm target termination;
-cleanup still uses the daemon. If volume or container creation fails without a
-confirmed response, the daemon may finish allocation after a cleanup query. The
-provider attempts cleanup but keeps the allocation unconfirmed and retains
-manual recovery instructions even when the current queries return no resources.
-
-For manual recovery, use the daemon from the provider configuration. Inspect
-containers with `io.pi-byos.reference=<allocation-id>`, remove those containers,
-then remove the volume with that allocation ID. Inspect the exact allocation ID
-from the recovery descriptor. Do not remove other Docker resources.
-
-## Run the real-provider gate
-
-The deterministic gate, `pnpm check`, visibly skips daemon-backed cases. The
-separate `pnpm test:provider` gate requires a local Docker daemon and the pinned
-image. It installs the packed SDK in a temporary project and runs the copied
-workspace visibility checks against that installation. Dependency installation
-requires registry access or a populated pnpm store. GitHub Actions runs the gate
-in a dedicated Linux job.
-
-The gate finds Docker in the same way as the provider. To override discovery:
-
-```sh
-BYOS_DOCKER_EXECUTABLE=/absolute/path/to/docker \
-BYOS_DOCKER_SOCKET=/absolute/path/to/docker.sock \
-pnpm test:provider
-```
-
-The gate runs the reusable provider suite with read-only and writable copies and
-SDK tests through a real Pi runtime. It checks argv, cwd, environment changes,
-stdout and stderr, non-zero exits, signals, spawn failures, output bounds,
-cancellation of descendants, independent cleanup, host sentinels, copied symlink
-escapes, network denial, empty workspaces and distinct allocations. The network
-test first reaches a controlled server from a bridge-connected container, then
-checks that the isolated target cannot reach the same server.
-
-These checks establish behaviour on the tested Docker daemon and image. Docker's
-[container removal][removal] documentation describes forced removal. The [Node
-image repository][node-image] documents the official runtime image.
-
-[removal]: https://docs.docker.com/reference/cli/docker/container/rm/
-[node-image]: https://github.com/nodejs/docker-node
-
-## Measuring a copied workspace
-
-From `packages/sdk`, run the benchmark against a local daemon with the pinned
-image already present. Set `BYOS_DOCKER_EXECUTABLE` and `BYOS_DOCKER_SOCKET` to
-override discovery.
-
-```sh
-pnpm build
-BYOS_DOCKER_BENCHMARK=1 pnpm exec vitest run --config vitest.provider.config.ts examples/docker/test/benchmark.test.ts
-```
-
-The fixture imports 100 JavaScript modules of about 1 KiB each. The first read
-starts the file worker. Twenty sequential reads of the same file reuse it. Grep
-searches all 100 modules. A separate job builds and writes an npm package
-archive offline. The benchmark checks the bytes, every search match, the exit
-status and the presence of a non-empty archive.
-
-| Local arm64 daemon           | Fresh open | First read | 20 warm reads |   Grep | Package build |
-| ---------------------------- | ---------: | ---------: | ------------: | -----: | ------------: |
-| OrbStack on macOS            |    1124 ms |     310 ms |       1998 ms | 167 ms |        941 ms |
-| Docker in an Ubuntu 24.04 VM |     356 ms |     197 ms |       1719 ms | 120 ms |        599 ms |
-
-Each row reports one run with the image cached. The open time includes workspace
-import. The warm-read time includes the checks on the returned bytes.
+[testing]: ../../docs/provider-testing.md
+[session]: test/session.test.ts

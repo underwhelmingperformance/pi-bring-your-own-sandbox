@@ -1,14 +1,19 @@
 # BYOS workspace
 
-This repository contains the [sandbox SDK][sdk] and the optional guard extension
-for Pi. Development uses pnpm workspaces. The packages are unpublished
-development builds.
+BYOS lets Pi extensions use a sandbox without depending on a particular
+isolation technology. The [design principles][principles] govern the [SDK][sdk],
+the [guard][guard] and the [Docker provider][docker]. The documentation
+describes the redesign. The packages in this checkout are private development
+builds.
 
+[principles]: packages/sdk/docs/principles.md
 [sdk]: packages/sdk/README.md
+[guard]: packages/guard/README.md
+[docker]: packages/sdk/examples/docker/README.md
 
 ## Development
 
-Use the Node version in `.node-version` and pnpm version in `package.json`:
+Use the Node version in `.node-version` and the pnpm version in `package.json`.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -16,14 +21,7 @@ pre-commit install
 pnpm check
 ```
 
-Run `pnpm test:integration`, `pnpm test:package` and `pnpm test:provider` for
-the integration, package installation and real Docker suites. See the
-[development guide][development] for prerequisites.
+The [development guide][development] lists prerequisites and the separate Pi
+integration, package installation and real Docker suites.
 
 [development]: packages/sdk/docs/validation.md
-
-The optional [guard extension][guard] requires provider activation and can
-enforce minimum capabilities and policy for SDK consumers. The SDK remains
-usable without the guard or a sandbox provider.
-
-[guard]: packages/guard/README.md

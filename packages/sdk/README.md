@@ -1,99 +1,46 @@
 # pi-bring-your-own-sandbox
 
-A shared sandbox API for Pi extensions. Provider extensions supply execution
-environments, and consumer extensions use them without depending on a specific
-sandbox implementation.
+This SDK connects Pi extensions to a shared sandbox broker. Users select a
+provider in trusted settings. Consumers state restrictions, needs and
+preferences without depending on the provider's implementation. With no selected
+provider, the SDK uses passthrough. Failure of a selected provider stops
+execution.
 
-Users choose a sandbox separately from installing a consumer extension. With no
-configuration, the SDK uses host passthrough. Once a provider is selected,
-consumers use it automatically. A configured provider failure returns an error.
+These documents describe the target design. See the [design
+principles][principles], [specification][spec] and [API appendix][api]. The SDK
+routes operations that use its facade. An [outer sandbox][outer] can restrict
+the Pi process.
 
-This is a cooperative framework: only operations sent through its API use the
-selected sandbox. The package is currently a private development build for Pi
-1.5.0.
+[principles]: docs/principles.md
+[spec]: docs/specification.md
+[api]: docs/api-protocol.md
+[outer]: docs/outer-runtime.md
 
-The SDK is a library dependency. Provider extensions control their own
-configuration and activate themselves when loaded. The optional guard extension
-can require an activated provider before SDK calls proceed. See the [guard
-contract][guard] for its scope and requirements.
+## Extend Pi
 
-[guard]: docs/specification.md#optional-guard
+Use `/consumer` to acquire a sandbox from a tool or command. The [consumer
+example][consumer] shows how to pass Pi's live context and cancellation signal
+and run an argv request.
 
-## Use the SDK in an extension
+Use `/pi-tools` to route Pi's Bash, user shell, file and search tools to the
+same workspace. Install the SDK and load a `sandbox-tools.ts` extension from a
+trusted directory outside the workspace. The [Pi integration guide][pi] shows
+the extension factory and describes the separate tool for outside execution.
 
-Follow the [consumer guide][consumer] to build, install and try the package from
-this checkout. Add it as a normal dependency of your extension.
+Provider authors use `/provider` and run the [conformance suite][testing] from
+`/testing`. The [Docker example][docker] shows provider setup. Embedding hosts
+use `/host` to manage the session. Permission extensions use `/review` for
+pending calls. Use `/guard` to require an activated provider or minimum
+restrictions and capabilities.
 
-Inside a Pi tool's execution callback, acquire the shared sandbox with the live
-context and cancellation signal:
-
-```typescript
-import { getSandbox } from 'pi-bring-your-own-sandbox/api';
-
-const options = signal === undefined ? {} : { signal };
-const sandbox = await getSandbox(pi, context, options);
-const result = await sandbox.exec(
-  { kind: 'argv', executable: 'pwd', args: [] },
-  options
-);
-```
-
-Commands and paths refer to the target environment. The consumer guide explains
-results, capabilities, errors and cleanup.
-
-To supply a sandbox, start with the [Docker provider example][docker]. The
-[provider testing guide][testing] explains how to check a provider against the
-shared contract. The [Docker workspace editing goals][editing] describe that
-provider's intended development and review workflows.
-
-[editing]: examples/docker/workspace-editing.md
 [consumer]: examples/consumer/README.md
-[docker]: examples/docker/README.md
+[pi]: docs/pi-integration.md
 [testing]: docs/provider-testing.md
-
-## Choose where commands run
-
-Load your chosen provider extension and follow its setup instructions. The SDK
-does not read configuration files. See the [Docker example][docker] for a
-provider that activates with default settings.
-
-To route Pi's Bash, PowerShell and user-shell commands through the framework,
-create `.pi/extensions/sandbox-tools.ts`:
-
-```typescript
-import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
-import sandboxTools from 'pi-bring-your-own-sandbox/pi-tools';
-
-export default function extension(pi: ExtensionAPI): void {
-  sandboxTools(pi, import.meta.filename);
-}
-```
-
-Pi's file and search tools retain their own execution paths. See the [Pi
-integration guide][integration] for supported hooks and limits.
-
-Extensions can also request execution outside the sandbox. By default, these
-requests use the environment that Pi would ordinarily use and ask the user for
-approval. Users can select a different approval policy or a provider-defined
-outside environment independently. See [approvals and outside
-execution][approvals] for configuration and examples.
-
-[integration]: docs/pi-integration.md
-[approvals]: docs/specification.md#destinations-and-permission
+[docker]: examples/docker/README.md
 
 ## Development
 
-Use the Node and pnpm versions pinned in this repository:
-
-```sh
-pnpm install --frozen-lockfile
-pre-commit install
-pnpm check
-```
-
-The [development and validation guide][validation] lists prerequisites, test
-commands and coverage. The [specification][spec] describes the design and links
-to the API reference.
+Follow the [development guide][validation] to install dependencies and run
+repository checks.
 
 [validation]: docs/validation.md
-[spec]: docs/specification.md

@@ -1,223 +1,117 @@
 # Testing a provider
 
-The optional `pi-bring-your-own-sandbox/testing` entry registers reusable Vitest
-tests for a provider declaration. Install Vitest 5.1.0 in the provider project.
-Vitest 5.0.5 is also supported. Production imports from `/api` do not load
-Vitest. The framework does not require a second Pi runtime for these tests.
+Run the conformance suite from `/testing` in provider CI. The suite registers
+the provider with the real broker, supplies a live test session and exercises
+the public consumer, review and host operations. Calling a provider factory
+directly cannot establish conformance. The [specification][spec] defines what
+each profile promises.
 
-Call the suite at test-module scope:
+[spec]: specification.md
 
-```typescript
-import { defineSandboxProviderTests } from 'pi-bring-your-own-sandbox/testing';
+## What the provider author supplies
 
-import { provider } from './provider.js';
-import { createFixture } from './provider-fixture.js';
+Supply the provider declaration, configuration and a temporary host workspace
+with separate checkout and copy source markers. Supply independent probes for
+the declared profiles:
 
-defineSandboxProviderTests({
-  label: 'remote provider with a writable workspace and denied network',
-  provider,
-  capabilities: {
-    processKinds: ['argv', 'shell'],
-    exitStatus: 'guaranteed',
-    terminationScope: 'workload',
-    operations: ['exec', 'files.read', 'files.write', 'files.list'],
-    shells: ['sh']
-  },
-  createFixture,
-  timeoutMs: 30_000,
-  cleanup: { cancellationGraceMs: 8000, disposalTimeoutMs: 15_000 }
-});
-```
+- A process observer checks whether a command and its descendants stop.
+- A network listener records connection attempts to a reachable fixture.
+- Host user-data and system-file markers distinguish host access from
+  provider-owned runtime files.
+- An allocation inspector reports live resources and verifies their removal.
+- Transport fault injection can interrupt opening, mutation or disposal. The
+  inspector verifies recovery independently of the transport.
+- A verifier checks host and target files, including aliases, from outside the
+  backend under test.
 
-`capabilities` selects the operation groups and shells for this scenario. The
-default is the provider declaration. Opening must return every selected
-capability. Backend metadata is validated against the full declaration even when
-the scenario selects fewer capabilities. Register separate scenarios for
-different policies and backend capability subsets.
+The suite supplies the broker and Pi session. If a probe cannot observe an
+advertised property, setup fails for the corresponding case family.
 
-Shell-only scenarios omit `processes` and supply a probe for each advertised
-dialect. Optional-status scenarios can expect `{ kind: "unavailable" }` in a
-process probe. Termination and disposal still require independent verification.
+## Generate cases from declarations
 
-Each test calls `createFixture`, validates its unknown configuration through the
-provider, opens a fresh backend, runs its checks and disposes the backend. The
-fixture supplies a host workspace, required policy and target probes. Target
-paths can differ from host paths and use the target's path flavour.
+Generate cases for every declared `open` and `copy` profile, including every
+capability, process kind and shell dialect in each profile. Negotiate through
+the broker and confirm the chosen profile before invoking operations. Fail suite
+setup if the fixture cannot select a declared profile or if any declared
+capability lacks cases. Run each case against an isolated fixture. Use
+independent observations of target effects, live files, processes and provider
+resources. A backend's own declaration cannot prove enforcement.
 
-The disposal case makes overlapping calls, verifies release independently, then
-disposes again during teardown. Providers must share cleanup across repeated
-calls, including when cleanup is already complete.
+## Paired access cases
 
-| Fixture member    | What to supply                                                                                                                                                                                                                                                                                |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `processes`       | At least one argv invocation with complete expected stdout, stderr and exit status. Include non-zero exits, empty arguments, quotes, whitespace, newlines, Unicode, shell metacharacters, target executable lookup, cwd changes and environment overrides, including variable deletion.       |
-| `shells`          | One invocation for every selected shell dialect, with complete expected output and exit status.                                                                                                                                                                                               |
-| `read`            | A seeded regular file, its complete bytes and a path that does not exist.                                                                                                                                                                                                                     |
-| `write`           | A missing directory and file for a writable scenario, plus an independent callback that reads the resulting target file. The suite creates parents, writes binary bytes and overwrites the file with shorter content. A read-only scenario must reject a write with a typed permission error. |
-| `list`            | A seeded directory, its complete metadata and immediate children. Use a callback to observe directory size on the target after opening. Listing order is ignored.                                                                                                                             |
-| `find` and `grep` | Queries and complete expected results under the provider's documented search rules. Include exact-limit and truncated results, plus context and matching options where supported.                                                                                                             |
-| `cancellation`    | A long-running job and a stdout readiness marker. Promised termination scopes also require an independent `verifyStopped` callback. Emit the marker after the processes under test have started.                                                                                              |
-| `verifyPolicy`    | Independent negative tests for all requested restrictions. Required for read-only, workspace-only, system-read-only, denied-network and protected-resource scenarios. The callback receives the backend and a deadline context.                                                               |
-| `verifyDisposed`  | An independent check that generation-owned resources have been released after disposal resolves.                                                                                                                                                                                              |
-| `cleanup`         | Unconditional fixture teardown, including recovery from failed opening or disposal.                                                                                                                                                                                                           |
+For each access property, use the same configured policy and otherwise identical
+options. Negotiate and exercise omitted, `needed`, `prevented` and `preferred`
+through the broker. Run the cases for ordinary opens and copies. Copy cases use
+a broker-resolved source. If two requests succeed, assert that only the related
+property differs. When that change is impossible, assert typed preflight failure
+and zero allocations. Deny each needed property in configured policy and check
+the same rejection. For omission, assert that the broker chooses the most
+restrictive setting that the provider supports within the configured policy. For
+a preference, supply a profile that grants access and one that denies it. When
+the configured policy allows both, assert that the broker grants access. Repeat
+with only the denying profile, and with a configured policy that denies the
+preference. Both cases must succeed with the property denied.
 
-The suite requires probes for every selected capability. Configuration errors,
-missing methods, inconsistent capabilities, unsupported effective policies,
-incorrect output and unconfirmed cancellation within a promised scope fail the
-tests. Typed errors are recognised across separately installed SDK copies.
+| Case family           | `prevented`                                                                                                                                                                    | `needed`                                                                                                |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `hostWorkspaceWrites` | Attempt checkout writes through shell and file operations, including an alias. Inspect the checkout independently and check that contents and directory entries are unchanged. | Edit a file and verify the live checkout changed. Verify that a copy cannot satisfy the need.           |
+| `network`             | Try to connect to a reachable fixture endpoint. Assert connection failure and no received request.                                                                             | Connect and assert the endpoint receives the request.                                                   |
+| `hostUserData`        | Attempt to read and write fixture user data outside the checkout, including a credential marker and a path alias. Assert failure, no leaked bytes and no host changes.         | Read a user-data marker. Assert a write is denied if the profile permits only reads.                    |
+| `hostSystemFiles`     | Attempt to read and write a host system fixture and its aliases. Assert failure while provider-owned runtime files remain usable.                                              | Run an installed host tool or read a host system fixture. Check that the result originates on the host. |
 
-Opening, each test case and fixture cleanup receive separate `timeoutMs`
-deadlines, with a default of ten seconds per stage. The `cleanup` option selects
-`cancellationGraceMs` and `disposalTimeoutMs` independently, with defaults of
-five and ten seconds. Each cleanup budget must be an integer from 1 to 300,000
-milliseconds. Cancellation contexts publish the selected grace, and disposal
-contexts use the selected disposal timeout. When a case exceeds its foreground
-deadline, the suite waits up to the cancellation grace period before disposal. A
-promised termination scope must acknowledge cancellation within the selected
-cleanup grace. Scope `none` returns without waiting for an acknowledgement. A
-timeout does not establish that a target stopped. Independent fixture cleanup
-must release resources even when opening fails or a transport stops responding.
-If fixture setup fails before returning, the setup callback must clean up its
-partial allocation.
+Fixtures that cannot expose the allowed side of a property still test the denial
+and the controlled failure case. Use a broker fixture with both profiles to test
+the paired selection rule independently of the provider.
 
-The suite runs teardown after a failed assertion or metadata check. If teardown
-also fails, an `AggregateError` preserves the original failure and the cleanup
-failures. Fixture resources must be independent between cases. Do not combine
-these scenarios with concurrent tests that reuse the same allocation.
+## Broker and lifecycle cases
 
-Set `workspaceVisibility` to `shared` or `copied` to register the corresponding
-visibility scenario. Its `visibility` probe reads and atomically replaces a
-seeded source file and constructs target commands for the same file. In a
-writable shared workspace, the test observes a target write from the source
-while the writer is running, then replaces the file and waits for the writer to
-observe the replacement. Copied workspaces must isolate changes in both
-directions. When file methods are available the suite also compares their
-results with target process reads and independent source reads.
+| Case family              | Operation and assertion                                                                                                                                                                                                                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Profile ordering         | Vary declaration order and check that hard requirements filter profiles first. Give one profile more preferences and another the first preference in the fixed order. Assert that the higher count wins. Use an equal count to check the property tie-break.                                           |
+| Post-start profile check | Return a backend with a weaker policy, wrong workspace relationship, missing operation, weaker exit status or weaker termination scope. Assert failure before a consumer receives a handle, with disposal and recovery on failure.                                                                     |
+| Copies                   | Put different markers in the checkout and the source destination. Negotiate a copy, assert no allocation, then open it and inspect which marker was copied. If the provider allows local writes, mutate the copy. Close the copy and verify that the source and any sibling copy are unaffected.       |
+| Cancellation             | Cancel opening or a running workload by caller abort, deadline and shutdown. Observe processes independently. Assert termination within the declared scope and typed completion. Test a child that leaves its group when the scope covers the workload.                                                |
+| Failed open cleanup      | Inject failure after allocation and before returning a backend. Inspect the resources independently. Assert no published handle, confirmed cleanup on success and bounded unconfirmed cleanup on timeout. Also test a backend that returns after cancellation.                                         |
+| Recovery                 | Lose the transport during a mutation or disposal. Assert that the broker does not replay work, rejects reuse when the outcome is uncertain and reports the affected allocation and recovery instructions. Apply provider recovery and check that unrelated resources survive.                          |
+| Forged replies           | Send malformed, unsolicited, cross-call and cross-session review replies, including replies that embed a runnable object. Assert that the reviewer's broker rejects them, allocates no copy and executes no workload. Verify that a valid identity resolves only for its pending call and destination. |
 
-Supply `visibility.stageSave` to test an editor that replaces a file by rename.
-The first target command writes a temporary file. The suite replaces the source
-file on the host before the second target command renames the temporary file.
-Independent reads check the final contents on both sides. The editor's save wins
-in a shared workspace. In a copied workspace the host keeps its own edit.
-Fixture cleanup must include the temporary file if the scenario ends before the
-rename.
+## Operation cases
 
-In writable scenarios, grep searches the file at `visibility.targetPath` after a
-target process writes to the copy or the host replaces the shared file. It
-searches again after a file write. Supply an absent, searchable path under
-`visibility.findTarget` to check whether find sees a newly created file. The
-fixture controls the path so it can account for the provider's ignore rules. The
-suite reads the copied workspace's source file again after disposal.
+<!-- `violations` is provisional in milestone 1. -->
 
-## Verify effects at the target
+- For `exec`, run every declared dialect and process kind. Check literal argv
+  boundaries, target cwd, streamed bytes, capture limits, normal and non-zero
+  exits, unavailable optional status, and the declared termination scope.
+  Distinguish a failed launch from a command that exits with code 127. Give the
+  host environment a fixture marker and verify that an external provider
+  receives neither the marker nor credentials implicitly. Check that explicit
+  overrides set and delete target values. Use a fixture shell startup hook such
+  as `BASH_ENV` or `ENV` and a substitute shell on the target `PATH`. Check that
+  the target honours documented environment behaviour while those values never
+  change the transport bootstrap or its output boundary.
+- For file capabilities, run the same fixture across providers. Compare whole
+  read, stat and list results, access errors and the effects of writes. Queue
+  two text edits and verify that the second reads the first result. Check that
+  an unsuccessful transform leaves the file unchanged. Point a symlink at a
+  marker outside the allowed target tree. Check that read and write attempts
+  fail and that the marker stays unchanged.
+- For search capabilities, run identical fixtures across providers. Compare the
+  complete result fields for the same supported glob or regex, including paths,
+  line numbers, context and truncation. Normalise provider-defined result order.
+  Check missing roots, cancellation and results at the limit.
+- For `copy`, run the copy case family and the operation cases for that copy's
+  own declared capabilities.
+- For `violations`, attempt an operation that policy denies. Assert that the
+  provider reports the actual restriction in structured data and that the Pi
+  adapter includes it separately from output.
+- For diagnostics, report valid warnings, invalid and oversized messages and
+  more warnings than the generation can retain. Assert that warnings stay out of
+  stdout and stderr, the count and message bounds apply and `diagnosticsDropped`
+  records rejected messages.
 
-Provider contexts expose synchronous `reportDiagnostic` for warnings outside
-workload output. Verify that warnings do not enter expected stdout or stderr.
-Use warnings for user-facing runtime information; do not report credentials or
-raw provider configuration. Invalid, oversized and excess diagnostics are
-discarded and counted in status, while reports after completion are ignored.
+Run real backend probes on the platforms where the provider claims support.
+Broker fixtures test rejection and interoperability. The real backend probes
+establish runtime effects. See the [validation guide][validation] for the
+repository's suite commands.
 
-Do not use the provider's reported policy as evidence that isolation works. For
-a workspace-only policy, attempt an outside-workspace read and write through
-both exec and file methods, then check the sentinel files independently. For a
-denied-network policy, attempt controlled connections and use an independent
-listener to check whether traffic arrived. For a read-only policy, attempt
-mutations and verify unchanged target contents. Include symlink escapes in
-runtime-specific tests. Probe pathname Unix sockets through read-only mounts,
-grants and aliases, abstract sockets and host resolver services. Denied
-networking includes relays through host services. Network namespaces and
-read-only mounts alone do not establish socket denial. A provider must reject
-restrictions that it cannot enforce.
-
-For `process-group` and `workload`, `verifyStopped` must independently establish
-termination within the advertised scope. Include a waiting parent with a child
-that creates another session in runtime-specific tests. A workload provider must
-stop that child; a process-group provider may leave it running with the same
-access restrictions. Fixture cleanup must independently stop surviving children.
-For `none`, omit `verifyStopped`; the suite requests cancellation and verifies
-`not-guaranteed` without waiting for termination. A transport promise rejecting,
-or the backend returning a confirmed result, is insufficient evidence.
-`verifyDisposed` should inspect allocations through the runtime's management
-interface or another independent observer.
-
-Set `verifyRecoveryAfterCancellation: true` and supply a successful process
-probe under `cancellation.after` to verify continued use. The suite runs the
-probe on the same allocation after the independent termination check.
-
-In-memory and message-based test doubles verify protocol behaviour, not OS
-isolation. Real host execution also does not establish sandbox isolation. An
-isolating provider needs tests for its runtime-specific boundaries, environment
-inheritance, allocation identity and recovery behaviour.
-
-For an internal shell transport, run the argv probes through the actual runtime
-transport. Verify that shell builtins and assignment-like executable names use
-ordinary target executable lookup. Supply hostile startup variables, such as
-`BASH_ENV` or `ENV` for POSIX shells, and a `PATH` containing a substitute
-shell. Check independently that startup code did not execute, that overrides
-reached only the target, and that stdout and stderr contain only target output.
-Include runtime-specific loader and startup hooks in these checks.
-
-Add negative execution cases alongside the common suite. A missing executable
-and a missing working directory must produce typed operation errors. A target
-that starts and exits with code 127 must return an ordinary exit result. The
-repository's `src/argv-conformance.test.ts` compares direct execution with a
-small real shell transport fixture. That fixture tests encoding and bootstrap
-separation; it does not establish any external runtime's cancellation or
-isolation guarantees.
-
-Protected-resource scenarios also need the independent mutation probes specified
-in [workspace protection][workspace-protection]. The test kit requires the
-probe; it cannot establish runtime enforcement from a capability declaration.
-
-[workspace-protection]: specification.md#provider-kit-and-conformance
-
-Set `verifyIndependentAllocations: true` to check two allocations from the same
-source. Supply a repeatable `peerProcess` probe. The suite checks its output and
-exit status on the second allocation before and after disposing the first. The
-fixture must implement `verifyAllocationDisposed(backend)` to check the first
-allocation against the runtime while the second allocation is still open.
-Fixture cleanup must account for both allocations.
-
-Use `verifyConcurrentCancellation` for providers that support concurrent jobs
-and confirmed termination. Supply a `concurrentJob` that emits a ready marker
-and waits. The suite cancels a second job on the same allocation, calls
-`cancellation.verifyStopped` while the peer is still running, then sends fresh
-bytes through the fixture's independent `release` callback. The callback
-receives the operation context so it can stop at the scenario deadline. The
-waiting job must return those bytes and exit successfully.
-
-For shared editor saves on filesystems with hard links, supply
-`visibility.linkSource` alongside `stageSave`. The suite prepares the save,
-replaces the destination on the host, then asks the fixture to link the current
-destination to another path. The returned observer reads the surviving link
-directly from the host. The suite checks inode identity, contents, permissions,
-ownership and a one-link decrease after the save. Include extended attributes in
-the observation when available. The suite calls this probe only for writable
-shared workspaces. A fixture can also supply the same visibility probes for
-read-only workspaces and private copies.
-
-## Checking policy effects
-
-Select individual cases with `policyEffects`. Each case gets a fresh allocation.
-Supply a fixture function under the same key in `fixture.policyEffects`. The
-function receives the open backend so the fixture can identify the allocation
-and introduce resources after startup.
-
-| Case                | Independent observation                                                                                                                                               |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `read-only`         | Read the protected bytes, mode and link count from the backing workspace, or confirm that a protected path remains absent.                                            |
-| `protected-path`    | Observe the protected resource while the target attempts a direct mutation.                                                                                           |
-| `protected-alias`   | Direct the mutation at an alias and observe the original protected resource.                                                                                          |
-| `late-special-file` | Create a socket or FIFO after opening. Use an independent client to connect to the socket or write bytes to the FIFO. Return the cumulative connection or byte count. |
-| `denied-network`    | Connect an independent control client to the listener before the target attempts a connection. Return the listener's cumulative connection count.                     |
-
-Supply a permitted process, a denied process and an `observe` function. The
-suite checks both process outcomes and compares independent observations before
-and after each denial. With guaranteed exit status the permitted process must
-exit successfully and the denied process must exit with a positive error code.
-When the backend provides file operations, supply the target path and expected
-error for a write, or for a read of a late special file. Use `absent` if the
-target cannot see the path and `denied` for a permission error. A read of a
-special file can also specify `unsupported-file` for `SandboxOperationError`.
-Inspect the backing resource directly through the fixture. Reading it through
-the backend would test the same boundary twice.
+[validation]: validation.md

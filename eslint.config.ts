@@ -10,6 +10,8 @@ import unicorn from 'eslint-plugin-unicorn';
 import globals from 'globals';
 import ts from 'typescript-eslint';
 
+import { sdkImportBoundary } from './scripts/eslint-sdk-imports.js';
+
 const piDisplayMembers =
 	'/^(ui|sendMessage|sendUserMessage|appendEntry|setSessionName|registerMessageRenderer|registerEntryRenderer|registerToolRenderer)$/';
 
@@ -92,6 +94,15 @@ export default defineConfig(
 	await oxlint.buildFromConfigFile(
 		path.join(import.meta.dirname, '.oxlintrc.json')
 	),
+	{
+		files: [
+			'packages/sdk/src/pi-tools.ts',
+			'packages/sdk/examples/**/*.ts',
+			'packages/!(sdk)/**/*.ts'
+		],
+		plugins: { byos: { rules: { 'sdk-imports': sdkImportBoundary } } },
+		rules: { 'byos/sdk-imports': 'error' }
+	},
 	{
 		files: [
 			'packages/sdk/src/**/*.ts',

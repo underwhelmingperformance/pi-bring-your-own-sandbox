@@ -30,6 +30,7 @@
 		}
 	},
 	"files": [
+		"api-report.txt",
 		"dist",
 		"src",
 		"!src/**/*.test.ts",

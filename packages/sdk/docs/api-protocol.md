@@ -20,6 +20,12 @@ implementation reaches this design.
 The package prefix is `pi-bring-your-own-sandbox`. Wire schemas, channel
 constants, broker objects and identity constructors are internal.
 
+The [public API report][report] lists the exact exports and the declarations
+that their signatures reference. Run `pnpm api:report` after an intended API
+change.
+
+[report]: ../api-report.txt
+
 ```typescript
 createSandboxClient(pi: SandboxHost, extensionSource: string): SandboxClient;
 

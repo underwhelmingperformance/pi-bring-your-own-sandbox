@@ -6,30 +6,13 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 
-import { reportCleanup } from './cleanup-report.js';
-import type { ProcessExit } from './contracts.js';
-import { bindFactory } from './default-broker.js';
-import { cleanDisplayText } from './display-text.js';
-import { InvalidSandboxRequestError } from './errors.js';
-import type { EscalatedSandbox } from './escalation-plan.js';
-import { describeRestrictions } from './escalation-plan.js';
-import { registerShellIntegrationDiagnostics } from './pi-integration-status.js';
-import { createShellOperations } from './pi-shell-operations.js';
-import {
-	effectiveCommand,
-	escalationInput,
-	escalationJustificationSchema,
-	escalationListSchema,
-	PendingEscalation
-} from './shell-escalation.js';
-import { ShellReviewRoutes } from './shell-review-routes.js';
-import { registerShellSystemPrompt } from './shell-system-prompt.js';
-import { registerUserShell } from './user-shell.js';
+import { bindShellIntegration } from './integration/privileged.js';
 
 function shellDefinition(
 	pi: ExtensionAPI,
 	dialect: 'bash' | 'powershell',
-	extensionPath: string
+	extensionPath: string,
+	integration: ReturnType<typeof bindShellIntegration>
 ) {
 	const create =
 		dialect === 'bash'
@@ -45,18 +28,7 @@ function shellDefinition(
 		{
 			...base.parameters.properties,
 			timeout,
-			escalate: Type.Optional(
-				Type.With(escalationListSchema, {
-					description:
-						'Request extra access for this command. List access properties or specific read and write paths.'
-				})
-			),
-			justification: Type.Optional(
-				Type.With(escalationJustificationSchema, {
-					description:
-						'Reason for the requested access. Required when requesting escalation.'
-				})
-			)
+			...integration.escalationParameters
 		},
 		{ additionalProperties: false }
 	);
@@ -70,7 +42,7 @@ function shellDefinition(
 					tool.sourceInfo.path === extensionPath &&
 					tool.parameters === parameters
 			);
-	const reviews = new ShellReviewRoutes(pi, dialect, isSelected);
+	const execute = integration.registerRoute(dialect, isSelected);
 
 	const tool = defineTool({
 		...base,
@@ -81,122 +53,16 @@ function shellDefinition(
 			'Shell commands execute in the selected sandbox workspace by default.',
 			'Pi full-output paths refer to host transcript files.'
 		],
-		async execute(id, input, signal, update, context) {
-			const prefix =
-				dialect === 'bash' ? pi.getSettings().shellCommandPrefix : undefined;
-			const requested = escalationInput(
-				id,
-				effectiveCommand(input.command, prefix),
-				input
-			);
-			let escalation = reviews.escalation(id);
-
-			if (requested === undefined && escalation !== undefined) {
-				throw new InvalidSandboxRequestError({ operation: 'exec' });
-			}
-
-			if (requested === undefined) {
-				reviews.verifyExecution(id, input.command, prefix);
-			}
-
-			if (requested === undefined && input.justification !== undefined) {
-				throw new InvalidSandboxRequestError({
-					operation: 'exec',
-					detail: { kind: 'request', field: 'justification' }
+		execute(id, input, signal, update, context) {
+			return execute(id, input, context, (prefix, operations) => {
+				const tool = create(context.cwd, {
+					...(prefix !== undefined && { commandPrefix: prefix }),
+					exposeSessionEnvironment: false,
+					operations
 				});
-			}
 
-			if (requested !== undefined) {
-				if (escalation === undefined) {
-					escalation = new PendingEscalation(pi, context, requested);
-					await escalation.prepare(dialect);
-				}
-
-				escalation.verify(context, requested);
-			}
-
-			const pending = escalation;
-			const feedback: { type: 'text'; text: string }[] = [];
-			const execution: { exit?: ProcessExit } = {};
-			let allocation: EscalatedSandbox | undefined;
-			const operations = createShellOperations(pi, context, dialect, {
-				toolCallId: id,
-				...(pending !== undefined && {
-					getSandbox: async (command, options) => {
-						allocation = await pending.open(context, command, options ?? {});
-
-						return allocation.sandbox;
-					}
-				}),
-				onSandbox: (sandbox) => {
-					const paths = sandbox.grantedPaths;
-					const restrictions = describeRestrictions(
-						sandbox.policy,
-						paths === undefined
-							? undefined
-							: {
-									read: paths
-										.filter((grant) => grant.kind === 'read')
-										.map((grant) => grant.targetPath),
-									write: paths
-										.filter((grant) => grant.kind === 'write')
-										.map((grant) => grant.targetPath)
-								}
-					);
-
-					feedback.push({
-						type: 'text',
-						text: cleanDisplayText('Effective restrictions: ' + restrictions)
-					});
-				},
-				onResult: (result) => {
-					execution.exit = result.exit;
-
-					const violations = result.violations ?? [];
-
-					for (const violation of violations) {
-						const target =
-							violation.resource === undefined
-								? ''
-								: ' on ' + violation.resource;
-						const text = `Restriction violation: ${violation.operation} (${violation.accessProperty})${target}`;
-
-						feedback.push({ type: 'text', text: cleanDisplayText(text) });
-					}
-				}
+				return tool.execute(id, input, signal, update, context);
 			});
-			const tool = create(context.cwd, {
-				...(prefix !== undefined && { commandPrefix: prefix }),
-				exposeSessionEnvironment: false,
-				operations
-			});
-
-			try {
-				const result = await tool.execute(id, input, signal, update, context);
-
-				return feedback.length === 0
-					? result
-					: { ...result, content: [...result.content, ...feedback] };
-			} catch (error) {
-				if (
-					execution.exit?.kind !== 'unavailable' ||
-					!(error instanceof Error)
-				) {
-					throw error;
-				}
-
-				return {
-					isError: true,
-					details: undefined,
-					content: [{ type: 'text', text: error.message }, ...feedback]
-				};
-			} finally {
-				pending?.finish();
-
-				if (allocation !== undefined) {
-					reportCleanup(pi, context, await allocation.close());
-				}
-			}
 		}
 	});
 
@@ -212,21 +78,23 @@ export default function sandboxTools(
 	pi: ExtensionAPI,
 	extensionPath = import.meta.filename
 ): void {
-	bindFactory(pi, extensionPath);
+	const integration = bindShellIntegration(pi, extensionPath);
 
-	const bash = shellDefinition(pi, 'bash', extensionPath);
-	const powershell = shellDefinition(pi, 'powershell', extensionPath);
+	const bash = shellDefinition(pi, 'bash', extensionPath, integration);
+	const powershell = shellDefinition(
+		pi,
+		'powershell',
+		extensionPath,
+		integration
+	);
 
 	pi.registerTool(bash.tool);
 	pi.registerTool(powershell.tool);
-	registerShellSystemPrompt(
-		pi,
+	integration.complete(
 		(name) =>
 			(name === 'bash' && bash.isSelected()) ||
 			(name === 'powershell' && powershell.isSelected())
 	);
-	registerUserShell(pi);
-	registerShellIntegrationDiagnostics(pi.events);
 }
 
 /**
@@ -238,13 +106,11 @@ export function registerShellOnlyTools(
 	pi: ExtensionAPI,
 	extensionPath: string
 ): void {
-	bindFactory(pi, extensionPath);
+	const integration = bindShellIntegration(pi, extensionPath);
 
-	const bash = shellDefinition(pi, 'bash', extensionPath);
+	const bash = shellDefinition(pi, 'bash', extensionPath, integration);
 
 	pi.registerTool(bash.tool);
-	registerUserShell(pi);
-	registerShellIntegrationDiagnostics(pi.events);
 
 	const select = () => {
 		const selected = pi.getActiveTools();
@@ -259,7 +125,7 @@ export function registerShellOnlyTools(
 
 	pi.on('session_start', select);
 	pi.on('before_agent_start', select);
-	registerShellSystemPrompt(pi, (name) => name === 'bash' && bash.isSelected());
+	integration.complete((name) => name === 'bash' && bash.isSelected());
 	pi.on('tool_call', (event) => {
 		if (
 			event.toolName === 'bash' &&

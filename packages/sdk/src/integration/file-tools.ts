@@ -33,9 +33,13 @@ import {
 	GrepOutput,
 	sandboxRipgrepArguments
 } from 'pi-bring-your-own-sandbox/consumer';
-import type { GrepRequest } from 'pi-bring-your-own-sandbox/provider';
+import type {
+	GrepRequest,
+	ProcessRequest
+} from 'pi-bring-your-own-sandbox/provider';
 import {
 	cleanDisplayText,
+	encodePosixArgv,
 	isSandboxError,
 	SandboxOperationError,
 	SandboxPathNotFoundError,
@@ -208,17 +212,61 @@ function grepPath(filename: string, cwd: string): string {
 	return path.resolve(cwd, expanded);
 }
 
+type RipgrepRequest = (
+	arguments_: readonly string[],
+	cwd?: string
+) => ProcessRequest;
+
+function ripgrepRequest({ capabilities }: Sandbox): RipgrepRequest | undefined {
+	if (!capabilities.operations.includes('exec')) {
+		return;
+	}
+
+	if (capabilities.processKinds.includes('argv')) {
+		return (arguments_, cwd) => ({
+			kind: 'argv',
+			executable: 'rg',
+			args: arguments_,
+			...(cwd !== undefined && { cwd })
+		});
+	}
+
+	const dialect = capabilities.shells.find(
+		(shell) => shell === 'sh' || shell === 'bash'
+	);
+
+	if (dialect !== undefined && capabilities.processKinds.includes('shell')) {
+		return (arguments_, cwd) => ({
+			kind: 'shell',
+			dialect,
+			command: 'exec ' + encodePosixArgv(['rg', ...arguments_]),
+			...(cwd !== undefined && { cwd })
+		});
+	}
+
+	return;
+}
+
 async function hasTargetRipgrep(
-	workspace: FileToolWorkspace
+	workspace: FileToolWorkspace,
+	probe: ProcessRequest
 ): Promise<boolean> {
 	try {
-		const result = await workspace.sandbox.exec(
-			{ kind: 'argv', executable: 'rg', args: ['--version'] },
-			{ ...workspace.options, maxCaptureBytes: 256 }
-		);
+		const result = await workspace.sandbox.exec(probe, {
+			...workspace.options,
+			maxCaptureBytes: 256
+		});
 
 		if (result.exit.kind === 'code' && result.exit.code === 0) {
 			return true;
+		}
+
+		if (
+			probe.kind === 'shell' &&
+			result.exit.kind === 'code' &&
+			result.exit.code === 127
+		) {
+			return false;
 		}
 
 		throw new SandboxOperationError({
@@ -226,7 +274,10 @@ async function hasTargetRipgrep(
 			providerId: workspace.sandbox.providerId
 		});
 	} catch (error) {
-		if (isSandboxError(error, SandboxPathNotFoundError)) {
+		if (
+			isSandboxError(error, SandboxPathNotFoundError) ||
+			isSandboxError(error, UnsupportedSandboxCapabilityError)
+		) {
 			return false;
 		}
 
@@ -240,11 +291,18 @@ async function targetGrep(
 	ripgrepAvailability: Map<string, boolean>
 ): Promise<GrepResult> {
 	const { sandbox, options } = workspace;
+	const ripgrep = ripgrepRequest(sandbox);
+
+	if (ripgrep === undefined) {
+		return sandbox.search.grep(request, options);
+	}
+
 	const target = request.path ?? sandbox.workspace.root;
 	// Each acquisition returns a new facade for the same backend.
 	const key = JSON.stringify([sandbox.generationId, sandbox.backendId]);
 	const hasRipgrep =
-		ripgrepAvailability.get(key) ?? (await hasTargetRipgrep(workspace));
+		ripgrepAvailability.get(key) ??
+		(await hasTargetRipgrep(workspace, ripgrep(['--version'])));
 
 	ripgrepAvailability.set(key, hasRipgrep);
 
@@ -267,12 +325,7 @@ async function targetGrep(
 	const operand = isDirectory ? '.' : flavor.basename(target);
 	const output = new GrepOutput(0, request.limit ?? 100);
 	const result = await sandbox.exec(
-		{
-			kind: 'argv',
-			executable: 'rg',
-			cwd,
-			args: sandboxRipgrepArguments(request, operand)
-		},
+		ripgrep(sandboxRipgrepArguments(request, operand), cwd),
 		{
 			...options,
 			maxCaptureBytes: 16_384,

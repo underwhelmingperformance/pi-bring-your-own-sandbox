@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { createMcpExtension } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 
+import { ScriptedModel } from '../../../../test-support/scripted-model.js';
 import { getSandbox } from '../client.js';
 import { createSandbox } from '../facade.js';
 import { bindProtocolAddress } from '../protocol-address.js';
@@ -12,7 +13,6 @@ import { ensureBroker } from '../service.js';
 import { TestBackendOwner } from './backend-owner.js';
 import { MemoryBackend } from './memory-backend.js';
 import { withPiRuntime } from './pi-runtime.js';
-import { ScriptedModel } from './scripted-model.js';
 
 export default async function probe(marker: string): Promise<void> {
 	const model = new ScriptedModel([

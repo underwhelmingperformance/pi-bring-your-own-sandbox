@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
+import { createSandboxClient } from 'pi-bring-your-own-sandbox/consumer';
 import {
 	closeSandboxSession,
 	initialiseSandboxHost,
@@ -16,26 +17,19 @@ import type {
 	SandboxOpenRequest,
 	SandboxOperationContext
 } from 'pi-bring-your-own-sandbox/provider';
+import { registerSandboxProvider } from 'pi-bring-your-own-sandbox/provider';
 import {
 	SandboxTransportError,
 	UnsupportedSandboxPolicyError
 } from 'pi-bring-your-own-sandbox/provider';
 import { afterEach, expect, it, vi } from 'vitest';
 
-import { FakeClock } from '../../../src/fixtures/clock.js';
-import { FixtureConfig } from '../../../src/fixtures/config.js';
-import {
-	getSandbox,
-	negotiateSandbox
-} from '../../../src/fixtures/fixture-client.js';
-import { withPiRuntime } from '../../../src/fixtures/pi-runtime.js';
+import { withPiRuntime } from '../../../test-support/pi-runtime.js';
 import {
 	firstCopyProfile,
 	firstOpenProfile
-} from '../../../src/fixtures/profile-fixture.js';
-import { remainingBudget } from '../../../src/fixtures/remaining-budget.js';
-import { OperationScope } from '../../../src/lifecycle.js';
-import { profileCapabilities } from '../../../src/validation.js';
+} from '../../../test-support/provider-profiles.js';
+import { remainingBudget } from '../../../test-support/remaining-budget.js';
 import type {
 	DockerClient,
 	DockerCommand,
@@ -301,10 +295,12 @@ it.each([true, false])(
 					{
 						name: 'consumer',
 						factory(pi) {
+							const client = createSandboxClient(pi, import.meta.filename);
+
 							pi.registerCommand('policy-test', {
 								description: 'Read the negotiated policy.',
 								async handler(_arguments, context) {
-									expect(await negotiateSandbox(pi, context)).toStrictEqual({
+									expect(await client.negotiate(context)).toStrictEqual({
 										ok: true,
 										profile: createDockerProvider().profiles.open[1]
 									});
@@ -490,22 +486,30 @@ it('reports confirmed broker cleanup after Docker opening releases partial alloc
 
 	docker.mountProbeStatus = 1;
 
-	const config = new FixtureConfig();
-
 	await withPiRuntime(
 		[
 			{
 				name: 'docker',
 				factory(pi) {
 					initialiseSandboxHost(pi, import.meta.filename, {});
-					config.activate(
+					registerSandboxProvider(
 						pi,
-						createDockerProvider(() => docker)
+						import.meta.filename,
+						createDockerProvider(() => docker),
+						{
+							configure: () => ({
+								configuration: request.configuration,
+								settings: { policy: request.profile.policy }
+							})
+						}
 					);
+
+					const client = createSandboxClient(pi, import.meta.filename);
+
 					pi.registerCommand('open-test', {
 						description: 'Exercise failed opening.',
 						async handler(_arguments, context) {
-							await expect(getSandbox(pi, context)).rejects.toMatchObject({
+							await expect(client.get(context)).rejects.toMatchObject({
 								name: 'UnsupportedSandboxPolicyError'
 							});
 							expect({
@@ -529,11 +533,6 @@ it('reports confirmed broker cleanup after Docker opening releases partial alloc
 		{
 			async prepare(directory, _runtimeDirectory) {
 				await mkdir(path.join(directory, '.pi'));
-				config.set({
-					provider: 'example.docker',
-					policy: request.profile.policy,
-					providerConfig: request.configuration
-				});
 			}
 		}
 	);
@@ -607,16 +606,17 @@ it('uses literal argv, isolated mounts and explicit target environment overrides
 
 	expect({
 		outcome,
-		capabilities: profileCapabilities(backend.profile),
+		profile: backend.profile,
 		workspace: backend.workspace,
 		recoveries
 	}).toStrictEqual({
 		outcome: { kind: 'exited', exit: { kind: 'code', code: 7 } },
-		capabilities: {
+		profile: {
+			policy: hostCopy.profile.policy,
 			processKinds: ['argv', 'shell'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			operations: [
+			capabilities: [
 				'exec',
 				'files.read',
 				'files.write',
@@ -991,30 +991,31 @@ it('updates an already-running removal when cancellation publishes a longer dead
 it.each([-1_000_000, 1_000_000])(
 	'keeps one cleanup budget across sequential commands at wall time %s',
 	(wallTime) => {
-		const clock = new FakeClock();
+		let elapsed = 0;
+		const monotonicNow = () => elapsed;
 		const caller = new AbortController();
-		const scope = new OperationScope(
-			{ operation: 'exec' },
-			caller.signal,
-			{},
-			30_000,
-			{ cancellationGraceMs: 8000, disposalTimeoutMs: 10_000 },
-			clock
-		);
+		const parent: SandboxOperationContext = {
+			...context(caller.signal),
+			cleanup: {
+				get deadline() {
+					return caller.signal.aborted ? Date.now() + 8000 : undefined;
+				},
+				remainingMs: () =>
+					caller.signal.aborted ? Math.max(0, 9000 - elapsed) : undefined
+			},
+			remainingMs: () => Math.max(0, 30_000 - elapsed)
+		};
+		const first = cleanupContext(parent, 'first', monotonicNow);
+
+		elapsed = 1000;
+
+		const wallClock = vi.spyOn(Date, 'now').mockReturnValue(wallTime);
 
 		try {
-			const first = cleanupContext(scope.context, 'first', clock.monotonicNow);
-
-			clock.advance(1000);
-			clock.wallTime = wallTime;
 			caller.abort();
-			clock.advance(2500);
+			elapsed += 2500;
 
-			const second = cleanupContext(
-				scope.context,
-				'second',
-				clock.monotonicNow
-			);
+			const second = cleanupContext(parent, 'second', monotonicNow);
 
 			expect({
 				first: first.remainingMs(),
@@ -1028,10 +1029,10 @@ it.each([-1_000_000, 1_000_000])(
 				isAborted: false
 			});
 
-			clock.advance(6000);
+			elapsed += 6000;
 			expect([first.remainingMs(), second.remainingMs()]).toStrictEqual([0, 0]);
 		} finally {
-			scope.dispose();
+			wallClock.mockRestore();
 		}
 	}
 );
@@ -1338,8 +1339,7 @@ it('registers the Docker provider and Bash integration from the shell profile fa
 			});
 
 			return Promise.resolve();
-		},
-		{ bindFixtureSources: false }
+		}
 	);
 });
 

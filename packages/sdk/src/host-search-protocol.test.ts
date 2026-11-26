@@ -4,12 +4,13 @@ import path from 'node:path';
 
 import { afterEach, expect, it } from 'vitest';
 
+import { remainingBudget } from '../../../test-support/remaining-budget.js';
+
 import type {
 	BackendProcessContext,
 	BackendProcessOutcome,
 	ProcessRequest
 } from './contracts.js';
-import { remainingBudget } from './fixtures/remaining-budget.js';
 import { HostOperations } from './host-operations.js';
 import type { HostProcessRunner } from './host-process.js';
 import type { SearchTools } from './host-search.js';

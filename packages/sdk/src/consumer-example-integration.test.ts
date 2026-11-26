@@ -10,14 +10,15 @@ import type {
 } from 'pi-bring-your-own-sandbox/provider';
 import { afterEach, expect, it, vi } from 'vitest';
 
-import { FixtureConfig } from '../../../src/fixtures/config.js';
-import { connectionProvider } from '../../../src/fixtures/connection-provider.js';
-import { imageProvider } from '../../../src/fixtures/image-provider.js';
-import { messageScenario } from '../../../src/fixtures/message-provider.js';
-import { withPiRuntime } from '../../../src/fixtures/pi-runtime.js';
-import { contractScenario } from '../../../src/fixtures/provider-contract.js';
-import { ScriptedModel } from '../../../src/fixtures/scripted-model.js';
-import consumerExtension from '../src/extension.js';
+import { ScriptedModel } from '../../../test-support/scripted-model.js';
+import consumerExtension from '../examples/consumer/src/extension.js';
+
+import { FixtureConfig } from './fixtures/config.js';
+import { connectionProvider } from './fixtures/connection-provider.js';
+import { imageProvider } from './fixtures/image-provider.js';
+import { messageScenario } from './fixtures/message-provider.js';
+import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { contractScenario } from './fixtures/provider-contract.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();

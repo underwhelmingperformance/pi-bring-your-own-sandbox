@@ -35,7 +35,7 @@ separate entry points with stricter default policies.
 [consumer]: examples/consumer/README.md
 [pi]: docs/pi-integration.md
 [testing]: docs/provider-testing.md
-[docker]: examples/docker/README.md
+[docker]: ../provider-docker/README.md
 
 ## Development
 

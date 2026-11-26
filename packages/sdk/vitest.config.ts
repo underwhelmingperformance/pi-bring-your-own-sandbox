@@ -2,11 +2,7 @@ import { configDefaults, defineConfig } from 'vitest/config';
 
 // The same files as the test:integration script. They start Pi runtimes, RPC
 // processes and fresh SDK copies, which take seconds under a full parallel run.
-const integration = [
-	'src/*integration.test.ts',
-	'src/user-shell-rpc.test.ts',
-	'examples/consumer/test/integration.test.ts'
-];
+const integration = ['src/*integration.test.ts', 'src/user-shell-rpc.test.ts'];
 
 export default defineConfig({
 	test: {

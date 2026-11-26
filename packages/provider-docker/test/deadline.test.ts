@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 
-import { remainingBudget } from '../../../src/fixtures/remaining-budget.js';
+import { remainingBudget } from '../../../test-support/remaining-budget.js';
 import { DeadlineTimer } from '../src/deadline.js';
 
 afterEach(() => {

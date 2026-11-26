@@ -22,7 +22,7 @@ Extend the [broker][broker], [Docker provider][docker-provider] and
 [diagnostics][diagnostics] suites for these cases.
 
 [broker]: ../src/broker-integration.test.ts
-[docker-provider]: ../examples/docker/test/provider-unit.test.ts
+[docker-provider]: ../../provider-docker/test/provider-unit.test.ts
 [diagnostics]: ../src/diagnostics-integration.test.ts
 
 ## Tools and permission
@@ -58,5 +58,5 @@ a real daemon. Expand it to cover the declared open and copy profiles, read-only
 and writable live mounts, cleanup and recovery. The [provider testing
 guide][testing] defines the generated case families and independent probes.
 
-[docker]: ../examples/docker/test/session.test.ts
+[docker]: ../../provider-docker/test/session.test.ts
 [testing]: provider-testing.md

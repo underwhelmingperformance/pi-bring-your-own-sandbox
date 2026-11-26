@@ -14,11 +14,12 @@ import path from 'node:path';
 
 import { afterEach, expect, it, vi } from 'vitest';
 
+import { remainingBudget } from '../../../test-support/remaining-budget.js';
+
 import type { OperationCompletion, ProcessExit, Sandbox } from './contracts.js';
 import { isSandboxError, SandboxCancelledError } from './errors.js';
 import { createSandbox } from './facade.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
-import { remainingBudget } from './fixtures/remaining-budget.js';
 import { PosixProcessRunner } from './host-process.js';
 import { openPassthrough } from './passthrough.js';
 import { snapshotProcessRequest } from './process-input.js';

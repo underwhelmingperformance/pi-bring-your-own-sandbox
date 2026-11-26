@@ -7,7 +7,7 @@ packages in this checkout are private development builds.
 
 [principles]: packages/sdk/docs/principles.md
 [sdk]: packages/sdk/README.md
-[docker]: packages/sdk/examples/docker/README.md
+[docker]: packages/provider-docker/README.md
 
 ## Use a sandbox in Pi
 

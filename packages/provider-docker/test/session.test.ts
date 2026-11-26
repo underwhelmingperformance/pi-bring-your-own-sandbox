@@ -22,26 +22,31 @@ import type {
 	ExtensionContext,
 	InlineExtension
 } from '@earendil-works/pi-coding-agent';
-import type { Sandbox, SandboxCopy } from 'pi-bring-your-own-sandbox/consumer';
+import type {
+	Sandbox,
+	SandboxClient,
+	SandboxCopy
+} from 'pi-bring-your-own-sandbox/consumer';
 import { createSandboxClient } from 'pi-bring-your-own-sandbox/consumer';
 import { closeSandboxSession } from 'pi-bring-your-own-sandbox/host';
+import sandboxTools from 'pi-bring-your-own-sandbox/pi-tools';
 import type {
 	SandboxBackend,
 	SandboxHost,
-	SandboxPolicy
+	SandboxPolicy,
+	SandboxSharedSettings
 } from 'pi-bring-your-own-sandbox/provider';
-import { StaleSandboxHandleError } from 'pi-bring-your-own-sandbox/provider';
+import {
+	registerSandboxProvider,
+	StaleSandboxHandleError
+} from 'pi-bring-your-own-sandbox/provider';
+import { Type } from 'typebox';
+import { Parse } from 'typebox/value';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { copyHostWorkspace } from '../../../src/client.js';
-import { FixtureConfig } from '../../../src/fixtures/config.js';
-import { getSandbox } from '../../../src/fixtures/fixture-client.js';
-import { withPiRuntime } from '../../../src/fixtures/pi-runtime.js';
-import { firstCopyProfile } from '../../../src/fixtures/profile-fixture.js';
-import { ScriptedModel } from '../../../src/fixtures/scripted-model.js';
-import sandboxTools from '../../../src/pi-tools.js';
-import { snapshotProcessRequest } from '../../../src/process-input.js';
-import { inspectWorkspace } from '../../consumer/src/workspace.js';
+import { withPiRuntime } from '../../../test-support/pi-runtime.js';
+import { firstCopyProfile } from '../../../test-support/provider-profiles.js';
+import { ScriptedModel } from '../../../test-support/scripted-model.js';
 import { createDockerProvider } from '../src/provider.js';
 
 import {
@@ -57,6 +62,7 @@ afterEach(() => {
 interface DockerSession {
 	readonly runtime: AgentSessionRuntime;
 	readonly sandbox: Sandbox;
+	readonly client: SandboxClient;
 	readonly pi: SandboxHost;
 	readonly context: ExtensionContext;
 	readonly fixture: DockerFixture;
@@ -80,10 +86,14 @@ async function withDockerSession(
 		prepareWorkspace
 	} = options;
 	let fixture: DockerFixture | undefined;
-	const current: { pi?: SandboxHost; context?: ExtensionContext } = {};
+	const current: {
+		pi?: SandboxHost;
+		context?: ExtensionContext;
+		client?: SandboxClient;
+	} = {};
 
 	try {
-		const config = new FixtureConfig();
+		let settings: SandboxSharedSettings = {};
 
 		await withPiRuntime(
 			[
@@ -96,11 +106,16 @@ async function withDockerSession(
 
 						const prepared = fixture;
 
-						config.activate(
+						registerSandboxProvider(
 							pi,
-							createDockerProvider(() => prepared.providerClient())
+							import.meta.filename,
+							createDockerProvider(() => prepared.providerClient()),
+							{
+								configure: () => ({ configuration: prepared.config, settings })
+							}
 						);
 						current.pi = pi;
+						current.client = createSandboxClient(pi, import.meta.filename);
 						pi.on('session_start', (_event, context) => {
 							current.context = context;
 						});
@@ -109,20 +124,21 @@ async function withDockerSession(
 				...extensions
 			],
 			async (runtime, errors) => {
-				const { pi, context } = current;
+				const { pi, context, client } = current;
 
 				if (
 					pi === undefined ||
+					client === undefined ||
 					context === undefined ||
 					fixture === undefined
 				) {
 					throw new Error('Pi did not initialise the Docker fixture.');
 				}
 
-				const sandbox = await getSandbox(pi, context);
+				const sandbox = await client.get(context);
 
 				try {
-					await run({ sandbox, fixture, pi, context, runtime });
+					await run({ sandbox, fixture, pi, context, runtime, client });
 				} finally {
 					expect(await closeSandboxSession(pi, context)).toStrictEqual({
 						confirmed: true,
@@ -149,22 +165,52 @@ async function withDockerSession(
 
 					await prepareWorkspace?.(fixture);
 					vi.stubEnv('PI_CODING_AGENT_DIR', agentDirectory);
-					config.set({
-						provider: 'example.docker',
-						providerConfig: fixture.config,
+					settings = {
 						policy: {
 							hostWorkspaceWrites: true,
 							hostUserData: 'denied',
 							hostSystemFiles,
 							network: false
 						}
-					});
+					};
 				}
 			}
 		);
 	} finally {
 		await fixture?.cleanup();
 	}
+}
+
+async function copyHostCheckout(fixture: DockerFixture) {
+	const provider = createDockerProvider(() => fixture.providerClient());
+	const backend = await provider.copy(
+		{
+			generationId: randomUUID(),
+			sessionId: randomUUID(),
+			hostWorkspace: fixture.workspace,
+			configuration: fixture.config,
+			profile: firstCopyProfile(provider),
+			source: { kind: 'host' }
+		},
+		{
+			...operationContext(),
+			confirmCleanup() {
+				return;
+			},
+			reportRecovery(recovery) {
+				expect(recovery.kind).toBe('allocation');
+			}
+		}
+	);
+	const { read, write } = backend.files ?? {};
+
+	if (read === undefined || write === undefined) {
+		await backend.dispose(operationContext());
+
+		throw new Error('Docker host copies must expose file reads and writes.');
+	}
+
+	return { backend, read, write };
 }
 
 function withDockerCopy(
@@ -334,7 +380,7 @@ exit 1`
 		});
 
 		it('takes fresh independent copies of a sandbox and the host checkout', async () => {
-			await withDockerSession(async ({ pi, context, sandbox }) => {
+			await withDockerSession(async ({ fixture, sandbox }) => {
 				await sandbox.files.writeFile('source.txt', Buffer.from('first'));
 
 				const first = await sandbox.copy();
@@ -342,17 +388,17 @@ exit 1`
 				await sandbox.files.writeFile('source.txt', Buffer.from('second'));
 
 				const second = await sandbox.copy();
-				const host = await copyHostWorkspace(pi, context);
+				const { backend: host, read, write } = await copyHostCheckout(fixture);
+				const readHost = async () =>
+					new TextDecoder().decode(
+						await read.readFile('source.txt', operationContext())
+					);
 
 				try {
 					expect(
-						await Promise.all([
-							readCopy(first),
-							readCopy(second),
-							readCopy(host)
-						])
+						await Promise.all([readCopy(first), readCopy(second), readHost()])
 					).toStrictEqual(['first', 'second', 'second']);
-					expect(host.sandbox.policy).toStrictEqual({
+					expect(host.profile.policy).toStrictEqual({
 						hostWorkspaceWrites: false,
 						hostUserData: 'denied',
 						hostSystemFiles: 'denied',
@@ -367,15 +413,20 @@ exit 1`
 					});
 
 					expect(new TextDecoder().decode(shell.stdout)).toBe('second');
-					await host.sandbox.files.writeFile(
+					await write.writeFile(
 						'source.txt',
-						Buffer.from('private')
+						Buffer.from('private'),
+						operationContext()
 					);
 					expect(
-						await Promise.all([readCopy(host), readCopy(second)])
+						await Promise.all([readHost(), readCopy(second)])
 					).toStrictEqual(['private', 'second']);
 				} finally {
-					await Promise.all([first.close(), second.close(), host.close()]);
+					await Promise.all([
+						first.close(),
+						second.close(),
+						host.dispose(operationContext())
+					]);
 				}
 			});
 		}, 30_000);
@@ -455,15 +506,23 @@ exit 1`
 
 		it('copies an entry with a link outside the checkout as workspace content', async () => {
 			await withDockerSession(
-				async ({ pi, context, fixture }) => {
-					const copy = await copyHostWorkspace(pi, context);
+				async ({ fixture }) => {
+					const {
+						backend: copy,
+						read,
+						write
+					} = await copyHostCheckout(fixture);
 
 					try {
 						const contents = new TextDecoder().decode(
-							await copy.sandbox.files.readFile('added')
+							await read.readFile('added', operationContext())
 						);
 
-						await copy.sandbox.files.writeFile('added', Buffer.from('private'));
+						await write.writeFile(
+							'added',
+							Buffer.from('private'),
+							operationContext()
+						);
 						expect({
 							contents,
 							outside: await readFile(fixture.outside, 'utf8')
@@ -472,7 +531,7 @@ exit 1`
 							outside: 'host-only'
 						});
 					} finally {
-						await copy.close();
+						await copy.dispose(operationContext());
 					}
 				},
 				[],
@@ -484,7 +543,7 @@ exit 1`
 		}, 30_000);
 
 		it('rejects a host copy with an oversized file and preserves the active backend', async () => {
-			await withDockerSession(async ({ pi, context, fixture, sandbox }) => {
+			await withDockerSession(async ({ fixture, sandbox }) => {
 				await using file = await open(
 					path.join(fixture.workspace, 'added'),
 					'wx'
@@ -492,14 +551,11 @@ exit 1`
 
 				await file.truncate(512 * 1024 * 1024 + 1);
 
-				await expect(copyHostWorkspace(pi, context)).rejects.toMatchObject({
+				await expect(copyHostCheckout(fixture)).rejects.toMatchObject({
 					name: 'SandboxOperationError',
 					operation: 'open',
 					cause: {
-						cause: {
-							message:
-								'The Docker workspace exceeds the snapshot import limits.'
-						}
+						message: 'The Docker workspace exceeds the snapshot import limits.'
 					}
 				});
 				await expect(
@@ -777,16 +833,14 @@ socket.on('error', error => {
 			30_000
 		);
 
-		it('runs the shared consumer example through the selected Docker provider', async () => {
-			await withDockerSession(async ({ pi, context, fixture }) => {
-				const result = await inspectWorkspace(
-					{
-						get: (clientContext, options) =>
-							getSandbox(pi, clientContext, options)
-					},
-					context,
-					new AbortController().signal
-				);
+		it('runs a consumer through the selected Docker provider', async () => {
+			await withDockerSession(async ({ client, context, fixture }) => {
+				const consumer = await client.get(context);
+				const result = await consumer.exec({
+					kind: 'argv',
+					executable: 'pwd',
+					args: []
+				});
 				const duration: unknown = expect.any(Number);
 
 				expect({ result, allocations: fixture.allocations.size }).toStrictEqual(
@@ -877,15 +931,16 @@ socket.on('error', error => {
 					new TextEncoder().encode('original')
 				);
 
-				const removed: unknown = JSON.parse('null');
-				const environment = await sandbox.exec(
-					snapshotProcessRequest({
-						kind: 'argv',
-						executable: '/usr/bin/env',
-						args: [],
-						env: { HOME: removed, PATH: removed }
-					})
+				const overrides = Parse(
+					Type.Record(Type.String(), Type.Null()),
+					JSON.parse('{"HOME":null,"PATH":null}')
 				);
+				const environment = await sandbox.exec({
+					kind: 'argv',
+					executable: '/usr/bin/env',
+					args: [],
+					env: overrides
+				});
 				const entries = new TextDecoder()
 					.decode(environment.stdout)
 					.split('\n');

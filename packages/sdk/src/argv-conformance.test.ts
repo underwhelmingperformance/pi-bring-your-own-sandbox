@@ -12,9 +12,10 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { remainingBudget } from '../../../test-support/remaining-budget.js';
+
 import type { ProcessRequest } from './contracts.js';
 import { isSandboxError, SandboxPathNotFoundError } from './errors.js';
-import { remainingBudget } from './fixtures/remaining-budget.js';
 import { ShellTransportRunner } from './fixtures/shell-transport.js';
 import type { HostProcessRunner } from './host-process.js';
 import { PosixProcessRunner } from './host-process.js';

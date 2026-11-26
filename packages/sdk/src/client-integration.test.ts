@@ -8,6 +8,8 @@ import type {
 import { createReadTool } from '@earendil-works/pi-coding-agent';
 import { afterEach, expect, it, vi } from 'vitest';
 
+import { ScriptedModel } from '../../../test-support/scripted-model.js';
+
 import { closeSandboxSession } from './client.js';
 import type { SandboxContext, SandboxHost } from './contracts.js';
 import { discoverBroker } from './discovery.js';
@@ -18,7 +20,6 @@ import { getSandbox, negotiateSandbox } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
-import { ScriptedModel } from './fixtures/scripted-model.js';
 import { loadSdkInstance } from './fixtures/sdk-instance.js';
 import { probePassthrough } from './passthrough.js';
 import { bindProtocolAddress } from './protocol-address.js';

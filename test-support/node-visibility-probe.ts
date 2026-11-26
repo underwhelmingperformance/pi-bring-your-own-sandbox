@@ -4,8 +4,8 @@ import { link, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
-import type { ProcessRequest } from '../contracts.js';
-import type { SandboxProviderTestFixture } from '../provider-test-contracts.js';
+import type { ProcessRequest } from 'pi-bring-your-own-sandbox/provider';
+import type { SandboxProviderTestFixture } from 'pi-bring-your-own-sandbox/testing';
 
 const run = promisify(execFile);
 const attribute = 'user.byos-conformance';

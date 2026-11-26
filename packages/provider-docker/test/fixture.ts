@@ -22,8 +22,8 @@ import type {
 import type { SandboxProviderTestFixture } from 'pi-bring-your-own-sandbox/testing';
 import { expect } from 'vitest';
 
-import { nodeVisibilityProbe } from '../../../src/fixtures/node-visibility-probe.js';
-import { remainingBudget } from '../../../src/fixtures/remaining-budget.js';
+import { nodeVisibilityProbe } from '../../../test-support/node-visibility-probe.js';
+import { remainingBudget } from '../../../test-support/remaining-budget.js';
 import { NodeDockerClient } from '../src/client.js';
 import { resolveDockerConfig } from '../src/config.js';
 import type { DockerClient, DockerConfig } from '../src/contracts.js';

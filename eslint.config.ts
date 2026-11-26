@@ -93,7 +93,11 @@ export default defineConfig(
 		path.join(import.meta.dirname, '.oxlintrc.json')
 	),
 	{
-		files: ['packages/sdk/src/**/*.ts', 'packages/sdk/examples/*/src/**/*.ts'],
+		files: [
+			'packages/sdk/src/**/*.ts',
+			'packages/sdk/examples/*/src/**/*.ts',
+			'packages/provider-docker/src/**/*.ts'
+		],
 		ignores: [
 			'**/*.test.ts',
 			'packages/sdk/src/fixtures/**',

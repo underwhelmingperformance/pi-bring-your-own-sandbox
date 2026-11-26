@@ -56,4 +56,4 @@ provider settings parser.
 
 [flows]: user-flow-coverage.md
 [testing]: provider-testing.md
-[docker]: ../examples/docker/README.md
+[docker]: ../../provider-docker/README.md

@@ -1,8 +1,6 @@
-import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
 	copyFile,
-	cp,
 	mkdir,
 	mkdtemp,
 	readFile,
@@ -12,210 +10,18 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { promisify } from 'node:util';
 
 import { expect, it } from 'vitest';
 
+import {
+	add,
+	compilerPackage,
+	packedArchive,
+	project,
+	run
+} from '../../../test-support/packages.js';
+
 import { isRecord } from './validation.js';
-
-const execute = promisify(execFile);
-
-async function run(
-	cwd: string,
-	executable: string,
-	arguments_: readonly string[]
-) {
-	try {
-		return await execute(executable, arguments_, {
-			cwd,
-			env: { ...process.env, CI: 'true' },
-			timeout: 120_000,
-			maxBuffer: 8 * 1024 * 1024
-		});
-	} catch (error) {
-		throw new Error(
-			`Package verification failed: ${executable} ${arguments_.join(' ')}`,
-			{ cause: error }
-		);
-	}
-}
-
-async function compilerPackage(): Promise<string> {
-	const result = await run(process.cwd(), 'pnpm', ['exec', 'tsc', '--version']);
-	const version = /^Version (\S+)$/.exec(result.stdout.trim())?.[1];
-
-	if (version === undefined) {
-		throw new Error('The project compiler did not report its version.');
-	}
-
-	return `typescript@${version}`;
-}
-
-async function project(directory: string, sdkOverride?: string) {
-	await mkdir(directory);
-	await writeFile(
-		path.join(directory, 'package.json'),
-		JSON.stringify({
-			name: `byos-package-${path.basename(directory)}-fixture`,
-			version: '0.0.0',
-			private: true,
-			type: 'module',
-			packageManager: 'pnpm@12.15.0'
-		})
-	);
-
-	if (sdkOverride !== undefined) {
-		await writeFile(
-			path.join(directory, 'pnpm-workspace.yaml'),
-			`overrides:
-  pi-bring-your-own-sandbox: ${JSON.stringify(`file:${sdkOverride}`)}
-`
-		);
-	}
-
-	await writeFile(
-		path.join(directory, 'tsconfig.json'),
-		JSON.stringify({
-			compilerOptions: {
-				target: 'ES2025',
-				module: 'NodeNext',
-				moduleResolution: 'NodeNext',
-				strict: true,
-				exactOptionalPropertyTypes: true,
-				noUncheckedIndexedAccess: true,
-				noPropertyAccessFromIndexSignature: true,
-				skipLibCheck: true,
-				types: ['node']
-			},
-			include: ['*.ts', 'workspace/.pi/extensions/**/*.ts']
-		})
-	);
-}
-
-async function add(
-	directory: string,
-	packages: readonly string[],
-	isDevelopment = false
-) {
-	await run(directory, 'pnpm', [
-		'add',
-		...(isDevelopment ? ['--save-dev'] : []),
-		...packages,
-		'--ignore-scripts',
-		'--strict-peer-dependencies',
-		'--package-import-method=copy',
-		'--prefer-offline'
-	]);
-}
-
-interface PackedArchive {
-	readonly filename: string;
-	readonly version: string;
-	readonly paths: readonly string[];
-}
-
-function packedArchive(output: string): PackedArchive {
-	const result: unknown = JSON.parse(output);
-
-	if (
-		!isRecord(result) ||
-		typeof result['filename'] !== 'string' ||
-		typeof result['version'] !== 'string' ||
-		!Array.isArray(result['files'])
-	) {
-		throw new Error('pnpm pack did not report the archive and packed files.');
-	}
-
-	return {
-		filename: result['filename'],
-		version: result['version'],
-		paths: result['files']
-			.map((file: unknown) => {
-				if (!isRecord(file) || typeof file['path'] !== 'string') {
-					throw new Error('pnpm pack reported an invalid file path.');
-				}
-
-				return file['path'];
-			})
-			.toSorted((left, right) => left.localeCompare(right))
-	};
-}
-
-it.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
-	'checks copied workspace visibility through the installed Docker provider',
-	async () => {
-		const directory = await mkdtemp(
-			path.join(tmpdir(), 'pi-byos-packed-docker-')
-		);
-		const consumer = path.join(directory, 'consumer');
-
-		try {
-			const { stdout } = await run(process.cwd(), 'pnpm', [
-				'pack',
-				'--json',
-				'--pack-destination',
-				directory
-			]);
-
-			await project(consumer);
-			await add(consumer, [
-				packedArchive(stdout).filename,
-				'typebox@1.3.27',
-				'vitest@5.1.0'
-			]);
-
-			const example = 'examples/docker';
-
-			await cp(
-				path.join(
-					consumer,
-					'node_modules/pi-bring-your-own-sandbox',
-					example,
-					'src'
-				),
-				path.join(consumer, example, 'src'),
-				{ recursive: true }
-			);
-
-			for (const file of [
-				example + '/test/fixture.ts',
-				example + '/test/provider.test.ts',
-				'src/fixtures/remaining-budget.ts',
-				'src/fixtures/node-visibility-probe.ts'
-			]) {
-				const target = path.join(consumer, file);
-
-				await mkdir(path.dirname(target), { recursive: true });
-				await copyFile(file, target);
-			}
-
-			const report = path.join(directory, 'docker.json');
-
-			await run(consumer, 'pnpm', [
-				'exec',
-				'vitest',
-				'run',
-				example + '/test/provider.test.ts',
-				'-t',
-				String.raw`workspace visibility \(copied\)`,
-				'--reporter=json',
-				'--outputFile',
-				report
-			]);
-
-			const result: unknown = JSON.parse(await readFile(report, 'utf8'));
-
-			expect(result).toMatchObject({
-				success: true,
-				numPassedTests: 1,
-				numFailedTests: 0
-			});
-		} finally {
-			await rm(directory, { recursive: true, force: true });
-		}
-	},
-	180_000
-);
 
 it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 	'clean tarball installs with Vitest %s (pnpm test:package installs isolated dependency roots)',
@@ -256,6 +62,9 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 
 			expect(paths).toStrictEqual(preview);
 			expect(
+				paths.filter((file) => file.startsWith('examples/docker/'))
+			).toStrictEqual([]);
+			expect(
 				paths.filter((file) =>
 					/(?:^|\/)(?:node_modules|src\/fixtures|\.git|\.env[^/]*|coverage)(?:\/|$)|\.test\.|(?:^|\/)tsconfig[^/]*\.json$|pnpm-lock\.yaml$/.test(
 						file
@@ -281,9 +90,11 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 				'provider',
 				'testing'
 			]) {
-				expect(paths).toContain(`dist/${subpath}.js`);
-				expect(paths).toContain(`dist/${subpath}.d.ts`);
-				expect(paths).toContain(`src/${subpath}.ts`);
+				const entry = subpath === 'host' ? 'embedding-host' : subpath;
+
+				expect(paths).toContain(`dist/${entry}.js`);
+				expect(paths).toContain(`dist/${entry}.d.ts`);
+				expect(paths).toContain(`src/${entry}.ts`);
 			}
 
 			await project(host, tarball);
@@ -299,34 +110,6 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 				host,
 				'node_modules/pi-bring-your-own-sandbox'
 			);
-			const matcher = new URL(import.meta.resolve('re2js'));
-			const dockerAssets = path.join(installed, 'examples/docker/dist');
-
-			const packedMatcher = await Promise.all([
-				readFile(path.join(dockerAssets, 're2js.mjs')),
-				readFile(path.join(dockerAssets, 'RE2JS-LICENSE'))
-			]);
-			const originalMatcher = await Promise.all([
-				readFile(matcher),
-				readFile(new URL('../LICENSE', matcher))
-			]);
-
-			expect(packedMatcher).toStrictEqual(originalMatcher);
-
-			const extension = path.join(host, '.pi/extensions/docker');
-
-			await cp(path.join(installed, 'examples/docker/src'), extension, {
-				recursive: true
-			});
-
-			const copiedMatcher = await run(extension, process.execPath, [
-				'--input-type=module',
-				'-e',
-				"import { readDockerMatcher } from './matcher.ts'; process.stdout.write(await readDockerMatcher());"
-			]);
-
-			expect(copiedMatcher.stdout).toBe(originalMatcher[0].toString('utf8'));
-
 			const manifest: unknown = JSON.parse(
 				await readFile(path.join(installed, 'package.json'), 'utf8')
 			);

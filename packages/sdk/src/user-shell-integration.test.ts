@@ -4,6 +4,8 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { expect, it, vi } from 'vitest';
 
+import { ScriptedModel } from '../../../test-support/scripted-model.js';
+
 import { SandboxBroker } from './broker.js';
 import { getSandbox } from './client.js';
 import type {
@@ -17,7 +19,6 @@ import { discoverBroker } from './discovery.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfile, fixtureProfiles } from './fixtures/profile-fixture.js';
-import { ScriptedModel } from './fixtures/scripted-model.js';
 import { observe } from './lifecycle.js';
 import type { ProviderServiceV1 } from './protocol.js';
 import { bindProtocolAddress } from './protocol-address.js';

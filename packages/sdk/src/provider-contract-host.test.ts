@@ -13,8 +13,9 @@ import path from 'node:path';
 import { defineSandboxProviderTests } from 'pi-bring-your-own-sandbox/testing';
 import { expect } from 'vitest';
 
+import { nodeVisibilityProbe } from '../../../test-support/node-visibility-probe.js';
+
 import type { SandboxProvider } from './contracts.js';
-import { nodeVisibilityProbe } from './fixtures/node-visibility-probe.js';
 import { firstOpenProfile } from './fixtures/profile-fixture.js';
 import { openPassthrough, probePassthrough } from './passthrough.js';
 import { unrestrictedPolicy } from './policy-model.js';

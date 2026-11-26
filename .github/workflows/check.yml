@@ -138,10 +138,10 @@ jobs:
       - name: Prepare the local Docker daemon and pinned image
         run: |
           docker version
-          image=$(node --input-type=module -e 'import { DOCKER_IMAGE } from "./packages/sdk/examples/docker/src/image.ts"; process.stdout.write(DOCKER_IMAGE)')
+          image=$(node --input-type=module -e 'import { DOCKER_IMAGE } from "./packages/provider-docker/src/image.ts"; process.stdout.write(DOCKER_IMAGE)')
           docker pull "$image"
 
-          docker build --build-arg NODE_IMAGE="$image" --iidfile "$RUNNER_TEMP/powershell.iid" packages/sdk/examples/docker/src/powershell
+          docker build --build-arg NODE_IMAGE="$image" --iidfile "$RUNNER_TEMP/powershell.iid" packages/provider-docker/src/powershell
           printf 'BYOS_DOCKER_POWERSHELL_IMAGE=%s\n' "$(cat "$RUNNER_TEMP/powershell.iid")" >> "$GITHUB_ENV"
 
       - run: pnpm test:provider

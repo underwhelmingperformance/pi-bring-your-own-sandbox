@@ -3,25 +3,25 @@
 	"workspaces": {
 		".": {
 			"entry": ["*.config.ts"],
-			"project": ["*.config.ts"]
+			"project": ["*.config.ts", "test-support/**/*.ts"]
 		},
 		"packages/sdk": {
 			"entry": [
 				"src/**/*.test.ts",
-				"examples/**/*.test.ts",
 				"src/fixtures/diagnostics-extension.ts",
-				"examples/consumer/src/index.ts!",
-				"examples/docker/src/index.ts!",
-				"examples/docker/src/shell-profile.ts!"
+				"examples/consumer/src/index.ts!"
 			],
 			"project": [
 				"src/**/*.ts!",
 				"examples/**/*.ts!",
 				"*.config.ts",
 				"!src/fixtures/**!",
-				"!examples/docker/build-matcher.ts!",
 				"!examples/**/test/**!"
 			]
+		},
+		"packages/provider-docker": {
+			"entry": ["test/**/*.test.ts"],
+			"project": ["src/**/*.ts!", "test/**/*.ts", "*.ts"]
 		}
 	}
 }

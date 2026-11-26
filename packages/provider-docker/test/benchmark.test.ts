@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { expect, it } from 'vitest';
 
-import { firstCopyProfile } from '../../../src/fixtures/profile-fixture.js';
+import { firstCopyProfile } from '../../../test-support/provider-profiles.js';
 import { createDockerProvider } from '../src/provider.js';
 
 import { DockerFixture, operationContext } from './fixture.js';

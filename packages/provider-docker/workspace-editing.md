@@ -31,4 +31,4 @@ pi-permission-auto-review sets `hostWorkspaceWrites`, `network` and
 reviewer collect evidence while the original workload remains pending. The
 reviewer closes the copy and reports unconfirmed cleanup.
 
-[review]: ../../docs/specification.md#copies-and-review
+[review]: ../sdk/docs/specification.md#copies-and-review

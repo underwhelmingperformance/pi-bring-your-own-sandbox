@@ -7,23 +7,21 @@ import { SandboxTransportError } from 'pi-bring-your-own-sandbox/provider';
 export async function readDockerMatcher() {
 	try {
 		const manifest = findPackageJSON(
-			'pi-bring-your-own-sandbox',
+			'pi-byos-provider-docker',
 			import.meta.url
 		);
 
 		if (manifest === undefined) {
-			throw new Error('Cannot locate the installed SDK.');
+			throw new Error('Cannot locate the Docker provider package.');
 		}
 
-		return await readFile(
-			path.join(path.dirname(manifest), 'examples/docker/dist/re2js.mjs')
-		);
+		return await readFile(path.join(path.dirname(manifest), 'dist/re2js.mjs'));
 	} catch (error) {
 		throw new SandboxTransportError(
 			{ operation: 'open', providerId: 'example.docker' },
 			{
 				cause: new Error(
-					'The Docker matcher is unavailable. Run pnpm build in the SDK checkout or install the packed SDK.',
+					'The Docker matcher is unavailable. Run pnpm build in the provider checkout or install the packed provider.',
 					{ cause: error }
 				)
 			}

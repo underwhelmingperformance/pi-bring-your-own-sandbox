@@ -4,11 +4,12 @@ import { homedir } from 'node:os';
 import type { InlineExtension } from '@earendil-works/pi-coding-agent';
 import { afterEach, expect, it, vi } from 'vitest';
 
+import { ScriptedModel } from '../../../test-support/scripted-model.js';
+
 import { createSandboxClient } from './client.js';
 import type { EscalationRequest, ProcessRequest } from './contracts.js';
 import { InvalidSandboxRequestError, SandboxStartupError } from './errors.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
-import { ScriptedModel } from './fixtures/scripted-model.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import sandboxTools from './pi-tools.js';
 import { unrestrictedPolicy } from './policy-model.js';

@@ -11,9 +11,10 @@ import path from 'node:path';
 
 import { afterEach, expect, it, vi } from 'vitest';
 
+import { remainingBudget } from '../../../test-support/remaining-budget.js';
+
 import { createSandbox } from './facade.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
-import { remainingBudget } from './fixtures/remaining-budget.js';
 import { openPassthrough } from './passthrough.js';
 
 const releases: (() => Promise<void>)[] = [];

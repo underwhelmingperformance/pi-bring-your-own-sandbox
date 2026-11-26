@@ -4,6 +4,8 @@ import type { InlineExtension } from '@earendil-works/pi-coding-agent';
 import { createReadTool } from '@earendil-works/pi-coding-agent';
 import { expect, it, vi } from 'vitest';
 
+import { ScriptedModel } from '../../../test-support/scripted-model.js';
+
 import { snapshotBackend } from './backend-snapshot.js';
 import { SandboxBroker } from './broker.js';
 import type {
@@ -16,7 +18,6 @@ import { InvalidSandboxConfigError } from './errors.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
-import { ScriptedModel } from './fixtures/scripted-model.js';
 import type { FixtureApi } from './fixtures/sdk-instance.js';
 import { loadSdkInstance } from './fixtures/sdk-instance.js';
 import type { BrokerServiceV1 } from './protocol.js';

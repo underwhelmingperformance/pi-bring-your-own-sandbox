@@ -3,8 +3,7 @@
 The Docker provider runs commands and file operations through a local
 Unix-socket daemon on Linux or macOS. It supports argv, POSIX `sh`, Bash and an
 optional PowerShell image. It uses the same workspace for shell, file and search
-operations. The provider moves to `packages/provider-docker` in milestone 7. The
-paths below refer to this checkout.
+operations. The paths below refer to this checkout.
 
 Install the provider extension and its dependencies in a trusted directory
 outside the writable workspace. For example, install them in a separate package
@@ -15,10 +14,10 @@ writes to the live checkout.
 
 ## Run this checkout
 
-From `packages/sdk`, pull the pinned image and build the SDK.
+From `packages/provider-docker`, pull the pinned image and build the provider.
 
 ```sh
-image=$(node --input-type=module -e 'import { DOCKER_IMAGE } from "./examples/docker/src/image.ts"; process.stdout.write(DOCKER_IMAGE)')
+image=$(node --input-type=module -e 'import { DOCKER_IMAGE } from "./src/image.ts"; process.stdout.write(DOCKER_IMAGE)')
 docker pull "$image"
 pnpm build
 ```
@@ -27,7 +26,7 @@ Start Pi from the project that you want to work on. Load the provider by
 absolute path from a separate checkout outside that project.
 
 ```sh
-pi -e /absolute/path/to/byos/packages/sdk/examples/docker/src/index.ts
+pi -e /absolute/path/to/byos/packages/provider-docker/src/index.ts
 ```
 
 The provider resolves the local Docker CLI and the daemon endpoint at
@@ -42,7 +41,7 @@ For the checkout's offline shell preset, load `src/shell-profile.ts` in place of
 with a default policy that denies network access and access to host user data
 and system files.
 
-[pi]: ../../docs/pi-integration.md
+[pi]: ../sdk/docs/pi-integration.md
 
 ## Workspace configuration
 
@@ -83,11 +82,11 @@ behaviour during a rename remains untested here.
 
 ## Optional PowerShell image
 
-Build the image from `packages/sdk` with BuildKit on amd64 or arm64.
+Build the image from `packages/provider-docker` with BuildKit on amd64 or arm64.
 
 ```sh
-image=$(node --input-type=module -e 'import { DOCKER_IMAGE } from "./examples/docker/src/image.ts"; process.stdout.write(DOCKER_IMAGE)')
-docker build --build-arg NODE_IMAGE="$image" --iidfile /tmp/byos-powershell-image examples/docker/src/powershell
+image=$(node --input-type=module -e 'import { DOCKER_IMAGE } from "./src/image.ts"; process.stdout.write(DOCKER_IMAGE)')
+docker build --build-arg NODE_IMAGE="$image" --iidfile /tmp/byos-powershell-image src/powershell
 ```
 
 Pass the image ID to `createDockerProvider({ powerShellImage })`. Set
@@ -110,5 +109,5 @@ Run `pnpm test:provider` with a local daemon and the pinned image available. Set
 [Docker session tests][session] exercise the real Pi and Docker runtime from
 this checkout.
 
-[testing]: ../../docs/provider-testing.md
+[testing]: ../sdk/docs/provider-testing.md
 [session]: test/session.test.ts

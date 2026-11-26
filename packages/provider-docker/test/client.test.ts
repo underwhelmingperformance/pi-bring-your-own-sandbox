@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { afterEach, expect, it, vi } from 'vitest';
 
-import { remainingBudget } from '../../../src/fixtures/remaining-budget.js';
+import { remainingBudget } from '../../../test-support/remaining-budget.js';
 import { NodeDockerClient } from '../src/client.js';
 import type { DockerCommand } from '../src/contracts.js';
 import { cleanupContext } from '../src/resources.js';

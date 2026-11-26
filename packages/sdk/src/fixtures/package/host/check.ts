@@ -16,7 +16,6 @@ import {
 	createAgentSessionFromServices,
 	createAgentSessionRuntime,
 	createAgentSessionServices,
-	DefaultResourceLoader,
 	ModelRuntime,
 	SessionManager,
 	SettingsManager
@@ -92,21 +91,6 @@ await mkdir(agentDirectory);
 process.env['PI_CODING_AGENT_DIR'] = agentDirectory;
 
 const consumer = path.join(sdkRoot, 'examples/consumer/src');
-
-const dockerLoader = new DefaultResourceLoader({
-	cwd: workspace,
-	agentDir: agentDirectory,
-	settingsManager: SettingsManager.inMemory(),
-	noExtensions: true,
-	noSkills: true,
-	noThemes: true,
-	noPromptTemplates: true,
-	noContextFiles: true,
-	additionalExtensionPaths: [path.join(root, '.pi/extensions/docker/index.ts')]
-});
-
-await dockerLoader.reload();
-assert.deepEqual(dockerLoader.getExtensions().errors, []);
 
 const shellEntry = path.join(root, 'sandbox-tools.ts');
 

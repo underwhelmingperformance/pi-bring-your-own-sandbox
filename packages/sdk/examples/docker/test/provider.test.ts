@@ -1,8 +1,6 @@
 import { defineSandboxProviderTests } from 'pi-bring-your-own-sandbox/testing';
 import { describe } from 'vitest';
 
-import { firstOpenProfile } from '../../../src/fixtures/profile-fixture.js';
-import { profileCapabilities } from '../../../src/validation.js';
 import { createDockerProvider } from '../src/provider.js';
 
 import { DockerFixture } from './fixture.js';
@@ -70,13 +68,19 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				return prepared.providerClient();
 			}
 		});
+		const [profile] = provider.profiles.open;
+
+		if (profile === undefined) {
+			throw new Error('The Docker provider must declare an open profile.');
+		}
 
 		defineSandboxProviderTests({
 			label: 'optional PowerShell image',
 			provider,
 			timeoutMs: 30_000,
 			capabilities: {
-				...profileCapabilities(firstOpenProfile(provider)),
+				exitStatus: profile.exitStatus,
+				terminationScope: profile.terminationScope,
 				operations: ['exec'],
 				processKinds: ['shell'],
 				shells: ['powershell']

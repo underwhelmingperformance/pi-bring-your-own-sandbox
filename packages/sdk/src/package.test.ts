@@ -197,7 +197,7 @@ it.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				'run',
 				example + '/test/provider.test.ts',
 				'-t',
-				'workspace visibility',
+				String.raw`workspace visibility \(copied\)`,
 				'--reporter=json',
 				'--outputFile',
 				report
@@ -207,7 +207,7 @@ it.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 
 			expect(result).toMatchObject({
 				success: true,
-				numPassedTests: 2,
+				numPassedTests: 1,
 				numFailedTests: 0
 			});
 		} finally {

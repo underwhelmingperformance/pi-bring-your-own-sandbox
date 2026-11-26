@@ -30,12 +30,16 @@ it.each([false, true])(
 	async (isCancelled) => {
 		const { directory, sandbox, dispose } = await fixture();
 		const controller = new AbortController();
+		const marker = path.join(directory, 'late');
+		const waitForMarker = () =>
+			vi.waitFor(() => readFile(marker, 'utf8'), { timeout: 2000 });
 		const childProgram = `
 const fs = require('node:fs');
 process.send('ready');
 const timer = setInterval(() => {
   if (fs.existsSync('release')) {
-    fs.writeFileSync('late', 'late effect');
+    fs.writeFileSync('late.tmp', 'late effect');
+    fs.renameSync('late.tmp', 'late');
     clearInterval(timer);
   }
 }, 10);
@@ -52,7 +56,7 @@ child.on('message', () => {
 
 		releases.push(async () => {
 			await writeFile(path.join(directory, 'release'), 'go');
-			await vi.waitFor(() => readFile(path.join(directory, 'late'), 'utf8'));
+			await waitForMarker();
 		});
 
 		let outcome:
@@ -90,7 +94,6 @@ child.on('message', () => {
 
 		await dispose();
 
-		const marker = path.join(directory, 'late');
 		let before: string;
 
 		try {
@@ -102,7 +105,7 @@ child.on('message', () => {
 
 		await writeFile(path.join(directory, 'release'), 'go');
 
-		const after = await vi.waitFor(() => readFile(marker, 'utf8'));
+		const after = await waitForMarker();
 
 		expect({ outcome, before, after }).toStrictEqual({
 			outcome: isCancelled

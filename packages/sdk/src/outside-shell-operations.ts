@@ -25,6 +25,7 @@ import {
 } from './outside-execution.js';
 import { piProcessResult } from './pi-process-result.js';
 import { throwShellOperationError } from './pi-shell-operations.js';
+import { PiShellOutput } from './pi-shell-output.js';
 import { runtimeSettings } from './runtime-settings.js';
 import { settleProcess } from './termination-scope.js';
 
@@ -47,6 +48,9 @@ export function outsideShellOperations(
 
 	return {
 		async exec(command, _cwd, options) {
+			const output = new PiShellOutput((data) => {
+				options.onData(data);
+			});
 			const scope = new OperationScope(
 				{ operation: 'exec' },
 				outsideExecutionLifetime(pi),
@@ -119,7 +123,7 @@ export function outsideShellOperations(
 								...options,
 								onData: (data) => {
 									if (scope.reason === undefined) {
-										options.onData(data);
+										output.write(data);
 									}
 								},
 								...(environment !== undefined && { env: environment }),
@@ -150,7 +154,7 @@ export function outsideShellOperations(
 						timeoutMs: scope.remainingMs,
 						maxCaptureBytes: 0,
 						onOutput: ({ data }) => {
-							options.onData(Buffer.from(data));
+							output.write(data);
 						}
 					});
 
@@ -169,6 +173,7 @@ export function outsideShellOperations(
 					throwShellOperationError(error, options.timeout);
 				} finally {
 					scope.dispose();
+					output.flush();
 				}
 			});
 		}

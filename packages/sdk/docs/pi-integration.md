@@ -28,6 +28,15 @@ Pi remain on the Pi host. Access from the sandbox depends on its policy. Direct
 SDK calls follow the [execution contract][spec]. They bypass Pi's tool
 permission hooks because they are not Pi tool calls.
 
+Pi 1.5.0 strips ANSI sequences and removes most C0 controls in `getTextOutput`
+(`core/tools/render-utils.js`, lines 51 to 56) and `executeBashWithOperations`
+(`core/bash-executor.js`, lines 38 to 40). Pi also recognises complete 8-bit CSI
+sequences. DEL, unmatched C1 controls and some bidirectional and invisible
+characters still reach the display. BYOS escapes those characters in output from
+routed Bash, PowerShell and user-shell operations. This includes the 8-bit CSI
+introducer U+009B. BYOS preserves 7-bit ANSI sequences and C0 controls for Pi to
+handle.
+
 Loading the integration does not control competing handlers registered by other
 extensions. Use an [outer sandbox][outer] to confine Pi, its extensions and
 local MCP servers.

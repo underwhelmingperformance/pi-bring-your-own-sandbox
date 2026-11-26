@@ -5,6 +5,10 @@ export type DisplayText = string & { readonly [displayTextBrand]: true };
 const maxDisplayLength = 4096;
 const unsafeShellOutputCharacter =
 	/[\u{7F}-\u{9F}\u{200B}\u{2028}-\u{202E}\u{2066}-\u{2069}\u{FEFF}]/u;
+const unsafeShellOutputCharacters = new RegExp(
+	unsafeShellOutputCharacter.source,
+	'gu'
+);
 
 function limitDisplayText(parts: Iterable<string>): DisplayText {
 	let text = '';
@@ -34,12 +38,22 @@ function* escapeControls(text: string): Generator<string> {
 			continue;
 		}
 
-		const hex = code.toString(16);
-
-		yield code <= 255
-			? String.raw`\x${hex.padStart(2, '0')}`
-			: String.raw`\u{${hex}}`;
+		yield escapeCodePoint(code);
 	}
+}
+
+function escapeCodePoint(code: number): string {
+	const hex = code.toString(16);
+
+	return code <= 255
+		? String.raw`\x${hex.padStart(2, '0')}`
+		: String.raw`\u{${hex}}`;
+}
+
+export function escapeShellOutput(text: string): string {
+	return text.replaceAll(unsafeShellOutputCharacters, (character) =>
+		escapeCodePoint(character.codePointAt(0) ?? 0)
+	);
 }
 
 /**

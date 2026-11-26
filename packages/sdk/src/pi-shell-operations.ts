@@ -7,6 +7,7 @@ import {
 	SandboxTimeoutError
 } from './errors.js';
 import { piProcessResult } from './pi-process-result.js';
+import { PiShellOutput } from './pi-shell-output.js';
 import { DEFAULT_EXEC_TIMEOUT_MS } from './process-input.js';
 import type { ShellInvocation } from './sandbox-shell.js';
 import { SandboxShell } from './sandbox-shell.js';
@@ -29,6 +30,10 @@ export function createShellOperations(
 
 	return {
 		async exec(command, _cwd, options) {
+			const output = new PiShellOutput((data) => {
+				options.onData(data);
+			});
+
 			try {
 				const result = await shell.execute(pi, context, {
 					command,
@@ -38,13 +43,15 @@ export function createShellOperations(
 						timeoutSeconds: options.timeout
 					}),
 					onOutput: ({ data }) => {
-						options.onData(Buffer.from(data));
+						output.write(data);
 					}
 				});
 
 				return piProcessResult(result.exit);
 			} catch (error) {
 				throwShellOperationError(error, options.timeout);
+			} finally {
+				output.flush();
 			}
 		}
 	};

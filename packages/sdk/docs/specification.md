@@ -270,11 +270,12 @@ dismissal, cancellation and expiry prevent dispatch. The user and permission
 extension can rely on the reviewed command and destination remaining fixed
 through execution. The added access applies only to that command.
 
-The integration generates the model's restriction description from the
-negotiated policy and path grants. Providers can report structured violations
-for the tool result. The cleaning function returns the display text type for
-model, provider and extension text. User interfaces require that type and
-diagnostics omit raw settings.
+Before a run with a BYOS shell, the system prompt describes the negotiated
+policy for ordinary shell commands and explains whether escalation is available.
+The shell result describes the effective policy and path grants for that call.
+Providers can report structured violations for the tool result. The cleaning
+function returns the display text type for model, provider and extension text.
+User interfaces require that type and diagnostics omit raw settings.
 
 The [API appendix][escalation-api] defines the tool arguments, pending request
 and decision function.
@@ -297,6 +298,10 @@ its own broker. The review source lets the reviewer check whether a suitable
 copy is available without allocating one, and then request that copy. The
 reviewer gets no access to the live sandbox. The broker rejects unsolicited or
 mismatched identities. A reply's shape alone does not establish isolation.
+
+The broker reports the target workspace after it verifies an open backend. For a
+host destination, the broker already knows the workspace. Lookup and copy
+negotiation leave the destination unopened.
 
 ## Broker discovery
 

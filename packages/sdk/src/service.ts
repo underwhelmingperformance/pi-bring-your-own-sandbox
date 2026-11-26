@@ -69,6 +69,16 @@ export function ensureBroker(
 						new UnsupportedSandboxCapabilityError({ operation: 'acquire' })
 					)
 			),
+		prepareReview: (context, route) =>
+			invoke(
+				(broker) =>
+					broker.prepareReview?.(context, route) ??
+					Promise.reject(
+						new UnsupportedSandboxCapabilityError({ operation: 'acquire' })
+					)
+			),
+		resolveReviewSource: (context, query, id) =>
+			target?.resolveReviewSource?.(context, query, id),
 		close: (context) => invoke((broker) => broker.close(context)),
 		status: (context) => invoke((broker) => broker.status(context)),
 		providers: (context) => invoke((broker) => broker.providers(context))

@@ -9,10 +9,14 @@ import type {
 	EscalationRequest
 } from './escalation-ledger.js';
 export type {
+	DestinationDescription,
 	EscalationDestination,
 	EscalationRequest,
 	SandboxLedgerEntry
 } from './escalation-ledger.js';
+import type { DestinationDescription } from './escalation-ledger.js';
+import type { ReviewUnavailableReason } from './review-identities.js';
+export type { ReviewUnavailableReason } from './review-identities.js';
 import type {
 	errorDetailSchema,
 	operationSchema,
@@ -973,13 +977,21 @@ The destination of a pending shell tool call. A reviewer can copy the files
 that the command will see, but cannot run anything in the destination itself.
 */
 export interface ShellReviewSource {
+	readonly destination: DestinationDescription;
 	readonly escalation?: EscalationRequest;
+	readonly negotiateCopy: (
+		requirements?: SandboxRequirements
+	) => Promise<import('./protocol.js').SandboxNegotiation>;
 	/**
 	Open a private copy of the destination. The copy is checked against the
 	options in the caller's SDK, and a copy that fails the check is closed.
 	*/
 	readonly copy: (options?: SandboxCopyOptions) => Promise<SandboxCopy>;
 }
+
+export type ShellReviewLookup =
+	| { readonly ok: true; readonly source: ShellReviewSource }
+	| { readonly ok: false; readonly reason: ReviewUnavailableReason };
 
 /**
 Provider-owned target execution environment. Consumers receive a broker
@@ -1378,7 +1390,7 @@ export interface SandboxClient {
 	readonly findShellReviewSource: (
 		context: SandboxContext,
 		call: ReviewedToolCall
-	) => ShellReviewSource | undefined;
+	) => ShellReviewLookup;
 	readonly recordEscalationDecision: (
 		context: SandboxContext,
 		request: EscalationRequest,

@@ -5,7 +5,7 @@ import { Type } from 'typebox';
 
 import type { SessionIdentity } from './context.js';
 import type { ReviewedToolCall } from './contracts.js';
-import { nonEmptyStringSchema } from './schemas.js';
+import { checker, nonEmptyStringSchema } from './schemas.js';
 
 const reasonSchema = Type.Union([
 	Type.Literal('unknown-call'),
@@ -40,11 +40,19 @@ export const reviewIdentityReplySchema = Type.Union([
 	)
 ]);
 
-export interface ReviewQuery extends ReviewedToolCall {
-	readonly requestId: string;
-	readonly sessionId: string;
-	readonly extensionSource: string;
-}
+const reviewQuerySchema = Type.Object(
+	{
+		toolName: nonEmptyStringSchema,
+		toolCallId: nonEmptyStringSchema,
+		requestId: nonEmptyStringSchema,
+		sessionId: nonEmptyStringSchema,
+		extensionSource: nonEmptyStringSchema
+	},
+	{ additionalProperties: false }
+);
+
+export type ReviewQuery = Readonly<Static<typeof reviewQuerySchema>>;
+export const isReviewQuery = checker(reviewQuerySchema);
 
 export interface ReviewRegistration {
 	readonly issue: (query: ReviewQuery) => string | undefined;
@@ -94,6 +102,7 @@ export class ReviewIdentities<Value> {
 			issue: (query) => {
 				if (
 					!isCurrent() ||
+					!isReviewQuery(query) ||
 					query.sessionId !== sessionId ||
 					query.toolName !== toolName ||
 					query.toolCallId !== toolCallId ||

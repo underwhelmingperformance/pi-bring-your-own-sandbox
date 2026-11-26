@@ -95,10 +95,9 @@ function shellDefinition(
 				throw new InvalidSandboxRequestError({ operation: 'exec' });
 			}
 
-			const reviewed =
-				requested === undefined
-					? reviews.executing(id, input.command, prefix)
-					: undefined;
+			if (requested === undefined) {
+				reviews.verifyExecution(id, input.command, prefix);
+			}
 
 			if (requested === undefined && input.justification !== undefined) {
 				throw new InvalidSandboxRequestError({
@@ -128,9 +127,6 @@ function shellDefinition(
 
 						return allocation.sandbox;
 					}
-				}),
-				...(reviewed?.kind === 'sandbox' && {
-					getSandbox: () => Promise.resolve(reviewed.sandbox)
 				}),
 				onSandbox: (sandbox) => {
 					const paths = sandbox.grantedPaths;

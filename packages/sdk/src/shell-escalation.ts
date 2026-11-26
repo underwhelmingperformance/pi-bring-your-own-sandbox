@@ -6,6 +6,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 
+import type { BrokerReviewRegistration } from './broker-review.js';
 import type {
 	Access,
 	AccessProperty,
@@ -88,7 +89,6 @@ function escalationAccess(list: unknown): Access {
 }
 
 type Decider = NonNullable<EscalationEntry['decider']>;
-type PermissionDecider = Extract<Decider, { kind: 'permission-extension' }>;
 type EscalationData = Omit<EscalationRequest, 'destination'>;
 type Dialect = 'bash' | 'powershell';
 
@@ -130,12 +130,7 @@ export class PendingEscalation {
 	readonly #scope: OperationScope;
 	#plan: EscalationPlan | undefined;
 	#request: EscalationRequest | undefined;
-	#decision:
-		| {
-				readonly choice: EscalationDecision;
-				readonly decider: PermissionDecider;
-		  }
-		| undefined;
+	#review: BrokerReviewRegistration | undefined;
 	#failure: Error | undefined;
 	#isFinished = false;
 	#isClaimed = false;
@@ -312,41 +307,12 @@ export class PendingEscalation {
 		throw new InvalidSandboxRequestError({ operation: 'exec' });
 	}
 
-	record(choice: EscalationDecision, extension: string): void {
-		if (
-			this.#isFinished ||
-			this.#isClaimed ||
-			this.#request === undefined ||
-			this.#scope.context.remainingMs() <= 0 ||
-			this.#scope.reason !== undefined
-		) {
-			throw new InvalidSandboxRequestError({ operation: 'exec' });
-		}
+	get decisionDeadline(): number {
+		return performance.now() + this.#scope.context.remainingMs();
+	}
 
-		try {
-			this.#plan?.assertCurrent(this.#context);
-		} catch (error) {
-			throw new InvalidSandboxRequestError(
-				{ operation: 'exec' },
-				{ cause: error }
-			);
-		}
-
-		if (this.#decision !== undefined) {
-			if (this.#decision.choice === choice) {
-				return;
-			}
-
-			this.#failure = new InvalidSandboxRequestError({ operation: 'exec' });
-			this.#complete('denied');
-
-			throw this.#failure;
-		}
-
-		this.#decision = {
-			choice,
-			decider: { kind: 'permission-extension', extension }
-		};
+	bindReview(registration: BrokerReviewRegistration): void {
+		this.#review = registration;
 	}
 
 	async open(
@@ -382,8 +348,16 @@ export class PendingEscalation {
 		try {
 			this.#check(context, signal);
 
+			const recorded = this.#review?.claimDecision();
+
+			if (recorded?.choice === 'conflict') {
+				this.#complete('denied');
+
+				throw new InvalidSandboxRequestError({ operation: 'exec' });
+			}
+
 			const decided =
-				this.#decision ?? (await this.#confirm(context, request, plan.label));
+				recorded ?? (await this.#confirm(context, request, plan.label));
 
 			this.#check(context, signal);
 
@@ -413,7 +387,7 @@ export class PendingEscalation {
 			return;
 		}
 
-		const decision = this.#decision;
+		const decision = this.#review?.decision();
 		const isExpired =
 			this.#scope.reason === 'deadline' ||
 			this.#scope.context.remainingMs() <= 0;
@@ -421,10 +395,10 @@ export class PendingEscalation {
 		this.#complete(
 			isExpired
 				? 'expired'
-				: decision?.choice === 'deny'
+				: decision?.choice === 'deny' || decision?.choice === 'conflict'
 					? 'denied'
 					: 'cancelled',
-			decision?.decider
+			decision?.choice === 'conflict' ? undefined : decision?.decider
 		);
 	}
 }

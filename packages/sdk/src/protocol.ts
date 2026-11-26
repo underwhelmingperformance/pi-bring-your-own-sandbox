@@ -296,6 +296,15 @@ export interface BrokerServiceV1 {
 }
 
 export interface BrokerService extends BrokerServiceV1 {
+	readonly prepareReview?: (
+		context: SandboxContext,
+		route: unknown
+	) => Promise<import('./broker-review.js').BrokerReviewRegistration>;
+	readonly resolveReviewSource?: (
+		context: SandboxContext,
+		query: import('./review-identities.js').ReviewQuery,
+		sourceId: string
+	) => import('./broker-review.js').BrokerReviewSource | undefined;
 	readonly planEscalation?: (
 		context: SandboxContext,
 		options: SandboxAcquireOptions

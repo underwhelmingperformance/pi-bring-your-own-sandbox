@@ -1076,6 +1076,45 @@ export class SandboxGeneration {
 		return createSandbox(this.#owner(context, slot, result.value));
 	}
 
+	async #negotiateCopy(
+		{ configured, provider }: Prepared,
+		source: CopySourceIdentity,
+		options: SandboxCopyOptions
+	) {
+		const copy = configured.copy;
+		const identity = {
+			operation: 'acquire' as const,
+			providerId: provider.id
+		};
+
+		this.#checkDemand(provider, options);
+
+		if (typeof copy !== 'function') {
+			throw new UnsupportedSandboxCapabilityError({
+				...identity,
+				detail: { kind: 'capability', field: 'capabilities', value: 'copy' }
+			});
+		}
+
+		const origin = this.#copyOrigin(source, provider.id);
+		const selection = this.#selection;
+
+		if (selection === undefined) {
+			throw new SandboxInitialisationError({ operation: 'acquire' });
+		}
+
+		const limit = this.#dependencies.copyLimit ?? selection.policy;
+		const { profile } = await this.#negotiate(
+			provider,
+			options,
+			provider.profiles.copy,
+			'copy',
+			limit
+		);
+
+		return { copy, origin, profile, limit };
+	}
+
 	async initialize(): Promise<void> {
 		this.#assertOpen('configure');
 		await this.#prepare();
@@ -1247,35 +1286,10 @@ export class SandboxGeneration {
 			scope.check();
 
 			const { provider, configured } = ready.value;
-			const copy = configured.copy;
-			const identity = {
-				operation: 'acquire' as const,
-				providerId: provider.id
-			};
-
-			this.#checkDemand(provider, options);
-
-			if (typeof copy !== 'function') {
-				throw new UnsupportedSandboxCapabilityError({
-					...identity,
-					detail: { kind: 'capability', field: 'capabilities', value: 'copy' }
-				});
-			}
-
-			const origin = this.#copyOrigin(source, provider.id);
-			const selection = this.#selection;
-
-			if (selection === undefined) {
-				throw new SandboxInitialisationError({ operation: 'acquire' });
-			}
-
-			const limit = this.#dependencies.copyLimit ?? selection.policy;
-			const { profile } = await this.#negotiate(
-				provider,
-				options,
-				provider.profiles.copy,
-				'copy',
-				limit
+			const { copy, origin, profile, limit } = await this.#negotiateCopy(
+				ready.value,
+				source,
+				options
 			);
 			const policy = profile.policy;
 
@@ -1368,6 +1382,31 @@ export class SandboxGeneration {
 			const prepared = await this.#prepare();
 
 			const { profile } = await this.#negotiate(prepared.provider, options);
+
+			return Object.freeze({ ok: true, profile });
+		} catch (error) {
+			if (!isSandboxError(error)) {
+				throw error;
+			}
+
+			return Object.freeze({ ok: false, error });
+		}
+	}
+
+	async negotiateCopy(
+		context: SandboxContext,
+		input: CopySourceIdentity,
+		requirements?: SandboxCopyOptions
+	): Promise<SandboxNegotiation> {
+		this.#assertContext(context, 'acquire');
+		this.#assertOpen('acquire');
+
+		const source = copySource(input);
+		const options = copyOptions(requirements);
+
+		try {
+			const prepared = await this.#prepare();
+			const { profile } = await this.#negotiateCopy(prepared, source, options);
 
 			return Object.freeze({ ok: true, profile });
 		} catch (error) {

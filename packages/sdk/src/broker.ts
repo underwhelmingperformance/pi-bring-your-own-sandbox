@@ -1,6 +1,14 @@
+import type { RegisteredReview } from './broker-review.js';
+import {
+	describeReviewDestination,
+	resolvedReviewSource,
+	reviewRegistrationInput,
+	ReviewState
+} from './broker-review.js';
 import { reportCleanup } from './cleanup-report.js';
 import { inspectContext } from './context.js';
 import type {
+	ReviewedToolCall,
 	SandboxAcquireOptions,
 	SandboxCloseReport,
 	SandboxContext,
@@ -15,9 +23,17 @@ import type {
 	ProviderInfo,
 	SandboxStatus
 } from './protocol.js';
+import type { ReviewQuery } from './review-identities.js';
+import { isReviewQuery, ReviewIdentities } from './review-identities.js';
+
+function reviewCallKey(sessionId: string, call: ReviewedToolCall): string {
+	return JSON.stringify([sessionId, call.toolName, call.toolCallId]);
+}
 
 export class SandboxBroker implements BrokerService {
 	readonly #dependencies: GenerationDependencies;
+	readonly #reviewIdentities = new ReviewIdentities<RegisteredReview>();
+	readonly #liveReviewCalls = new Set<string>();
 	#generation: SandboxGeneration | undefined;
 	#isClosing = false;
 	readonly id: string;
@@ -30,6 +46,20 @@ export class SandboxBroker implements BrokerService {
 	) {
 		this.id = id;
 		this.#dependencies = dependencies;
+
+		pi.on('tool_execution_start', (event, context) => {
+			const session = inspectContext(context, 'acquire');
+
+			this.#liveReviewCalls.add(reviewCallKey(session.sessionId, event));
+		});
+		pi.on('tool_result', (event, context) => {
+			const session = inspectContext(context, 'acquire');
+
+			this.#liveReviewCalls.delete(reviewCallKey(session.sessionId, event));
+		});
+		pi.on('turn_end', () => {
+			this.#liveReviewCalls.clear();
+		});
 
 		if (lifecycle === 'owner') {
 			return;
@@ -80,8 +110,70 @@ export class SandboxBroker implements BrokerService {
 		return this.#resolve(context).planEscalation(context, options);
 	}
 
+	async prepareReview(context: SandboxContext, input: unknown) {
+		const route = reviewRegistrationInput(input);
+		const session = inspectContext(context, 'acquire');
+		const generation = this.#resolve(context);
+		const target = await describeReviewDestination(
+			generation,
+			context,
+			route.escalation
+		);
+		const state = new ReviewState(route.decisionDeadline);
+		const registration = this.#reviewIdentities.register(session, route.call, {
+			route,
+			target,
+			generation,
+			state
+		});
+		const key = reviewCallKey(session.sessionId, route.call);
+
+		return state.bind({
+			issue: (query) =>
+				this.#liveReviewCalls.has(key) && state.isCurrent()
+					? registration.issue(query)
+					: undefined,
+			revoke: registration.revoke
+		});
+	}
+
+	resolveReviewSource(
+		context: SandboxContext,
+		query: ReviewQuery,
+		sourceId: string
+	) {
+		if (!isReviewQuery(query)) {
+			return;
+		}
+
+		const session = inspectContext(context, 'acquire');
+		const key = reviewCallKey(session.sessionId, query);
+
+		if (!this.#liveReviewCalls.has(key)) {
+			return;
+		}
+
+		const proof = this.#reviewIdentities.resolve(session, query, sourceId);
+
+		if (proof === undefined || !proof.value.state.isCurrent()) {
+			return;
+		}
+
+		proof.value.state.markReviewed();
+
+		return resolvedReviewSource(
+			context,
+			proof.value,
+			query.extensionSource,
+			() => proof.isCurrent() && this.#liveReviewCalls.has(key),
+			this.#dependencies.appendLedger
+		);
+	}
+
 	close(context: SandboxContext): Promise<SandboxCloseReport> {
 		this.#isClosing = true;
+		this.#reviewIdentities.close();
+		this.#liveReviewCalls.clear();
 
 		return this.#resolve(context).close();
 	}

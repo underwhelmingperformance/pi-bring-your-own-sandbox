@@ -739,15 +739,16 @@ socket.on('error', error => {
 								);
 
 								pi.on('tool_call', async (event, context) => {
-									const source = client.findShellReviewSource(context, event);
+									const result = client.findShellReviewSource(context, event);
 
-									if (!source) {
+									if (!result.ok) {
 										return {
 											block: true,
 											reason: 'The proposed tool has no review destination.'
 										};
 									}
 
+									const { source } = result;
 									const review = await source.copy();
 
 									try {

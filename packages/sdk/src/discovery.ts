@@ -89,6 +89,12 @@ function boundBroker(
 		...(service.planEscalation !== undefined && {
 			planEscalation: service.planEscalation.bind(service)
 		}),
+		...(service.prepareReview !== undefined && {
+			prepareReview: service.prepareReview.bind(service)
+		}),
+		...(service.resolveReviewSource !== undefined && {
+			resolveReviewSource: service.resolveReviewSource.bind(service)
+		}),
 		acquire(context, options) {
 			checkDemand(acquireOptionsSchema, options ?? {}, local, peer, 'acquire');
 

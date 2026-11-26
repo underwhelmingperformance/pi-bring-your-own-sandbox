@@ -1,31 +1,21 @@
-import { homedir } from 'node:os';
-
 import type {
 	ExtensionAPI,
-	ExtensionContext
+	ExtensionContext,
+	ToolExecutionStartEvent
 } from '@earendil-works/pi-coding-agent';
 
-import { copyHostWorkspace, getSandbox } from './client.js';
-import type { Sandbox, SandboxCopy, SandboxCopyOptions } from './contracts.js';
+import type { BrokerReviewRegistration } from './broker-review.js';
+import { ensureSandboxService } from './default-broker.js';
 import {
 	InvalidSandboxRequestError,
 	isSandboxError,
 	StaleSandboxHandleError
 } from './errors.js';
-import type { EscalationDecision } from './escalation-ledger.js';
-import { appendLedgerEntry } from './escalation-ledger.js';
-import { OperationScope } from './lifecycle.js';
-import { unrestrictedPolicy } from './policy-model.js';
 import { protocolAddress } from './protocol-address.js';
 import { onProtocolRequest, REVIEW_CHANNEL } from './protocol-envelope.js';
 import { findReviewRequest, sourceReply } from './protocol-payloads.js';
 import { projectReply } from './protocol-version.js';
-import { runtimeSettings } from './runtime-settings.js';
-import {
-	checkCopiedSandbox,
-	copyOptions,
-	rethrowCopyError
-} from './sandbox-copy.js';
+import type { ReviewUnavailableReason } from './review-identities.js';
 import { checker } from './schemas.js';
 import {
 	effectiveCommand,
@@ -34,15 +24,12 @@ import {
 } from './shell-escalation.js';
 import { isRecord } from './validation.js';
 
-type BoundDestination =
-	{ kind: 'host' } | { kind: 'sandbox'; sandbox: Sandbox };
-
 interface Route {
 	readonly context: ExtensionContext;
 	readonly command: string;
 	readonly prefix: string | undefined;
 	readonly escalation?: PendingEscalation;
-	destination?: BoundDestination;
+	registration?: BrokerReviewRegistration;
 }
 
 const isReviewQuery = checker(findReviewRequest);
@@ -55,55 +42,15 @@ export class ShellReviewRoutes {
 		toolName: 'bash' | 'powershell',
 		isSelected: () => boolean
 	) {
+		const isActive = () =>
+			isSelected() && pi.getActiveTools().includes(toolName);
+
 		pi.on('tool_execution_start', async (event, context) => {
-			if (event.toolName !== toolName || !isSelected()) {
+			if (event.toolName !== toolName || !isActive()) {
 				return;
 			}
 
-			const previous = this.#routes.get(event.toolCallId);
-
-			if (previous !== undefined) {
-				previous.escalation?.finish();
-
-				return;
-			}
-
-			const input: unknown = event.args;
-
-			if (!isRecord(input) || typeof input['command'] !== 'string') {
-				return;
-			}
-
-			const prefix =
-				toolName === 'bash' ? pi.getSettings().shellCommandPrefix : undefined;
-			let requested: ReturnType<typeof escalationInput>;
-
-			try {
-				requested = escalationInput(
-					event.toolCallId,
-					effectiveCommand(input['command'], prefix),
-					{ escalate: input['escalate'], justification: input['justification'] }
-				);
-			} catch (error) {
-				if (isSandboxError(error, InvalidSandboxRequestError)) {
-					return;
-				}
-
-				throw error;
-			}
-
-			const escalation =
-				requested === undefined
-					? undefined
-					: new PendingEscalation(pi, context, requested);
-
-			this.#routes.set(event.toolCallId, {
-				context,
-				command: input['command'],
-				prefix,
-				...(escalation !== undefined && { escalation })
-			});
-			await escalation?.prepare(toolName);
+			await this.#prepare(pi, event, context, toolName, isActive);
 		});
 
 		const local = protocolAddress(pi.events);
@@ -130,53 +77,53 @@ export class ShellReviewRoutes {
 
 				const id = message.toolCallId;
 				const route = this.#routes.get(id);
+				const unavailable = (reason: ReviewUnavailableReason) =>
+					projectReply(
+						sourceReply,
+						{ type: 'source', ok: false, toolCallId: id, reason },
+						local,
+						request
+					);
+
+				if (!isActive()) {
+					return unavailable('not-selected');
+				}
 
 				if (
 					route === undefined ||
-					route.context.sessionManager.getSessionId() !== message.sessionId ||
-					!isSelected()
+					route.context.sessionManager.getSessionId() !== message.sessionId
 				) {
-					return;
+					return unavailable('unknown-call');
 				}
 
-				const isCurrent = () => this.#routes.get(id) === route && isSelected();
-				const pending = route.escalation;
-				const escalation = pending?.request;
+				if (route.registration === undefined) {
+					return unavailable('destination-unavailable');
+				}
 
-				return projectReply(
-					sourceReply,
-					{
-						type: 'source',
-						copy: (options?: SandboxCopyOptions) =>
-							this.#copy(pi, route, options, isCurrent, {
-								id,
-								extension: request.extensionSource
-							}),
-						...(pending !== undefined &&
-							escalation !== undefined && {
-								escalation,
-								recordDecision: (decision: EscalationDecision) => {
-									if (!isCurrent()) {
-										throw new InvalidSandboxRequestError({ operation: 'exec' });
-									}
+				const { requestId, extensionSource } = request;
+				const sourceId = route.registration.issue({
+					toolName: message.toolName,
+					toolCallId: id,
+					sessionId: message.sessionId,
+					requestId,
+					extensionSource
+				});
 
-									pending.record(decision, request.extensionSource);
-								}
-							})
-					},
-					local,
-					request
-				);
+				return sourceId === undefined
+					? unavailable('invalid-source')
+					: projectReply(
+							sourceReply,
+							{ type: 'source', ok: true, toolCallId: id, sourceId },
+							local,
+							request
+						);
 			}
 		);
 
 		pi.on('tool_result', (event) => {
-			if (event.toolName !== toolName) {
-				return;
+			if (event.toolName === toolName) {
+				this.#delete(event.toolCallId);
 			}
-
-			this.#routes.get(event.toolCallId)?.escalation?.finish();
-			this.#routes.delete(event.toolCallId);
 		});
 		pi.on('turn_end', () => {
 			this.#clear();
@@ -186,162 +133,133 @@ export class ShellReviewRoutes {
 		});
 	}
 
-	#clear(): void {
-		for (const route of this.#routes.values()) {
-			route.escalation?.finish();
-		}
-
-		this.#routes.clear();
-	}
-
-	async #copy(
+	async #prepare(
 		pi: ExtensionAPI,
-		route: Route,
-		input: SandboxCopyOptions | undefined,
-		isCurrent: () => boolean,
-		reviewer: { readonly id: string; readonly extension: string }
-	): Promise<SandboxCopy> {
-		const options = copyOptions(input);
-		const signal = options.signal;
-		const check = () => {
-			signal?.throwIfAborted();
+		event: ToolExecutionStartEvent,
+		context: ExtensionContext,
+		dialect: 'bash' | 'powershell',
+		isActive: () => boolean
+	): Promise<void> {
+		const id = event.toolCallId;
+		const previous = this.#routes.get(id);
 
-			if (!isCurrent()) {
-				throw new StaleSandboxHandleError({ operation: 'acquire' });
-			}
-		};
+		if (previous !== undefined) {
+			this.#revoke(previous);
 
-		check();
-
-		const settings = runtimeSettings(pi);
-		const scope = new OperationScope(
-			{ operation: 'acquire' },
-			settings.lifetime,
-			options,
-			60_000
-		);
-		let destination: BoundDestination;
-		let copying: Promise<SandboxCopy>;
-
-		try {
-			destination = await this.#destination(pi, route, scope);
-			check();
-			copying = this.#copyDestination(pi, route, destination, {
-				...options,
-				timeoutMs: scope.remainingMs
-			});
-		} finally {
-			scope.dispose();
-		}
-
-		const copy = await copying;
-
-		try {
-			check();
-			checkCopiedSandbox(copy.sandbox, options);
-
-			const previous = route.destination;
-
-			if (
-				previous?.kind === 'sandbox' &&
-				destination.kind === 'sandbox' &&
-				(previous.sandbox.generationId !== destination.sandbox.generationId ||
-					previous.sandbox.backendId !== destination.sandbox.backendId ||
-					previous.sandbox.providerId !== destination.sandbox.providerId)
-			) {
-				throw new StaleSandboxHandleError({ operation: 'acquire' });
-			}
-
-			route.destination = destination;
-
-			const sandbox =
-				destination.kind === 'sandbox' ? destination.sandbox : undefined;
-
-			appendLedgerEntry(pi, {
-				kind: 'review-copy',
-				toolCallId: reviewer.id,
-				source:
-					sandbox === undefined
-						? {
-								providerId: 'passthrough',
-								label: 'Host checkout',
-								policy: unrestrictedPolicy,
-								workspace: {
-									root: route.context.cwd,
-									home: homedir(),
-									pathFlavor: process.platform === 'win32' ? 'win32' : 'posix',
-									relationship: 'shared',
-									description: 'The host checkout.'
-								}
-							}
-						: {
-								providerId: sandbox.providerId,
-								label: sandbox.providerId,
-								policy: sandbox.policy,
-								workspace: sandbox.workspace
-							},
-				policy: copy.sandbox.policy,
-				decider: { kind: 'permission-extension', extension: reviewer.extension }
-			});
-
-			return copy;
-		} catch (error) {
-			return rethrowCopyError(error, () => copy.close(), {
-				operation: 'dispose',
-				providerId: copy.sandbox.providerId,
-				backendId: copy.sandbox.backendId
-			});
-		}
-	}
-
-	async #destination(
-		pi: ExtensionAPI,
-		route: Route,
-		scope: OperationScope
-	): Promise<BoundDestination> {
-		if (route.escalation !== undefined) {
-			if (route.escalation.request === undefined) {
-				throw new InvalidSandboxRequestError({ operation: 'acquire' });
-			}
-
-			return { kind: 'host' };
-		}
-
-		const sandbox = await getSandbox(pi, route.context, {
-			signal: scope.context.signal,
-			timeoutMs: scope.remainingMs
-		});
-
-		return { kind: 'sandbox', sandbox };
-	}
-
-	#copyDestination(
-		pi: ExtensionAPI,
-		route: Route,
-		destination: BoundDestination,
-		options: SandboxCopyOptions
-	): Promise<SandboxCopy> {
-		return destination.kind === 'sandbox'
-			? destination.sandbox.copy(options)
-			: copyHostWorkspace(pi, route.context, options);
-	}
-
-	executing(
-		id: string,
-		command: string,
-		prefix: string | undefined
-	): BoundDestination | undefined {
-		const route = this.#routes.get(id);
-
-		if (route?.destination === undefined) {
 			return;
 		}
 
-		if (route.command !== command || route.prefix !== prefix) {
-			throw new StaleSandboxHandleError({ operation: 'exec' });
+		const input: unknown = event.args;
+
+		if (!isRecord(input) || typeof input['command'] !== 'string') {
+			return;
 		}
 
-		return route.destination;
+		const command = input['command'];
+		const prefix =
+			dialect === 'bash' ? pi.getSettings().shellCommandPrefix : undefined;
+		let requested: ReturnType<typeof escalationInput>;
+
+		try {
+			requested = escalationInput(id, effectiveCommand(command, prefix), {
+				escalate: input['escalate'],
+				justification: input['justification']
+			});
+		} catch (error) {
+			if (isSandboxError(error, InvalidSandboxRequestError)) {
+				return;
+			}
+
+			throw error;
+		}
+
+		const escalation =
+			requested === undefined
+				? undefined
+				: new PendingEscalation(pi, context, requested);
+		const route: Route = {
+			context,
+			command,
+			prefix,
+			...(escalation !== undefined && { escalation })
+		};
+
+		this.#routes.set(id, route);
+		await escalation?.prepare(dialect);
+
+		const call = { toolName: dialect, toolCallId: id };
+		const isCurrent = () => this.#routes.get(id) === route && isActive();
+		const request = escalation?.request;
+
+		if (!isCurrent() || (escalation !== undefined && request === undefined)) {
+			return;
+		}
+
+		try {
+			const broker = ensureSandboxService(pi);
+			const registration = await broker.prepareReview?.(context, {
+				call,
+				...(escalation !== undefined &&
+					request !== undefined && {
+						escalation: request,
+						decisionDeadline: escalation.decisionDeadline
+					})
+			});
+
+			if (registration === undefined) {
+				return;
+			}
+
+			if (!isCurrent()) {
+				registration.revoke();
+
+				return;
+			}
+
+			route.registration = registration;
+			escalation?.bindReview(registration);
+		} catch (error) {
+			if (!isSandboxError(error)) {
+				throw error;
+			}
+		}
+	}
+
+	#revoke(route: Route): void {
+		route.registration?.revoke();
+		route.escalation?.finish();
+	}
+
+	#delete(id: string): void {
+		const route = this.#routes.get(id);
+
+		if (route === undefined) {
+			return;
+		}
+
+		this.#routes.delete(id);
+		this.#revoke(route);
+	}
+
+	#clear(): void {
+		for (const id of this.#routes.keys()) {
+			this.#delete(id);
+		}
+	}
+
+	verifyExecution(
+		id: string,
+		command: string,
+		prefix: string | undefined
+	): void {
+		const route = this.#routes.get(id);
+
+		if (
+			route?.registration?.isReviewed() === true &&
+			(route.command !== command || route.prefix !== prefix)
+		) {
+			throw new StaleSandboxHandleError({ operation: 'exec' });
+		}
 	}
 
 	escalation(id: string): PendingEscalation | undefined {

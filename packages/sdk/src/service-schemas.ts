@@ -23,6 +23,12 @@ export const brokerServiceSchema = Type.Object({
 	negotiate: callable<BrokerService['negotiate']>(),
 	planEscalation:
 		Type.Optional(callable<NonNullable<BrokerService['planEscalation']>>()),
+	prepareReview:
+		Type.Optional(callable<NonNullable<BrokerService['prepareReview']>>()),
+	resolveReviewSource:
+		Type.Optional(
+			callable<NonNullable<BrokerService['resolveReviewSource']>>()
+		),
 	close: callable<BrokerService['close']>(),
 	status: callable<BrokerService['status']>(),
 	providers: callable<BrokerService['providers']>()

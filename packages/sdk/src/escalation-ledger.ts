@@ -20,17 +20,23 @@ type ReadonlyData<Value> = Value extends object
 
 const destinationFields = { policy: accessPolicySchema };
 const destinationSchema = Type.Union([
-	Type.Object({
-		...destinationFields,
-		kind: Type.Literal('provider'),
-		providerId: nonEmptyStringSchema,
-		effectiveRestrictions: nonEmptyStringSchema
-	}),
-	Type.Object({
-		...destinationFields,
-		kind: Type.Literal('host'),
-		effectiveRestrictions: Type.Literal('none')
-	})
+	Type.Object(
+		{
+			...destinationFields,
+			kind: Type.Literal('provider'),
+			providerId: nonEmptyStringSchema,
+			effectiveRestrictions: nonEmptyStringSchema
+		},
+		{ additionalProperties: false }
+	),
+	Type.Object(
+		{
+			...destinationFields,
+			kind: Type.Literal('host'),
+			effectiveRestrictions: Type.Literal('none')
+		},
+		{ additionalProperties: false }
+	)
 ]);
 
 export type EscalationDestination = ReadonlyData<
@@ -105,15 +111,21 @@ const escalation = Type.Object({
 	outcome: Type.Enum(['allowed', 'denied', 'cancelled', 'expired']),
 	decider: Type.Optional(decider)
 });
+const destinationDescriptionSchema = Type.Object({
+	providerId: nonEmptyStringSchema,
+	label: nonEmptyStringSchema,
+	workspace: Type.Optional(workspaceSchema),
+	policy: accessPolicySchema
+});
+
+export type DestinationDescription = ReadonlyData<
+	Static<typeof destinationDescriptionSchema>
+>;
+
 const reviewCopy = Type.Object({
 	kind: Type.Literal('review-copy'),
 	toolCallId: nonEmptyStringSchema,
-	source: Type.Object({
-		providerId: nonEmptyStringSchema,
-		label: nonEmptyStringSchema,
-		workspace: workspaceSchema,
-		policy: accessPolicySchema
-	}),
+	source: destinationDescriptionSchema,
 	policy: accessPolicySchema,
 	decider: permissionDecider
 });

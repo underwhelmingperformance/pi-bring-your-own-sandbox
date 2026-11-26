@@ -36,7 +36,7 @@ interface SandboxClient {
   findShellReviewSource(
     context: SandboxContext,
     call: ReviewedToolCall
-  ): ShellReviewSource | undefined;
+  ): ShellReviewLookup;
 }
 
 registerSandboxProvider<Config, Input = Config>(
@@ -504,9 +504,11 @@ provisional in milestone 1.
 type ReviewUnavailableReason =
   | 'unknown-call'
   | 'unsupported-tool'
+  | 'not-selected'
   | 'destination-unavailable'
   | 'invalid-source'
-  | 'incompatible-protocol';
+  | 'incompatible-protocol'
+  | 'ambiguous';
 
 type ReviewReply =
   | {
@@ -523,11 +525,15 @@ type ReviewReply =
 interface DestinationDescription {
   readonly providerId: string;
   readonly label: string;
-  readonly workspace: SandboxWorkspace;
+  readonly workspace?: SandboxWorkspace;
   readonly policy: SandboxPolicy;
 }
 
-interface ReviewSource {
+type ShellReviewLookup =
+  | { readonly ok: true; readonly source: ShellReviewSource }
+  | { readonly ok: false; readonly reason: ReviewUnavailableReason };
+
+interface ShellReviewSource {
   readonly destination: DestinationDescription;
   readonly escalation?: EscalationRequest;
   negotiateCopy(
@@ -537,11 +543,18 @@ interface ReviewSource {
 }
 ```
 
-`ReviewSourceId` is opaque. Each reply correlates with one query and one pending
-tool call. The client's `findShellReviewSource` accepts the live context and
-tool call. A successful reply refers to the broker-resolved source. A failed
-reply includes a `ReviewUnavailableReason`. The ledger uses the path from the
-client that requested the copy.
+<!-- The optional workspace field is provisional in milestone 6. -->
+
+The host destination includes its workspace. A provider destination includes its
+target workspace once the broker has verified an open backend. Lookup and copy
+negotiation allocate no backend.
+
+`ReviewSourceId` is opaque. The broker issues each identity for one query from
+one extension in the live session. The client resolves it through its own broker
+and uses the source while the call is pending. A failed lookup includes a
+`ReviewUnavailableReason`. The ledger attributes a copy to the requesting
+extension.
+
 `Sandbox.copy(options?: SandboxAcquireOptions): Promise<SandboxCopy>` uses the
 acquired sandbox's workspace as the source. `SandboxCopy` contains
 `sandbox: Sandbox` and `close(): Promise<SandboxCloseReport>`.

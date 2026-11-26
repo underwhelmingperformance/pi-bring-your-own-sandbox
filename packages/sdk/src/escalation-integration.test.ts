@@ -167,10 +167,8 @@ it.each([
 				);
 
 				pi.on('tool_call', (event, context) => {
-					const request = client.findShellReviewSource(
-						context,
-						event
-					)?.escalation;
+					const review = client.findShellReviewSource(context, event);
+					const request = review.ok ? review.source.escalation : undefined;
 
 					if (request === undefined) {
 						return;

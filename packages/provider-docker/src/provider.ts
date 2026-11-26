@@ -889,11 +889,15 @@ export function createDockerProvider(
 			}
 		}
 
+		const sourceExtension = import.meta.filename.endsWith('.ts') ? 'ts' : 'js';
 		const [launcher, files, search, importer, matcher] = await Promise.all([
-			readFile(new URL('launcher.ts', import.meta.url), 'utf8'),
+			readFile(new URL(`launcher.${sourceExtension}`, import.meta.url), 'utf8'),
 			targetFileHelper(),
 			targetSearchHelper(),
-			readFile(new URL('import-helper.ts', import.meta.url), 'utf8'),
+			readFile(
+				new URL(`import-helper.${sourceExtension}`, import.meta.url),
+				'utf8'
+			),
 			readDockerMatcher()
 		]);
 

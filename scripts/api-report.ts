@@ -8,7 +8,7 @@ import manifest from '../packages/sdk/package.json' with { type: 'json' };
 const sdk = path.resolve(import.meta.dirname, '../packages/sdk');
 const distribution = path.join(sdk, 'dist');
 const report = path.join(sdk, 'api-report.txt');
-const entryPoints = Object.entries(manifest.publishConfig.exports);
+const entryPoints = Object.entries(manifest.exports);
 const program = ts.createProgram(
 	entryPoints.map(([, entry]) => path.join(sdk, entry.types)),
 	{

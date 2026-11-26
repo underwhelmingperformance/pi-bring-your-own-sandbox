@@ -19,6 +19,7 @@ import type {
 } from 'pi-bring-your-own-sandbox/provider';
 import { registerSandboxProvider } from 'pi-bring-your-own-sandbox/provider';
 import {
+	isSandboxError,
 	SandboxTransportError,
 	UnsupportedSandboxPolicyError
 } from 'pi-bring-your-own-sandbox/provider';
@@ -408,8 +409,8 @@ it.each([
 			);
 
 			if (relationship === 'refused') {
-				await expect(pending).rejects.toBeInstanceOf(
-					UnsupportedSandboxPolicyError
+				await expect(pending).rejects.toSatisfy((error: unknown) =>
+					isSandboxError(error, UnsupportedSandboxPolicyError)
 				);
 				expect(
 					docker.commands.some(({ args }) => args.includes('import-helper'))
@@ -1413,7 +1414,9 @@ it.each(['FIFO', 'socket'] as const)(
 						}
 					}
 				)
-			).rejects.toBeInstanceOf(UnsupportedSandboxPolicyError);
+			).rejects.toSatisfy((error: unknown) =>
+				isSandboxError(error, UnsupportedSandboxPolicyError)
+			);
 
 			expect({
 				commands: docker.commands,

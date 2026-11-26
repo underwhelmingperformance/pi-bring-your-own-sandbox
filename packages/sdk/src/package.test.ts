@@ -62,7 +62,10 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 
 			expect(paths).toStrictEqual(preview);
 			expect(
-				paths.filter((file) => file.startsWith('examples/docker/'))
+				paths.filter(
+					(file) =>
+						file.startsWith('examples/docker/') || file.startsWith('src/')
+				)
 			).toStrictEqual([]);
 			expect(
 				paths.filter((file) =>
@@ -94,7 +97,6 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 
 				expect(paths).toContain(`dist/${entry}.js`);
 				expect(paths).toContain(`dist/${entry}.d.ts`);
-				expect(paths).toContain(`src/${entry}.ts`);
 			}
 
 			await project(host, tarball);
@@ -127,7 +129,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 				pi: manifest['pi'],
 				exports: manifest['exports']
 			}).toStrictEqual({
-				dependencies: undefined,
+				dependencies: { ignore: '7.0.14', re2js: '2.10.0' },
 				peers: {
 					'@earendil-works/pi-coding-agent': '1.5.0',
 					typebox: '1.3.27',
@@ -172,6 +174,30 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 			await run(host, 'pnpm', ['exec', 'tsc']);
 			await run(host, process.execPath, ['check.js']);
 			await run(host, 'pnpm', ['exec', 'tsc', '--noEmit']);
+			await add(host, ['typebox@1.3.27', `vitest@${vitestVersion}`]);
+
+			const entryPoints = [
+				'consumer',
+				'host',
+				'pi-tools',
+				'provider',
+				'testing'
+			];
+			const plainNode = await run(host, process.execPath, [
+				'--input-type=module',
+				'-e',
+				`const entries = ${JSON.stringify(entryPoints)};
+for (const entry of entries) {
+  const specifier = 'pi-bring-your-own-sandbox/' + entry;
+  await import(specifier);
+  const filename = import.meta.resolve(specifier);
+  if (!filename.includes('/dist/') || !filename.endsWith('.js')) throw new Error(filename);
+}
+process.stdout.write(JSON.stringify(entries));`
+			]);
+
+			expect(JSON.parse(plainNode.stdout)).toStrictEqual(entryPoints);
+
 			await add(
 				provider,
 				[`vitest@${vitestVersion}`, compiler, '@types/node@24.12.2'],
@@ -205,11 +231,12 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 					{
 						assertionResults: expect.arrayContaining([
 							expect.objectContaining({
-								title: 'confirmed cancellation and continued use',
+								title:
+									'open profile 1: confirmed cancellation and continued use',
 								status: 'passed'
 							}),
 							expect.objectContaining({
-								title: 'policy effects (read-only)',
+								title: 'open profile 1: policy effects (read-only)',
 								status: 'passed'
 							})
 						]) as unknown
@@ -226,7 +253,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 );
 
 it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
-	'installed source exports compile with strict consumer settings',
+	'installed declarations compile with strict consumer settings',
 	async () => {
 		const directory = await mkdtemp(
 			path.join(tmpdir(), 'pi-byos-source-package-')
@@ -255,11 +282,6 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
 				'node_modules/pi-bring-your-own-sandbox'
 			);
 
-			await copyFile(
-				new URL('../package.json', import.meta.url),
-				path.join(installed, 'package.json')
-			);
-			await rm(path.join(installed, 'dist'), { recursive: true, force: true });
 			await writeFile(
 				path.join(consumer, 'consumer.ts'),
 				[
@@ -272,7 +294,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
 				].join('\n')
 			);
 
-			const source = await realpath(installed);
+			const installRoot = await realpath(installed);
 			const entrypoints = [
 				'consumer',
 				'host',
@@ -282,9 +304,9 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
 			]
 				.map((entry) =>
 					path.join(
-						source,
-						'src',
-						`${entry === 'host' ? 'embedding-host' : entry}.ts`
+						installRoot,
+						'dist',
+						`${entry === 'host' ? 'embedding-host' : entry}.d.ts`
 					)
 				)
 				.toSorted((left, right) => left.localeCompare(right));

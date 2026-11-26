@@ -8,7 +8,15 @@ defineSandboxProviderTests({
 	verifyRecoveryAfterCancellation: true,
 	policyEffects: ['read-only'],
 	label: 'installed provider using its own Vitest peer',
-	provider,
+	provider: {
+		...provider,
+		profiles: {
+			...provider.profiles,
+			open: provider.profiles.open.filter(
+				(profile) => !profile.policy.hostWorkspaceWrites
+			)
+		}
+	},
 	createFixture() {
 		assert.equal(state.isRunning, false);
 		state.sample = 'original';

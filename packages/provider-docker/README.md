@@ -14,19 +14,20 @@ writes to the live checkout.
 
 ## Run this checkout
 
-From `packages/provider-docker`, pull the pinned image and build the provider.
+From `packages/provider-docker`, pull the pinned image and build the SDK and
+provider.
 
 ```sh
 image=$(node --input-type=module -e 'import { DOCKER_IMAGE } from "./src/image.ts"; process.stdout.write(DOCKER_IMAGE)')
 docker pull "$image"
-pnpm build
+pnpm --filter pi-byos-provider-docker... build
 ```
 
 Start Pi from the project that you want to work on. Load the provider by
 absolute path from a separate checkout outside that project.
 
 ```sh
-pi -e /absolute/path/to/byos/packages/provider-docker/src/index.ts
+pi -e /absolute/path/to/byos/packages/provider-docker/dist/index.js
 ```
 
 The provider resolves the local Docker CLI and the daemon endpoint at
@@ -36,10 +37,9 @@ executable and socket when needed. The daemon socket remains outside the
 workload. In the target design the provider loads the [Pi integration][pi] when
 its extension factory runs.
 
-For the checkout's offline shell preset, load `src/shell-profile.ts` in place of
-`src/index.ts` with Pi's `--tools bash` option. The provider ships this preset
-with a default policy that denies network access and access to host user data
-and system files.
+For the checkout's offline shell preset, load `dist/shell-profile.js` with Pi's
+`--tools bash` option. The provider ships this preset with a default policy that
+denies network access and access to host user data and system files.
 
 [pi]: ../sdk/docs/pi-integration.md
 

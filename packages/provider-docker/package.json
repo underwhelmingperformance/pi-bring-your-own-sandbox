@@ -9,25 +9,23 @@
 	},
 	"exports": {
 		".": {
-			"types": "./src/index.ts",
-			"import": "./src/index.ts"
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
 		},
 		"./shell-profile": {
-			"types": "./src/shell-profile.ts",
-			"import": "./src/shell-profile.ts"
+			"types": "./dist/shell-profile.d.ts",
+			"import": "./dist/shell-profile.js"
 		}
 	},
 	"files": [
-		"src",
-		"dist/re2js.mjs",
-		"dist/RE2JS-LICENSE",
+		"dist",
 		"scripts/rename-race-probe.sh",
 		"workspace-editing.md",
 		"README.md"
 	],
 	"license": "MIT",
 	"scripts": {
-		"build": "node build-matcher.ts",
+		"build": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\" && tsc -b tsconfig.build.json --force && node build-matcher.ts",
 		"test": "pnpm build && vitest run",
 		"test:provider": "pnpm --filter pi-bring-your-own-sandbox build && pnpm build && vitest run --config vitest.provider.config.ts",
 		"test:package": "pnpm --filter pi-bring-your-own-sandbox build && pnpm build && vitest run --config vitest.package.config.ts",

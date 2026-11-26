@@ -9,32 +9,29 @@
 	},
 	"exports": {
 		"./consumer": {
-			"types": "./src/consumer.ts",
-			"import": "./src/consumer.ts"
+			"types": "./dist/consumer.d.ts",
+			"import": "./dist/consumer.js"
 		},
 		"./provider": {
-			"types": "./src/provider.ts",
-			"import": "./src/provider.ts"
+			"types": "./dist/provider.d.ts",
+			"import": "./dist/provider.js"
 		},
 		"./host": {
-			"types": "./src/embedding-host.ts",
-			"import": "./src/embedding-host.ts"
+			"types": "./dist/embedding-host.d.ts",
+			"import": "./dist/embedding-host.js"
 		},
 		"./pi-tools": {
-			"types": "./src/pi-tools.ts",
-			"import": "./src/pi-tools.ts"
+			"types": "./dist/pi-tools.d.ts",
+			"import": "./dist/pi-tools.js"
 		},
 		"./testing": {
-			"types": "./src/testing.ts",
-			"import": "./src/testing.ts"
+			"types": "./dist/testing.d.ts",
+			"import": "./dist/testing.js"
 		}
 	},
 	"files": [
 		"api-report.txt",
 		"dist",
-		"src",
-		"!src/**/*.test.ts",
-		"!src/fixtures/**",
 		"docs",
 		"examples/consumer/README.md",
 		"examples/consumer/src",
@@ -51,30 +48,6 @@
 		}
 	},
 	"license": "MIT",
-	"publishConfig": {
-		"exports": {
-			"./consumer": {
-				"types": "./dist/consumer.d.ts",
-				"import": "./dist/consumer.js"
-			},
-			"./provider": {
-				"types": "./dist/provider.d.ts",
-				"import": "./dist/provider.js"
-			},
-			"./host": {
-				"types": "./dist/embedding-host.d.ts",
-				"import": "./dist/embedding-host.js"
-			},
-			"./pi-tools": {
-				"types": "./dist/pi-tools.d.ts",
-				"import": "./dist/pi-tools.js"
-			},
-			"./testing": {
-				"types": "./dist/testing.d.ts",
-				"import": "./dist/testing.js"
-			}
-		}
-	},
 	"scripts": {
 		"build": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\" && tsc -b tsconfig.build.json --force && node --input-type=module -e \"import { writeFileSync } from 'node:fs'; import { computeProtocolBuild } from './dist/compute-protocol-build.js'; writeFileSync('dist/protocol-build.json', JSON.stringify(computeProtocolBuild()) + '\\n')\"",
 		"test": "pnpm build && vitest run",

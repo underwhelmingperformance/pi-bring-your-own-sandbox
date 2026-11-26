@@ -11,8 +11,10 @@ import { expect, it } from 'vitest';
 
 import { isRecord } from './validation.js';
 
-it('loads the workspace source package and consumer through Pi', async () => {
-	const directory = await mkdtemp(path.join(tmpdir(), 'byos-source-'));
+it('loads a consumer with the built workspace package through Pi', async () => {
+	const directory = await mkdtemp(
+		path.join(tmpdir(), 'byos-workspace-package-')
+	);
 	const sdk = fileURLToPath(new URL('..', import.meta.url));
 
 	try {
@@ -29,8 +31,8 @@ it('loads the workspace source package and consumer through Pi', async () => {
 				['consumer', 'host', 'pi-tools', 'provider', 'testing'].map((entry) => [
 					`./${entry}`,
 					{
-						types: `./src/${entry === 'host' ? 'embedding-host' : entry}.ts`,
-						import: `./src/${entry === 'host' ? 'embedding-host' : entry}.ts`
+						types: `./dist/${entry === 'host' ? 'embedding-host' : entry}.d.ts`,
+						import: `./dist/${entry === 'host' ? 'embedding-host' : entry}.js`
 					}
 				])
 			)

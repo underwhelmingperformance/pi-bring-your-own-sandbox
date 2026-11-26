@@ -9,6 +9,11 @@
 			"entry": [
 				"src/**/*.test.ts",
 				"src/fixtures/diagnostics-extension.ts",
+				"src/consumer.ts!",
+				"src/embedding-host.ts!",
+				"src/pi-tools.ts!",
+				"src/provider.ts!",
+				"src/testing.ts!",
 				"src/target-file.ts!",
 				"src/target-search.ts!",
 				"examples/consumer/src/index.ts!"
@@ -21,7 +26,13 @@
 			]
 		},
 		"packages/provider-docker": {
-			"entry": ["test/**/*.test.ts"],
+			"entry": [
+				"test/**/*.test.ts",
+				"src/index.ts!",
+				"src/shell-profile.ts!",
+				"src/import-helper.ts!",
+				"src/launcher.ts!"
+			],
 			"project": ["src/**/*.ts!", "test/**/*.ts", "*.ts"]
 		}
 	}

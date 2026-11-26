@@ -1,4 +1,13 @@
-import { copyFile, cp, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import {
+	copyFile,
+	cp,
+	mkdir,
+	mkdtemp,
+	readdir,
+	readFile,
+	rm,
+	writeFile
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -65,6 +74,21 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
 	'loads the separately packed Docker extension with its bundled matcher',
 	() =>
 		withPackedProvider(async (consumer, installed) => {
+			const plainNode = await run(consumer, process.execPath, [
+				'--input-type=module',
+				'-e',
+				`const main = await import("pi-byos-provider-docker");
+const shell = await import("pi-byos-provider-docker/shell-profile");
+process.stdout.write(JSON.stringify([typeof main.default, typeof shell.default]));`
+			]);
+
+			expect(JSON.parse(plainNode.stdout)).toStrictEqual([
+				'function',
+				'function'
+			]);
+
+			expect(await readdir(installed)).not.toContain('src');
+
 			const matcher = new URL(import.meta.resolve('re2js'));
 			const assets = path.join(installed, 'dist');
 			const packedMatcher = await Promise.all([
@@ -80,12 +104,12 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
 
 			const extension = path.join(consumer, '.pi/extensions/docker');
 
-			await cp(path.join(installed, 'src'), extension, { recursive: true });
+			await cp(assets, extension, { recursive: true });
 
 			const copiedMatcher = await run(extension, process.execPath, [
 				'--input-type=module',
 				'-e',
-				"import { readDockerMatcher } from './matcher.ts'; process.stdout.write(await readDockerMatcher());"
+				"import { readDockerMatcher } from './matcher.js'; process.stdout.write(await readDockerMatcher());"
 			]);
 
 			expect(copiedMatcher.stdout).toBe(await readFile(matcher, 'utf8'));
@@ -99,7 +123,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
 				noThemes: true,
 				noPromptTemplates: true,
 				noContextFiles: true,
-				additionalExtensionPaths: [path.join(installed, 'src/index.ts')]
+				additionalExtensionPaths: [path.join(installed, 'dist/index.js')]
 			});
 
 			await loader.reload();
@@ -130,9 +154,6 @@ it.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 					path.join(installed, 'package.json'),
 					path.join(checkout, 'package.json')
 				),
-				cp(path.join(installed, 'src'), path.join(checkout, 'src'), {
-					recursive: true
-				}),
 				cp(path.join(installed, 'dist'), path.join(checkout, 'dist'), {
 					recursive: true
 				})
@@ -147,7 +168,10 @@ it.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				const target = path.join(consumer, file);
 
 				await mkdir(path.dirname(target), { recursive: true });
-				await copyFile(path.join(repository, file), target);
+
+				const source = await readFile(path.join(repository, file), 'utf8');
+
+				await writeFile(target, source.replaceAll('../src/', '../dist/'));
 			}
 
 			const report = path.join(consumer, 'docker-report.json');

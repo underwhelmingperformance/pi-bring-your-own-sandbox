@@ -11,6 +11,12 @@ builds.
 [guard]: packages/guard/README.md
 [docker]: packages/sdk/examples/docker/README.md
 
+## Use a sandbox in Pi
+
+Install your chosen provider and configure it in its own settings file. The
+provider loads the Pi tool integration. The [Docker guide][docker] describes the
+reference provider.
+
 ## Development
 
 Use the Node version in `.node-version` and the pnpm version in `package.json`.

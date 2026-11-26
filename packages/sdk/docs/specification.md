@@ -31,11 +31,16 @@ destinations after failure or retries a possibly completed operation.
 
 ## Configuration and negotiation
 
-The provider extension supplies the configured policy from the user's settings
-and validates them before allocation. The SDK reads no configuration files. A
-provider may supply a default configured policy. Project trust controls whether
-Pi loads project extensions. The trust setting selects neither the workspace nor
-the policy. Settings take effect on reload.
+The user installs the provider in Pi and configures it in the provider's
+settings file. The provider loads the Pi tool integration as part of its
+extension factory. It composes the SDK's [shared settings keys][settings] with
+its own keys and validates the file before allocation. The shared keys include
+the configured policy, user shell, cleanup budgets and outside settings. The SDK
+reads no configuration files. A provider may supply a default configured policy.
+Project trust controls whether Pi loads project extensions. The trust setting
+selects neither the workspace nor the policy. Settings take effect on reload.
+
+[settings]: api-protocol.md#provider-settings
 
 Each provider lists separate profiles for `open` and `copy`. A profile combines
 policy settings, capabilities, process kinds, shell dialects, exit status and
@@ -79,6 +84,8 @@ Pi's `bash`, `user_bash`, file and search tools use ordinary acquisition and
 mark every access property `preferred`. The user can grant access through the
 configured policy. A read-only policy gives Pi read-only tools without making
 acquisition fail.
+
+<!-- The guard's place under principle 16 is provisional and undecided. -->
 
 The user installs the guard to require an explicitly activated provider. The
 user can also require a provider ID, access or operation capabilities. The
@@ -206,12 +213,8 @@ output consistently across providers.
 The model supplies an `access` record and a justification. The selected provider
 may declare profiles for an outside destination.
 
-The user writes a trusted host extension and configures Pi to load it from
-outside the workspace, as with the provider. This extension uses `/host` in the
-role of embedding host for this runtime. Its factory calls
-`initialiseSandboxHost` with `outsideDestinations` and `outsideApproval` before
-the broker starts. If a second extension also supplies host options, broker
-discovery fails with `ConflictingSandboxConfigError`.
+The user's provider settings control whether outside execution is available and
+who decides each call.
 
 `outsideDestinations` sets the configured policy for the provider's outside
 destination and can explicitly enable passthrough. The passthrough destination
@@ -222,14 +225,14 @@ configured policy. An outside command can exceed the ordinary configured policy
 only at a destination that the user explicitly allows. An ordinary failure never
 triggers an outside call.
 
-The `outsideApproval` setting decides who approves the call. By default BYOS
-asks the user through Pi. When a permission extension decides, BYOS runs the
-call once Pi dispatches it. BYOS has a confirmation for its own outside tool and
-no general approval system. Show the command, justification, destination and
-effective restrictions before a BYOS confirmation. Denial, dismissal,
-unavailable confirmation, cancellation and expiry prevent dispatch. The user and
-permission extension can rely on the same command and destination being reviewed
-and executed. Changing either requires a new decision.
+The `outsideApproval` setting decides who approves the call. By default the
+integration asks the user through Pi and identifies the provider by its label.
+The confirmation shows the command, justification, destination and effective
+restrictions. When a permission extension decides, the integration runs the call
+once Pi dispatches it. Denial, dismissal, unavailable confirmation, cancellation
+and expiry prevent dispatch. The user and permission extension can rely on the
+same command and destination being reviewed and executed. Changing either
+requires a new decision.
 
 The Pi integration generates model-facing descriptions of the effective
 restrictions from the negotiated policy for each destination. This applies to

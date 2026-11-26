@@ -36,6 +36,12 @@ closeSandboxSession(pi: SandboxHost, context: SandboxContext): Promise<SandboxCl
 createSandboxGuard(requirements?: SandboxRequirements & { providerId?: string }): ExtensionFactory;
 ```
 
+`/host` is for embedding hosts. `SandboxHostOptions` has only
+`cleanup?: Partial<SandboxCleanupBudgets>` for embedding defaults. The
+[provider's cleanup settings][provider-settings] take precedence.
+
+[provider-settings]: #provider-settings
+
 ## Requirements and profiles
 
 <!-- `violations` is provisional in milestone 1. -->
@@ -210,10 +216,6 @@ non-empty. A copy profile always has `hostWorkspaceWrites: false` because a copy
 cannot change the host checkout. The provider decides whether the copy's own
 files accept writes.
 
-A registration resolver supplies `SandboxProviderConfig<Input>` with
-`configuration`, optional complete `policy`, optional `userShell` and optional
-`cleanup`.
-
 `reportRecovery` supplies one aggregate descriptor before allocation. Updates
 describe all outstanding allocations. The final backend's `recovery` matches the
 latest descriptor. Use `none` only if there are no persistent allocations. An
@@ -243,6 +245,66 @@ to 64 warnings of 1 to 2,048 UTF-16 code units each. Rejected and excess
 warnings increment the bounded `diagnosticsDropped` counter. Reports after the
 operation ends are ignored. Status exposes the retained `diagnostics` and
 `diagnosticsDropped` fields.
+
+## Provider settings
+
+<!--
+`SandboxSharedSettings`, the `settings` result field and the
+`sharedSettingsSchema` callback parameter are provisional. The
+`outsideDestinations` and `outsideApproval` settings and their values
+are provisional, including the new `prompt` value.
+-->
+
+The provider owns the settings file. The SDK defines one TypeBox object schema
+for the shared settings keys. `registerSandboxProvider` passes it to the
+`configure` callback as `sharedSettingsSchema`. The callback includes
+`sharedSettingsSchema.properties` at the top level of the provider's own
+settings schema. The provider validates the whole file with that schema and
+returns the shared values under `settings` and its own input under
+`configuration`. The `settings` field belongs to the callback result.
+
+```typescript
+interface SandboxProviderRegistration<Input> {
+  readonly configure: (
+    context: SandboxConfigContext,
+    sharedSettingsSchema: TObject
+  ) => SandboxProviderConfig<Input> | Promise<SandboxProviderConfig<Input>>;
+}
+
+interface SandboxProviderConfig<Input> {
+  readonly configuration: Input;
+  readonly settings?: SandboxSharedSettings;
+}
+
+interface SandboxSharedSettings {
+  readonly policy?: SandboxPolicy;
+  readonly userShell?: ShellDialect;
+  readonly cleanup?: Partial<SandboxCleanupBudgets>;
+  readonly outsideDestinations?: readonly (
+    | { readonly kind: 'provider'; readonly policy: SandboxPolicy }
+    | { readonly kind: 'passthrough' }
+  )[];
+  readonly outsideApproval?: 'prompt' | 'permission-extension';
+}
+```
+
+`TObject` is the TypeBox object schema type. The SDK derives
+`SandboxSharedSettings` from the schema. It reports validation failures as
+`InvalidSandboxConfigError` before allocation, with the provider source and
+invalid key. It omits the raw settings from user-facing diagnostics.
+
+| Key                   | Shape and default                                                                                                                                                                                                            |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `policy`              | A complete ordinary configured policy. If omitted, use the provider's `defaultPolicy`. If neither exists, configuration fails.                                                                                               |
+| `userShell`           | A target shell dialect. If omitted, use the provider's advertised default. A user-shell command fails if neither supplies a dialect.                                                                                         |
+| `cleanup`             | Optional `cancellationGraceMs` and `disposalTimeoutMs`. Each is an integer from 1 to 300,000. Omitted values use embedding-host defaults when supplied, then 5,000 ms and 10,000 ms respectively.                            |
+| `outsideDestinations` | A list with at most one entry of each kind. A `provider` entry requires declared outside profiles and a complete configured policy. A `passthrough` entry enables the full-access destination. The default is an empty list. |
+| `outsideApproval`     | `prompt` by default, which opens a confirmation with the provider label. `permission-extension` leaves the decision to the permission extension.                                                                             |
+
+The [specification][settings-behaviour] describes how the broker uses the
+outside settings.
+
+[settings-behaviour]: specification.md#destinations-and-permission
 
 ## Process, files and search
 
@@ -333,39 +395,21 @@ broker-owned opening each default to 60,000 ms. Foreground execution defaults to
 Provider contexts contain `operationId`, `signal`, a Unix-epoch `deadline`,
 `remainingMs()` and `cleanup`. The cleanup context has its own `deadline` and
 `remainingMs(): number | undefined`. Both remaining time functions use a
-monotonic clock. The host and provider can specify partial cleanup budgets. The
-provider's values take precedence. The `cancellationGraceMs` and
-`disposalTimeoutMs` fields accept integers from 1 to 300,000 and default to
-5,000 and 10,000 respectively. `SandboxCloseReport` contains
-`confirmed: boolean`, `failures: readonly SandboxErrorInfo[]` and
+monotonic clock. The [provider settings][cleanup-settings] define the cleanup
+budgets. `SandboxCloseReport` contains `confirmed: boolean`,
+`failures: readonly SandboxErrorInfo[]` and
 `recoveries: readonly RecoveryDescriptor[]`.
+
+[cleanup-settings]: #provider-settings
 
 ## Outside tool and review
 
-<!--
-`bash_outside`, `outsideApproval`, `outsideDestinations` and the outside
-configuration literals are provisional in milestone 1.
--->
+<!-- `bash_outside` is provisional. -->
 
 The Pi tool `bash_outside` takes `command: string`, `access: Access`,
 `justification: string` and optional `timeout: number` in seconds. The
-justification is non-empty after trimming. The trusted host extension supplies
-these fields of `SandboxHostOptions` to `initialiseSandboxHost`.
-
-```typescript
-interface SandboxHostOptions {
-  readonly cleanup?: Partial<SandboxCleanupBudgets>;
-  readonly outsideApproval?: 'byos' | 'permission-extension';
-  readonly outsideDestinations?: readonly (
-    | { readonly kind: 'provider'; readonly policy: SandboxPolicy }
-    | { readonly kind: 'passthrough' }
-  )[];
-}
-```
-
-The defaults are `byos` and an empty destination list. Each destination kind
-occurs at most once. The [specification][destinations] describes outside
-profiles and the decision boundary.
+justification is non-empty after trimming. The [specification][destinations]
+describes outside profiles and the decision boundary.
 
 [destinations]: specification.md#destinations-and-permission
 
@@ -488,7 +532,6 @@ This is the complete feature level 0 error list.
 | `InvalidSandboxRequestError`         | Invalid field and rejected value                                                               |
 | `ProviderNotFoundError`              | Selected provider ID                                                                           |
 | `ConflictingSandboxProviderError`    | Conflicting provider selections                                                                |
-| `ConflictingSandboxConfigError`      | Conflicting configuration sources                                                              |
 | `DuplicateProviderError`             | Duplicate provider ID                                                                          |
 | `UnsupportedSandboxCapabilityError`  | Capability, process kind, dialect, exit status or termination scope and value                  |
 | `UnsupportedSandboxPolicyError`      | Access property and requested state, including any conflicting guard state                     |

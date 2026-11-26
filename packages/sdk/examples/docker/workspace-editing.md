@@ -1,7 +1,7 @@
 # Workspace editing with Docker
 
 Pi's shell, file and search tools use the ordinary sandbox on the live checkout.
-The configured policy can make that checkout read-only. The project's trust
+Set the configured policy in the provider's settings file. The project's trust
 setting selects neither the workspace nor the policy. Consumers such as
 permission reviewers can explicitly request a separate copy.
 
@@ -13,8 +13,8 @@ checkout. Otherwise the tools use a read-only checkout and acquisition succeeds.
 
 The provider's protected-path settings cover files that host tools may later
 interpret as configuration. The provider kit supplies defaults and a matcher.
-Keep the provider and SDK installed outside the checkout so workload changes
-cannot replace the running integration.
+Install the provider and its dependencies outside the checkout so workload
+changes cannot replace the running integration.
 
 ## Use a private copy
 

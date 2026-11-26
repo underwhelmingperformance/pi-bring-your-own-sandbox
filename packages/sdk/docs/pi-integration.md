@@ -1,19 +1,11 @@
 # Pi integration
 
-The target `/pi-tools` entry routes Pi's shell, file and search tools through
-the BYOS facade. Load it explicitly. The SDK is a dependency and Pi does not
-load a default extension from it. From a trusted directory outside the
-workspace, add a `sandbox-tools.ts` extension and load the file with Pi's `-e`
-option.
+Install the sandbox provider in Pi and follow its settings instructions. The
+provider activates the sandbox and loads the Pi tool integration.
 
-```typescript
-import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
-import sandboxTools from 'pi-bring-your-own-sandbox/pi-tools';
-
-export default function extension(pi: ExtensionAPI): void {
-  sandboxTools(pi, import.meta.filename);
-}
-```
+In the provider extension factory, call the default export from `/pi-tools` with
+the Pi extension API and the provider's module filename. The integration routes
+Pi's shell, file and search tools through the sandbox facade.
 
 ## Tool routing
 
@@ -58,13 +50,13 @@ support `violations` can attach structured policy violations to results. BYOS
 renders these separately from command output.
 
 The separate `bash_outside` tool takes an `access` record and a justification.
-The user's trusted host extension sets `outsideDestinations` and
-`outsideApproval` with `initialiseSandboxHost` from `/host`. It can enable
-profiles declared by the selected provider or explicitly enable passthrough.
-When a permission extension decides the call, add a rule for that tool. A rule
-for `bash` does not approve it. With the default BYOS confirmation, the user
-sees the negotiated destination and the exact command before dispatch. See the
-[destination rules][destinations] and [tool arguments][api].
+Set `outsideDestinations` and `outsideApproval` in the provider's settings file.
+The provider can expose its own outside profiles or allow passthrough
+explicitly. When a permission extension decides the call, add a rule for that
+tool. A rule for `bash` does not approve it. The default confirmation identifies
+the provider by its label and shows the negotiated destination and exact command
+before dispatch. See the [destination rules][destinations] and [tool
+arguments][api].
 
 [destinations]: specification.md#destinations-and-permission
 [api]: api-protocol.md#outside-tool-and-review

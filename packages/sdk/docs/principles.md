@@ -369,6 +369,22 @@ different things.
 Enforced by the glossary and by a documentation check that rejects retired
 terms.
 
+## 16. Users install and configure their sandbox provider
+
+Users install and configure their sandbox provider. Every user setting belongs
+in the provider's own settings file. Users see BYOS only in diagnostics.
+
+A user chooses a sandbox. A second configuration surface gives users two places
+to look and two sets of terms to learn.
+
+Enforced by:
+
+- [shared settings keys][shared settings] that the SDK defines once and exposes
+  through provider registration;
+- a conformance check that the provider accepts and validates the shared keys.
+
+[shared settings]: #shared-settings-keys
+
 ## Glossary
 
 ### Access record
@@ -492,6 +508,11 @@ copies of that call's destination and do nothing else.
 
 The object that a consumer uses to run commands and file operations in a
 backend.
+
+### Shared settings keys
+
+The keys that the SDK defines for settings common to all providers. Each
+provider includes them in its own settings parser.
 
 ### Workspace
 

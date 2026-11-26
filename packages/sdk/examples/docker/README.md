@@ -6,12 +6,12 @@ optional PowerShell image. It uses the same workspace for shell, file and search
 operations. The provider moves to `packages/provider-docker` in milestone 7. The
 paths below refer to this checkout.
 
-Keep the provider extension, its dependencies and the BYOS SDK in a trusted
-directory outside the writable workspace. For example, install them in a
-separate package under `~/.pi/agent/` and load the extension by absolute path.
-Commands with write access to a checkout can rewrite packages installed in that
-checkout. Project trust allows extension code to load. Live checkout writes
-require an explicit provider setting.
+Install the provider extension and its dependencies in a trusted directory
+outside the writable workspace. For example, install them in a separate package
+under `~/.pi/agent/` and load the extension by absolute path. Commands with
+write access to a checkout can rewrite packages installed in that checkout.
+Project trust allows extension code to load. Live checkout writes require an
+explicit provider setting.
 
 ## Run this checkout
 
@@ -34,7 +34,8 @@ The provider resolves the local Docker CLI and the daemon endpoint at
 configuration time. `DOCKER_HOST`, `DOCKER_CONTEXT` and the current Docker
 context can select the endpoint. Use trusted absolute overrides for the
 executable and socket when needed. The daemon socket remains outside the
-workload. Load the [Pi integration][pi] to use the provider for Pi tools.
+workload. In the target design the provider loads the [Pi integration][pi] when
+its extension factory runs.
 
 For the checkout's offline shell preset, load `src/shell-profile.ts` in place of
 `src/index.ts` with Pi's `--tools bash` option. The preset uses a guard to
@@ -53,14 +54,13 @@ profiles for explicit copies. The project's trust setting selects neither the
 workspace nor the policy. The [workspace guide][editing] describes live work and
 explicit copies for permission review.
 
-The provider owns protection for configuration paths and uses the SDK provider
-kit's default list and matcher. For commands that need more access, the user's
-trusted host extension can allow provider outside profiles or passthrough. Pass
-`outsideDestinations` and `outsideApproval` to
-[`initialiseSandboxHost`][outside] from `/host`.
+Put the configured policy, shell and cleanup settings in the provider's settings
+file. Configure protection for particular paths in the same file. For commands
+that need more access, set `outsideDestinations` and `outsideApproval` there as
+well. The [shared settings reference][outside] lists the accepted values.
 
 [editing]: workspace-editing.md
-[outside]: ../../docs/api-protocol.md#outside-tool-and-review
+[outside]: ../../docs/api-protocol.md#provider-settings
 
 ## Optional PowerShell image
 

@@ -1,10 +1,10 @@
 # pi-bring-your-own-sandbox
 
-This SDK connects Pi extensions to a shared sandbox broker. Users select a
-provider in trusted settings. Consumers state restrictions, needs and
-preferences without depending on the provider's implementation. With no selected
-provider, the SDK uses passthrough. Failure of a selected provider stops
-execution.
+This SDK connects Pi extensions to a shared sandbox broker. Users install their
+chosen provider in Pi and configure it in the provider's settings file.
+Consumers state restrictions, needs and preferences without depending on the
+provider's implementation. With no selected provider, the SDK uses passthrough.
+Failure of a selected provider stops execution.
 
 These documents describe the target design. See the [design
 principles][principles], [specification][spec] and [API appendix][api]. The SDK
@@ -22,10 +22,9 @@ Use `/consumer` to acquire a sandbox from a tool or command. The [consumer
 example][consumer] shows how to pass Pi's live context and cancellation signal
 and run an argv request.
 
-Use `/pi-tools` to route Pi's Bash, user shell, file and search tools to the
-same workspace. Install the SDK and load a `sandbox-tools.ts` extension from a
-trusted directory outside the workspace. The [Pi integration guide][pi] shows
-the extension factory and describes the separate tool for outside execution.
+The provider extension calls `/pi-tools` from its factory to route Pi's Bash,
+user shell, file and search tools to the same workspace. The [Pi integration
+guide][pi] describes how provider authors enable the integration.
 
 Provider authors use `/provider` and run the [conformance suite][testing] from
 `/testing`. The [Docker example][docker] shows provider setup. Embedding hosts

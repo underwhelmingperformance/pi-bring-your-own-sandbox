@@ -1,5 +1,7 @@
 # BYOS guard
 
+<!-- The guard's place under principle 16 is provisional and undecided. -->
+
 Use the optional guard when SDK consumers must have an explicitly activated
 provider. The guard can also require a specific provider, restrictions, needs or
 operation capabilities. The broker combines the guard and consumer requests

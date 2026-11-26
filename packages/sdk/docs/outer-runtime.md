@@ -11,12 +11,11 @@ cleanup at that boundary. Local subprocesses must inherit the restrictions.
 
 <!-- `outsideDestinations` and `outsideApproval` are provisional. -->
 
-A BYOS provider can add isolation for individual operations. An outside
-destination in the Pi process still runs within the outer sandbox. The user's
-trusted host extension sets `outsideDestinations` and `outsideApproval` through
-[`initialiseSandboxHost`][outside]. Those settings apply within the outer
-boundary. Any route to the host beyond it requires authority from the outer
-sandbox. Code in Pi continues to share access to the credentials and services
-available to that process.
+A provider can add isolation for individual operations. An outside destination
+in the Pi process still runs within the outer sandbox. The user's
+[`outsideDestinations` and `outsideApproval` settings][outside] belong to the
+provider and apply within that boundary. Access beyond the outer sandbox
+requires authority from that sandbox. Code in Pi continues to share access to
+the credentials and services available to that process.
 
-[outside]: api-protocol.md#outside-tool-and-review
+[outside]: api-protocol.md#provider-settings

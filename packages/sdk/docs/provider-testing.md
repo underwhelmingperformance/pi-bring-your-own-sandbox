@@ -27,6 +27,19 @@ the declared profiles:
 The suite supplies the broker and Pi session. If a probe cannot observe an
 advertised property, setup fails for the corresponding case family.
 
+## Shared settings conformance
+
+Run the provider's settings parser through its registration path. Supply a valid
+file with every [shared settings key][settings] and the required
+provider-specific settings. Assert that the parser preserves the shared values
+and that the broker uses them. Omit settings that have defaults and check the
+effective values. Then invalidate one shared key at a time. Include an omitted
+policy if the provider has no default. Each invalid file must fail with
+`InvalidSandboxConfigError` before backend allocation. Use the same parser that
+the provider runs in Pi.
+
+[settings]: api-protocol.md#provider-settings
+
 ## Generate cases from declarations
 
 Generate cases for every declared `open` and `copy` profile, including every

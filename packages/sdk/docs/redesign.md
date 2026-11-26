@@ -10,6 +10,12 @@ redesign is complete.
 
 ## Decisions
 
+- Users install and configure their sandbox provider. The provider loads
+  `/pi-tools` as part of its extension factory. All user settings, including the
+  configured policy and outside settings, live in the provider's settings file.
+  The SDK exposes the [shared settings schema][settings] through
+  `registerSandboxProvider`. Provider conformance verifies that the parser
+  accepts and validates those keys. The user sees BYOS only in diagnostics.
 - Consumers pass one `access` record. Its properties are `network`,
   `hostWorkspaceWrites`, `hostUserData` and `hostSystemFiles`. A property marked
   `prevented` is a restriction. A property marked `needed` is a need.
@@ -47,10 +53,10 @@ redesign is complete.
   to the sandboxed `bash`, so a permission extension can give it its own rules.
   The tool takes an `access` record and a justification. BYOS negotiates the
   destination using the shared rule. Access can exceed the ordinary configured
-  policy only at a destination that the user's configuration allows. A
-  configuration setting decides who approves these calls: BYOS itself (the
-  default, which asks the user) or the permission extension (BYOS runs the call
-  once it reaches execution).
+  policy only at a destination that the user's configuration allows. A setting
+  in the provider's file decides who approves these calls. By default Pi asks
+  the user and identifies the provider by its label. When a permission extension
+  decides, the tool runs once Pi dispatches it.
 - The Pi integration describes the effective restrictions of each destination to
   the model. It generates the description from the negotiated policy. Providers
   can report sandbox violations as structured data through an optional
@@ -74,6 +80,7 @@ redesign is complete.
   cancellation, cleanup after a failed open and recovery.
 
 [negotiation]: specification.md#configuration-and-negotiation
+[settings]: api-protocol.md#provider-settings
 
 ## Work
 

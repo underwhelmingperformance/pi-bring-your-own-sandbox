@@ -186,7 +186,17 @@ const create: CreateAgentSessionRuntimeFactory = async (options) => {
 		},
 		{
 			errors: [],
-			tools: ['bash', 'powershell', 'sandbox_pwd'],
+			tools: [
+				'bash',
+				'powershell',
+				'read',
+				'write',
+				'edit',
+				'ls',
+				'find',
+				'grep',
+				'sandbox_pwd'
+			],
 			commands: ['byos']
 		}
 	);

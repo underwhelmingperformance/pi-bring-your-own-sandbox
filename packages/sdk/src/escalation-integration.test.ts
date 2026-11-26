@@ -416,7 +416,12 @@ it.each([
 					if (decision === 'conflict') {
 						expect(() => {
 							client.recordEscalationDecision(context, request, 'deny');
-						}).toThrow(InvalidSandboxRequestError);
+						}).toThrow(
+							expect.objectContaining({
+								name: InvalidSandboxRequestError.errorName,
+								operation: 'exec'
+							})
+						);
 					} else if (decision === 'change-command') {
 						changeCommand?.();
 					}
@@ -427,7 +432,12 @@ it.each([
 					if (request !== undefined) {
 						expect(() => {
 							client.recordEscalationDecision(context, request, 'allow');
-						}).toThrow(InvalidSandboxRequestError);
+						}).toThrow(
+							expect.objectContaining({
+								name: InvalidSandboxRequestError.errorName,
+								operation: 'exec'
+							})
+						);
 					}
 				});
 			}

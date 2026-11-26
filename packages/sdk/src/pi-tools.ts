@@ -6,6 +6,7 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 
+import { registerSandboxFileTools } from './integration/file-tools.js';
 import { bindShellIntegration } from './integration/privileged.js';
 
 function shellDefinition(
@@ -70,9 +71,8 @@ function shellDefinition(
 }
 
 /**
-Connects Pi's bash, PowerShell and user-shell operation hooks to the selected
-sandbox. Load this entry explicitly. Pi retains tool execution and rendering;
-file and search tools remain outside this integration's supported paths.
+Connects Pi's shell, file and search tools to the selected sandbox. Load
+this entry explicitly. Pi retains the file algorithms and renders tool output.
 */
 export default function sandboxTools(
 	pi: ExtensionAPI,
@@ -90,6 +90,7 @@ export default function sandboxTools(
 
 	pi.registerTool(bash.tool);
 	pi.registerTool(powershell.tool);
+	registerSandboxFileTools(pi, extensionPath);
 	integration.complete(
 		(name) =>
 			(name === 'bash' && bash.isSelected()) ||

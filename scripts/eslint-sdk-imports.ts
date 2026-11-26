@@ -7,7 +7,13 @@ import manifest from '../packages/sdk/package.json' with { type: 'json' };
 const sdk = path.resolve(import.meta.dirname, '../packages/sdk');
 const examples = path.join(sdk, 'examples');
 const piEntry = path.join(sdk, 'src/pi-tools.ts');
-const privileged = path.join(sdk, 'src/integration/privileged');
+const piIntegrations = new Set(
+	['privileged', 'file-tools'].flatMap((name) =>
+		['.js', '.ts'].map((suffix) =>
+			path.join(sdk, 'src/integration', name + suffix)
+		)
+	)
+);
 const publicEntries = new Set(
 	Object.keys(manifest.exports).map(
 		(subpath) => manifest.name + subpath.slice(1)
@@ -31,7 +37,7 @@ export const sdkImportBoundary: Rule.RuleModule = {
 		messages: {
 			publicEntry: 'Import the SDK through a public entry point.',
 			piIntegration:
-				'Import SDK internals through src/integration/privileged.ts.'
+				'Import SDK internals through the shell or file integration.'
 		}
 	},
 	create(context) {
@@ -63,7 +69,7 @@ export const sdkImportBoundary: Rule.RuleModule = {
 			const file = path.resolve(path.dirname(context.filename), specifier);
 
 			if (isPiEntry) {
-				if (file !== privileged + '.js' && file !== privileged + '.ts') {
+				if (!piIntegrations.has(file)) {
 					context.report({ node, messageId: 'piIntegration' });
 				}
 

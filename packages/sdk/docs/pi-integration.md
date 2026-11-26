@@ -5,7 +5,7 @@ provider activates the sandbox and loads the Pi tool integration.
 
 In the provider extension factory, call the default export from `/pi-tools` with
 the Pi extension API and the provider's module filename. The integration routes
-Pi's Bash, PowerShell and user-shell operations through the sandbox facade.
+Pi's shell, file and search operations through the sandbox facade.
 
 ## Tool routing
 
@@ -20,8 +20,8 @@ storage. The shell adapter runs `bash` in the target Bash dialect. The
 user-shell handler uses `userShell` or the provider's default shell. Available
 dialects come from the selected profile. The file and search adapters share the
 same workspace as Bash and fail with a typed reason if a capability is
-unavailable. The [adapter guide][adapters] specifies the required delegation and
-acceptance cases.
+unavailable. The [adapter guide][adapters] describes how Pi and the SDK share
+the work.
 
 Pi applies its shell command prefix in the target. Full output files stored by
 Pi remain on the Pi host. Access from the sandbox depends on its policy. Direct

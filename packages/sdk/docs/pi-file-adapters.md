@@ -1,42 +1,37 @@
 # Pi file and search adapters
 
-Pi's `read`, `write`, `edit`, `ls`, `find` and `grep` use the same BYOS
-workspace as `bash`. The adapters use the facade's file and search operations.
-Pi keeps its argument handling, edit algorithm, image handling and output
-formatting. The [Pi integration guide][integration] describes installation and
-routing.
+Pi's `read`, `write`, `edit`, `ls`, `find` and `grep` use the same live BYOS
+checkout as `bash`. Load the [Pi integration][integration] and select tools in
+Pi.
 
 [integration]: pi-integration.md
 
-## Required delegation
+## File operations
 
-- Resolve paths and inspect file types through target operations. The adapter
-  must account for cwd, roots, home expansion, separators and filename variants
-  without probing the host filesystem.
-- Run the edit read, transform and write in the facade's mutation queue.
-  Delegate the pure transformation to Pi through a supported API. Preview reads
-  use the target boundary and follow the call's permission rules.
-- Run searches and context reads in the target. Host binary discovery and
-  spawning belong only to passthrough.
-- Detect image type from target bytes. A local file-based helper cannot inspect
-  a path that only exists inside the sandbox.
-- Report unavailable operations as typed capability failures. The adapter cannot
-  fill missing capability with a host operation.
+BYOS supplies SDK operations to Pi's built-in `read`, `write`, `edit`, `ls` and
+`find` definitions. Pi keeps argument handling, the edit algorithm and the
+mutation queue. The adapter translates paths inside the host checkout to the
+corresponding paths inside the target. Image detection reads bytes through the
+SDK.
 
-Milestone 8 routes every listed tool through the facade. The [boundary
-tests][boundary] show gaps in Pi 1.5.0. Some paths resolve against the host
-before reaching an adapter. The edit queue, edit previews, search process
-invocation and image detection also contain host-side steps. Milestone 8 decides
-how to close each gap while preserving Pi's argument and output behaviour.
+Paths outside the checkout keep their absolute host locations. A leading `~`
+expands against the host home directory. The selected provider applies its
+policy when the facade passes the resulting path to it.
 
-[boundary]: ../src/pi-boundaries.test.ts
+Pi's file tools require a live checkout. Pi resolves filename variants in the
+host checkout and keys its mutation queue by host path.
 
-## Acceptance cases
+BYOS reads target bytes through the facade for the edit preview. It runs Pi's
+edit algorithm in memory and escapes display-unsafe characters in the diff. If
+the provider refuses the read, the preview shows the edit arguments and reports
+that the preview is unavailable. The model receives output from the SDK-backed
+tool execution.
 
-Run the adapters in a real Pi session with scripted model calls and permission
-decisions. Use different markers in the host and target to show which tree each
-tool reads and writes. Check POSIX and Windows target paths, images, preview
-reads, edit ordering, cancellation, result transforms and explicit tool
-allowlists. Check that Bash sees a completed edit in the same workspace and that
-a missing operation produces no host effects. Provider conformance tests inspect
-the target independently of Pi's rendered output.
+## Search
+
+`find` uses the facade's glob operation. `grep` uses Pi's schema, display format
+and output truncation. BYOS probes for `rg` inside the target and runs it with
+Pi's flags. If the target lacks `rg`, BYOS uses the facade's portable search.
+The [specification][grep] describes the fallback scope.
+
+[grep]: specification.md#grep

@@ -59,7 +59,7 @@ it.each(['fixtures/diagnostics-extension.ts'])(
 );
 
 it.each(['pi-tools.ts', '../dist/pi-tools.js'])(
-	'loads only the supported shell definitions through Pi: %s',
+	'loads the shell, file and search definitions through Pi: %s',
 	async (extensionPath) => {
 		const result = await load(extensionPath);
 
@@ -73,7 +73,16 @@ it.each(['pi-tools.ts', '../dist/pi-tools.js'])(
 			)
 		}).toStrictEqual({
 			errors: [],
-			tools: ['bash', 'powershell'],
+			tools: [
+				'bash',
+				'powershell',
+				'read',
+				'write',
+				'edit',
+				'ls',
+				'find',
+				'grep'
+			],
 			commands: []
 		});
 	}

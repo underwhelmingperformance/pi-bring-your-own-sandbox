@@ -1222,6 +1222,133 @@ socket.on('error', error => {
 			});
 		}, 30_000);
 
+		it('routes Pi file tools and Bash through the same Docker workspace', async () => {
+			const calls = [
+				[
+					'write',
+					{ path: 'tools-probe.txt', content: 'before\nalpha\nafter\n' }
+				],
+				[
+					'edit',
+					{
+						path: 'tools-probe.txt',
+						edits: [{ oldText: 'alpha', newText: 'needle' }]
+					}
+				],
+				['read', { path: 'tools-probe.txt' }],
+				['ls', { path: '.' }],
+				['find', { pattern: 'tools-probe.txt' }],
+				['grep', { pattern: 'needle', path: 'tools-probe.txt', context: 1 }],
+				['bash', { command: 'cat tools-probe.txt' }],
+				['write', { path: '.envrc', content: 'should not reach the host' }],
+				['read', { path: 'pixel.data' }]
+			] as const;
+			const model = new ScriptedModel(
+				calls.map(([name, arguments_], index) => ({
+					type: 'toolCall',
+					id: 'file-tool-' + String(index),
+					name,
+					arguments: arguments_
+				}))
+			);
+
+			await withDockerSession(
+				async ({ runtime, fixture }) => {
+					await writeFile(
+						path.join(fixture.workspace, 'pixel.data'),
+						Buffer.from(
+							'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/7/QAAAAASUVORK5CYII=',
+							'base64'
+						)
+					);
+					runtime.session.agent.toolExecution = 'sequential';
+					runtime.session.setActiveToolsByName([
+						'read',
+						'write',
+						'edit',
+						'ls',
+						'find',
+						'grep',
+						'bash'
+					]);
+
+					const selected = runtime.session.modelRuntime.getModel(
+						'scripted',
+						'scripted'
+					);
+
+					if (selected === undefined) {
+						throw new Error('The scripted model was not registered.');
+					}
+
+					await runtime.session.setModel(selected);
+					await runtime.session.prompt('Exercise the sandbox file tools.');
+
+					const results = model.requests
+						.at(1)
+						?.messages.filter((message) => message.role === 'toolResult')
+						.map((message) => ({
+							name: message.toolName,
+							isError: message.isError,
+							text: message.content
+								.filter((block) => block.type === 'text')
+								.map((block) => block.text)
+								.join('\n')
+						}));
+					const edited = 'before\nneedle\nafter\n';
+
+					expect(
+						results?.map(({ name, isError }) => [name, isError])
+					).toStrictEqual([
+						['write', false],
+						['edit', false],
+						['read', false],
+						['ls', false],
+						['find', false],
+						['grep', false],
+						['bash', false],
+						['write', true],
+						['read', false]
+					]);
+					expect({
+						read: results?.[2]?.text,
+						ls: results?.[3]?.text.includes('tools-probe.txt'),
+						find: results?.[4]?.text,
+						grep: results?.[5]?.text,
+						bash: results?.[6]?.text.includes('before\nneedle\nafter'),
+						image: results?.[8]?.text.includes('Read image file [image/png]'),
+						workspace: await readFile(
+							path.join(fixture.workspace, 'tools-probe.txt'),
+							'utf8'
+						),
+						protected: await readFile(
+							path.join(fixture.workspace, '.envrc'),
+							'utf8'
+						)
+					}).toStrictEqual({
+						read: edited,
+						ls: true,
+						find: 'tools-probe.txt',
+						grep: 'tools-probe.txt-1- before\ntools-probe.txt:2: needle\ntools-probe.txt-3- after',
+						bash: true,
+						image: true,
+						workspace: edited,
+						protected: 'initial'
+					});
+				},
+				[
+					{
+						name: 'sandbox-tools',
+						factory(pi) {
+							sandboxTools(pi, '<inline:sandbox-tools>');
+						}
+					},
+					model.extension
+				],
+				{ hasGitMetadata: true }
+			);
+		}, 60_000);
+
 		it('matches ripgrep ignore rules, explicit files and glob overrides', async () => {
 			await withDockerSession(
 				async ({ sandbox, fixture }) => {

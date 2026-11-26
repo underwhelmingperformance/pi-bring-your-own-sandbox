@@ -97,6 +97,7 @@ export default defineConfig(
 	{
 		files: [
 			'packages/sdk/src/pi-tools.ts',
+			'packages/sdk/src/integration/file-tools.ts',
 			'packages/sdk/examples/**/*.ts',
 			'packages/!(sdk)/**/*.ts'
 		],

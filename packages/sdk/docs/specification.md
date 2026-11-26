@@ -297,12 +297,19 @@ the backend after an ordinary non-zero exit.
 
 [process]: api-protocol.md#process-files-and-search
 
-The broker serialises file mutations on each sandbox. Pi's `edit` relies on a
-single queued read, transform and write. A later queued edit sees the previous
-write. A failed transform produces no write. This queue covers SDK file
-mutations. Shell commands and independent processes can change files outside it.
-Pi uses the SDK's file and search results, including truncation, to format tool
-output consistently across providers.
+The broker serialises SDK file mutations on each sandbox. `updateText` queues
+the complete read, transform and write. A later queued edit sees the previous
+write. A failed transform produces no write. Shell commands and independent
+processes can change files outside the queue.
+
+Pi's file tools use its built-in definitions with SDK operations. Pi runs its
+edit algorithm in its own in-process queue, keyed by host path. The Pi queue
+does not serialise with the SDK's `updateText` queue. Pi's grep uses the
+target's `rg` when available and formats the results with Pi's truncation
+helpers. The [adapter guide][file-adapters] describes the host-side steps and
+the limits of this integration.
+
+[file-adapters]: pi-file-adapters.md
 
 ## Escalation
 

@@ -10,6 +10,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import { expect, it } from 'vitest';
 
@@ -22,6 +23,24 @@ import {
 } from '../../../test-support/packages.js';
 
 import { isRecord } from './validation.js';
+
+async function assertNodeEntryPoints(directory: string): Promise<void> {
+	const entryPoints = ['consumer', 'host', 'pi-tools', 'provider', 'testing'];
+	const plainNode = await run(directory, process.execPath, [
+		'--input-type=module',
+		'-e',
+		`const entries = ${JSON.stringify(entryPoints)};
+for (const entry of entries) {
+  const specifier = 'pi-bring-your-own-sandbox/' + entry;
+  await import(specifier);
+  const filename = import.meta.resolve(specifier);
+  if (!filename.includes('/dist/') || !filename.endsWith('.js')) throw new Error(filename);
+}
+process.stdout.write(JSON.stringify(entries));`
+	]);
+
+	expect(JSON.parse(plainNode.stdout)).toStrictEqual(entryPoints);
+}
 
 it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 	'clean tarball installs with Vitest %s (pnpm test:package installs isolated dependency roots)',
@@ -176,27 +195,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 			await run(host, 'pnpm', ['exec', 'tsc', '--noEmit']);
 			await add(host, ['typebox@1.3.27', `vitest@${vitestVersion}`]);
 
-			const entryPoints = [
-				'consumer',
-				'host',
-				'pi-tools',
-				'provider',
-				'testing'
-			];
-			const plainNode = await run(host, process.execPath, [
-				'--input-type=module',
-				'-e',
-				`const entries = ${JSON.stringify(entryPoints)};
-for (const entry of entries) {
-  const specifier = 'pi-bring-your-own-sandbox/' + entry;
-  await import(specifier);
-  const filename = import.meta.resolve(specifier);
-  if (!filename.includes('/dist/') || !filename.endsWith('.js')) throw new Error(filename);
-}
-process.stdout.write(JSON.stringify(entries));`
-			]);
-
-			expect(JSON.parse(plainNode.stdout)).toStrictEqual(entryPoints);
+			await assertNodeEntryPoints(host);
 
 			await add(
 				provider,
@@ -329,4 +328,46 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
 		}
 	},
 	300_000
+);
+
+it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
+	'imports every SDK entry point from an installed Git subdirectory',
+	async () => {
+		const directory = await mkdtemp(
+			path.join(tmpdir(), 'pi-byos-git-install-')
+		);
+		const consumer = path.join(directory, 'consumer');
+
+		try {
+			const [root, revision] = await Promise.all([
+				run(process.cwd(), 'git', ['rev-parse', '--show-toplevel']),
+				run(process.cwd(), 'git', ['rev-parse', 'HEAD'])
+			]);
+			const origin = pathToFileURL(root.stdout.trim()).href;
+			const source = `git+${origin}#${revision.stdout.trim()}&path:/packages/sdk`;
+
+			await project(consumer);
+			await writeFile(
+				path.join(consumer, 'pnpm-workspace.yaml'),
+				[
+					'allowBuilds:',
+					`  ${JSON.stringify('pi-bring-your-own-sandbox@' + source)}: true`,
+					"  '@google/genai': false",
+					'  protobufjs: false',
+					''
+				].join('\n')
+			);
+			await run(consumer, 'pnpm', [
+				'add',
+				`pi-bring-your-own-sandbox@${source}`,
+				'vitest@5.1.0',
+				'--strict-peer-dependencies',
+				'--prefer-offline'
+			]);
+			await assertNodeEntryPoints(consumer);
+		} finally {
+			await rm(directory, { recursive: true, force: true });
+		}
+	},
+	180_000
 );

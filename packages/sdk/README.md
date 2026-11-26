@@ -37,6 +37,33 @@ separate entry points with stricter default policies.
 [testing]: docs/provider-testing.md
 [docker]: ../provider-docker/README.md
 
+## Install the SDK from Git
+
+To install a revision of the SDK with pnpm, add the Git subdirectory to
+`package.json`.
+
+```json
+{
+  "dependencies": {
+    "pi-bring-your-own-sandbox": "git+https://github.com/underwhelmingperformance/pi-bring-your-own-sandbox.git#<sha>&path:/packages/sdk"
+  }
+}
+```
+
+The SDK compiles its entry points during installation. Allow the build with an
+entry in `pnpm-workspace.yaml`.
+
+```yaml
+allowBuilds:
+  'pi-bring-your-own-sandbox@git+https://github.com/underwhelmingperformance/pi-bring-your-own-sandbox.git#<sha>&path:/packages/sdk': true
+```
+
+Replace `<sha>` with the same full commit SHA in both files. The [pnpm build
+setting][pnpm-builds] checks the package name, Git URL, revision and
+subdirectory together.
+
+[pnpm-builds]: https://pnpm.io/settings#allowbuilds
+
 ## Development
 
 Follow the [development guide][validation] to install dependencies and run

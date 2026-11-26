@@ -275,10 +275,10 @@ Enforced by:
 
 ## 11. A small surface, split by audience
 
-Each audience has its own entry point: consumers, providers, the embedding host,
-reviewers, the Pi tool integration and the test kit. Nothing is exported unless
-someone in that audience uses it. Message formats and channel names stay
-internal.
+Consumers, providers, the embedding host, the Pi tool integration and the test
+kit have their own entry points. Reviewers and permission extensions use the
+consumer client for review and escalation. Nothing is exported unless someone in
+that audience uses it. Message formats and channel names stay internal.
 
 Every capability in the contract has a consumer that uses it. A capability
 without one waits until a consumer exists.
@@ -289,14 +289,21 @@ removing something after release is not. Mixing audiences in one entry point
 also gives callers operations meant for someone else, such as letting any
 consumer close the user's session.
 
+Integrations outside the SDK use only the public entry points. The SDK's Pi
+integration reaches internal code through `src/integration/privileged.ts`. That
+module binds the broker, registers review routes, prepares escalations and
+verifies pending calls. These operations protect the review route and its
+decisions. Exposing them publicly would give callers authority beyond
+principle 2.
+
 Enforced by:
 
 - the package `exports` map;
 - a committed report of the public API, which changes only when a change intends
   it to;
 - knip;
-- lint rules for import boundaries, so the Pi integration uses only the public
-  entry points.
+- lint rules for the public entry points and the Pi integration's internal
+  boundary.
 
 ## 12. Shared work belongs in the SDK, and isolation belongs to providers
 

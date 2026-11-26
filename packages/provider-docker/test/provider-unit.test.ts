@@ -1053,7 +1053,7 @@ it.each([-1_000_000, 1_000_000])(
 	}
 );
 
-it.each(['session', 'socket', 'backend'])(
+it.each(['session', 'socket', 'backend', 'owner', 'lifetime'])(
 	'rejects a copy with a mismatched %s before allocation',
 	async (field) => {
 		const docker = new FakeDocker();
@@ -1068,12 +1068,18 @@ it.each(['session', 'socket', 'backend'])(
 			}
 		};
 		const parent = await provider.copy(hostCopy, opening);
+		const copyingProvider =
+			field === 'owner' ? createDockerProvider(() => docker) : provider;
 
 		try {
+			if (field === 'lifetime') {
+				await parent.dispose(context());
+			}
+
 			const before = docker.commands.length;
 
 			await expect(
-				provider.copy(
+				copyingProvider.copy(
 					{
 						...request,
 						sessionId: field === 'session' ? 'different' : request.sessionId,

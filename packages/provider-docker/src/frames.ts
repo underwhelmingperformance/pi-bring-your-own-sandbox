@@ -6,9 +6,8 @@ import type {
 	SandboxErrorInfo
 } from 'pi-bring-your-own-sandbox/provider';
 import {
+	mapSandboxErrno,
 	SandboxOperationError,
-	SandboxPathNotFoundError,
-	SandboxPermissionDeniedError,
 	SandboxTransportError
 } from 'pi-bring-your-own-sandbox/provider';
 import { Compile } from 'typebox/compile';
@@ -84,13 +83,13 @@ export class LaunchFrames {
 			}
 
 			case 'not-found': {
-				this.#failure = new SandboxPathNotFoundError(identity);
+				this.#failure = mapSandboxErrno('ENOENT', identity);
 
 				return;
 			}
 
 			case 'permission-denied': {
-				this.#failure = new SandboxPermissionDeniedError(identity);
+				this.#failure = mapSandboxErrno('EACCES', identity);
 
 				return;
 			}

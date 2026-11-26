@@ -76,7 +76,9 @@ const nonFactoryFunctions = new Set([
 	'closeSandboxSession',
 	'createSandboxCleanupContext',
 	'isSandboxError',
+	'mapSandboxErrno',
 	'resolveSandboxCleanupBudgets',
+	'resolveSandboxCopySource',
 	'sendDisplayMessage'
 ]);
 

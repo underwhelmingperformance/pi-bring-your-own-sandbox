@@ -19,6 +19,7 @@ import type {
 } from 'pi-bring-your-own-sandbox/provider';
 import {
 	isSandboxError,
+	resolveSandboxCopySource,
 	SandboxCancelledError,
 	SandboxCleanupError,
 	SandboxOperationError,
@@ -26,7 +27,6 @@ import {
 	SandboxPermissionDeniedError,
 	SandboxSessionClosingError,
 	SandboxTransportError,
-	StaleSandboxHandleError,
 	UnsupportedSandboxCapabilityError,
 	UnsupportedSandboxPolicyError
 } from 'pi-bring-your-own-sandbox/provider';
@@ -111,12 +111,18 @@ export interface DockerProviderOptions {
 	readonly powerShellImage?: string;
 }
 
+interface CopyOwner {
+	readonly provider: symbol;
+	readonly sessionId: string;
+	readonly socketPath: string;
+}
+
 class DockerBackend implements SandboxBackend {
 	static readonly copiedDescription =
 		'Jobs use a copied workspace, a read-only Debian image, private scratch space, UID 65534 and no network. Host files outside the copied workspace are not mounted.';
 	readonly #shared: SharedCheckout | undefined;
 	readonly #resources: DockerResources;
-	readonly #onClose: () => void;
+	readonly #owner: CopyOwner;
 	readonly #snapshots = new Set<Promise<void>>();
 	readonly #launcher: string;
 	readonly #image: string;
@@ -141,7 +147,7 @@ class DockerBackend implements SandboxBackend {
 		launcher: string,
 		client: DockerClient,
 		helpers: DockerFileHelpers,
-		onClose: () => void,
+		owner: CopyOwner,
 		image: string,
 		source?: SandboxCopySource,
 		shared?: SharedCheckout
@@ -172,7 +178,7 @@ class DockerBackend implements SandboxBackend {
 								? 'Private copy of the host checkout.'
 								: 'Private copy of another Docker workspace.'
 					};
-		this.#onClose = onClose;
+		this.#owner = owner;
 		this.#image = image;
 		this.#resources = resources;
 		this.#launcher = launcher;
@@ -456,6 +462,15 @@ class DockerBackend implements SandboxBackend {
 		await this.#resources.dispose(context);
 	}
 
+	belongsTo(owner: CopyOwner): boolean {
+		return (
+			!this.#lifetime.signal.aborted &&
+			this.#owner.provider === owner.provider &&
+			this.#owner.sessionId === owner.sessionId &&
+			this.#owner.socketPath === owner.socketPath
+		);
+	}
+
 	async copyInto(
 		backend: DockerBackend,
 		importer: string,
@@ -687,7 +702,6 @@ class DockerBackend implements SandboxBackend {
 			return this.#closing;
 		}
 
-		this.#onClose();
 		this.#lifetime.abort();
 		this.#closing = this.#dispose(context);
 
@@ -749,14 +763,7 @@ export function createDockerProvider(
 		copy: [restricted]
 	};
 
-	const active = new Map<
-		string,
-		{
-			backend: DockerBackend;
-			sessionId: string;
-			socketPath: string;
-		}
-	>();
+	const provider = Symbol('Docker provider');
 
 	async function allocate(
 		request: SandboxOpenRequest<DockerConfig>,
@@ -781,18 +788,19 @@ export function createDockerProvider(
 			});
 		}
 
+		const owner = {
+			provider,
+			sessionId: request.sessionId,
+			socketPath: request.configuration.socketPath
+		};
 		const parent =
-			source?.kind === 'backend' ? active.get(source.backend.id) : undefined;
-
-		if (
-			source?.kind === 'backend' &&
-			(parent === undefined ||
-				parent.backend !== source.backend ||
-				parent.sessionId !== request.sessionId ||
-				parent.socketPath !== request.configuration.socketPath)
-		) {
-			throw new StaleSandboxHandleError({ operation: 'open' });
-		}
+			source === undefined
+				? undefined
+				: resolveSandboxCopySource(
+						source,
+						(backend): backend is DockerBackend =>
+							backend instanceof DockerBackend && backend.belongsTo(owner)
+					);
 
 		const client =
 			createClient?.(request.configuration) ??
@@ -899,9 +907,7 @@ export function createDockerProvider(
 			launcher,
 			client,
 			{ files, search, matcher },
-			() => {
-				active.delete(resources.volume);
-			},
+			owner,
 			image,
 			source,
 			shared
@@ -914,14 +920,8 @@ export function createDockerProvider(
 				context
 			);
 		} else {
-			await parent.backend.copyInto(backend, importer, context);
+			await parent.copyInto(backend, importer, context);
 		}
-
-		active.set(backend.id, {
-			backend,
-			sessionId: request.sessionId,
-			socketPath: request.configuration.socketPath
-		});
 
 		return backend;
 	}

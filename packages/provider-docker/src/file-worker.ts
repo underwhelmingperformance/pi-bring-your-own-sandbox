@@ -7,6 +7,7 @@ import type {
 	SandboxOperationContext
 } from 'pi-bring-your-own-sandbox/provider';
 import {
+	mapSandboxErrno,
 	SandboxCancelledError,
 	SandboxCleanupError,
 	SandboxOperationError,
@@ -365,11 +366,11 @@ export class DockerFileWorker implements BackendFileReader {
 				}
 
 				case 40: {
-					throw new SandboxPathNotFoundError(identity);
+					throw mapSandboxErrno('ENOENT', identity);
 				}
 
 				case 41: {
-					throw new SandboxPermissionDeniedError(identity);
+					throw mapSandboxErrno('EACCES', identity);
 				}
 
 				case 42: {

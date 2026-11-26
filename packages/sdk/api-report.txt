@@ -61,6 +61,7 @@ type SandboxCleanupBudgets (contracts.d.ts)
 type SandboxCleanupContext (contracts.d.ts)
 type SandboxConfigContext (contracts.d.ts)
 type SandboxCopySource (contracts.d.ts)
+type SandboxErrorContext (contracts.d.ts)
 type SandboxErrorInfo (contracts.d.ts)
 type SandboxHost (contracts.d.ts)
 type SandboxOpenContext (contracts.d.ts)
@@ -89,8 +90,10 @@ value cleanDisplayText (display-text.d.ts)
 value createSandboxCleanupContext (provider-cleanup.d.ts)
 value credentialLocations (credential-locations.d.ts)
 value isSandboxError (errors.d.ts)
+value mapSandboxErrno (host-error.d.ts)
 value registerSandboxProvider (provider-registration.d.ts)
 value resolveCleanupBudgets as resolveSandboxCleanupBudgets (cleanup-budgets.d.ts)
+value resolveSandboxCopySource (provider-copy.d.ts)
 value sendDisplayMessage (display-ui.d.ts)
 
 pi-bring-your-own-sandbox/testing
@@ -1066,6 +1069,135 @@ type ReadonlyData<Value> = Value extends object ? {
     readonly [Key in keyof Value]: ReadonlyData<Value[Key]>;
 } : Value;
 
+// host-error.d.ts
+export declare function mapSandboxErrno(cause: unknown, context: SandboxErrorContext): SandboxOperationError | SandboxPathNotFoundError | SandboxPermissionDeniedError | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: "ConflictingSandboxConfigError";
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: "ConflictingSandboxProviderError";
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: "DuplicateBrokerError";
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: "DuplicateProviderError";
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: "IncompatibleSandboxProtocolError";
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: "InvalidSandboxConfigError";
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: "InvalidSandboxDeclarationError";
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: "InvalidSandboxRequestError";
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: "ProviderNotFoundError";
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: "SandboxInitialisationError";
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: "SandboxProviderMismatchError";
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: "SandboxProviderRequiredError";
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: "SandboxSessionClosingError";
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: "SandboxStartupError";
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: "StaleSandboxHandleError";
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: "UnsupportedSandboxCapabilityError";
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: "UnsupportedSandboxPolicyError";
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: "SandboxTransportError";
+    readonly reason?: import("./contracts.js").CancellationReason;
+    readonly completion: 'unknown';
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: "UnconfirmedSandboxTerminationError";
+    readonly reason?: import("./contracts.js").CancellationReason;
+    readonly completion: 'unknown';
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: 'SandboxCleanupError';
+    readonly closeReport?: import("./contracts.js").SandboxCloseReport;
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: 'SandboxCancelledError';
+    readonly reason: 'caller' | 'shutdown';
+    readonly completion: import("./contracts.js").OperationCompletion;
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: 'SandboxTimeoutError';
+    readonly reason: 'deadline';
+    readonly completion: import("./contracts.js").OperationCompletion;
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
+    readonly name: 'SandboxOutputCallbackError';
+    readonly reason: 'output';
+    readonly completion: import("./contracts.js").OperationCompletion;
+});
+
 // host.d.ts
 export declare function initialiseSandboxHost(pi: SandboxHost, extensionSource: string, options: SandboxHostOptions): void;
 
@@ -1207,6 +1339,9 @@ export declare function createSandboxCleanupContext(context: Pick<SandboxOperati
 
 // provider-contract-runner.d.ts
 export declare function defineSandboxProviderTests<Config>(options: SandboxProviderTestOptions<Config>): void;
+
+// provider-copy.d.ts
+export declare function resolveSandboxCopySource<Backend extends SandboxBackend>(source: SandboxCopySource, isValidSource: (backend: SandboxBackend) => backend is Backend): Backend | undefined;
 
 // provider-registration.d.ts
 export declare function registerSandboxProvider<Config, Input = Config>(pi: SandboxHost, extensionSource: string, provider: SandboxProvider<Config>, options?: NoInfer<SandboxProviderRegistration<Input>>): void;

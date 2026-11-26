@@ -23,6 +23,7 @@ export type {
 	SandboxCleanupContext,
 	SandboxConfigContext,
 	SandboxCopySource,
+	SandboxErrorContext,
 	SandboxErrorInfo,
 	SandboxHost,
 	SandboxOpenContext,
@@ -54,5 +55,7 @@ export {
 	UnsupportedSandboxCapabilityError,
 	UnsupportedSandboxPolicyError
 } from './errors.js';
+export { mapSandboxErrno } from './host-error.js';
 export { createSandboxCleanupContext } from './provider-cleanup.js';
+export { resolveSandboxCopySource } from './provider-copy.js';
 export { registerSandboxProvider } from './provider-registration.js';

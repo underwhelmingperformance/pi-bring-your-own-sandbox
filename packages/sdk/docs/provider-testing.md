@@ -27,6 +27,12 @@ the declared profiles:
 The suite supplies the broker and Pi session. If a probe cannot observe an
 advertised property, setup fails for the corresponding case family.
 
+Pass a provider in the suite options or return it from `createFixture`. When the
+suite selects a profile, `createFixture` receives the profile and acquisition
+mode. Use them to seed the right workspace and supply the policy for that case.
+`verifyDisposed` receives the raw backend and its recovery descriptor. The
+backend is absent if the provider failed before returning it.
+
 ## Search engines
 
 Supply `rg` inside the target for full ripgrep semantics. The portable Linux

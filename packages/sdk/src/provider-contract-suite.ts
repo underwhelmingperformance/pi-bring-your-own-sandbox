@@ -328,14 +328,16 @@ export async function usingProviderFixture<Config>(
 				deadlines,
 				async () => {
 					for (const { attempt } of runtimes) {
-						if (
-							attempt.recovery !== undefined ||
-							attempt.backend !== undefined
-						) {
-							await fixture.verifyDisposed(
-								attempt.backend,
-								attempt.recovery ?? attempt.backend?.recovery
-							);
+						for (const observation of [attempt, ...(attempt.followups ?? [])]) {
+							if (
+								observation.recovery !== undefined ||
+								observation.backend !== undefined
+							) {
+								await fixture.verifyDisposed(
+									observation.backend,
+									observation.recovery ?? observation.backend?.recovery
+								);
+							}
 						}
 					}
 
@@ -807,6 +809,46 @@ export function providerContractCases<Config>(
 	];
 
 	const restrictions = options.policyEffects ?? [];
+
+	if (capabilities.operations.includes('copy')) {
+		cases.push({
+			label: 'copies from an existing backend',
+			async run(fixture, _backend, context, _afterDisposal, subject) {
+				if (subject === undefined) {
+					throw new Error('The backend-copy case requires the broker fixture.');
+				}
+
+				const copy = await subject.sandbox.copy({ signal: context.signal });
+
+				try {
+					expect({
+						provider: copy.sandbox.providerId,
+						isIndependent: copy.sandbox.backendId !== subject.sandbox.backendId,
+						relationship: copy.sandbox.workspace.relationship
+					}).toStrictEqual({
+						provider: subject.sandbox.providerId,
+						isIndependent: true,
+						relationship: 'copied'
+					});
+
+					if (
+						fixture.read !== undefined &&
+						copy.sandbox.capabilities.operations.includes('files.read')
+					) {
+						expect(
+							await copy.sandbox.files.readFile(fixture.read.path)
+						).toStrictEqual(fixture.read.bytes);
+					}
+				} finally {
+					expect(await copy.close()).toStrictEqual({
+						confirmed: true,
+						failures: [],
+						recoveries: []
+					});
+				}
+			}
+		});
+	}
 
 	for (const scenario of restrictions) {
 		cases.push({

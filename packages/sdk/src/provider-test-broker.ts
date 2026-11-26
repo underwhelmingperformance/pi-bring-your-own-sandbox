@@ -27,6 +27,7 @@ function ignoreEvent(): void {
 export interface FixtureAttempt {
 	backend?: SandboxBackend;
 	recovery?: RecoveryDescriptor;
+	followups?: FixtureAttempt[];
 }
 
 export function fixtureBroker<Config>(
@@ -34,7 +35,8 @@ export function fixtureBroker<Config>(
 	workspace: string,
 	config: unknown,
 	settings: SandboxSharedSettings,
-	attempt: FixtureAttempt
+	attempt: FixtureAttempt,
+	intercept?: (backend: SandboxBackend) => SandboxBackend
 ) {
 	let isReady = false;
 
@@ -64,17 +66,24 @@ export function fixtureBroker<Config>(
 		run: (running: SandboxOpenContext) => Promise<SandboxBackend>,
 		running: SandboxOpenContext
 	): Promise<SandboxBackend> {
+		let observation = attempt;
+
+		if (attempt.backend !== undefined) {
+			observation = {};
+			(attempt.followups ??= []).push(observation);
+		}
+
 		const backend = await run({
 			...running,
 			reportRecovery(recovery) {
 				running.reportRecovery(recovery);
-				attempt.recovery = recovery;
+				observation.recovery = recovery;
 			}
 		});
 
-		attempt.backend = backend;
+		observation.backend = backend;
 
-		return backend;
+		return intercept?.(backend) ?? backend;
 	}
 
 	const copy = provider.copy?.bind(provider);
@@ -101,10 +110,18 @@ export function fixtureBroker<Config>(
 	isReady = true;
 
 	const broker = ensureSandboxService(pi);
+	const planEscalation = broker.planEscalation?.bind(broker);
+
+	if (planEscalation === undefined) {
+		throw new Error('The broker does not support escalation planning.');
+	}
 
 	return {
 		client,
 		context,
+		status: () => broker.status(context),
+		planEscalation: (options: SandboxAcquireOptions) =>
+			planEscalation(context, options),
 		negotiate: (options: SandboxAcquireOptions) =>
 			client.negotiate(context, options),
 		async acquire(options: SandboxAcquireOptions, mode: 'open' | 'copy') {

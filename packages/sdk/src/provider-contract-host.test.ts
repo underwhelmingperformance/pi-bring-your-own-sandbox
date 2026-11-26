@@ -31,7 +31,7 @@ const provider: SandboxProvider<undefined> = {
 		return;
 	},
 	open: (request, context) =>
-		openPassthrough(request.hostWorkspace, context, hostProfile)
+		openPassthrough(request.hostWorkspace, context, hostProfile, request.paths)
 };
 
 defineSandboxProviderTests({

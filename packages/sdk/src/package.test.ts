@@ -224,8 +224,8 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 
 			expect(result).toMatchObject({
 				success: true,
-				numTotalTests: 5,
-				numPassedTests: 5,
+				numTotalTests: 14,
+				numPassedTests: 14,
 				testResults: [
 					{
 						assertionResults: expect.arrayContaining([

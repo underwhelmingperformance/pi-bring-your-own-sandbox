@@ -86,7 +86,7 @@ const satisfiesAccess = {
 	(policy: Policy, state: AccessState) => boolean
 >;
 
-function isWithinLimit(policy: Policy, limit: Policy): boolean {
+export function isWithinLimit(policy: Policy, limit: Policy): boolean {
 	return accessOrder.every((property) => {
 		const rank = accessRanks[property];
 

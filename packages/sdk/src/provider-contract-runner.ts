@@ -1,15 +1,25 @@
 import { describe, it } from 'vitest';
 
 import { resolveCleanupBudgets } from './cleanup-budgets.js';
+import { credentialLocations } from './credential-locations.js';
+import { unrestrictedPolicy } from './policy-model.js';
+import { isWithinLimit } from './profile-negotiation.js';
 import {
 	providerContractCases,
 	usingProviderFixture
 } from './provider-contract-suite.js';
+import { verifyCredentialExclusion } from './provider-credential-suite.js';
+import { verifyOpeningCase } from './provider-opening-suite.js';
+import {
+	invalidSharedSettings,
+	verifyFixtureSettings
+} from './provider-settings-suite.js';
 import type {
 	SandboxProviderFixtureOptions,
 	SandboxProviderTestOptions,
 	SandboxProviderTestSelection
 } from './provider-test-contracts.js';
+import { verifyWorkspaceCase } from './provider-workspace-suite.js';
 
 /**
 Registers Vitest cases for a provider's selected operations and policies. Call
@@ -49,29 +59,109 @@ export function defineSandboxProviderTests<Config>(
 		const isFocused =
 			options.workspaceVisibility !== undefined ||
 			options.capabilities !== undefined;
-		const cases = isFocused
-			? providerContractCases(registered)
+		const variants = isFocused
+			? [
+					{
+						mode:
+							options.workspaceVisibility === 'copied'
+								? ('copy' as const)
+								: ('open' as const),
+						label: ''
+					}
+				]
 			: (['open', 'copy'] as const).flatMap((mode) =>
-					registered.provider.profiles[mode].flatMap((profile, index) => {
-						const selection: SandboxProviderTestSelection = { mode, profile };
-
-						return providerContractCases(registered, selection).map(
-							(entry) => ({
-								...entry,
-								label: `${mode} profile ${String(index + 1)}: ${entry.label}`
-							})
-						);
-					})
+					registered.provider.profiles[mode].map((profile, index) => ({
+						mode,
+						selection: { mode, profile } satisfies SandboxProviderTestSelection,
+						label: `${mode} profile ${String(index + 1)}: `
+					}))
 				);
 
-		for (const entry of cases) {
+		for (const variant of variants) {
+			const { mode, label } = variant;
+			const selection = 'selection' in variant ? variant.selection : undefined;
+
+			for (const entry of providerContractCases(registered, selection)) {
+				it(
+					label + entry.label,
+					() => usingProviderFixture(registered, entry),
+					testTimeout +
+						(entry.operation === 'independent-disposal'
+							? (options.timeoutMs ?? 10_000) + cleanup.disposalTimeoutMs
+							: 0)
+				);
+			}
+
+			for (const [fault, title] of [
+				['cancelled', 'disposes an allocation cancelled during open'],
+				['invalid', 'cleans up an allocation after open validation fails'],
+				['unconfirmed', 'reports recovery when cleanup cannot be confirmed']
+			] as const) {
+				it(
+					label + title,
+					() => verifyOpeningCase(registered, mode, fault, selection),
+					testTimeout
+				);
+			}
+
+			if (
+				selection !== undefined &&
+				!('provider' in options) &&
+				selection.profile.policy.hostUserData !== 'denied'
+			) {
+				for (const location of credentialLocations) {
+					it(
+						label + 'excludes the credential location ' + location,
+						() => verifyCredentialExclusion(registered, selection, location),
+						testTimeout
+					);
+				}
+			}
+		}
+
+		if (options.workspaceVisibility === 'shared') {
+			const hasIsolation = registered.provider.profiles.open.every(
+				({ policy }) => !isWithinLimit(unrestrictedPolicy, policy)
+			);
+
+			if (hasIsolation && process.platform !== 'win32') {
+				it(
+					'refuses a workspace with a special file',
+					() => verifyWorkspaceCase(registered, 'special'),
+					testTimeout
+				);
+			}
+
 			it(
-				entry.label,
-				() => usingProviderFixture(registered, entry),
-				testTimeout +
-					(entry.operation === 'independent-disposal'
-						? (options.timeoutMs ?? 10_000) + cleanup.disposalTimeoutMs
-						: 0)
+				'grants a reachable read path in the workspace',
+				() => verifyWorkspaceCase(registered, 'read-grant'),
+				testTimeout
+			);
+		}
+
+		if (
+			registered.provider.profiles.open.length === 0 ||
+			options.workspaceVisibility === 'copied'
+		) {
+			return;
+		}
+
+		it(
+			'uses the shared settings',
+			() => verifyFixtureSettings(registered, 'valid'),
+			testTimeout
+		);
+		it(
+			'uses the default configured policy',
+			() => verifyFixtureSettings(registered, 'default'),
+			testTimeout
+		);
+
+		for (const invalid of invalidSharedSettings) {
+			it(
+				'refuses an invalid ' + invalid.field + ' setting before allocation',
+				() => verifyFixtureSettings(registered, invalid),
+				testTimeout
 			);
 		}
 	});

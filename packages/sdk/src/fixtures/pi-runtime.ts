@@ -35,6 +35,7 @@ interface RuntimeOptions {
 	readonly includeBuiltins?: boolean;
 	readonly projectTrusted?: boolean;
 	readonly notify?: ExtensionUIContext['notify'];
+	readonly select?: ExtensionUIContext['select'];
 	readonly tools?: readonly string[];
 	readonly bindFixtureSources?: boolean;
 	readonly additionalExtensionPaths?: readonly string[];
@@ -155,11 +156,17 @@ export async function withPiRuntime(
 
 		const bind = (session: AgentSession) =>
 			session.bindExtensions({
-				...(fixtureOptions?.notify !== undefined && {
+				...((fixtureOptions?.notify !== undefined ||
+					fixtureOptions?.select !== undefined) && {
 					mode: 'tui',
 					uiContext: {
 						...session.extensionRunner.getUIContext(),
-						notify: fixtureOptions.notify
+						...(fixtureOptions.notify !== undefined && {
+							notify: fixtureOptions.notify
+						}),
+						...(fixtureOptions.select !== undefined && {
+							select: fixtureOptions.select
+						})
 					}
 				}),
 				onError: (error) => {

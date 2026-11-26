@@ -10,13 +10,13 @@ import type {
 import type { GenerationDependencies } from './generation.js';
 import { SandboxGeneration } from './generation.js';
 import type {
-	BrokerServiceV1,
+	BrokerService,
 	CopySourceIdentity,
 	ProviderInfo,
 	SandboxStatus
 } from './protocol.js';
 
-export class SandboxBroker implements BrokerServiceV1 {
+export class SandboxBroker implements BrokerService {
 	readonly #dependencies: GenerationDependencies;
 	#generation: SandboxGeneration | undefined;
 	#isClosing = false;
@@ -74,6 +74,10 @@ export class SandboxBroker implements BrokerServiceV1 {
 
 	negotiate(context: SandboxContext, options?: SandboxAcquireOptions) {
 		return this.#resolve(context).negotiate(context, options);
+	}
+
+	planEscalation(context: SandboxContext, options: SandboxAcquireOptions) {
+		return this.#resolve(context).planEscalation(context, options);
 	}
 
 	close(context: SandboxContext): Promise<SandboxCloseReport> {

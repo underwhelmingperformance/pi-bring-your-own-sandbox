@@ -58,7 +58,8 @@ export const capabilitySchema = Type.Union([
 	Type.Literal('files.list'),
 	Type.Literal('search.find'),
 	Type.Literal('search.grep'),
-	Type.Literal('copy')
+	Type.Literal('copy'),
+	Type.Literal('violations')
 ]);
 export const processKindSchema = Type.Union([
 	Type.Literal('argv'),

@@ -1,3 +1,5 @@
+import { homedir } from 'node:os';
+
 import type {
 	ExtensionAPI,
 	ExtensionContext
@@ -6,11 +8,15 @@ import type {
 import { copyHostWorkspace, getSandbox } from './client.js';
 import type { Sandbox, SandboxCopy, SandboxCopyOptions } from './contracts.js';
 import {
+	InvalidSandboxRequestError,
 	StaleSandboxHandleError,
 	UnsupportedSandboxCapabilityError
 } from './errors.js';
+import type { EscalationDecision } from './escalation-ledger.js';
+import { appendLedgerEntry } from './escalation-ledger.js';
 import { boundedApproval } from './execution-approval.js';
 import { OperationScope } from './lifecycle.js';
+import { unrestrictedPolicy } from './policy-model.js';
 import { protocolAddress } from './protocol-address.js';
 import { onProtocolRequest, REVIEW_CHANNEL } from './protocol-envelope.js';
 import { findReviewRequest, sourceReply } from './protocol-payloads.js';
@@ -22,6 +28,11 @@ import {
 	rethrowCopyError
 } from './sandbox-copy.js';
 import { checker } from './schemas.js';
+import {
+	effectiveCommand,
+	escalationInput,
+	PendingEscalation
+} from './shell-escalation.js';
 import { isRecord } from './validation.js';
 
 type BoundDestination =
@@ -32,6 +43,7 @@ interface Route {
 	readonly command: string;
 	readonly prefix: string | undefined;
 	readonly isOutside: boolean;
+	readonly escalation?: PendingEscalation;
 	destination?: BoundDestination;
 }
 
@@ -40,8 +52,12 @@ const isReviewQuery = checker(findReviewRequest);
 export class ShellReviewRoutes {
 	readonly #routes = new Map<string, Route>();
 
-	constructor(pi: ExtensionAPI, toolName: string, isSelected: () => boolean) {
-		pi.on('tool_execution_start', (event, context) => {
+	constructor(
+		pi: ExtensionAPI,
+		toolName: 'bash' | 'powershell',
+		isSelected: () => boolean
+	) {
+		pi.on('tool_execution_start', async (event, context) => {
 			if (event.toolName !== toolName || !isSelected()) {
 				return;
 			}
@@ -52,13 +68,26 @@ export class ShellReviewRoutes {
 				return;
 			}
 
+			const prefix =
+				toolName === 'bash' ? pi.getSettings().shellCommandPrefix : undefined;
+			const requested = escalationInput(
+				event.toolCallId,
+				effectiveCommand(input['command'], prefix),
+				{ escalate: input['escalate'], justification: input['justification'] }
+			);
+			const escalation =
+				requested === undefined
+					? undefined
+					: new PendingEscalation(pi, context, requested);
+
 			this.#routes.set(event.toolCallId, {
 				context,
 				command: input['command'],
-				prefix:
-					toolName === 'bash' ? pi.getSettings().shellCommandPrefix : undefined,
-				isOutside: input['execution'] === 'outside-sandbox'
+				prefix,
+				isOutside: input['execution'] === 'outside-sandbox',
+				...(escalation !== undefined && { escalation })
 			});
+			await escalation?.prepare(toolName);
 		});
 
 		const local = protocolAddress(pi.events);
@@ -94,17 +123,30 @@ export class ShellReviewRoutes {
 					return;
 				}
 
+				const isCurrent = () => this.#routes.get(id) === route && isSelected();
+				const pending = route.escalation;
+				const escalation = pending?.request;
+
 				return projectReply(
 					sourceReply,
 					{
 						type: 'source',
 						copy: (options?: SandboxCopyOptions) =>
-							this.#copy(
-								pi,
-								route,
-								options,
-								() => this.#routes.get(id) === route && isSelected()
-							)
+							this.#copy(pi, route, options, isCurrent, {
+								id,
+								extension: request.extensionSource
+							}),
+						...(pending !== undefined &&
+							escalation !== undefined && {
+								escalation,
+								recordDecision: (decision: EscalationDecision) => {
+									if (!isCurrent()) {
+										throw new InvalidSandboxRequestError({ operation: 'exec' });
+									}
+
+									pending.record(decision, request.extensionSource);
+								}
+							})
 					},
 					local,
 					request
@@ -113,23 +155,35 @@ export class ShellReviewRoutes {
 		);
 
 		pi.on('tool_result', (event) => {
-			if (event.toolName === toolName) {
-				this.#routes.delete(event.toolCallId);
+			if (event.toolName !== toolName) {
+				return;
 			}
+
+			this.#routes.get(event.toolCallId)?.escalation?.finish();
+			this.#routes.delete(event.toolCallId);
 		});
 		pi.on('turn_end', () => {
-			this.#routes.clear();
+			this.#clear();
 		});
 		pi.on('session_shutdown', () => {
-			this.#routes.clear();
+			this.#clear();
 		});
+	}
+
+	#clear(): void {
+		for (const route of this.#routes.values()) {
+			route.escalation?.finish();
+		}
+
+		this.#routes.clear();
 	}
 
 	async #copy(
 		pi: ExtensionAPI,
 		route: Route,
 		input: SandboxCopyOptions | undefined,
-		isCurrent: () => boolean
+		isCurrent: () => boolean,
+		reviewer: { readonly id: string; readonly extension: string }
 	): Promise<SandboxCopy> {
 		const options = copyOptions(input);
 		const signal = options.signal;
@@ -186,6 +240,36 @@ export class ShellReviewRoutes {
 
 			route.destination = destination;
 
+			const sandbox =
+				destination.kind === 'sandbox' ? destination.sandbox : undefined;
+
+			appendLedgerEntry(pi, {
+				kind: 'review-copy',
+				toolCallId: reviewer.id,
+				source:
+					sandbox === undefined
+						? {
+								providerId: 'passthrough',
+								label: 'Host checkout',
+								policy: unrestrictedPolicy,
+								workspace: {
+									root: route.context.cwd,
+									home: homedir(),
+									pathFlavor: process.platform === 'win32' ? 'win32' : 'posix',
+									relationship: 'shared',
+									description: 'The host checkout.'
+								}
+							}
+						: {
+								providerId: sandbox.providerId,
+								label: sandbox.providerId,
+								policy: sandbox.policy,
+								workspace: sandbox.workspace
+							},
+				policy: copy.sandbox.policy,
+				decider: { kind: 'permission-extension', extension: reviewer.extension }
+			});
+
 			return copy;
 		} catch (error) {
 			return rethrowCopyError(error, () => copy.close(), {
@@ -201,6 +285,14 @@ export class ShellReviewRoutes {
 		route: Route,
 		scope: OperationScope
 	): Promise<BoundDestination> {
+		if (route.escalation !== undefined) {
+			if (route.escalation.request === undefined) {
+				throw new InvalidSandboxRequestError({ operation: 'acquire' });
+			}
+
+			return { kind: 'host' };
+		}
+
 		if (!route.isOutside) {
 			const sandbox = await getSandbox(pi, route.context, {
 				signal: scope.context.signal,
@@ -255,5 +347,9 @@ export class ShellReviewRoutes {
 		}
 
 		return route.destination;
+	}
+
+	escalation(id: string): PendingEscalation | undefined {
+		return this.#routes.get(id)?.escalation;
 	}
 }

@@ -2,6 +2,8 @@ import { Type } from 'typebox';
 
 import { backendSchema, workspaceSchema } from './backend-schemas.js';
 import { closeReportSchema, errorSchema } from './error-schema.js';
+import type { EscalationDecision } from './escalation-ledger.js';
+import { escalationRequestSchema } from './escalation-ledger.js';
 import {
 	accessPolicySchema as policySchema,
 	pathGrantsSchema,
@@ -83,7 +85,10 @@ export const findReviewRequest = Type.Object(
 export const sourceReply = Type.Object(
 	{
 		type: Type.Literal('source'),
-		copy: callable<import('./contracts.js').ShellReviewSource['copy']>()
+		copy: callable<import('./contracts.js').ShellReviewSource['copy']>(),
+		escalation: Type.Optional(escalationRequestSchema),
+		recordDecision:
+			Type.Optional(callable<(decision: EscalationDecision) => void>())
 	},
 	{ additionalProperties: false }
 );

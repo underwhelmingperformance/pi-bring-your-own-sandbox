@@ -29,6 +29,11 @@ import sandboxTools, { registerShellOnlyTools } from './pi-tools.js';
 import { profileCapabilities } from './validation.js';
 import { isRecord } from './validation.js';
 
+const fixtureRestrictions = {
+	type: 'text',
+	text: 'Effective restrictions: Host workspace writes allowed, network denied, host user data denied, host system files read-only'
+};
+
 function provider(backend: SandboxBackend): InlineExtension {
 	return {
 		name: 'target-provider',
@@ -333,7 +338,8 @@ it.each([
 									text: isAllowed
 										? 'target output'
 										: 'Denied by the fake approver.'
-								}
+								},
+								...(isAllowed ? [fixtureRestrictions] : [])
 							],
 							isError: !isAllowed
 						}
@@ -738,7 +744,13 @@ it('preserves the current Pi Bash command prefix through sandbox execution', asy
 			expect({ errors, results }).toStrictEqual({
 				errors: [],
 				results: [
-					{ content: [{ type: 'text', text: 'present' }], isError: false }
+					{
+						content: [
+							{ type: 'text', text: 'present' },
+							{ type: 'text', text: 'Effective restrictions: none' }
+						],
+						isError: false
+					}
 				]
 			});
 		},
@@ -898,7 +910,7 @@ it('blocks a reactivated tool before it can dispatch a nested host call', async 
 					{
 						tool: 'bash',
 						error: false,
-						text: [{ type: 'text', text: 'target output' }]
+						text: [{ type: 'text', text: 'target output' }, fixtureRestrictions]
 					}
 				],
 				nested: [],

@@ -22,7 +22,11 @@ import { closeApprovals } from './execution-approval.js';
 import { closeOutsideExecution } from './outside-execution.js';
 import type { SandboxNegotiation } from './protocol.js';
 import { isPiBound, protocolAddress } from './protocol-address.js';
-import { findShellReviewSource, hasShellReviewRoute } from './review-route.js';
+import {
+	findShellReviewSource,
+	hasShellReviewRoute,
+	recordEscalationDecision
+} from './review-route.js';
 import { runtimeSettings } from './runtime-settings.js';
 import {
 	checkCopiedSandbox,
@@ -215,6 +219,9 @@ export function createSandboxClient(
 		negotiate: (context, options) => negotiateSandbox(pi, context, options),
 		hasShellReviewRoute: () => hasShellReviewRoute(pi),
 		findShellReviewSource: (context, call) =>
-			findShellReviewSource(pi, context, call)
+			findShellReviewSource(pi, context, call),
+		recordEscalationDecision(context, request, decision) {
+			recordEscalationDecision(pi, context, request, decision);
+		}
 	});
 }

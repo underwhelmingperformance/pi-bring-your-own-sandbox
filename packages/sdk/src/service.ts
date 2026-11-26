@@ -5,9 +5,10 @@ import type { EventBus } from '@earendil-works/pi-coding-agent';
 import { discoverBroker, isBrokerService } from './discovery.js';
 import {
 	InvalidSandboxDeclarationError,
-	SandboxInitialisationError
+	SandboxInitialisationError,
+	UnsupportedSandboxCapabilityError
 } from './errors.js';
-import type { BrokerServiceV1 } from './protocol.js';
+import type { BrokerService } from './protocol.js';
 import { protocolAddress } from './protocol-address.js';
 import { brokerOffers } from './protocol-broker-results.js';
 import type { ProtocolIdentity } from './protocol-envelope.js';
@@ -17,8 +18,8 @@ import { projectReply } from './protocol-version.js';
 
 export function ensureBroker(
 	events: EventBus,
-	create: (id: string) => BrokerServiceV1
-): BrokerServiceV1 {
+	create: (id: string) => BrokerService
+): BrokerService {
 	const existing = discoverBroker(events);
 
 	if (existing !== undefined) {
@@ -26,13 +27,13 @@ export function ensureBroker(
 	}
 
 	const id = randomUUID();
-	let target: BrokerServiceV1 | undefined;
+	let target: BrokerService | undefined;
 	let failure = new SandboxInitialisationError({
 		operation: 'discover'
 	});
 
 	const invoke = <Result>(
-		operation: (service: BrokerServiceV1) => Promise<Result>
+		operation: (service: BrokerService) => Promise<Result>
 	): Promise<Result> => {
 		if (target === undefined) {
 			return Promise.reject(failure);
@@ -52,7 +53,7 @@ export function ensureBroker(
 		}
 	};
 
-	const service = Object.freeze<BrokerServiceV1>({
+	const service = Object.freeze<BrokerService>({
 		copy: (context, source, options) =>
 			invoke((broker) => broker.copy(context, source, options)),
 		id,
@@ -60,6 +61,14 @@ export function ensureBroker(
 			invoke((broker) => broker.acquire(context, options)),
 		negotiate: (context, options) =>
 			invoke((broker) => broker.negotiate(context, options)),
+		planEscalation: (context, options) =>
+			invoke(
+				(broker) =>
+					broker.planEscalation?.(context, options) ??
+					Promise.reject(
+						new UnsupportedSandboxCapabilityError({ operation: 'acquire' })
+					)
+			),
 		close: (context) => invoke((broker) => broker.close(context)),
 		status: (context) => invoke((broker) => broker.status(context)),
 		providers: (context) => invoke((broker) => broker.providers(context))

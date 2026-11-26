@@ -4,7 +4,7 @@ import {
 	profileSchema,
 	providerInfoSchema
 } from './policy-model.js';
-import type { BrokerServiceV1 } from './protocol.js';
+import type { BrokerService } from './protocol.js';
 import type { ProtocolIdentity } from './protocol-envelope.js';
 import { copyOptionsSchema } from './protocol-payloads.js';
 import { projectOffer } from './protocol-schema.js';
@@ -22,10 +22,10 @@ const isPolicy = checker(policySchema);
 const isProfile = checker(profileSchema);
 
 export function brokerOffers(
-	service: BrokerServiceV1,
+	service: BrokerService,
 	local: ProtocolIdentity,
 	peer: ProtocolIdentity
-): BrokerServiceV1 {
+): BrokerService {
 	const level = sharedFeatureLevel(local, peer);
 
 	if (level === local.featureLevel) {

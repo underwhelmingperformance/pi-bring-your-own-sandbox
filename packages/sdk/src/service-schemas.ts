@@ -17,7 +17,7 @@ import type {
 	OutsideServiceV1
 } from './outside-execution.js';
 import { accessPolicySchema, providerInfoSchema } from './policy-model.js';
-import type { BrokerServiceV1, ProviderServiceV1 } from './protocol.js';
+import type { BrokerService, ProviderServiceV1 } from './protocol.js';
 import type { DiagnosticStore } from './provider-diagnostics.js';
 import type { RuntimeSettingsV1 } from './runtime-settings.js';
 import {
@@ -66,13 +66,15 @@ export const providerServiceSchema = Type.Intersect([
 ]);
 
 export const brokerServiceSchema = Type.Object({
-	copy: callable<BrokerServiceV1['copy']>(),
+	copy: callable<BrokerService['copy']>(),
 	id: nonEmptyStringSchema,
-	acquire: callable<BrokerServiceV1['acquire']>(),
-	negotiate: callable<BrokerServiceV1['negotiate']>(),
-	close: callable<BrokerServiceV1['close']>(),
-	status: callable<BrokerServiceV1['status']>(),
-	providers: callable<BrokerServiceV1['providers']>()
+	acquire: callable<BrokerService['acquire']>(),
+	negotiate: callable<BrokerService['negotiate']>(),
+	planEscalation:
+		Type.Optional(callable<NonNullable<BrokerService['planEscalation']>>()),
+	close: callable<BrokerService['close']>(),
+	status: callable<BrokerService['status']>(),
+	providers: callable<BrokerService['providers']>()
 });
 
 const copier = callable<NonNullable<SandboxProvider<unknown>['copy']>>();

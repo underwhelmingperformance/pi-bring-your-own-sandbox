@@ -7,6 +7,7 @@ import {
 	InvalidSandboxRequestError,
 	SandboxInitialisationError
 } from './errors.js';
+import { appendLedgerEntry } from './escalation-ledger.js';
 import { createPassthroughProvider } from './passthrough-provider.js';
 import {
 	bindProtocolAddress,
@@ -55,6 +56,9 @@ export function bindFactory(pi: SandboxHost, extensionSource: string): void {
 						pi,
 						{
 							diagnostics: settings.diagnostics,
+							appendLedger(entry) {
+								appendLedgerEntry(pi, entry);
+							},
 							protocol: identity,
 							providers: async (context) => [
 								await createPassthroughProvider(context.cwd),

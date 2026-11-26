@@ -11,6 +11,7 @@ import type { DisplayText } from './display-text.js';
 import { cleanDisplayText, joinDisplayLines } from './display-text.js';
 import { sendDisplayMessage } from './display-ui.js';
 import { isSandboxError, SandboxInitialisationError } from './errors.js';
+import { formatLedger } from './escalation-ledger.js';
 import { approvalService } from './execution-approval.js';
 import { outsideExecutionStatus } from './outside-execution.js';
 import { describeShellIntegration } from './pi-integration-status.js';
@@ -35,16 +36,27 @@ export function registerSandboxDiagnostics(
 	});
 
 	pi.registerCommand('byos', {
-		description: 'Show sandbox and approval status or available services',
+		description: 'Show sandbox status, providers or session decisions',
 		async handler(arguments_, context) {
 			const action = arguments_.trim();
+			const [command, filter, ...extra] = action.split(/\s+/u);
+
+			if (command === 'log' && extra.length === 0) {
+				sendDisplayMessage(
+					pi,
+					cleanDisplayText('byos'),
+					formatLedger(context, filter)
+				);
+
+				return;
+			}
 
 			if (!['', 'status', 'providers', 'approval-policies'].includes(action)) {
 				sendDisplayMessage(
 					pi,
 					cleanDisplayText('byos'),
 					cleanDisplayText(
-						'Usage: /byos status | /byos providers | /byos approval-policies'
+						'Usage: /byos status | /byos providers | /byos log [tool-call-id] | /byos approval-policies'
 					)
 				);
 

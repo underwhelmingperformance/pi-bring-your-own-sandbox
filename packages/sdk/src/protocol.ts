@@ -296,3 +296,10 @@ export interface BrokerServiceV1 {
 		context: SandboxContext
 	) => Promise<readonly ProviderInfo[]>;
 }
+
+export interface BrokerService extends BrokerServiceV1 {
+	readonly planEscalation?: (
+		context: SandboxContext,
+		options: SandboxAcquireOptions
+	) => Promise<import('./escalation-plan.js').EscalationPlan>;
+}

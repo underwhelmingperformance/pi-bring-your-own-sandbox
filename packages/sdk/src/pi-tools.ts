@@ -7,11 +7,22 @@ import {
 import { Type } from 'typebox';
 
 import { InvalidApprovalRequestError } from './approval-errors.js';
-import { justificationSchema } from './approval-schemas.js';
+import { reportCleanup } from './cleanup-report.js';
 import { bindFactory } from './default-broker.js';
+import { cleanDisplayText } from './display-text.js';
+import { InvalidSandboxRequestError } from './errors.js';
+import type { EscalatedSandbox } from './escalation-plan.js';
+import { describeRestrictions } from './escalation-plan.js';
 import { outsideShellOperations } from './outside-shell-operations.js';
 import { registerShellIntegrationDiagnostics } from './pi-integration-status.js';
 import { createShellOperations } from './pi-shell-operations.js';
+import {
+	effectiveCommand,
+	escalationInput,
+	escalationJustificationSchema,
+	escalationListSchema,
+	PendingEscalation
+} from './shell-escalation.js';
 import { ShellReviewRoutes } from './shell-review-routes.js';
 import { registerUserShell } from './user-shell.js';
 
@@ -40,10 +51,16 @@ function shellDefinition(
 						'Use outside-sandbox to request approved execution on the configured outside destination.'
 				})
 			),
-			justification: Type.Optional(
-				Type.With(justificationSchema, {
+			escalate: Type.Optional(
+				Type.With(escalationListSchema, {
 					description:
-						'Reason for execution outside the sandbox; required with execution outside-sandbox.'
+						'Request extra access for this command. List access properties or specific read and write paths.'
+				})
+			),
+			justification: Type.Optional(
+				Type.With(escalationJustificationSchema, {
+					description:
+						'Reason for the requested access. Required when requesting escalation.'
 				})
 			)
 		},
@@ -68,23 +85,106 @@ function shellDefinition(
 		promptGuidelines: [
 			...(base.promptGuidelines ?? []),
 			'Shell commands execute in the selected sandbox workspace by default.',
-			'To request execution outside the sandbox, specify execution: outside-sandbox and a justification. Requests use the selected approval policy and execution destination.',
+			'To request extra access for a single command, supply escalate and a justification. BYOS selects the destination and asks for a decision.',
 			'Pi full-output paths refer to host transcript files.'
 		],
 		async execute(id, input, signal, update, context) {
 			const isOutside = input.execution === 'outside-sandbox';
 			const prefix =
 				dialect === 'bash' ? pi.getSettings().shellCommandPrefix : undefined;
-			const reviewed = reviews.executing(id, input.command, prefix, isOutside);
+			const requested = escalationInput(
+				id,
+				effectiveCommand(input.command, prefix),
+				input
+			);
+			let escalation = reviews.escalation(id);
+
+			if (
+				(requested === undefined && escalation !== undefined) ||
+				(requested !== undefined && isOutside)
+			) {
+				throw new InvalidSandboxRequestError({ operation: 'exec' });
+			}
+
+			const reviewed =
+				requested === undefined
+					? reviews.executing(id, input.command, prefix, isOutside)
+					: undefined;
 
 			if (isOutside && input.justification === undefined) {
 				throw new InvalidApprovalRequestError();
 			}
 
-			if (!isOutside && input.justification !== undefined) {
+			if (
+				!isOutside &&
+				requested === undefined &&
+				input.justification !== undefined
+			) {
 				throw new InvalidApprovalRequestError();
 			}
 
+			if (requested !== undefined) {
+				if (escalation === undefined) {
+					escalation = new PendingEscalation(pi, context, requested);
+					await escalation.prepare(dialect);
+				}
+
+				escalation.verify(context, requested);
+			}
+
+			const pending = escalation;
+			const feedback: { type: 'text'; text: string }[] = [];
+			let allocation: EscalatedSandbox | undefined;
+			const operations = createShellOperations(pi, context, dialect, {
+				toolCallId: id,
+				...(pending !== undefined && {
+					getSandbox: async (command, options) => {
+						allocation = await pending.open(context, command, options ?? {});
+
+						return allocation.sandbox;
+					}
+				}),
+				...(reviewed?.kind === 'sandbox' && {
+					getSandbox: () => Promise.resolve(reviewed.sandbox)
+				}),
+				onSandbox: (sandbox) => {
+					const paths = sandbox.grantedPaths;
+					const restrictions =
+						sandbox.providerId === 'passthrough'
+							? 'none'
+							: describeRestrictions(
+									sandbox.policy,
+									paths === undefined
+										? undefined
+										: {
+												read: paths
+													.filter((grant) => grant.kind === 'read')
+													.map((grant) => grant.targetPath),
+												write: paths
+													.filter((grant) => grant.kind === 'write')
+													.map((grant) => grant.targetPath)
+											}
+								);
+
+					feedback.push({
+						type: 'text',
+						text: cleanDisplayText('Effective restrictions: ' + restrictions)
+					});
+				},
+				onResult: (result) => {
+					const violations = result.violations ?? [];
+
+					for (const violation of violations) {
+						const target =
+							violation.resource === undefined
+								? ''
+								: ' on ' + violation.resource;
+						const text = `Restriction violation: ${violation.operation} (${violation.accessProperty})${target}`;
+
+						feedback.push({ type: 'text', text: cleanDisplayText(text) });
+					}
+				}
+			});
 			const tool = create(context.cwd, {
 				...(prefix !== undefined && { commandPrefix: prefix }),
 				exposeSessionEnvironment: isOutside,
@@ -97,15 +197,22 @@ function shellDefinition(
 								input.justification,
 								reviewed?.kind === 'host'
 							)
-						: createShellOperations(
-								pi,
-								context,
-								dialect,
-								reviewed?.kind === 'sandbox' ? reviewed.sandbox : undefined
-							)
+						: operations
 			});
 
-			return tool.execute(id, input, signal, update, context);
+			try {
+				const result = await tool.execute(id, input, signal, update, context);
+
+				return feedback.length === 0
+					? result
+					: { ...result, content: [...result.content, ...feedback] };
+			} finally {
+				pending?.finish();
+
+				if (allocation !== undefined) {
+					reportCleanup(pi, context, await allocation.close());
+				}
+			}
 		}
 	});
 

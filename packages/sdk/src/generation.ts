@@ -28,10 +28,12 @@ import type {
 	SandboxOpenContext,
 	SandboxOperation,
 	SandboxOperationContext,
+	SandboxOperationOptions,
 	SandboxPolicy
 } from './contracts.js';
 import {
 	InvalidSandboxDeclarationError,
+	InvalidSandboxRequestError,
 	isSandboxError,
 	rehydrateSandboxError,
 	SandboxCleanupError,
@@ -42,6 +44,9 @@ import {
 	UnconfirmedSandboxTerminationError,
 	UnsupportedSandboxCapabilityError
 } from './errors.js';
+import type { SandboxLedgerEntry } from './escalation-ledger.js';
+import type { EscalatedSandbox, EscalationPlan } from './escalation-plan.js';
+import { describeRestrictions } from './escalation-plan.js';
 import type { SandboxOwner } from './facade.js';
 import { createSandbox } from './facade.js';
 import type { Settlement } from './lifecycle.js';
@@ -52,11 +57,16 @@ import {
 	settleOperation
 } from './lifecycle.js';
 import { MutationQueue } from './mutation-queue.js';
+import {
+	createPassthroughProvider,
+	passthroughProvider
+} from './passthrough-provider.js';
 import { requestedPathGrants, resolvePathGrants } from './path-grants.js';
 import type { Profile } from './policy-model.js';
 import {
 	accessPolicySchema as policySchema,
-	profileKey
+	profileKey,
+	unrestrictedPolicy
 } from './policy-model.js';
 import type { ProfileMode, ResolvedPath } from './profile-negotiation.js';
 import { selectProfile } from './profile-negotiation.js';
@@ -87,11 +97,13 @@ import {
 
 export interface GenerationDependencies {
 	readonly diagnostics?: DiagnosticStore;
+	readonly appendLedger?: (entry: SandboxLedgerEntry) => void;
 	readonly protocol?: ProtocolIdentity;
 	readonly providers: (
 		context: SandboxContext
 	) => readonly ProviderServiceV1[] | Promise<readonly ProviderServiceV1[]>;
 	readonly mode?: ProfileMode | 'outside';
+	readonly isEscalated?: boolean;
 	readonly readConfig: (context: SandboxContext) => Promise<SandboxConfig>;
 	/**
 	The configured policy of the session that this generation copies from. A
@@ -149,7 +161,7 @@ export class SandboxGeneration {
 	#prepared: Promise<Prepared> | undefined;
 	readonly #slots = new Map<string, BackendSlot>();
 	#defaultProfile: Profile | undefined;
-	readonly #copies = new Set<SandboxCopy['close']>();
+	readonly #children = new Set<SandboxCopy['close']>();
 	#failure: SandboxErrorInfo | undefined;
 	#closing: Promise<SandboxCloseReport> | undefined;
 	readonly #cleanupFailures: SandboxErrorInfo[] = [];
@@ -489,7 +501,8 @@ export class SandboxGeneration {
 			provided,
 			slot.paths,
 			scope.context,
-			prepared.provider
+			prepared.provider,
+			this.#dependencies.isEscalated
 		);
 		scope.check();
 
@@ -642,6 +655,9 @@ export class SandboxGeneration {
 			generationId: this.#id,
 			cleanup: this.#cleanup,
 			reportDiagnostic: this.#diagnostics.record.bind(this.#diagnostics),
+			...(this.#dependencies.appendLedger !== undefined && {
+				appendLedger: this.#dependencies.appendLedger
+			}),
 			backend,
 			lifetime: this.#lifetime.signal,
 			operations: this.#operations,
@@ -795,7 +811,7 @@ export class SandboxGeneration {
 			);
 
 			const copies = await Promise.all(
-				this.#copies.values().map((close) => settleSandboxClose(close))
+				this.#children.values().map((close) => settleSandboxClose(close))
 			);
 
 			await this.#operations.drain();
@@ -926,9 +942,215 @@ export class SandboxGeneration {
 		return { kind: 'backend', backend: slot.provided };
 	}
 
+	async #hostEscalation(
+		requirements: SandboxAcquireOptions,
+		paths: readonly ResolvedPath[]
+	): Promise<Prepared & { readonly profile: Profile }> {
+		const provider = await createPassthroughProvider(this.#session.workspace);
+		const choice = selectProfile({
+			profiles: provider.profiles.open,
+			limit: unrestrictedPolicy,
+			requirements,
+			paths
+		});
+
+		if (!choice.ok) {
+			refuseProfile(choice.detail, {
+				operation: 'acquire',
+				providerId: provider.id
+			});
+		}
+
+		const configured = await provider.configure({});
+
+		return { provider, configured, profile: choice.profile };
+	}
+
+	async #openEscalation(
+		context: SandboxContext,
+		chosen: Prepared & { readonly profile: Profile },
+		paths: readonly ResolvedPath[],
+		options: SandboxOperationOptions = {}
+	): Promise<EscalatedSandbox> {
+		const { provider, configured, profile } = chosen;
+		const generation = new SandboxGeneration(context, {
+			...this.#dependencies,
+			isEscalated: true,
+			providers: () => [
+				{
+					...provider,
+					profiles: { ...provider.profiles, open: [profile] },
+					configure: () => configured
+				}
+			],
+			readConfig: () =>
+				Promise.resolve({
+					selection: {
+						source: 'extension',
+						providerId: provider.id,
+						policy: profile.policy
+					},
+					providerConfig: {},
+					cleanup: this.#cleanup
+				})
+		});
+		const close = async () => {
+			const report = await generation.close();
+
+			if (report.confirmed) {
+				this.#children.delete(close);
+			}
+
+			return report;
+		};
+
+		this.#children.add(close);
+
+		try {
+			const sandbox = await generation.#acquireProfile(
+				context,
+				profile,
+				paths,
+				options
+			);
+
+			return Object.freeze({ sandbox, close });
+		} catch (error) {
+			return await rethrowCopyError(error, close, {
+				operation: 'dispose',
+				providerId: provider.id
+			});
+		}
+	}
+
+	async #acquireProfile(
+		context: SandboxContext,
+		profile: Profile,
+		paths: readonly ResolvedPath[],
+		options: SandboxOperationOptions
+	): Promise<Sandbox> {
+		const scope = new OperationScope(
+			{ operation: 'acquire' },
+			this.#lifetime.signal,
+			options,
+			60_000
+		);
+
+		try {
+			scope.check();
+
+			return await this.#readySandbox(context, profile, paths, scope);
+		} finally {
+			scope.dispose();
+		}
+	}
+
+	async #readySandbox(
+		context: SandboxContext,
+		profile: Profile,
+		paths: readonly ResolvedPath[],
+		scope: OperationScope
+	): Promise<Sandbox> {
+		const slot = this.#slot(profile, paths);
+		const result = await Promise.race([
+			this.#start(slot),
+			scope.whenCancelled()
+		]);
+
+		if (result.kind === 'cancelled') {
+			throw scope.cancellationError('not-started');
+		}
+
+		scope.check();
+
+		if (result.kind === 'rejected') {
+			throw result.error;
+		}
+
+		this.#assertContext(context, 'acquire');
+		this.#assertOpen('acquire', slot);
+
+		return createSandbox(this.#owner(context, slot, result.value));
+	}
+
 	async initialize(): Promise<void> {
 		this.#assertOpen('configure');
 		await this.#prepare();
+	}
+
+	async planEscalation(
+		context: SandboxContext,
+		options: SandboxAcquireOptions
+	): Promise<EscalationPlan> {
+		const assertCurrent = (actual: SandboxContext) => {
+			this.#assertContext(actual, 'exec');
+			this.#assertOpen('exec');
+		};
+
+		assertCurrent(context);
+
+		const prepared = await this.#prepare();
+		const limit = this.#selection?.policy;
+
+		if (limit === undefined) {
+			throw new SandboxInitialisationError({ operation: 'acquire' });
+		}
+
+		this.#checkDemand(prepared.provider, options);
+
+		const paths = await resolvePathGrants(
+			this.#session.workspace,
+			options.access?.paths
+		);
+		const choice = selectProfile({
+			profiles: prepared.provider.profiles.open,
+			limit,
+			requirements: options,
+			paths,
+			isEscalated: true
+		});
+		const isHost =
+			!choice.ok || prepared.provider.id === passthroughProvider.id;
+		const destination = isHost
+			? await this.#hostEscalation(options, paths)
+			: { ...prepared, profile: choice.profile };
+
+		assertCurrent(context);
+
+		const policy = destination.profile.policy;
+		const grants = requestedPathGrants(paths);
+		let isUsed = false;
+
+		return Object.freeze<EscalationPlan>({
+			destination: isHost
+				? Object.freeze({ kind: 'host', policy, effectiveRestrictions: 'none' })
+				: Object.freeze({
+						kind: 'provider',
+						providerId: destination.provider.id,
+						policy,
+						effectiveRestrictions: describeRestrictions(policy, grants)
+					}),
+			label: destination.provider.label,
+			...(grants !== undefined && { paths: grants }),
+			assertCurrent,
+			open: async (actual, processOptions) => {
+				assertCurrent(actual);
+				processOptions?.signal?.throwIfAborted();
+
+				if (isUsed) {
+					throw new InvalidSandboxRequestError({ operation: 'exec' });
+				}
+
+				isUsed = true;
+
+				return await this.#openEscalation(
+					actual,
+					destination,
+					paths,
+					processOptions
+				);
+			}
+		});
 	}
 
 	async acquire(
@@ -971,28 +1193,7 @@ export class SandboxGeneration {
 
 			scope.check();
 
-			const slot = this.#slot(profile, paths);
-			const result = await Promise.race([
-				this.#start(slot),
-				scope.whenCancelled()
-			]);
-
-			if (result.kind === 'cancelled') {
-				throw scope.cancellationError('not-started');
-			}
-
-			scope.check();
-
-			if (result.kind === 'rejected') {
-				throw result.error;
-			}
-
-			this.#assertContext(context, 'acquire');
-			this.#assertOpen('acquire', slot);
-
-			const sandbox = createSandbox(this.#owner(context, slot, result.value));
-
-			return sandbox;
+			return await this.#readySandbox(context, profile, paths, scope);
 		} finally {
 			scope.dispose();
 		}
@@ -1105,7 +1306,7 @@ export class SandboxGeneration {
 				const report = await generation.close();
 
 				if (report.confirmed) {
-					this.#copies.delete(close);
+					this.#children.delete(close);
 				}
 
 				return report;
@@ -1115,7 +1316,7 @@ export class SandboxGeneration {
 				void close();
 			};
 
-			this.#copies.add(close);
+			this.#children.add(close);
 			options.signal?.addEventListener('abort', cancel, { once: true });
 
 			try {

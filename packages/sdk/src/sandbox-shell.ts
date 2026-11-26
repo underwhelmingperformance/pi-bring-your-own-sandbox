@@ -13,6 +13,7 @@ import {
 	SandboxCancelledError,
 	SandboxTimeoutError
 } from './errors.js';
+import { processToolCallId } from './escalation-ledger.js';
 import { OperationScope } from './lifecycle.js';
 import { isSafeText, snapshotProcessRequest } from './process-input.js';
 import { isShell } from './validation.js';
@@ -28,6 +29,8 @@ export interface ShellInvocation {
 	readonly timeoutSeconds?: number;
 	readonly signal?: AbortSignal;
 	readonly onOutput: (output: ProcessOutput) => void;
+	readonly toolCallId?: string;
+	readonly onSandbox?: (sandbox: Sandbox) => void;
 }
 
 export class SandboxShell {
@@ -90,6 +93,9 @@ export class SandboxShell {
 				context,
 				signal === undefined ? {} : { signal }
 			);
+
+			invocation.onSandbox?.(sandbox);
+
 			const selected =
 				typeof dialect === 'function' ? await dialect(sandbox) : dialect;
 			const request = snapshotProcessRequest({
@@ -108,14 +114,19 @@ export class SandboxShell {
 			checkCaller(signal);
 			scope?.dispose();
 
+			const options = {
+				...(invocation.signal !== undefined && { signal: invocation.signal }),
+				...(remaining !== undefined && { timeoutMs: remaining }),
+				maxCaptureBytes: 0,
+				onOutput: invocation.onOutput,
+				...(invocation.toolCallId !== undefined && {
+					[processToolCallId]: invocation.toolCallId
+				})
+			};
+
 			return await sandbox.exec(
 				{ ...request, cwd: sandbox.workspace.root },
-				{
-					...(invocation.signal !== undefined && { signal: invocation.signal }),
-					...(remaining !== undefined && { timeoutMs: remaining }),
-					maxCaptureBytes: 0,
-					onOutput: invocation.onOutput
-				}
+				options
 			);
 		} catch (error) {
 			if (

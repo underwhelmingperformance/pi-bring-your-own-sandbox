@@ -1,6 +1,12 @@
 import type { BashOperations } from '@earendil-works/pi-coding-agent';
 
-import type { Sandbox, SandboxContext, SandboxHost } from './contracts.js';
+import type {
+	ProcessResult,
+	Sandbox,
+	SandboxAcquireOptions,
+	SandboxContext,
+	SandboxHost
+} from './contracts.js';
 import {
 	isSandboxError,
 	SandboxCancelledError,
@@ -20,16 +26,31 @@ export function createShellOperations(
 	pi: SandboxHost,
 	context: SandboxContext,
 	dialect: ShellInvocation['dialect'],
-	reviewed?: Sandbox
+	options?: {
+		readonly getSandbox?: (
+			command: string,
+			options?: SandboxAcquireOptions
+		) => Promise<Sandbox>;
+		readonly toolCallId?: string;
+		readonly onSandbox?: (sandbox: Sandbox) => void;
+		readonly onResult?: (result: ProcessResult) => void;
+	}
 ): BashOperations {
-	const shell = new SandboxShell(
-		reviewed === undefined
-			? undefined
-			: { getSandbox: () => Promise.resolve(reviewed) }
-	);
+	const acquire = options?.getSandbox;
+	const toolCallId = options?.toolCallId;
+	const onSandbox = options?.onSandbox;
+	const onResult = options?.onResult;
 
 	return {
 		async exec(command, _cwd, options) {
+			const shell = new SandboxShell(
+				acquire === undefined
+					? undefined
+					: {
+							getSandbox: (_pi, _context, acquisition) =>
+								acquire(command, acquisition)
+						}
+			);
 			const output = new PiShellOutput((data) => {
 				options.onData(data);
 			});
@@ -38,6 +59,8 @@ export function createShellOperations(
 				const result = await shell.execute(pi, context, {
 					command,
 					dialect,
+					...(toolCallId !== undefined && { toolCallId }),
+					...(onSandbox !== undefined && { onSandbox }),
 					...(options.signal !== undefined && { signal: options.signal }),
 					...(options.timeout !== undefined && {
 						timeoutSeconds: options.timeout
@@ -46,6 +69,8 @@ export function createShellOperations(
 						output.write(data);
 					}
 				});
+
+				onResult?.(result);
 
 				return piProcessResult(result.exit);
 			} catch (error) {

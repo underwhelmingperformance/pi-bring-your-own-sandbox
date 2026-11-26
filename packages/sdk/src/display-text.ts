@@ -63,6 +63,10 @@ export function cleanDisplayText(text: string): DisplayText {
 	return limitDisplayText(escapeControls(text));
 }
 
+export function cleanFullDisplayText(text: string): DisplayText {
+	return [...escapeControls(text)].join('') as DisplayText;
+}
+
 function* displayParts(lines: readonly DisplayText[]): Generator<string> {
 	for (const [index, line] of lines.entries()) {
 		if (index > 0) {

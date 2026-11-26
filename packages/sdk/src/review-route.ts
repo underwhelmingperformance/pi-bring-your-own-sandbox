@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from 'node:util';
+
 import { inspectContext } from './context.js';
 import type {
 	ReviewedToolCall,
@@ -8,7 +10,14 @@ import type {
 	SandboxHost,
 	ShellReviewSource
 } from './contracts.js';
-import { InvalidSandboxDeclarationError } from './errors.js';
+import {
+	InvalidSandboxDeclarationError,
+	InvalidSandboxRequestError
+} from './errors.js';
+import type {
+	EscalationDecision,
+	EscalationRequest
+} from './escalation-ledger.js';
 import { protocolAddress } from './protocol-address.js';
 import { collectProtocolReplies, REVIEW_CHANNEL } from './protocol-envelope.js';
 import { copyOptionsSchema, sourceReply } from './protocol-payloads.js';
@@ -22,6 +31,39 @@ import { checker } from './schemas.js';
 import { isRecord } from './validation.js';
 
 const isSource = checker(sourceReply);
+const pending = new WeakMap<
+	EscalationRequest,
+	{
+		readonly client: SandboxHost;
+		readonly sessionId: string;
+		readonly workspace: string;
+		readonly record: (decision: EscalationDecision) => void;
+		readonly snapshot: EscalationRequest;
+	}
+>();
+
+export function recordEscalationDecision(
+	pi: SandboxHost,
+	context: SandboxContext,
+	request: EscalationRequest,
+	decision: unknown
+): void {
+	const session = inspectContext(context, 'exec');
+	const proof = pending.get(request);
+
+	if (
+		proof === undefined ||
+		proof.client !== pi ||
+		proof.sessionId !== session.sessionId ||
+		proof.workspace !== session.workspace ||
+		!isDeepStrictEqual(request, proof.snapshot) ||
+		(decision !== 'allow' && decision !== 'deny')
+	) {
+		throw new InvalidSandboxRequestError({ operation: 'exec' });
+	}
+
+	proof.record(decision);
+}
 
 function isClosable(
 	value: unknown
@@ -124,12 +166,12 @@ export function findShellReviewSource(
 	context: SandboxContext,
 	call: ReviewedToolCall
 ): ShellReviewSource | undefined {
-	inspectContext(context, 'acquire');
+	const session = inspectContext(context, 'acquire');
 
 	const local = protocolAddress(pi.events);
 	const routes = collectProtocolReplies(pi.events, REVIEW_CHANNEL, local, {
 		type: 'find-source',
-		sessionId: context.sessionManager.getSessionId(),
+		sessionId: session.sessionId,
 		toolName: call.toolName,
 		toolCallId: call.toolCallId
 	}).filter((reply) => {
@@ -148,8 +190,20 @@ export function findShellReviewSource(
 	}
 
 	const route = selected.payload;
+	const escalation = route.escalation;
+
+	if (escalation !== undefined && route.recordDecision !== undefined) {
+		pending.set(escalation, {
+			client: pi,
+			sessionId: session.sessionId,
+			workspace: session.workspace,
+			record: route.recordDecision,
+			snapshot: structuredClone(escalation)
+		});
+	}
 
 	return Object.freeze<ShellReviewSource>({
+		...(escalation !== undefined && { escalation }),
 		copy(options) {
 			checkDemand(
 				copyOptionsSchema,

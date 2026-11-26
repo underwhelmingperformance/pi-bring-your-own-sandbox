@@ -5,6 +5,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 
 import type { DisplayText } from './display-text.js';
+import type { SandboxLedgerEntry } from './escalation-ledger.js';
 
 /**
 Show a custom Pi message with cleaned text.
@@ -26,6 +27,14 @@ export function appendDisplayEntry(
 	pi.appendEntry(customType, { content });
 }
 
+export function appendTypedEntry(
+	pi: Pick<ExtensionAPI, 'appendEntry'>,
+	customType: DisplayText,
+	data: SandboxLedgerEntry
+): void {
+	pi.appendEntry(customType, data);
+}
+
 export function notifyDisplay(
 	context: ExtensionContext,
 	message: DisplayText,
@@ -41,4 +50,13 @@ export function isDisplayConfirmed(
 	options?: ExtensionUIDialogOptions
 ): Promise<boolean> {
 	return context.ui.confirm(title, message, options);
+}
+
+export function chooseDisplayOption(
+	context: ExtensionContext,
+	details: readonly DisplayText[],
+	options: string[],
+	dialog?: ExtensionUIDialogOptions
+): Promise<string | undefined> {
+	return context.ui.select(details.join('\n'), options, dialog);
 }

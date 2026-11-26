@@ -367,7 +367,7 @@ it('prints command usage without starting a model turn', async () => {
 				{
 					display: true,
 					content:
-						'Usage: /byos status | /byos providers | /byos approval-policies'
+						'Usage: /byos status | /byos providers | /byos log [tool-call-id] | /byos approval-policies'
 				}
 			]
 		});

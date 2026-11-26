@@ -6,6 +6,15 @@ import type { Static } from 'typebox';
 
 import type { OutsideSandboxProvider } from './approval-contracts.js';
 import type {
+	EscalationDecision,
+	EscalationRequest
+} from './escalation-ledger.js';
+export type {
+	EscalationDestination,
+	EscalationRequest,
+	SandboxLedgerEntry
+} from './escalation-ledger.js';
+import type {
 	errorDetailSchema,
 	operationSchema,
 	ordinaryErrorNameSchema
@@ -22,7 +31,7 @@ import type {
 	environmentSchema,
 	sharedSettingsSchema
 } from './request-schemas.js';
-import type { processExitSchema } from './result-schemas.js';
+import type { processExitSchema, violationsSchema } from './result-schemas.js';
 import type {
 	capabilitySchema,
 	shellSchema,
@@ -465,7 +474,11 @@ returns. Unconfirmed termination within a promised scope makes the backend
 unhealthy; the operation must not be replayed.
 */
 export type BackendProcessOutcome =
-	| { readonly kind: 'exited'; readonly exit: ProcessExit }
+	| {
+			readonly kind: 'exited';
+			readonly exit: ProcessExit;
+			readonly violations?: readonly SandboxViolation[];
+	  }
 	| {
 			readonly kind: 'cancelled';
 			readonly termination: 'confirmed' | 'unconfirmed' | 'not-guaranteed';
@@ -505,8 +518,12 @@ completion. Non-zero codes remain successful SDK results.
 	Non-negative execution duration measured with a monotonic clock.
 	*/
 	readonly durationMs: number;
+	readonly violations?: readonly SandboxViolation[];
 }
 
+export type SandboxViolation = Readonly<
+	Static<typeof violationsSchema>[number]
+>;
 /**
 Filesystem entry kinds; directory listings report links without following
 them.
@@ -962,6 +979,7 @@ The destination of a pending shell tool call. A reviewer can copy the files
 that the command will see, but cannot run anything in the destination itself.
 */
 export interface ShellReviewSource {
+	readonly escalation?: EscalationRequest;
 	/**
 	Open a private copy of the destination. The copy is checked against the
 	options in the caller's SDK, and a copy that fails the check is closed.
@@ -1367,4 +1385,9 @@ export interface SandboxClient {
 		context: SandboxContext,
 		call: ReviewedToolCall
 	) => ShellReviewSource | undefined;
+	readonly recordEscalationDecision: (
+		context: SandboxContext,
+		request: EscalationRequest,
+		decision: EscalationDecision
+	) => void;
 }

@@ -51,7 +51,7 @@ it.each(['fixtures/diagnostics-extension.ts'])(
 			commands: [
 				{
 					name: 'byos',
-					description: 'Show sandbox and approval status or available services'
+					description: 'Show sandbox status, providers or session decisions'
 				}
 			]
 		});

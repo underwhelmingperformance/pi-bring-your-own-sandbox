@@ -3,7 +3,7 @@ import type { EventBus } from '@earendil-works/pi-coding-agent';
 import { builtinProviders } from './builtin-providers.js';
 import { DuplicateBrokerError, DuplicateProviderError } from './errors.js';
 import { providerInfoSchema } from './policy-model.js';
-import type { BrokerServiceV1, ProviderServiceV1 } from './protocol.js';
+import type { BrokerService, ProviderServiceV1 } from './protocol.js';
 import { protocolAddress } from './protocol-address.js';
 import type { ProtocolIdentity } from './protocol-envelope.js';
 import {
@@ -90,14 +90,17 @@ export function discoverProviders(
 }
 
 function boundBroker(
-	service: BrokerServiceV1,
+	service: BrokerService,
 	local: ProtocolIdentity,
 	peer: ProtocolIdentity
-): BrokerServiceV1 {
+): BrokerService {
 	const level = sharedFeatureLevel(local, peer);
 
-	return Object.freeze<BrokerServiceV1>({
+	return Object.freeze<BrokerService>({
 		id: service.id,
+		...(service.planEscalation !== undefined && {
+			planEscalation: service.planEscalation.bind(service)
+		}),
 		acquire(context, options) {
 			checkDemand(acquireOptionsSchema, options ?? {}, local, peer, 'acquire');
 
@@ -137,7 +140,7 @@ function boundBroker(
 	});
 }
 
-export function discoverBroker(events: EventBus): BrokerServiceV1 | undefined {
+export function discoverBroker(events: EventBus): BrokerService | undefined {
 	const local = protocolAddress(events);
 	const replies = collectProtocolReplies(events, RUNTIME_CHANNEL, local, {
 		type: 'get-broker'

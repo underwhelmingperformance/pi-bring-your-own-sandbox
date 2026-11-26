@@ -19,6 +19,8 @@ import {
 	UnconfirmedSandboxTerminationError,
 	UnsupportedSandboxCapabilityError
 } from './errors.js';
+import type { SandboxLedgerEntry } from './escalation-ledger.js';
+import { processToolCallId } from './escalation-ledger.js';
 import type {
 	OperationIdentity,
 	OperationRegistry,
@@ -39,6 +41,7 @@ import { isRecord } from './validation.js';
 
 export interface BackendOwner {
 	readonly reportDiagnostic?: DiagnosticReporter;
+	readonly appendLedger?: (entry: SandboxLedgerEntry) => void;
 	readonly cleanup?: SandboxCleanupBudgets;
 	readonly identity: Omit<OperationIdentity, 'operation'>;
 	readonly backend: SandboxBackend;
@@ -260,13 +263,50 @@ export async function executeProcess(
 				owner.backend.profile.terminationScope
 			);
 			const outcome = executionOutcome(owner, scope, result);
+			const reported = outcome.violations;
+
+			if (
+				reported !== undefined &&
+				!owner.backend.profile.capabilities.includes('violations')
+			) {
+				throw new InvalidSandboxDeclarationError({
+					...owner.identity,
+					operation: 'exec',
+					detail: { kind: 'declaration', field: 'violations' }
+				});
+			}
+
+			const violations =
+				reported === undefined
+					? undefined
+					: Object.freeze(
+							reported.map((violation) => Object.freeze({ ...violation }))
+						);
+			const providerId = owner.identity.providerId;
+
+			if (
+				providerId !== undefined &&
+				violations !== undefined &&
+				violations.length > 0
+			) {
+				const toolCallId: unknown = Reflect.get(options, processToolCallId);
+
+				owner.appendLedger?.({
+					kind: 'violation',
+					operationId: scope.context.operationId,
+					providerId,
+					violations,
+					...(typeof toolCallId === 'string' && { toolCallId })
+				});
+			}
 
 			return Object.freeze({
 				exit: snapshotExit(outcome.exit),
 				stdout: concatenate(stdout),
 				stderr: concatenate(stderr),
 				omittedBytes: Object.freeze(omittedBytes),
-				durationMs: Math.max(0, performance.now() - started)
+				durationMs: Math.max(0, performance.now() - started),
+				...(violations !== undefined && { violations })
 			});
 		} finally {
 			isDelivering = false;

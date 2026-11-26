@@ -18,6 +18,7 @@ import { initialiseSandboxHost } from './host.js';
 import { outsideShellOperations } from './outside-shell-operations.js';
 import sandboxTools from './pi-tools.js';
 import { ProviderDiagnostics } from './provider-diagnostics.js';
+import { findShellReviewSource } from './review-route.js';
 import { checker } from './schemas.js';
 
 const isDecision = checker(approvalDecisionSchema);
@@ -493,6 +494,65 @@ it('includes configuration loading in the outside shell deadline', async () => {
 		}
 	);
 });
+
+it.each(['gate', 'shell'])(
+	'finds a pending shell call when %s loads first',
+	async (first) => {
+		const model = new ScriptedModel([
+			{
+				type: 'toolCall',
+				id: 'review',
+				name: 'bash',
+				arguments: { command: 'printf reviewed' }
+			}
+		]);
+		const reviews: { id: string; found: boolean }[] = [];
+		const gate: InlineExtension = {
+			name: 'gate',
+			factory(pi) {
+				pi.on('tool_call', (event, context) => {
+					reviews.push({
+						id: event.toolCallId,
+						found: findShellReviewSource(pi, context, event) !== undefined
+					});
+
+					return { block: true, reason: 'Reviewed.' };
+				});
+			}
+		};
+		const shell: InlineExtension = {
+			name: 'shell',
+			factory: (pi) => {
+				sandboxTools(pi, '<inline:shell>');
+			}
+		};
+		const extensions = first === 'gate' ? [gate, shell] : [shell, gate];
+
+		await withPiRuntime(
+			[...extensions, model.extension],
+			async (runtime, errors) => {
+				runtime.session.setActiveToolsByName(['bash']);
+
+				const selected = runtime.session.modelRuntime.getModel(
+					'scripted',
+					'scripted'
+				);
+
+				if (selected === undefined) {
+					throw new Error('The scripted model was not registered.');
+				}
+
+				await runtime.session.setModel(selected);
+				await runtime.session.prompt('Review the command.');
+
+				expect({ errors, reviews }).toStrictEqual({
+					errors: [],
+					reviews: [{ id: 'review', found: true }]
+				});
+			}
+		);
+	}
+);
 
 it.each(['sandbox', 'outside-sandbox'] as const)(
 	'applies a review copy timeout to %s destination preparation',

@@ -68,12 +68,12 @@ export class ShellReviewRoutes {
 	readonly #routes = new Map<string, Route>();
 
 	constructor(pi: ExtensionAPI, toolName: string, isSelected: () => boolean) {
-		pi.on('tool_call', (event, context) => {
+		pi.on('tool_execution_start', (event, context) => {
 			if (event.toolName !== toolName || !isSelected()) {
 				return;
 			}
 
-			const input: unknown = event.input;
+			const input: unknown = event.args;
 
 			if (!isRecord(input) || typeof input['command'] !== 'string') {
 				return;

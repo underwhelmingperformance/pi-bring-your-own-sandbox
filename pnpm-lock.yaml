@@ -261,6 +261,10 @@ importers:
         version: 5.1.0(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1))
 
   packages/sdk:
+    dependencies:
+      re2js:
+        specifier: 2.10.0
+        version: 2.10.0
     devDependencies:
       '@earendil-works/pi-ai':
         specifier: 1.5.0

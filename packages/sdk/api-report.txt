@@ -76,6 +76,9 @@ type SandboxSharedSettings (contracts.d.ts)
 type SandboxWorkspace (contracts.d.ts)
 type ShellDialect (contracts.d.ts)
 type ShellTransportOptions (shell-transport.d.ts)
+type TargetFileOperation (target-operations.d.ts)
+type TargetFileOperations (target-operations.d.ts)
+type TargetFileTransport (target-operations.d.ts)
 value InvalidSandboxConfigError (errors.d.ts)
 value InvalidSandboxRequestError (errors.d.ts)
 value PosixProcessRunner (host-process.d.ts)
@@ -92,8 +95,10 @@ value ShellTransportRunner (shell-transport.d.ts)
 value StaleSandboxHandleError (errors.d.ts)
 value UnsupportedSandboxCapabilityError (errors.d.ts)
 value UnsupportedSandboxPolicyError (errors.d.ts)
+value checkSandboxTargetStatus (target-operations.d.ts)
 value cleanDisplayText (display-text.d.ts)
 value createSandboxCleanupContext (provider-cleanup.d.ts)
+value createTargetFileOperations (target-operations.d.ts)
 value credentialLocations (credential-locations.d.ts)
 value defaultProtectedWorkspacePaths (protected-workspace-paths.d.ts)
 value encodePosixArgv (shell-transport.d.ts)
@@ -104,7 +109,10 @@ value registerSandboxProvider (provider-registration.d.ts)
 value registerSandboxProviderFactory (provider-registration.d.ts)
 value resolveCleanupBudgets as resolveSandboxCleanupBudgets (cleanup-budgets.d.ts)
 value resolveSandboxCopySource (provider-copy.d.ts)
+value sandboxTargetTransferLimit (target-operations.d.ts)
 value sendDisplayMessage (display-ui.d.ts)
+value targetFileHelper (target-operations.d.ts)
+value targetSearchHelper (target-operations.d.ts)
 
 pi-bring-your-own-sandbox/testing
 type SandboxProviderTestFixture (provider-test-contracts.d.ts)
@@ -1656,3 +1664,30 @@ export interface ShellTransportOptions {
     readonly nodeExecutable?: string;
     readonly providerId?: string;
 }
+
+// target-operations.d.ts
+declare const sandboxTargetTransferLimit: number;
+
+// target-operations.d.ts
+export declare function checkSandboxTargetStatus(status: number | null, context: SandboxErrorContext): void;
+
+// target-operations.d.ts
+export declare function createTargetFileOperations(run: TargetFileTransport, identity: Omit<SandboxErrorContext, 'operation'>, pathFlavor?: SandboxWorkspace['pathFlavor']): TargetFileOperations;
+
+// target-operations.d.ts
+export declare function targetFileHelper(): Promise<string>;
+
+// target-operations.d.ts
+export declare function targetSearchHelper(): Promise<string>;
+
+// target-operations.d.ts
+export interface TargetFileOperations {
+    readonly files: Required<BackendFiles>;
+    readonly search: Required<BackendSearch>;
+}
+
+// target-operations.d.ts
+export type TargetFileOperation = 'access' | 'find' | 'grep' | 'listDirectory' | 'mkdir' | 'readFile' | 'stat' | 'writeFile';
+
+// target-operations.d.ts
+export type TargetFileTransport = (operation: TargetFileOperation, filename: string, context: SandboxOperationContext, input?: Uint8Array, requiresWrite?: boolean) => Promise<Uint8Array>;

@@ -1,14 +1,17 @@
 import { isUtf8 } from 'node:buffer';
 import { once } from 'node:events';
 import { constants } from 'node:fs';
-import { open, readdir } from 'node:fs/promises';
+import { access, open, readdir } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { GrepMatch } from 'pi-bring-your-own-sandbox/provider';
+import type { GrepMatch } from './contracts.js';
 
-const [operation, encoded, maximum] = process.argv.slice(1);
+const [operation, encoded, maximum, workspace] = process.argv.slice(1);
 const options = new URLSearchParams(encoded);
-const root = path.resolve('/workspace', options.get('path') ?? '.');
+const root = path.resolve(
+	workspace ?? process.cwd(),
+	options.get('path') ?? '.'
+);
 const limit = Number(
 	options.get('limit') ?? (operation === 'find' ? 1000 : 100)
 );
@@ -336,8 +339,20 @@ async function collect(
 	await output('],"truncated":' + String(isTruncated) + '}');
 }
 
+async function hasDescriptorPaths(): Promise<boolean> {
+	try {
+		await access('/proc/self/fd');
+
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 try {
-	if (operation === 'find') {
+	if (process.platform !== 'linux' || !(await hasDescriptorPaths())) {
+		process.exitCode = 43;
+	} else if (operation === 'find') {
 		await collect(find(), 'paths');
 	} else {
 		await collect(grep(), 'matches');

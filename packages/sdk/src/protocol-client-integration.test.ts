@@ -138,16 +138,20 @@ const nonFactoryFunctions = new Set([
 	'PosixProcessRunner',
 	'SandboxLaunchFrames',
 	'ShellTransportRunner',
+	'checkSandboxTargetStatus',
 	'cleanDisplayText',
 	'closeSandboxSession',
 	'createSandboxCleanupContext',
+	'createTargetFileOperations',
 	'encodePosixArgv',
 	'isSandboxError',
 	'mapSandboxErrno',
 	'isProtectedWorkspacePath',
 	'resolveSandboxCleanupBudgets',
 	'resolveSandboxCopySource',
-	'sendDisplayMessage'
+	'sendDisplayMessage',
+	'targetFileHelper',
+	'targetSearchHelper'
 ]);
 
 const factoryArguments = new Map<string, readonly unknown[]>([

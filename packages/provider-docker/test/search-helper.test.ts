@@ -1,16 +1,10 @@
 import { execFile } from 'node:child_process';
-import {
-	mkdir,
-	mkdtemp,
-	readFile,
-	rm,
-	symlink,
-	writeFile
-} from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
+import { targetSearchHelper } from 'pi-bring-your-own-sandbox/provider';
 import { expect, it } from 'vitest';
 
 it.skipIf(process.platform !== 'linux')(
@@ -34,10 +28,7 @@ it.skipIf(process.platform !== 'linux')(
 			);
 			await symlink('sub', path.join(root, 'alias'));
 
-			const helper = await readFile(
-				new URL('../src/search-helper.ts', import.meta.url),
-				'utf8'
-			);
+			const helper = await targetSearchHelper();
 			const { stdout } = await promisify(execFile)(process.execPath, [
 				'--input-type=module-typescript',
 				'--eval',
@@ -83,10 +74,7 @@ it.skipIf(process.platform !== 'linux')(
 			await writeFile(path.join(root, 'a'), 'hit\n');
 			await writeFile(path.join(root, 'b'), 'hit\n' + '\n'.repeat(65_537));
 
-			const helper = await readFile(
-				new URL('../src/search-helper.ts', import.meta.url),
-				'utf8'
-			);
+			const helper = await targetSearchHelper();
 			const arguments_ = new URLSearchParams({
 				path: root,
 				pattern: 'hit',

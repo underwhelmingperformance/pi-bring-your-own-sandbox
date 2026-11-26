@@ -39,7 +39,7 @@ it('keeps the file worker while busy and replaces it after an idle interval', as
 	);
 
 	try {
-		const first = worker.readFile('first', operationContext());
+		const first = worker.files.read.readFile('first', operationContext());
 
 		await entered.promise;
 		await vi.advanceTimersByTimeAsync(32_000);
@@ -47,11 +47,11 @@ it('keeps the file worker while busy and replaces it after an idle interval', as
 		release.resolve(true);
 		expect(await first).toStrictEqual(Uint8Array.of(0, 255));
 		await vi.advanceTimersByTimeAsync(20_000);
-		await worker.readFile('second', operationContext());
+		await worker.files.read.readFile('second', operationContext());
 		await vi.advanceTimersByTimeAsync(20_000);
 		expect(calls).toStrictEqual(['create', 'start', 'exec', 'exec']);
 		await vi.advanceTimersByTimeAsync(10_000);
-		await worker.readFile('third', operationContext());
+		await worker.files.read.readFile('third', operationContext());
 		expect(calls).toStrictEqual([
 			'create',
 			'start',
@@ -110,7 +110,7 @@ it('confirms an interrupted read and cancels a queued read before dispatch', asy
 	const queued = new AbortController();
 
 	try {
-		const running = worker.readFile('active', {
+		const running = worker.files.read.readFile('active', {
 			...operationContext(),
 			signal: active.signal
 		});
@@ -121,7 +121,7 @@ it('confirms an interrupted read and cancels a queued read before dispatch', asy
 		void Promise.allSettled([interrupted]);
 		await entered.promise;
 
-		const waiting = worker.readFile('queued', {
+		const waiting = worker.files.read.readFile('queued', {
 			...operationContext(),
 			signal: queued.signal
 		});
@@ -141,7 +141,7 @@ it('confirms an interrupted read and cancels a queued read before dispatch', asy
 		expect(queueResult).toMatchObject([
 			{ status: 'rejected', reason: { completion: 'not-started' } }
 		]);
-		await worker.readFile('next', operationContext());
+		await worker.files.read.readFile('next', operationContext());
 		expect(calls).toStrictEqual([
 			'create',
 			'start',
@@ -163,6 +163,7 @@ it.each([
 	{ status: 40, error: 'SandboxPathNotFoundError' },
 	{ status: 41, error: 'SandboxPermissionDeniedError' },
 	{ status: 42, error: 'SandboxOperationError' },
+	{ status: 43, error: 'UnsupportedSandboxCapabilityError' },
 	{ status: 125, error: 'SandboxTransportError' },
 	{ status: 0, error: 'SandboxTransportError' }
 ])(
@@ -198,7 +199,7 @@ it.each([
 
 		try {
 			await expect(
-				worker.stat('path', operationContext())
+				worker.files.read.stat('path', operationContext())
 			).rejects.toMatchObject({
 				name: error,
 				operation: 'stat',
@@ -245,14 +246,14 @@ it('retries a failed idle removal with an independent cleanup deadline', async (
 	);
 
 	try {
-		await worker.access('original', {
+		await worker.files.read.access('original', {
 			...operationContext(),
 			cleanup: { deadline: 0, remainingMs: () => 0 }
 		});
 		await vi.advanceTimersByTimeAsync(30_000);
 		expect(budgets).toStrictEqual([5000]);
 		shouldFail = false;
-		await worker.access('large', operationContext());
+		await worker.files.read.access('large', operationContext());
 		expect(calls).toStrictEqual([
 			'create',
 			'start',
@@ -297,7 +298,7 @@ it('delivers every byte of a full-size file alongside diagnostics', async () => 
 	);
 
 	try {
-		const bytes = await worker.readFile('large', operationContext());
+		const bytes = await worker.files.read.readFile('large', operationContext());
 
 		expect(expected.equals(bytes)).toBe(true);
 	} finally {
@@ -335,7 +336,7 @@ it('releases a cancelled caller while Docker is still creating the worker', asyn
 	const caller = new AbortController();
 
 	try {
-		const task = worker.readFile('file', {
+		const task = worker.files.read.readFile('file', {
 			...operationContext(),
 			signal: caller.signal
 		});
@@ -397,9 +398,9 @@ it('sends only accepted write requests to the helper and validates directory res
 
 	try {
 		for (const request of [
-			() => readOnly.writeFile('file', input, context),
-			() => readOnly.writeAccess('file', context),
-			() => readOnly.mkdir('dir', context)
+			() => readOnly.files.write.writeFile('file', input, context),
+			() => readOnly.files.write.access('file', context),
+			() => readOnly.files.write.mkdir('dir', context)
 		]) {
 			await expect(request()).rejects.toMatchObject({
 				name: 'SandboxPermissionDeniedError',
@@ -409,7 +410,11 @@ it('sends only accepted write requests to the helper and validates directory res
 		}
 
 		await expect(
-			writable.writeFile('file', new Uint8Array(16 * 1024 * 1024 + 1), context)
+			writable.files.write.writeFile(
+				'file',
+				new Uint8Array(16 * 1024 * 1024 + 1),
+				context
+			)
 		).rejects.toMatchObject({
 			name: 'SandboxOperationError',
 			operation: 'writeFile',
@@ -419,7 +424,7 @@ it('sends only accepted write requests to the helper and validates directory res
 		});
 		expect(calls).toStrictEqual([]);
 
-		const written = writable.writeFile('file', input, context);
+		const written = writable.files.write.writeFile('file', input, context);
 
 		input.fill(1);
 		await written;
@@ -435,7 +440,9 @@ it('sends only accepted write requests to the helper and validates directory res
 			operation: ['writeFile', 'file', '16777216', '3'],
 			input: Uint8Array.of(0, 255, 10)
 		});
-		await expect(writable.listDirectory('.', context)).rejects.toMatchObject({
+		await expect(
+			writable.files.list.listDirectory('.', context)
+		).rejects.toMatchObject({
 			name: 'SandboxTransportError',
 			operation: 'listDirectory',
 			backendId: resources.volume
@@ -483,12 +490,12 @@ it.each(['stdout', 'stderr'] as const)(
 
 		try {
 			await expect(
-				worker.readFile('large', operationContext())
+				worker.files.read.readFile('large', operationContext())
 			).rejects.toMatchObject({
 				name: 'SandboxOperationError',
 				operation: 'readFile'
 			});
-			await worker.access('next', operationContext());
+			await worker.files.read.access('next', operationContext());
 			expect(calls).toStrictEqual([
 				'create',
 				'start',

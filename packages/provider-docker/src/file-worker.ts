@@ -1,23 +1,22 @@
 import { randomUUID } from 'node:crypto';
 
 import type {
-	BackendFileReader,
-	FindRequest,
-	GrepRequest,
-	SandboxOperationContext
+	SandboxOperationContext,
+	TargetFileOperation,
+	TargetFileOperations
 } from 'pi-bring-your-own-sandbox/provider';
 import {
-	mapSandboxErrno,
+	checkSandboxTargetStatus,
+	createTargetFileOperations,
 	SandboxCancelledError,
 	SandboxCleanupError,
 	SandboxOperationError,
 	SandboxPathNotFoundError,
 	SandboxPermissionDeniedError,
 	SandboxSessionClosingError,
-	SandboxTransportError
+	sandboxTargetTransferLimit,
+	UnsupportedSandboxCapabilityError
 } from 'pi-bring-your-own-sandbox/provider';
-import { Type } from 'typebox';
-import { Compile } from 'typebox/compile';
 
 import type { DockerClient } from './contracts.js';
 import { DOCKER_IMAGE } from './image.js';
@@ -28,57 +27,17 @@ import {
 } from './resources.js';
 import type { SharedCheckout } from './shared-checkout.js';
 
-const statValidator = Compile(
-	Type.Object({
-		kind: Type.Enum(['file', 'directory', 'other']),
-		size: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })
-	})
-);
-const transferLimit = 16 * 1024 * 1024;
-
-const entrySchema = Type.Object({
-	name: Type.String(),
-	kind: Type.Enum(['file', 'directory', 'symlink', 'other'])
-});
-const listValidator = Compile(Type.Array(entrySchema));
-
-const findSchema = Type.Object({
-	paths: Type.Array(Type.String()),
-	truncated: Type.Boolean()
-});
-const findValidator = Compile(findSchema);
-const matchSchema = Type.Object({
-	path: Type.String(),
-	line: Type.Integer({ minimum: 1 }),
-	text: Type.String(),
-	before: Type.Array(Type.String()),
-	after: Type.Array(Type.String())
-});
-const grepValidator = Compile(
-	Type.Object({ matches: Type.Array(matchSchema), truncated: Type.Boolean() })
-);
-
 export interface DockerFileHelpers {
 	readonly files: string;
 	readonly search: string;
 	readonly matcher: Uint8Array;
 }
 
-type FileOperation =
-	| 'find'
-	| 'grep'
-	| 'mkdir'
-	| 'listDirectory'
-	| 'writeFile'
-	| 'readFile'
-	| 'stat'
-	| 'access';
-
 /**
 Serialises fixed filesystem operations in an unprivileged container. Removing
 the container cancels an individual call without affecting shell workloads.
 */
-export class DockerFileWorker implements BackendFileReader {
+export class DockerFileWorker implements TargetFileOperations {
 	readonly #resources: DockerResources;
 	readonly #client: DockerClient;
 	readonly #workspace: {
@@ -95,6 +54,8 @@ export class DockerFileWorker implements BackendFileReader {
 	#idle: NodeJS.Timeout | undefined;
 	#requiresRemoval = false;
 	#guardKey: string | undefined;
+	readonly files: TargetFileOperations['files'];
+	readonly search: TargetFileOperations['search'];
 
 	constructor(
 		resources: DockerResources,
@@ -112,9 +73,22 @@ export class DockerFileWorker implements BackendFileReader {
 		this.#workspace = workspace;
 		this.#helpers = helpers;
 		this.#lifetime = lifetime;
+
+		const { files, search } = createTargetFileOperations(
+			(operation, filename, context, input, requiresWrite) =>
+				this.#request(operation, filename, context, input, requiresWrite),
+			{
+				providerId: 'example.docker',
+				backendId: resources.volume,
+				recovery: resources.recovery
+			}
+		);
+
+		this.files = files;
+		this.search = search;
 	}
 
-	#identity(operation: FileOperation) {
+	#identity(operation: TargetFileOperation) {
 		return {
 			operation,
 			providerId: 'example.docker',
@@ -125,7 +99,7 @@ export class DockerFileWorker implements BackendFileReader {
 
 	async #start(
 		context: SandboxOperationContext,
-		operation: FileOperation
+		operation: TargetFileOperation
 	): Promise<string> {
 		const guards = await this.#workspace.shared?.mounts(
 			this.#resources.volume,
@@ -212,7 +186,7 @@ export class DockerFileWorker implements BackendFileReader {
 
 	async #remove(
 		context: SandboxOperationContext,
-		operation: FileOperation | 'dispose'
+		operation: TargetFileOperation | 'dispose'
 	): Promise<void> {
 		if (this.#name === undefined) {
 			return;
@@ -252,7 +226,7 @@ export class DockerFileWorker implements BackendFileReader {
 	}
 
 	async #execute(
-		operation: FileOperation,
+		operation: TargetFileOperation,
 		filename: string,
 		context: SandboxOperationContext,
 		onDispatch: () => void,
@@ -323,8 +297,12 @@ export class DockerFileWorker implements BackendFileReader {
 					'--',
 					operation,
 					filename,
-					String(transferLimit),
-					requiresWrite ? 'write' : String(input?.byteLength ?? 0)
+					String(sandboxTargetTransferLimit),
+					isSearch
+						? '/workspace'
+						: requiresWrite
+							? 'write'
+							: String(input?.byteLength ?? 0)
 				],
 				context,
 				...(input !== undefined && { input }),
@@ -347,7 +325,7 @@ export class DockerFileWorker implements BackendFileReader {
 
 					bytes += output.data.byteLength;
 
-					if (bytes > transferLimit) {
+					if (bytes > sandboxTargetTransferLimit) {
 						limitFailure = new RangeError(
 							'The file response exceeded the transfer limit.'
 						);
@@ -361,27 +339,9 @@ export class DockerFileWorker implements BackendFileReader {
 
 			signal.throwIfAborted();
 
-			switch (result.status) {
-				case 0: {
-					return new Uint8Array(Buffer.concat(chunks));
-				}
+			checkSandboxTargetStatus(result.status, identity);
 
-				case 40: {
-					throw mapSandboxErrno('ENOENT', identity);
-				}
-
-				case 41: {
-					throw mapSandboxErrno('EACCES', identity);
-				}
-
-				case 42: {
-					throw new SandboxOperationError(identity);
-				}
-
-				default: {
-					throw new SandboxTransportError(identity);
-				}
-			}
+			return new Uint8Array(Buffer.concat(chunks));
 		} catch (error) {
 			if (signal.aborted) {
 				cancel();
@@ -407,6 +367,7 @@ export class DockerFileWorker implements BackendFileReader {
 			if (!(
 				error instanceof SandboxPathNotFoundError ||
 				error instanceof SandboxPermissionDeniedError ||
+				error instanceof UnsupportedSandboxCapabilityError ||
 				error instanceof SandboxOperationError
 			)) {
 				cancel();
@@ -420,7 +381,7 @@ export class DockerFileWorker implements BackendFileReader {
 	}
 
 	#request(
-		operation: FileOperation,
+		operation: TargetFileOperation,
 		filename: string,
 		context: SandboxOperationContext,
 		input?: Uint8Array,
@@ -498,116 +459,6 @@ export class DockerFileWorker implements BackendFileReader {
 		this.#tail = Promise.allSettled([task]);
 
 		return Promise.race([task, queued.promise]);
-	}
-
-	async #json<Value>(
-		operation: 'listDirectory' | 'stat' | 'find' | 'grep',
-		filename: string,
-		context: SandboxOperationContext,
-		isValid: (value: unknown) => value is Value
-	): Promise<Value> {
-		const data = await this.#request(operation, filename, context);
-
-		try {
-			const value: unknown = JSON.parse(
-				new TextDecoder('utf-8', { fatal: true }).decode(data)
-			);
-
-			if (isValid(value)) {
-				return value;
-			}
-
-			throw new TypeError('Invalid Docker helper response.');
-		} catch (error) {
-			throw new SandboxTransportError(
-				{
-					operation,
-					providerId: 'example.docker',
-					backendId: this.#resources.volume,
-					recovery: this.#resources.recovery
-				},
-				{ cause: error }
-			);
-		}
-	}
-
-	#searchOptions(request: FindRequest | GrepRequest): string {
-		const options = new URLSearchParams();
-
-		for (const [key, value] of Object.entries(request)) {
-			if (
-				typeof value === 'string' ||
-				typeof value === 'boolean' ||
-				typeof value === 'number'
-			) {
-				options.set(key, String(value));
-			}
-		}
-
-		return options.toString();
-	}
-
-	readFile(filename: string, context: SandboxOperationContext) {
-		return this.#request('readFile', filename, context);
-	}
-
-	async access(filename: string, context: SandboxOperationContext) {
-		await this.#request('access', filename, context);
-	}
-
-	async writeFile(
-		filename: string,
-		content: Uint8Array,
-		context: SandboxOperationContext
-	) {
-		if (content.byteLength > transferLimit) {
-			throw new SandboxOperationError(this.#identity('writeFile'), {
-				cause: new RangeError('The file exceeds 16 MiB.')
-			});
-		}
-
-		await this.#request(
-			'writeFile',
-			filename,
-			context,
-			new Uint8Array(content)
-		);
-	}
-
-	async writeAccess(filename: string, context: SandboxOperationContext) {
-		await this.#request('access', filename, context, undefined, true);
-	}
-
-	async mkdir(filename: string, context: SandboxOperationContext) {
-		await this.#request('mkdir', filename, context);
-	}
-
-	listDirectory(filename: string, context: SandboxOperationContext) {
-		return this.#json('listDirectory', filename, context, (value) =>
-			listValidator.Check(value)
-		);
-	}
-
-	stat(filename: string, context: SandboxOperationContext) {
-		return this.#json('stat', filename, context, (value) =>
-			statValidator.Check(value)
-		);
-	}
-
-	find(request: FindRequest, context: SandboxOperationContext) {
-		const options = this.#searchOptions(request);
-
-		return this.#json('find', options, context, (value) =>
-			findValidator.Check(value)
-		);
-	}
-
-	grep(request: GrepRequest, context: SandboxOperationContext) {
-		const options = this.#searchOptions(request);
-
-		return this.#json('grep', options, context, (value) =>
-			grepValidator.Check(value)
-		);
 	}
 
 	async close() {

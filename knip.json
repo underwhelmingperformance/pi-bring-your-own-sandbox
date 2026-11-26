@@ -9,6 +9,8 @@
 			"entry": [
 				"src/**/*.test.ts",
 				"src/fixtures/diagnostics-extension.ts",
+				"src/target-file.ts!",
+				"src/target-search.ts!",
 				"examples/consumer/src/index.ts!"
 			],
 			"project": [

@@ -28,6 +28,8 @@ import {
 	SandboxPermissionDeniedError,
 	SandboxSessionClosingError,
 	SandboxTransportError,
+	targetFileHelper,
+	targetSearchHelper,
 	UnsupportedSandboxCapabilityError,
 	UnsupportedSandboxPolicyError
 } from 'pi-bring-your-own-sandbox/provider';
@@ -195,19 +197,8 @@ class DockerBackend implements SandboxBackend {
 			helpers,
 			this.#lifetime.signal
 		);
-		this.search = {
-			find: this.#worker.find.bind(this.#worker),
-			grep: this.#worker.grep.bind(this.#worker)
-		};
-		this.files = {
-			read: this.#worker,
-			list: this.#worker,
-			write: {
-				access: this.#worker.writeAccess.bind(this.#worker),
-				mkdir: this.#worker.mkdir.bind(this.#worker),
-				writeFile: this.#worker.writeFile.bind(this.#worker)
-			}
-		};
+		this.search = this.#worker.search;
+		this.files = this.#worker.files;
 	}
 
 	#isWorkspaceReadOnly(): boolean {
@@ -900,8 +891,8 @@ export function createDockerProvider(
 
 		const [launcher, files, search, importer, matcher] = await Promise.all([
 			readFile(new URL('launcher.ts', import.meta.url), 'utf8'),
-			readFile(new URL('file-helper.ts', import.meta.url), 'utf8'),
-			readFile(new URL('search-helper.ts', import.meta.url), 'utf8'),
+			targetFileHelper(),
+			targetSearchHelper(),
 			readFile(new URL('import-helper.ts', import.meta.url), 'utf8'),
 			readDockerMatcher()
 		]);

@@ -74,3 +74,15 @@ export {
 } from './provider-registration.js';
 export type { ShellTransportOptions } from './shell-transport.js';
 export { encodePosixArgv, ShellTransportRunner } from './shell-transport.js';
+export type {
+	TargetFileOperation,
+	TargetFileOperations,
+	TargetFileTransport
+} from './target-operations.js';
+export {
+	checkSandboxTargetStatus,
+	createTargetFileOperations,
+	sandboxTargetTransferLimit,
+	targetFileHelper,
+	targetSearchHelper
+} from './target-operations.js';

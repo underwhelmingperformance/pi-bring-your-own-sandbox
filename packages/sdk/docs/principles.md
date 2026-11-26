@@ -45,10 +45,10 @@ In practice:
 
 ## 2. Give each caller only what it needs
 
-Each API gives its caller the smallest operation that does the job, tied to the
-thing that it acts on. For example, a reviewer receives a function that makes
-copies of one [destination], not access to the live [sandbox]. Only the host
-that started a session can close it.
+Each API gives its caller the smallest operation that does the job. A reviewer
+can make copies of one [destination]. A permission extension can decide the
+escalation of one pending tool call. Only the host that started a session can
+close it.
 
 A caller that can do only one thing cannot misuse anything else, by mistake or
 otherwise. BYOS runs inside Pi with the same permissions as every other
@@ -62,7 +62,6 @@ Enforced by:
 - separate entry points for each audience (principle 11).
 
 [destination]: #destination
-[sandbox]: #sandbox
 
 ## 3. Consumers specify access requirements
 

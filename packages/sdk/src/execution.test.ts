@@ -9,6 +9,7 @@ import type {
 import { SandboxPathNotFoundError, SandboxTransportError } from './errors.js';
 import type { BackendOwner } from './execution.js';
 import { executeProcess } from './execution.js';
+import { fixtureProfile } from './fixtures/profile-fixture.js';
 import { OperationRegistry } from './lifecycle.js';
 import { snapshotProcessOptions } from './process-input.js';
 
@@ -26,21 +27,25 @@ function fixture(
 		workspace: {
 			root: '/target',
 			pathFlavor: 'posix',
-			relationship: 'remote',
+			relationship: 'shared',
 			description: 'Test fixture.'
 		},
-		capabilities: {
-			processKinds: ['argv', 'shell'],
-			terminationScope: 'workload',
-			exitStatus: 'guaranteed',
-			operations: ['exec'],
-			shells: ['sh']
-		},
-		policy: {
-			workspaceAccess: 'read-write',
-			filesystemScope: 'provider-default',
-			networkAccess: 'provider-default'
-		},
+		profile: fixtureProfile(
+			{
+				hostWorkspaceWrites: true,
+				hostUserData: 'denied',
+				hostSystemFiles: 'read-only',
+				network: false
+			},
+			{
+				processKinds: ['argv', 'shell'],
+				terminationScope: 'workload',
+				exitStatus: 'guaranteed',
+				operations: ['exec'],
+				shells: ['sh']
+			}
+		),
+
 		policyDescription: 'Test fixture.',
 		recovery: { kind: 'none' },
 		exec,
@@ -62,20 +67,7 @@ function fixture(
 		markUnhealthy: (failure) => {
 			failures.push(failure);
 		},
-		backend: validateBackend(
-			metadata,
-			{
-				id: 'fixture',
-				label: 'Fixture',
-				capabilities: metadata.capabilities,
-				policies: {
-					workspaceAccess: ['read-write'],
-					filesystemScope: ['provider-default'],
-					networkAccess: ['provider-default']
-				}
-			},
-			metadata.policy
-		)
+		backend: validateBackend(metadata, { id: 'fixture' }, metadata.profile)
 	};
 
 	return { owner, lifetime, failures };

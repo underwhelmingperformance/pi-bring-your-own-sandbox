@@ -226,25 +226,6 @@ importers:
         specifier: 8.73.0
         version: 8.73.0(@typescript/typescript6@6.0.2)(eslint@10.15.0(jiti@2.7.0))(typescript@7.0.2)
 
-  packages/guard:
-    dependencies:
-      pi-bring-your-own-sandbox:
-        specifier: workspace:^
-        version: link:../sdk
-    devDependencies:
-      '@earendil-works/pi-coding-agent':
-        specifier: 1.5.0
-        version: 1.5.0(@aws-sdk/credential-provider-node@3.972.97)(@smithy/signature-v4@5.7.5)(ws@8.23.0)(zod@4.6.7)
-      '@types/node':
-        specifier: 24.19.2
-        version: 24.19.2
-      typescript:
-        specifier: npm:@typescript/typescript6@6.0.2
-        version: '@typescript/typescript6@6.0.2'
-      vitest:
-        specifier: 5.1.0
-        version: 5.1.0(@types/node@24.19.2)(vite@8.3.8(@types/node@24.19.2)(jiti@2.7.0)(yaml@2.9.1))
-
   packages/sdk:
     devDependencies:
       '@earendil-works/pi-ai':

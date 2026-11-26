@@ -8,7 +8,7 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { afterEach, expect, it, vi } from 'vitest';
 
-import { registerSandboxProvider, registerSandboxRequirement } from './api.js';
+import { registerSandboxProvider } from './api.js';
 import { createSandboxClient } from './client.js';
 import type {
 	SandboxBackend,
@@ -17,9 +17,7 @@ import type {
 	SandboxHost,
 	SandboxPolicy,
 	SandboxProvider,
-	SandboxRequirements,
-	SandboxWorkspace,
-	SupportedSandboxPolicies
+	SandboxWorkspace
 } from './contracts.js';
 import { ensureSandboxService } from './default-broker.js';
 import {
@@ -35,17 +33,19 @@ import {
 import { getSandbox } from './fixtures/fixture-client.js';
 import { copyHostWorkspace } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
+import type { FixturePolicyChoices } from './fixtures/profile-fixture.js';
+import { fixtureProfile, fixtureProfiles } from './fixtures/profile-fixture.js';
 import { brokerReply, respond } from './fixtures/protocol-peer.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();
 });
 
-const ALL_POLICIES: SupportedSandboxPolicies = {
-	workspaceAccess: ['read-write', 'read-only'],
-	filesystemScope: ['provider-default', 'system-read-only', 'workspace-only'],
-	networkAccess: ['provider-default', 'denied'],
-	workspaceRelationship: ['remote']
+const ALL_POLICIES: FixturePolicyChoices = {
+	hostWorkspaceWrites: [true, false],
+	hostUserData: ['denied'],
+	hostSystemFiles: ['read-only', 'denied'],
+	network: [false]
 };
 
 const capabilities: SandboxCapabilities = {
@@ -99,8 +99,8 @@ function backendFor(
 	return {
 		id,
 		workspace: { ...template.workspace, relationship },
-		policy,
-		capabilities,
+
+		profile: fixtureProfile(policy, capabilities),
 		policyDescription: 'Copy fixture',
 		recovery: template.recovery,
 		...(template.files && { files: template.files }),
@@ -114,8 +114,7 @@ function backendFor(
 }
 
 interface CopyProviderOptions {
-	readonly defaultPolicy?: SandboxPolicy;
-	readonly policies?: SupportedSandboxPolicies;
+	readonly policies?: FixturePolicyChoices;
 	readonly relationship?: SandboxWorkspace['relationship'];
 }
 
@@ -127,16 +126,16 @@ function registerCopyProvider(pi: SandboxHost, options?: CopyProviderOptions) {
 	const provider: SandboxProvider<object> = {
 		id: 'active',
 		label: 'active',
-		defaultPolicy: options?.defaultPolicy ?? template.policy,
-		capabilities,
-		policies: options?.policies ?? ALL_POLICIES,
+
+		profiles: fixtureProfiles(capabilities, options?.policies ?? ALL_POLICIES),
+
 		validateConfig: () => ({}),
 		open: (request) => {
 			const backend = backendFor(
 				template,
 				'ordinary',
-				request.policy,
-				'remote'
+				request.profile.policy,
+				'shared'
 			);
 
 			opened.push(backend);
@@ -144,7 +143,7 @@ function registerCopyProvider(pi: SandboxHost, options?: CopyProviderOptions) {
 			return Promise.resolve(backend);
 		},
 		copy: (request) => {
-			copies.push({ source: request.source, policy: request.policy });
+			copies.push({ source: request.source, policy: request.profile.policy });
 
 			const id = 'copy-' + String(copies.length);
 
@@ -152,7 +151,7 @@ function registerCopyProvider(pi: SandboxHost, options?: CopyProviderOptions) {
 				backendFor(
 					template,
 					id,
-					request.policy,
+					request.profile.policy,
 					options?.relationship ?? 'copied',
 					() => {
 						released.push(id);
@@ -167,17 +166,17 @@ function registerCopyProvider(pi: SandboxHost, options?: CopyProviderOptions) {
 	return { copies, released, opened };
 }
 
-it('copies a sandbox into private allocations with the strictest supported policy', async () => {
+it('copies a sandbox into private allocations with the highest-ranked supported policy', async () => {
 	await fixture(async (pi, context) => {
 		const { copies, released, opened } = registerCopyProvider(pi);
 		const target = await getSandbox(pi, context);
 		const first = await target.copy();
 		const second = await target.copy();
-		const strictest = {
-			workspaceRelationship: 'copied',
-			workspaceAccess: 'read-only',
-			filesystemScope: 'workspace-only',
-			networkAccess: 'denied'
+		const selected = {
+			hostWorkspaceWrites: false,
+			hostUserData: 'denied',
+			hostSystemFiles: 'read-only',
+			network: false
 		};
 
 		expect({
@@ -190,12 +189,12 @@ it('copies a sandbox into private allocations with the strictest supported polic
 		}).toStrictEqual({
 			copies: [0, 1].map(() => ({
 				source: { kind: 'backend', backend: opened[0] },
-				policy: strictest
+				policy: selected
 			})),
 			sandboxes: ['copy-1', 'copy-2'].map((backendId) => ({
 				backendId,
 				relationship: 'copied',
-				policy: strictest
+				policy: selected
 			}))
 		});
 
@@ -210,55 +209,38 @@ it('copies a sandbox into private allocations with the strictest supported polic
 	});
 });
 
-it.each([
-	[
-		'writes and network access',
-		{ needs: ['workspace-writes', 'network'] },
-		{
-			workspaceAccess: 'read-write',
-			filesystemScope: 'workspace-only',
-			networkAccess: 'provider-default'
-		}
-	],
-	[
-		'host system files',
-		{ needs: ['host-system-files'] },
-		{
-			workspaceAccess: 'read-only',
-			filesystemScope: 'system-read-only',
-			networkAccess: 'denied'
-		}
-	]
-] as const)(
-	'loosens a copy only for a need for %s',
-	async (_, options, expected) => {
-		await fixture(async (pi, context) => {
-			const { copies } = registerCopyProvider(pi);
-			const target = await getSandbox(pi, context);
-			const copy = await target.copy(options);
+it('satisfies a copy need for readable host system files within the configured policy', async () => {
+	await fixture(async (pi, context) => {
+		const { copies } = registerCopyProvider(pi);
+		const target = await getSandbox(pi, context);
+		const copy = await target.copy({ access: { hostSystemFiles: 'needed' } });
+		const expected = {
+			hostWorkspaceWrites: false,
+			hostUserData: 'denied',
+			hostSystemFiles: 'read-only',
+			network: false
+		};
 
-			expect({
-				requested: copies.map(({ policy }) => policy),
-				effective: copy.sandbox.policy
-			}).toStrictEqual({
-				requested: [{ workspaceRelationship: 'copied', ...expected }],
-				effective: { workspaceRelationship: 'copied', ...expected }
-			});
-		});
-	}
-);
+		expect({
+			requested: copies.map(({ policy }) => policy),
+			effective: copy.sandbox.policy
+		}).toStrictEqual({ requested: [expected], effective: expected });
+	});
+});
 
 it('limits needs in a copy of a copy by the configured policy', async () => {
 	await fixture(async (pi, context) => {
 		const { copies } = registerCopyProvider(pi);
 		const target = await getSandbox(pi, context);
 		const first = await target.copy();
-		const nested = await first.sandbox.copy({ needs: ['workspace-writes'] });
-		const writable = {
-			workspaceRelationship: 'copied',
-			workspaceAccess: 'read-write',
-			filesystemScope: 'workspace-only',
-			networkAccess: 'denied'
+		const nested = await first.sandbox.copy({
+			access: { hostSystemFiles: 'needed' }
+		});
+		const policy = {
+			hostWorkspaceWrites: false,
+			hostUserData: 'denied',
+			hostSystemFiles: 'read-only',
+			network: false
 		};
 
 		const source = copies[1]?.source;
@@ -269,8 +251,8 @@ it('limits needs in a copy of a copy by the configured policy', async () => {
 			effective: nested.sandbox.policy
 		}).toStrictEqual({
 			source: 'copy-1',
-			requested: writable,
-			effective: writable
+			requested: policy,
+			effective: policy
 		});
 	});
 });
@@ -297,76 +279,39 @@ it('uses the strictest scope that a provider offers when it lacks the strongest'
 		registerCopyProvider(pi, {
 			policies: {
 				...ALL_POLICIES,
-				filesystemScope: ['provider-default', 'system-read-only']
+				hostUserData: ['denied'],
+				hostSystemFiles: ['read-only']
 			}
 		});
 
 		const target = await getSandbox(pi, context);
-		const copy = await target.copy({ guarantees: ['no-host-user-data'] });
+		const copy = await target.copy({ access: { hostUserData: 'prevented' } });
 
-		expect(copy.sandbox.policy.filesystemScope).toBe('system-read-only');
+		expect(copy.sandbox.policy.hostSystemFiles).toBe('read-only');
 	});
 });
 
-it('applies session-wide requirements to copies', async () => {
-	await fixture(async (pi, context) => {
-		registerCopyProvider(pi);
-		registerSandboxRequirement(pi, import.meta.filename, {
-			needs: ['workspace-writes']
-		});
-
-		const target = await getSandbox(pi, context);
-		const copy = await target.copy();
-
-		expect(copy.sandbox.policy.workspaceAccess).toBe('read-write');
-	});
-});
-
-it.each<{
-	readonly name: string;
-	readonly provider?: CopyProviderOptions;
-	readonly requirement?: SandboxRequirements;
-	readonly options: Parameters<
-		Awaited<ReturnType<typeof getSandbox>>['copy']
-	>[0];
-}>([
+it.each([
 	{
-		name: 'a need for access that the session policy does not grant',
-		provider: {
-			defaultPolicy: {
-				workspaceAccess: 'read-write',
-				filesystemScope: 'provider-default',
-				networkAccess: 'denied'
-			}
-		},
-		options: { needs: ['network'] }
+		name: 'a need for access beyond the configured policy',
+		access: { network: 'needed' as const }
 	},
 	{
-		name: 'a guarantee that the provider cannot provide',
-		provider: {
-			policies: { ...ALL_POLICIES, filesystemScope: ['provider-default'] }
-		},
-		options: { guarantees: ['no-host-user-data'] }
+		name: 'a restriction that the provider cannot supply',
+		access: { hostSystemFiles: 'prevented' as const }
 	},
 	{
-		name: 'a session-wide requirement for a shared workspace',
-		requirement: { workspaceRelationship: 'shared' },
-		options: {}
+		name: 'a need to write the live checkout',
+		access: { hostWorkspaceWrites: 'needed' as const }
 	}
-])('rejects $name before copying', async (scenario) => {
+])('rejects $name before copying', async ({ access }) => {
 	await fixture(async (pi, context) => {
-		const { copies } = registerCopyProvider(pi, scenario.provider);
-
-		if (scenario.requirement !== undefined) {
-			registerSandboxRequirement(
-				pi,
-				import.meta.filename,
-				scenario.requirement
-			);
-		}
+		const { copies } = registerCopyProvider(pi, {
+			policies: { ...ALL_POLICIES, hostSystemFiles: ['read-only'] }
+		});
 
 		await expect(
-			copyHostWorkspace(pi, context, scenario.options)
+			copyHostWorkspace(pi, context, { access })
 		).rejects.toMatchObject({
 			name: 'UnsupportedSandboxPolicyError',
 			providerId: 'active'
@@ -411,7 +356,7 @@ it('rejects a copy of a stale sandbox identity', async () => {
 
 it('rejects a copy whose backend does not report a copied workspace and disposes it', async () => {
 	await fixture(async (pi, context) => {
-		const { released } = registerCopyProvider(pi, { relationship: 'remote' });
+		const { released } = registerCopyProvider(pi, { relationship: 'shared' });
 		const target = await getSandbox(pi, context);
 
 		await expect(target.copy()).rejects.toMatchObject({
@@ -430,13 +375,14 @@ it('rejects copies from a provider without the copy capability', async () => {
 		registerSandboxProvider(pi, import.meta.filename, {
 			id: 'ordinary',
 			label: 'ordinary',
-			defaultPolicy: backend.policy,
-			capabilities: backend.capabilities,
-			policies: {
-				workspaceAccess: ['read-write'],
-				filesystemScope: ['provider-default'],
-				networkAccess: ['provider-default']
-			},
+
+			profiles: fixtureProfiles(backend.capabilities, {
+				hostWorkspaceWrites: [true],
+				hostUserData: ['denied'],
+				hostSystemFiles: ['read-only'],
+				network: [false]
+			}),
+
 			validateConfig: () => ({}),
 			open: () => Promise.resolve(backend)
 		});
@@ -467,18 +413,22 @@ it.each([
 			registerSandboxProvider(pi, import.meta.filename, {
 				id: 'inconsistent',
 				label: 'inconsistent',
-				defaultPolicy: backend.policy,
-				capabilities: {
-					...backend.capabilities,
-					operations: declared
-						? [...backend.capabilities.operations, 'copy']
-						: backend.capabilities.operations
-				},
-				policies: {
-					workspaceAccess: ['read-write'],
-					filesystemScope: ['provider-default'],
-					networkAccess: ['provider-default']
-				},
+
+				profiles: fixtureProfiles(
+					{
+						...backend.capabilities,
+						operations: declared
+							? [...backend.capabilities.operations, 'copy']
+							: backend.capabilities.operations
+					},
+					{
+						hostWorkspaceWrites: [true],
+						hostUserData: ['denied'],
+						hostSystemFiles: ['read-only'],
+						network: [false]
+					}
+				),
+
 				validateConfig: () => ({}),
 				open: () => Promise.resolve(backend),
 				...(implemented && { copy: () => Promise.resolve(backend) })
@@ -512,8 +462,20 @@ it('retains the entire close report when an independent broker returns an unusab
 					sandbox: {
 						providerId: 'independent',
 						backendId: 'remaining',
-						workspace: { relationship: 'remote' },
-						capabilities: { processKinds: [], operations: [], shells: [] }
+						workspace: { relationship: 'shared' },
+						policy: {
+							hostWorkspaceWrites: false,
+							network: false,
+							hostUserData: 'denied',
+							hostSystemFiles: 'denied'
+						},
+						capabilities: {
+							processKinds: [],
+							operations: [],
+							shells: [],
+							terminationScope: 'none',
+							exitStatus: 'optional'
+						}
 					},
 					close: () => Promise.resolve(report)
 				})

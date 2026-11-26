@@ -29,6 +29,7 @@ import {
 } from './fixtures/fixture-client.js';
 import { getSandbox } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
+import { fixtureProfiles } from './fixtures/profile-fixture.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -71,13 +72,14 @@ function provider(id: string, backend: MemoryBackend): SandboxProvider<object> {
 	return {
 		id,
 		label: id,
-		defaultPolicy: backend.policy,
-		capabilities: backend.capabilities,
-		policies: {
-			workspaceAccess: ['read-write'],
-			filesystemScope: ['provider-default'],
-			networkAccess: ['provider-default']
-		},
+
+		profiles: fixtureProfiles(backend.capabilities, {
+			hostWorkspaceWrites: [true],
+			hostUserData: ['denied'],
+			hostSystemFiles: ['read-only'],
+			network: [false]
+		}),
+
 		validateConfig: () => ({}),
 		open: () => Promise.resolve(backend)
 	};
@@ -88,7 +90,7 @@ it('activates a provider without a configuration file and shares lazy resolution
 		const backend = new MemoryBackend();
 		const configure = vi.fn(() => ({
 			configuration: {},
-			policy: backend.policy
+			settings: { policy: backend.policy }
 		}));
 
 		registerSandboxProvider(
@@ -277,7 +279,7 @@ it('applies provider cleanup overrides to host defaults', async () => {
 			{
 				configure: () => ({
 					configuration: {},
-					cleanup: { cancellationGraceMs: 300 }
+					settings: { cleanup: { cancellationGraceMs: 300 } }
 				})
 			}
 		);
@@ -430,10 +432,13 @@ it('keeps raw registration input separate from transformed provider configuratio
 			{
 				configure: () => ({
 					configuration: { endpoint: 'https://fixture.invalid' },
-					policy: {
-						workspaceAccess: 'read-write',
-						filesystemScope: 'workspace-only',
-						networkAccess: 'denied'
+					settings: {
+						policy: {
+							hostWorkspaceWrites: true,
+							hostUserData: 'denied',
+							hostSystemFiles: 'denied',
+							network: false
+						}
 					}
 				})
 			}
@@ -529,9 +534,10 @@ it('rejects a non-callable resolver at registration', async () => {
 	});
 });
 
-it('attributes an unsupported configured relationship to the extension', async () => {
+it('attributes an invalid shared setting to the extension', async () => {
 	await fixture(async (pi, context) => {
 		const backend = new MemoryBackend();
+		const invalid: unknown = 'PRIVATE_CONFIGURATION_VALUE';
 
 		registerSandboxProvider(
 			pi,
@@ -540,14 +546,21 @@ it('attributes an unsupported configured relationship to the extension', async (
 			{
 				configure: () => ({
 					configuration: {},
-					policy: { ...backend.policy, workspaceRelationship: 'copied' }
+					settings: {
+						policy: {
+							...backend.policy,
+							network: invalid as boolean
+						}
+					}
 				})
 			}
 		);
 		await expect(getSandbox(pi, context)).rejects.toMatchObject({
-			name: 'UnsupportedSandboxPolicyError',
+			name: 'InvalidSandboxConfigError',
 			operation: 'configure',
 			providerId: 'active',
+			detail: { kind: 'config', field: 'settings.policy.network' },
+			extensionSource: import.meta.filename,
 			configurationSource: 'extension'
 		});
 	});

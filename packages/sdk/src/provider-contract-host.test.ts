@@ -15,15 +15,30 @@ import { expect } from 'vitest';
 
 import type { SandboxProvider } from './contracts.js';
 import { nodeVisibilityProbe } from './fixtures/node-visibility-probe.js';
-import { openPassthrough } from './passthrough.js';
+import { firstOpenProfile } from './fixtures/profile-fixture.js';
+import { openPassthrough, probePassthrough } from './passthrough.js';
+import { unrestrictedPolicy } from './policy-model.js';
+import { profileCapabilities } from './validation.js';
+
+const hostProfile = await probePassthrough(process.cwd());
 
 const provider: SandboxProvider<undefined> = {
 	id: 'fixture.host',
 	label: 'Host provider contract scenario without isolation',
+	profiles: { open: [hostProfile.profile], copy: [] },
+	validateConfig: () => {
+		return;
+	},
+	open: (request, context) =>
+		openPassthrough(request.hostWorkspace, context, hostProfile)
+};
+
+defineSandboxProviderTests({
+	workspaceVisibility: 'shared',
+	label: 'compiled contract suite against host processes and files',
+	provider,
 	capabilities: {
-		processKinds: ['argv', 'shell'],
-		terminationScope: 'process-group',
-		exitStatus: 'guaranteed',
+		...profileCapabilities(firstOpenProfile(provider)),
 		operations: [
 			'exec',
 			'files.read',
@@ -32,24 +47,8 @@ const provider: SandboxProvider<undefined> = {
 			'search.find',
 			'search.grep'
 		],
-		shells: ['sh', 'bash', 'powershell']
+		shells: ['sh']
 	},
-	policies: {
-		workspaceAccess: ['read-write'],
-		filesystemScope: ['provider-default'],
-		networkAccess: ['provider-default']
-	},
-	validateConfig: () => {
-		return;
-	},
-	open: (request, context) => openPassthrough(request.hostWorkspace, context)
-};
-
-defineSandboxProviderTests({
-	workspaceVisibility: 'shared',
-	label: 'compiled contract suite against host processes and files',
-	provider,
-	capabilities: { ...provider.capabilities, shells: ['sh'] },
 	async createFixture() {
 		const temporary = await mkdtemp(path.join(tmpdir(), 'pi-byos-contract-'));
 		const directory = await realpath(temporary);
@@ -82,11 +81,7 @@ defineSandboxProviderTests({
 			configuration: undefined,
 			hostWorkspace: directory,
 			visibility: nodeVisibilityProbe(directory, 'seed', process.execPath),
-			policy: {
-				workspaceAccess: 'read-write',
-				filesystemScope: 'provider-default',
-				networkAccess: 'provider-default'
-			},
+			policy: unrestrictedPolicy,
 			processes: [
 				{
 					request: {

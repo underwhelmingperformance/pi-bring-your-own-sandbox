@@ -1,5 +1,4 @@
 import { SandboxBroker } from './broker.js';
-import { builtinProviders } from './builtin-providers.js';
 import { reportCleanup } from './cleanup-report.js';
 import type { SandboxHost } from './contracts.js';
 import { discoverBroker, discoverProviders } from './discovery.js';
@@ -8,6 +7,7 @@ import {
 	InvalidSandboxRequestError,
 	SandboxInitialisationError
 } from './errors.js';
+import { createPassthroughProvider } from './passthrough-provider.js';
 import {
 	bindProtocolAddress,
 	isPiBound,
@@ -56,8 +56,8 @@ export function bindFactory(pi: SandboxHost, extensionSource: string): void {
 						{
 							diagnostics: settings.diagnostics,
 							protocol: identity,
-							providers: () => [
-								...builtinProviders.providers,
+							providers: async (context) => [
+								await createPassthroughProvider(context.cwd),
 								...discoverProviders(pi.events)
 							],
 							readConfig: (context) => settings.read(context)

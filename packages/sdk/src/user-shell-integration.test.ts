@@ -16,12 +16,14 @@ import type {
 import { discoverBroker } from './discovery.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { fixtureProfile, fixtureProfiles } from './fixtures/profile-fixture.js';
 import { ScriptedModel } from './fixtures/scripted-model.js';
 import { observe } from './lifecycle.js';
 import type { ProviderServiceV1 } from './protocol.js';
 import { bindProtocolAddress } from './protocol-address.js';
 import { ensureBroker } from './service.js';
 import { registerUserShell } from './user-shell.js';
+import { profileCapabilities } from './validation.js';
 
 vi.mock(import('node:child_process'), async (importOriginal) => {
 	const actual = await importOriginal();
@@ -57,14 +59,14 @@ function fixture(
 				defaultShell: config.defaultShell
 			})
 		},
-		capabilities: {
+		profile: fixtureProfile(template.policy, {
 			processKinds: config.shells.length === 0 ? ['argv'] : ['argv', 'shell'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: ['exec'],
 			shells: config.shells
-		},
-		policy: template.policy,
+		}),
+
 		policyDescription: template.policyDescription,
 		recovery: template.recovery,
 		exec(request: ProcessRequest, context: BackendProcessContext) {
@@ -84,12 +86,13 @@ function fixture(
 	const provider: ProviderServiceV1 = {
 		id: 'fixture',
 		label: 'Fixture',
-		capabilities: backend.capabilities,
-		policies: {
-			workspaceAccess: ['read-write'],
-			filesystemScope: ['provider-default'],
-			networkAccess: ['provider-default']
-		},
+		profiles: fixtureProfiles(profileCapabilities(backend.profile), {
+			hostWorkspaceWrites: [true],
+			hostUserData: ['denied'],
+			hostSystemFiles: ['read-only'],
+			network: [false]
+		}),
+
 		configure() {
 			return {
 				open: async () => {

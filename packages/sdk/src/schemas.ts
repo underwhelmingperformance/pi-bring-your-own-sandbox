@@ -2,9 +2,6 @@ import type { Static, TArrayOptions, TSchema } from 'typebox';
 import { Type } from 'typebox';
 import { Compile } from 'typebox/compile';
 
-import { wholeOffer } from './protocol-schema.js';
-import { canProtectWorkspace } from './workspace-protection.js';
-
 export function checker<Schema extends TSchema>(schema: Schema) {
 	const validator = Compile(schema);
 
@@ -61,7 +58,6 @@ export const capabilitySchema = Type.Union([
 	Type.Literal('files.list'),
 	Type.Literal('search.find'),
 	Type.Literal('search.grep'),
-	Type.Literal('workspace.protection'),
 	Type.Literal('copy')
 ]);
 export const processKindSchema = Type.Union([
@@ -101,112 +97,8 @@ export const capabilitiesSchema = Type.Refine(
 
 export const workspaceRelationshipSchema = Type.Union([
 	Type.Literal('shared'),
-	Type.Literal('copied'),
-	Type.Literal('remote')
+	Type.Literal('copied')
 ]);
-
-const workspaceAccessSchema = Type.Union([
-	Type.Literal('read-only'),
-	Type.Literal('read-write')
-]);
-const filesystemScopeSchema = Type.Union([
-	Type.Literal('workspace-only'),
-	Type.Literal('system-read-only'),
-	Type.Literal('provider-default')
-]);
-const networkAccessSchema = Type.Union([
-	Type.Literal('denied'),
-	Type.Literal('provider-default')
-]);
-
-export const guaranteeSchema = Type.Union([
-	Type.Literal('no-workspace-writes'),
-	Type.Literal('no-network'),
-	Type.Literal('no-host-user-data'),
-	Type.Literal('no-host-system-files')
-]);
-export const accessSchema = Type.Union([
-	Type.Literal('workspace-writes'),
-	Type.Literal('network'),
-	Type.Literal('host-user-data'),
-	Type.Literal('host-system-files')
-]);
-
-const protectedPathSchema = Type.Refine(
-	targetPathSchema,
-	(value) =>
-		!value.includes('\\') &&
-		!value.includes(':') &&
-		value.split('/').every((part) => !['', '.', '..'].includes(part))
-);
-
-const gitProtectionSchema = Type.Object(
-	{ kind: Type.Literal('git-metadata') },
-	{ additionalProperties: false }
-);
-const pathProtectionSchema = Type.Object(
-	{ kind: Type.Literal('path'), path: protectedPathSchema },
-	{ additionalProperties: false }
-);
-
-export const workspaceProtectionSchema = denseArray(
-	Type.Union([gitProtectionSchema, pathProtectionSchema]),
-	{ uniqueItems: true, maxItems: 128 }
-);
-
-export const policySchema = wholeOffer(
-	Type.Object({
-		workspaceRelationship: Type.Optional(workspaceRelationshipSchema),
-		workspaceProtection: Type.Optional(workspaceProtectionSchema),
-		workspaceAccess: workspaceAccessSchema,
-		filesystemScope: filesystemScopeSchema,
-		networkAccess: networkAccessSchema
-	})
-);
-
-const supportedPoliciesSchema = Type.Object({
-	workspaceRelationship: Type.Optional(
-		denseArray(workspaceRelationshipSchema, { minItems: 1, uniqueItems: true })
-	),
-	workspaceAccess: denseArray(workspaceAccessSchema, {
-		minItems: 1,
-		uniqueItems: true
-	}),
-	filesystemScope: denseArray(filesystemScopeSchema, {
-		minItems: 1,
-		uniqueItems: true
-	}),
-	networkAccess: denseArray(networkAccessSchema, {
-		minItems: 1,
-		uniqueItems: true
-	})
-});
-
-export const providerInfoSchema = Type.Refine(
-	Type.Object({
-		id: nonEmptyStringSchema,
-		label: nonEmptyStringSchema,
-		capabilities: capabilitiesSchema,
-		policies: supportedPoliciesSchema,
-		defaultPolicy: Type.Optional(policySchema)
-	}),
-	(provider) =>
-		provider.defaultPolicy === undefined ||
-		((provider.defaultPolicy.workspaceRelationship === undefined ||
-			provider.policies.workspaceRelationship?.includes(
-				provider.defaultPolicy.workspaceRelationship
-			) === true) &&
-			provider.policies.workspaceAccess.includes(
-				provider.defaultPolicy.workspaceAccess
-			) &&
-			provider.policies.filesystemScope.includes(
-				provider.defaultPolicy.filesystemScope
-			) &&
-			provider.policies.networkAccess.includes(
-				provider.defaultPolicy.networkAccess
-			) &&
-			canProtectWorkspace(provider.capabilities, provider.defaultPolicy))
-);
 
 const expirySchema = Type.Refine(Type.String(), (value) =>
 	Number.isFinite(Date.parse(value))

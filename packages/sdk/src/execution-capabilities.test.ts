@@ -7,6 +7,7 @@ import {
 } from './errors.js';
 import { createSandbox } from './facade.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
+import { fixtureProfile } from './fixtures/profile-fixture.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import { capabilitiesSchema, checker } from './schemas.js';
 
@@ -17,13 +18,13 @@ function fixture(exitStatus: 'guaranteed' | 'optional' = 'optional') {
 	const exec = vi.fn(backend.exec);
 
 	Object.assign(backend, {
-		capabilities: {
+		profile: fixtureProfile(backend.profile.policy, {
 			operations: ['exec'],
 			processKinds: ['shell'],
 			shells: ['bash'],
 			terminationScope: 'workload',
 			exitStatus
-		},
+		}),
 		exec
 	});
 

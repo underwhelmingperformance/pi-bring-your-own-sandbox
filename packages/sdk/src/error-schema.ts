@@ -1,7 +1,16 @@
 import { Type } from 'typebox';
 
 import type { SandboxCloseReport, SandboxErrorInfo } from './contracts.js';
-import { denseArray, nonEmptyStringSchema, recoverySchema } from './schemas.js';
+import { accessPolicySchema, accessStateSchema } from './policy-model.js';
+import {
+	capabilitySchema,
+	denseArray,
+	nonEmptyStringSchema,
+	processKindSchema,
+	recoverySchema,
+	shellSchema,
+	terminationScopeSchema
+} from './schemas.js';
 
 export const operationSchema = Type.Union([
 	Type.Literal('acquire'),
@@ -57,8 +66,84 @@ export const ordinaryErrorNameSchema = Type.Union([
 	Type.Literal('SandboxOperationError')
 ]);
 
+const refusalReason = Type.Union([
+	Type.Literal('limit'),
+	Type.Literal('profile')
+]);
+const detailKind = Type.Literal('capability');
+const needDetails = [
+	Type.Object({
+		kind: detailKind,
+		field: Type.Literal('capabilities'),
+		value: capabilitySchema
+	}),
+	Type.Object({
+		kind: detailKind,
+		field: Type.Literal('processKinds'),
+		value: processKindSchema
+	}),
+	Type.Object({
+		kind: detailKind,
+		field: Type.Literal('shells'),
+		value: shellSchema
+	}),
+	Type.Object({
+		kind: detailKind,
+		field: Type.Literal('exitStatus'),
+		value: Type.Literal('guaranteed')
+	}),
+	Type.Object({
+		kind: detailKind,
+		field: Type.Literal('terminationScope'),
+		value: terminationScopeSchema
+	})
+] as const;
+
+const pathAccess = Type.Union([Type.Literal('read'), Type.Literal('write')]);
+const pathRefusalReason = Type.Union([
+	Type.Literal('limit'),
+	Type.Literal('profile'),
+	Type.Literal('unreachable')
+]);
+const requestValue = Type.Union([Type.String(), Type.Boolean(), Type.Number()]);
+
+export const errorDetailSchema = Type.Union([
+	...needDetails,
+	Type.Object({
+		kind: Type.Literal('policy'),
+		reason: Type.Literal('profile')
+	}),
+	Type.Object({
+		kind: Type.Literal('access'),
+		property: Type.KeyOf(accessPolicySchema),
+		value: accessStateSchema,
+		reason: refusalReason
+	}),
+	Type.Object({
+		kind: Type.Literal('path'),
+		access: pathAccess,
+		path: nonEmptyStringSchema,
+		reason: pathRefusalReason
+	}),
+	Type.Object({
+		kind: Type.Literal('declaration'),
+		field: nonEmptyStringSchema
+	}),
+	Type.Object({
+		kind: Type.Literal('config'),
+		field: nonEmptyStringSchema
+	}),
+	Type.Object({
+		kind: Type.Literal('request'),
+		field: nonEmptyStringSchema,
+		value: Type.Optional(requestValue)
+	})
+]);
+
 const errorContextSchema = Type.Object({
 	message: Type.String(),
+	extensionSource: Type.Optional(nonEmptyStringSchema),
+	detail: Type.Optional(errorDetailSchema),
 	operation: operationSchema,
 	configurationSource: Type.Optional(Type.Literal('extension')),
 	providerId: Type.Optional(nonEmptyStringSchema),

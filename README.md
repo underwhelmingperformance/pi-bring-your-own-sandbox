@@ -1,10 +1,9 @@
 # BYOS workspace
 
 BYOS lets Pi extensions use a sandbox without depending on a particular
-isolation technology. The [design principles][principles] govern the [SDK][sdk],
-the provider presets and the [Docker provider][docker]. The documentation
-describes the redesign. The packages in this checkout are private development
-builds.
+isolation technology. The [design principles][principles] govern the [SDK][sdk]
+and the [Docker provider][docker]. The documentation describes the redesign. The
+packages in this checkout are private development builds.
 
 [principles]: packages/sdk/docs/principles.md
 [sdk]: packages/sdk/README.md

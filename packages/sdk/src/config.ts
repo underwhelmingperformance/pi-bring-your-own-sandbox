@@ -1,21 +1,19 @@
 import type { ApprovalSelection } from './approval-contracts.js';
 import type {
 	SandboxCleanupBudgets,
-	SandboxProviderConfig,
-	SandboxRequirements
+	SandboxProviderConfig
 } from './contracts.js';
 import {
 	InvalidSandboxConfigError,
 	ProviderNotFoundError,
 	UnsupportedSandboxPolicyError
 } from './errors.js';
-import { isFilesystemScopeSatisfied } from './filesystem-scope.js';
+import { defaultPolicy, unrestrictedPolicy } from './policy-model.js';
+import { selectProfile } from './profile-negotiation.js';
 import type { ProviderSelection, ProviderServiceV1 } from './protocol.js';
 import { isPolicy, snapshotPolicy } from './validation.js';
-import { canProtectWorkspace } from './workspace-protection.js';
 
 export interface SandboxConfig {
-	readonly requirements?: readonly SandboxRequirements[];
 	readonly cleanup?: Partial<SandboxCleanupBudgets>;
 	readonly selection: ProviderSelection;
 	readonly approval?: ApprovalSelection;
@@ -30,34 +28,54 @@ export function resolveSandboxConfig(
 	configured: SandboxProviderConfig<unknown>,
 	source: ProviderSelection['source']
 ): SandboxConfig {
-	const policy = configured.policy ?? provider.defaultPolicy;
+	const settings = configured.settings;
+	const explicit = settings?.policy;
+	const extensionSource = provider.protocol?.extensionSource;
+	const limit =
+		explicit ?? (source === 'default' ? unrestrictedPolicy : defaultPolicy);
 
-	if (!isPolicy(policy)) {
+	if (!isPolicy(limit)) {
 		throw new InvalidSandboxConfigError({
 			operation: 'configure',
 			providerId: provider.id,
-			configurationSource: 'extension'
+			configurationSource: 'extension',
+			detail: { kind: 'config', field: 'settings.policy' },
+			...(extensionSource !== undefined && { extensionSource })
 		});
 	}
+
+	const selected = selectProfile({ profiles: provider.profiles.open, limit });
+
+	if (!selected.ok) {
+		throw new UnsupportedSandboxPolicyError({
+			operation: 'configure',
+			providerId: provider.id,
+			detail: selected.detail,
+			...(extensionSource !== undefined && { extensionSource }),
+			...(source === 'extension' && { configurationSource: 'extension' })
+		});
+	}
+
+	const policy = explicit ?? selected.profile.policy;
 
 	return Object.freeze({
 		selection: Object.freeze({
 			providerId: provider.id,
 			source,
 			policy: snapshotPolicy(policy),
-			...(configured.userShell !== undefined && {
-				userShell: configured.userShell
+			...(settings?.userShell !== undefined && {
+				userShell: settings.userShell
 			})
 		}),
 		providerConfig: configured.configuration,
 		...(source === 'extension' && {
 			providerConfigSource: 'extension' as const
 		}),
-		...(configured.policy !== undefined && {
+		...(explicit !== undefined && {
 			policySource: 'extension' as const
 		}),
-		...(configured.cleanup !== undefined && {
-			cleanup: Object.freeze({ ...configured.cleanup })
+		...(settings?.cleanup !== undefined && {
+			cleanup: Object.freeze({ ...settings.cleanup })
 		})
 	});
 }
@@ -66,34 +84,13 @@ export function selectProvider(
 	config: SandboxConfig,
 	providers: readonly ProviderServiceV1[]
 ): ProviderServiceV1 {
-	const { providerId, policy } = config.selection;
+	const { providerId } = config.selection;
 	const provider = providers.find((candidate) => candidate.id === providerId);
 
 	if (provider === undefined) {
 		throw new ProviderNotFoundError({
 			operation: 'configure',
 			providerId
-		});
-	}
-
-	if (
-		(policy.workspaceRelationship !== undefined &&
-			!provider.policies.workspaceRelationship?.includes(
-				policy.workspaceRelationship
-			)) ||
-		!canProtectWorkspace(provider.capabilities, policy) ||
-		!provider.policies.workspaceAccess.includes(policy.workspaceAccess) ||
-		provider.policies.filesystemScope.every(
-			(scope) => !isFilesystemScopeSatisfied(scope, policy.filesystemScope)
-		) ||
-		!provider.policies.networkAccess.includes(policy.networkAccess)
-	) {
-		throw new UnsupportedSandboxPolicyError({
-			operation: 'configure',
-			providerId,
-			...(config.policySource !== undefined && {
-				configurationSource: config.policySource
-			})
 		});
 	}
 

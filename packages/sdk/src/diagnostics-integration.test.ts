@@ -14,6 +14,7 @@ import { FixtureConfig } from './fixtures/config.js';
 import { getSandbox } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { fixtureProfiles } from './fixtures/profile-fixture.js';
 import { getOutsideSandboxExecutor } from './outside-execution.js';
 import sandboxTools from './pi-tools.js';
 import { isRecord } from './validation.js';
@@ -77,12 +78,13 @@ async function fixture(
 					config.activate(pi, {
 						id: 'fixture',
 						label: 'In-memory fixture; no OS isolation.',
-						capabilities: backend.capabilities,
-						policies: {
-							workspaceAccess: ['read-write'],
-							filesystemScope: ['provider-default'],
-							networkAccess: ['provider-default']
-						},
+						profiles: fixtureProfiles(backend.capabilities, {
+							hostWorkspaceWrites: [true],
+							hostUserData: ['denied'],
+							hostSystemFiles: ['read-only'],
+							network: [false]
+						}),
+
 						validateConfig(input: unknown) {
 							if (!isRecord(input) || input['token'] !== secret) {
 								throw new Error(secret);
@@ -216,7 +218,7 @@ it('reports default status in a headless Pi session without opening a backend or
 				{
 					display: true,
 					content:
-						'Provider: passthrough (default)\nState: idle\nGeneration: <generation>\nSDK build: <build>\nProtocol: major 1, feature level 0\nTarget: not opened\nRequested policy: workspace read-write; filesystem provider-default; network provider-default; protected resources: none\nUser shell: provider default (not opened)\nProvider description: Host execution without isolation\nApproval policy: user\nOutside execution destination: normal\nOutside native Pi shell termination scope: none\nPi shell integration: not requested; routing unverified.'
+						'Provider: passthrough (default)\nState: idle\nGeneration: <generation>\nSDK build: <build>\nProtocol: major 1, feature level 0\nTarget: not opened\nRequested policy: workspace read-write, network allowed, host user data read-write, host system files read-write\nUser shell: provider default (not opened)\nProvider description: Host execution without isolation\nApproval policy: user\nOutside execution destination: normal\nOutside native Pi shell termination scope: none\nPi shell integration: not requested; routing unverified.'
 				}
 			]
 		});
@@ -235,7 +237,7 @@ it('enumerates providers without allocation and omits provider configuration', a
 					{
 						display: true,
 						content:
-							'Available sandbox providers (declared capabilities):\npassthrough: Host execution without isolation\n  Workspace relationships: shared\n  Operations: exec, files.read, files.write, files.list, search.find, search.grep\n  Termination scope: process-group\n  Shells: bash, sh, powershell\n  Policies: workspace read-write; filesystem provider-default; network provider-default\nfixture: In-memory fixture; no OS isolation.\n  Operations: exec, files.read, files.write, files.list\n  Termination scope: workload\n  Shells: none\n  Policies: workspace read-write; filesystem provider-default; network provider-default'
+							'Available sandbox providers (declared profiles)\npassthrough: Host execution without isolation\n  open: workspace read-write (shared), network allowed, host user data read-write, host system files read-write\n    Operations: exec, files.read, files.write, files.list, search.find, search.grep\n    Termination scope: process-group\n    Shells: bash, sh\nfixture: In-memory fixture; no OS isolation.\n  open: workspace read-write (shared), network denied, host user data denied, host system files read-only\n    Operations: exec, files.read, files.write, files.list\n    Termination scope: workload\n    Shells: none'
 					}
 				]
 			}
@@ -269,7 +271,7 @@ it('reports the target and effective policy after acquisition', async () => {
 					{
 						display: true,
 						content:
-							'Provider: fixture (extension)\nState: ready\nGeneration: <generation>\nSDK build: <build>\nProtocol: major 1, feature level 0\nBackend: memory\nTarget: /remote/project (remote)\nEffective policy: workspace read-write (remote); filesystem provider-default; network provider-default; protected resources: none\nOperations: exec, files.read, files.write, files.list\nTermination scope: workload\nShells: none\nUser shell: unavailable\nProvider description: In-memory fixture; no OS isolation.\nBoundary: In-memory test fixture; no OS isolation.\nApproval policy: user\nOutside execution destination: normal\nOutside native Pi shell termination scope: none\nPi shell integration: not requested; routing unverified.'
+							'Provider: fixture (extension)\nState: ready\nGeneration: <generation>\nSDK build: <build>\nProtocol: major 1, feature level 0\nBackend: memory\nTarget: /remote/project (shared)\nEffective policy: workspace read-write (shared), network denied, host user data denied, host system files read-only\nOperations: exec, files.read, files.write, files.list\nTermination scope: workload\nShells: none\nUser shell: unavailable\nProvider description: In-memory fixture; no OS isolation.\nBoundary: In-memory test fixture; no OS isolation.\nApproval policy: user\nOutside execution destination: normal\nOutside native Pi shell termination scope: none\nPi shell integration: not requested; routing unverified.'
 					}
 				]
 			});
@@ -556,13 +558,13 @@ it('displays resolver diagnostics after configuration fails without exposing its
 						{
 							id: 'configuration-fixture',
 							label: 'Configuration fixture',
-							capabilities: backend.capabilities,
-							defaultPolicy: backend.policy,
-							policies: {
-								workspaceAccess: ['read-write'],
-								filesystemScope: ['provider-default'],
-								networkAccess: ['provider-default']
-							},
+							profiles: fixtureProfiles(backend.capabilities, {
+								hostWorkspaceWrites: [true],
+								hostUserData: ['denied'],
+								hostSystemFiles: ['read-only'],
+								network: [false]
+							}),
+
 							validateConfig: () => ({}),
 							open
 						},

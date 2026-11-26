@@ -3,6 +3,7 @@ import { expect, it } from 'vitest';
 import { formatProviders, formatStatus } from './diagnostics.js';
 import { SandboxStartupError } from './errors.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
+import { fixtureProfiles } from './fixtures/profile-fixture.js';
 import type { ProviderInfo } from './protocol.js';
 
 it('shows a configured shell that the ready backend does not support', () => {
@@ -30,8 +31,8 @@ it('shows a configured shell that the ready backend does not support', () => {
 			'State: ready',
 			'Generation: generation',
 			'Backend: memory',
-			'Target: /remote/project (remote)',
-			'Effective policy: workspace read-write (remote); filesystem provider-default; network provider-default; protected resources: none',
+			'Target: /remote/project (shared)',
+			'Effective policy: workspace read-write (shared), network denied, host user data denied, host system files read-only',
 			'Operations: exec, files.read, files.write, files.list',
 			'Termination scope: workload',
 			'Shells: none',
@@ -41,11 +42,11 @@ it('shows a configured shell that the ready backend does not support', () => {
 	);
 });
 
-it('distinguishes the default policy from an explicitly acquired protected workspace', () => {
+it('distinguishes the default policy from an explicitly acquired restricted workspace', () => {
 	const backend = new MemoryBackend();
 	const requested = {
 		...backend.policy,
-		workspaceAccess: 'read-only' as const
+		hostWorkspaceWrites: false
 	};
 
 	expect(
@@ -59,17 +60,10 @@ it('distinguishes the default policy from an explicitly acquired protected works
 			},
 			backends: [
 				{
-					backendId: 'review',
+					backendId: 'review\nfile\u{202E}',
 					state: 'ready',
 					policy: requested,
-					effectivePolicy: {
-						...requested,
-						workspaceRelationship: 'copied',
-						workspaceProtection: [
-							{ kind: 'git-metadata' },
-							{ kind: 'path', path: 'policy\nfile\u{202E}\u{200B}\u{E0001}' }
-						]
-					}
+					effectivePolicy: requested
 				}
 			]
 		})
@@ -79,10 +73,10 @@ it('distinguishes the default policy from an explicitly acquired protected works
 			'State: idle',
 			'Generation: generation',
 			'Default target: not opened',
-			'Requested policy: workspace read-write; filesystem provider-default; network provider-default; protected resources: none',
+			'Requested policy: workspace read-write, network denied, host user data denied, host system files read-only',
 			'User shell: provider default (not opened)',
-			'Additional backend "review" (ready)',
-			'Effective policy: workspace read-only (copied); filesystem provider-default; network provider-default; protected resources: Git metadata, "policy\\nfile\\u202e\\u200b\\udb40\\udc01"'
+			'Additional backend "review\\nfile\\u202e" (ready)',
+			'Effective policy: workspace read-only, network denied, host user data denied, host system files read-only'
 		].join('\n')
 	);
 });
@@ -93,7 +87,7 @@ it.each(['closing', 'closed'] as const)(
 		const backend = new MemoryBackend();
 		const requested = {
 			...backend.policy,
-			workspaceAccess: 'read-only' as const
+			hostWorkspaceWrites: false
 		};
 		const status = formatStatus({
 			generationId: 'generation',
@@ -119,12 +113,12 @@ it.each(['closing', 'closed'] as const)(
 				'State: ' + state,
 				'Generation: generation',
 				'Backend: memory',
-				'Target: /remote/project (remote)',
-				'Effective policy: workspace read-write (remote); filesystem provider-default; network provider-default; protected resources: none',
+				'Target: /remote/project (shared)',
+				'Effective policy: workspace read-write (shared), network denied, host user data denied, host system files read-only',
 				'User shell: unavailable',
 				'Boundary: Base boundary.',
 				'Additional backend (last state: opening)',
-				'Requested policy: workspace read-only; filesystem provider-default; network provider-default; protected resources: none'
+				'Requested policy: workspace read-only, network denied, host user data denied, host system files read-only'
 			].join('\n')
 		);
 	}
@@ -162,7 +156,7 @@ it('shows allocation recovery instructions and expiry when cleanup is incomplete
 			'State: closed',
 			'Generation: generation',
 			'Target: not opened',
-			'Requested policy: workspace read-write; filesystem provider-default; network provider-default; protected resources: none',
+			'Requested policy: workspace read-write, network denied, host user data denied, host system files read-only',
 			'User shell: provider default (not opened)',
 			'Cleanup: incomplete',
 			'Recovery: allocation (lease lease; expires 2099-01-01T00:00:00Z)',
@@ -194,7 +188,7 @@ it('shows recovery from an opening that failed before returning a backend', () =
 			selection: { providerId: 'fixture', source: 'extension', policy: base },
 			backends: [
 				{ policy: base, state: 'failed' },
-				{ policy: { ...base, workspaceAccess: 'read-only' }, state: 'opening' }
+				{ policy: { ...base, hostWorkspaceWrites: false }, state: 'opening' }
 			],
 			diagnostics: [
 				{
@@ -211,14 +205,14 @@ it('shows recovery from an opening that failed before returning a backend', () =
 			'State: failed',
 			'Generation: generation',
 			'Default target: not opened',
-			'Requested policy: workspace read-write; filesystem provider-default; network provider-default; protected resources: none',
+			'Requested policy: workspace read-write, network denied, host user data denied, host system files read-only',
 			'User shell: provider default (not opened)',
 			`Failure: ${failure.name}: ${failure.message}`,
 			'Cleanup: incomplete',
 			'Recovery: orphan-volume-123 (lease manual cleanup)',
 			String.raw`Remove orphan-volume-123.\x0aCheck leases.`,
 			'Additional backend (opening)',
-			'Requested policy: workspace read-only; filesystem provider-default; network provider-default; protected resources: none',
+			'Requested policy: workspace read-only, network denied, host user data denied, host system files read-only',
 			String.raw`Warning (open, first): Base opening failed.\x1b[8m`
 		].join('\n')
 	);
@@ -229,12 +223,12 @@ it('describes arbitrary providers through declaration metadata', () => {
 	const provider = {
 		id: 'custom',
 		label: 'Custom execution boundary',
-		capabilities: backend.capabilities,
-		policies: {
-			workspaceAccess: ['read-write'],
-			filesystemScope: ['provider-default'],
-			networkAccess: ['provider-default']
-		}
+		profiles: fixtureProfiles(backend.capabilities, {
+			hostWorkspaceWrites: [true],
+			hostUserData: ['denied'],
+			hostSystemFiles: ['read-only'],
+			network: [false]
+		})
 	} satisfies ProviderInfo;
 
 	expect(
@@ -254,7 +248,7 @@ it('describes arbitrary providers through declaration metadata', () => {
 			'State: idle',
 			'Generation: generation',
 			'Target: not opened',
-			'Requested policy: workspace read-write; filesystem provider-default; network provider-default; protected resources: none',
+			'Requested policy: workspace read-write, network denied, host user data denied, host system files read-only',
 			'User shell: provider default (not opened)',
 			'Provider description: Custom execution boundary'
 		].join('\n')
@@ -269,22 +263,22 @@ it('escapes controls in a provider label in the provider list', () => {
 			{
 				id: 'custom',
 				label: 'Custom\tboundary',
-				capabilities: backend.capabilities,
-				policies: {
-					workspaceAccess: ['read-write'],
-					filesystemScope: ['provider-default'],
-					networkAccess: ['provider-default']
-				}
+				profiles: fixtureProfiles(backend.capabilities, {
+					hostWorkspaceWrites: [true],
+					hostUserData: ['denied'],
+					hostSystemFiles: ['read-only'],
+					network: [false]
+				})
 			}
 		])
 	).toStrictEqual(
 		[
-			'Available sandbox providers (declared capabilities):',
+			'Available sandbox providers (declared profiles)',
 			String.raw`custom: Custom\x09boundary`,
-			'  Operations: exec',
-			'  Termination scope: workload',
-			'  Shells: none',
-			'  Policies: workspace read-write; filesystem provider-default; network provider-default'
+			'  open: workspace read-write (shared), network denied, host user data denied, host system files read-only',
+			'    Operations: exec',
+			'    Termination scope: workload',
+			'    Shells: none'
 		].join('\n')
 	);
 });

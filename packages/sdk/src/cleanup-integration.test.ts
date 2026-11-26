@@ -8,10 +8,12 @@ import type {
 } from './contracts.js';
 import { FixtureConfig } from './fixtures/config.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { fixtureProfiles } from './fixtures/profile-fixture.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import { initialiseSandboxHost } from './host.js';
 import { observe } from './lifecycle.js';
 import { getOutsideSandboxExecutor } from './outside-execution.js';
+import { profileCapabilities } from './validation.js';
 
 afterEach(() => {
 	vi.useRealTimers();
@@ -57,8 +59,8 @@ it.each(['sandbox', 'normal', 'provider'] as const)(
 		};
 		const outside = {
 			label: 'Fixture execution destination',
-			capabilities: backend.capabilities,
-			policy: backend.policy,
+			capabilities: profileCapabilities(backend.profile),
+			policy: backend.profile.policy,
 			open: () => Promise.resolve(backend)
 		};
 
@@ -81,12 +83,13 @@ it.each(['sandbox', 'normal', 'provider'] as const)(
 						config.activate(pi, {
 							id: 'fixture',
 							label: 'Cleanup fixture',
-							capabilities: backend.capabilities,
-							policies: {
-								workspaceAccess: ['read-write'],
-								filesystemScope: ['provider-default'],
-								networkAccess: ['provider-default']
-							},
+							profiles: fixtureProfiles(profileCapabilities(backend.profile), {
+								hostWorkspaceWrites: [true],
+								hostUserData: ['denied'],
+								hostSystemFiles: ['read-only'],
+								network: [false]
+							}),
+
 							validateConfig: () => ({}),
 							open: () => Promise.resolve(backend),
 							outsideSandbox: outside
@@ -181,7 +184,7 @@ it.each(['sandbox', 'normal', 'provider'] as const)(
 				prepare(_directory, _personal) {
 					config.set({
 						provider: 'fixture',
-						policy: backend.policy,
+						policy: backend.profile.policy,
 						cleanup: { cancellationGraceMs: 8000 },
 						approval: { policy: 'always' },
 						outsideSandbox: {

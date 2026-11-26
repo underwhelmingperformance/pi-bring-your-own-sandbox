@@ -2,14 +2,14 @@ import { randomUUID } from 'node:crypto';
 
 import { Type } from 'typebox';
 
-import { acquireOptions, checkRequirements } from './acquire-options.js';
+import { acquireOptions, refuseProfile } from './acquire-options.js';
 import { snapshotBackend, snapshotRecovery } from './backend-snapshot.js';
-import { validateBackend } from './backend-validation.js';
+import { validateBackend, verifyGrantedPaths } from './backend-validation.js';
 import {
 	DEFAULT_CLEANUP_BUDGETS,
 	resolveCleanupBudgets
 } from './cleanup-budgets.js';
-import { settleSandboxClose } from './cleanup-report.js';
+import { failedCloseReport, settleSandboxClose } from './cleanup-report.js';
 import type { SandboxConfig } from './config.js';
 import { selectProvider } from './config.js';
 import type { SessionIdentity } from './context.js';
@@ -28,8 +28,7 @@ import type {
 	SandboxOpenContext,
 	SandboxOperation,
 	SandboxOperationContext,
-	SandboxPolicy,
-	SandboxRequirements
+	SandboxPolicy
 } from './contracts.js';
 import {
 	InvalidSandboxDeclarationError,
@@ -53,12 +52,14 @@ import {
 	settleOperation
 } from './lifecycle.js';
 import { MutationQueue } from './mutation-queue.js';
+import { requestedPathGrants, resolvePathGrants } from './path-grants.js';
+import type { Profile } from './policy-model.js';
 import {
-	checkDeclaredCapabilities,
-	policyKey,
-	resolveCopyPolicy,
-	resolvePolicy
-} from './negotiation.js';
+	accessPolicySchema as policySchema,
+	profileKey
+} from './policy-model.js';
+import type { ProfileMode, ResolvedPath } from './profile-negotiation.js';
+import { selectProfile } from './profile-negotiation.js';
 import type {
 	BrokerState,
 	ConfiguredProviderV1,
@@ -76,13 +77,21 @@ import type { DiagnosticStore } from './provider-diagnostics.js';
 import { ProviderDiagnostics } from './provider-diagnostics.js';
 import { acquireOptionsSchema } from './request-schemas.js';
 import { copyOptions, copySource, rethrowCopyError } from './sandbox-copy.js';
-import { callable, checker, policySchema } from './schemas.js';
-import { isRecord, isRecovery, snapshotProviderInfo } from './validation.js';
+import { callable, checker } from './schemas.js';
+import {
+	isRecord,
+	isRecovery,
+	profileCapabilities,
+	snapshotProviderInfo
+} from './validation.js';
 
 export interface GenerationDependencies {
 	readonly diagnostics?: DiagnosticStore;
 	readonly protocol?: ProtocolIdentity;
-	readonly providers: () => readonly ProviderServiceV1[];
+	readonly providers: (
+		context: SandboxContext
+	) => readonly ProviderServiceV1[] | Promise<readonly ProviderServiceV1[]>;
+	readonly mode?: ProfileMode | 'outside';
 	readonly readConfig: (context: SandboxContext) => Promise<SandboxConfig>;
 	/**
 	The configured policy of the session that this generation copies from. A
@@ -99,7 +108,8 @@ interface Disposable {
 	readonly dispose: (context: SandboxOperationContext) => Promise<void>;
 }
 interface BackendSlot {
-	readonly policy: SandboxPolicy;
+	readonly profile: Profile;
+	readonly paths: readonly ResolvedPath[];
 	state: SandboxBackendStatus['state'];
 	opening:
 		| Promise<Exclude<Settlement<SandboxBackend>, { kind: 'abandoned' }>>
@@ -115,18 +125,12 @@ interface BackendSlot {
 	failure: SandboxErrorInfo | undefined;
 	isUncertain: boolean;
 	disposing: Promise<boolean> | undefined;
+	disposalReport: SandboxCloseReport | undefined;
 }
 
 const isDisposable = checker(
 	Type.Object({ dispose: callable<Disposable['dispose']>() })
 );
-
-function effectivePolicy(backend: SandboxBackend): SandboxPolicy {
-	return Object.freeze({
-		...backend.policy,
-		workspaceRelationship: backend.workspace.relationship
-	});
-}
 
 export class SandboxGeneration {
 	readonly #diagnostics: DiagnosticStore;
@@ -134,7 +138,6 @@ export class SandboxGeneration {
 	readonly #context: SandboxContext;
 	readonly #session: SessionIdentity;
 	readonly #dependencies: GenerationDependencies;
-	#requirements: readonly SandboxRequirements[] = [];
 	readonly #lifetime = new AbortController();
 	readonly #operations = new OperationRegistry();
 	readonly #mutations = new MutationQueue();
@@ -145,6 +148,7 @@ export class SandboxGeneration {
 	#configurationSource: 'extension' | undefined;
 	#prepared: Promise<Prepared> | undefined;
 	readonly #slots = new Map<string, BackendSlot>();
+	#defaultProfile: Profile | undefined;
 	readonly #copies = new Set<SandboxCopy['close']>();
 	#failure: SandboxErrorInfo | undefined;
 	#closing: Promise<SandboxCloseReport> | undefined;
@@ -255,8 +259,9 @@ export class SandboxGeneration {
 
 	async #load(pending: PromiseWithResolvers<Prepared>): Promise<void> {
 		try {
+			const declarations = await this.#dependencies.providers(this.#context);
 			const providers = Object.freeze(
-				this.#dependencies.providers().map((provider) =>
+				declarations.map((provider) =>
 					Object.freeze({
 						...snapshotProviderInfo(provider),
 						...(provider.protocol !== undefined && {
@@ -274,7 +279,6 @@ export class SandboxGeneration {
 			const config = await this.#dependencies.readConfig(this.#context);
 
 			this.#cleanup = resolveCleanupBudgets(config.cleanup);
-			this.#requirements = config.requirements ?? [];
 
 			if (this.#lifetime.signal.aborted) {
 				throw new SandboxSessionClosingError({ operation: 'configure' });
@@ -290,7 +294,13 @@ export class SandboxGeneration {
 			});
 
 			const provider = selectProvider(config, providers);
+			const defaults = selectProfile({
+				profiles: provider.profiles.open,
+				limit: this.#selection.policy,
+				mode: this.#dependencies.mode === 'copy' ? 'copy' : 'open'
+			});
 
+			this.#defaultProfile = defaults.ok ? defaults.profile : undefined;
 			this.#configurationSource = config.providerConfigSource;
 
 			const local = this.#dependencies.protocol;
@@ -306,7 +316,7 @@ export class SandboxGeneration {
 				);
 			}
 
-			const configured = provider.configure(config.providerConfig);
+			const configured = await provider.configure(config.providerConfig);
 
 			this.#configurationSource = undefined;
 
@@ -323,8 +333,11 @@ export class SandboxGeneration {
 		}
 	}
 
-	#slot(policy: SandboxPolicy): BackendSlot {
-		const key = policyKey(policy);
+	#slot(profile: Profile, paths: readonly ResolvedPath[]): BackendSlot {
+		const key = JSON.stringify([
+			profileKey(profile),
+			paths.map(({ kind, path }) => [kind, path])
+		]);
 		const existing = this.#slots.get(key);
 
 		if (existing !== undefined) {
@@ -332,7 +345,8 @@ export class SandboxGeneration {
 		}
 
 		const slot: BackendSlot = {
-			policy,
+			profile,
+			paths,
 			state: 'opening',
 			opening: undefined,
 			backend: undefined,
@@ -345,6 +359,7 @@ export class SandboxGeneration {
 			isOpenCleanupConfirmed: false,
 			failure: undefined,
 			isUncertain: false,
+			disposalReport: undefined,
 			disposing: undefined
 		};
 
@@ -389,7 +404,13 @@ export class SandboxGeneration {
 		const peer = prepared.provider.protocol;
 
 		if (local !== undefined && peer !== undefined) {
-			checkDemand(policySchema, slot.policy, local, peer, 'sandbox opening');
+			checkDemand(
+				policySchema,
+				slot.profile.policy,
+				local,
+				peer,
+				'sandbox opening'
+			);
 		}
 
 		scope.check();
@@ -398,6 +419,7 @@ export class SandboxGeneration {
 
 		let isOpening = true;
 		let candidate: unknown;
+		const paths = requestedPathGrants(slot.paths);
 
 		try {
 			candidate = await prepared.configured.open(
@@ -405,7 +427,8 @@ export class SandboxGeneration {
 					generationId: this.#id,
 					sessionId: this.#session.sessionId,
 					hostWorkspace: this.#session.workspace,
-					policy: slot.policy
+					profile: slot.profile,
+					...(paths !== undefined && { paths })
 				},
 				{
 					...scope.context,
@@ -455,7 +478,21 @@ export class SandboxGeneration {
 			throw scope.cancellationError(isDisposed ? 'confirmed' : 'unknown');
 		}
 
-		const provided = validateBackend(candidate, prepared.provider, slot.policy);
+		const provided = validateBackend(
+			candidate,
+			prepared.provider,
+			slot.profile,
+			this.#dependencies.mode ?? 'open'
+		);
+
+		await verifyGrantedPaths(
+			provided,
+			slot.paths,
+			scope.context,
+			prepared.provider
+		);
+		scope.check();
+
 		const backend = snapshotBackend(provided);
 
 		if (
@@ -547,6 +584,34 @@ export class SandboxGeneration {
 				if (isDisposed && !slot.isUncertain) {
 					slot.isOpenCleanupConfirmed = true;
 					error = this.#normalise(error_, 'open', slot);
+					slot.failure = error;
+				}
+
+				if (
+					!isDisposed &&
+					slot.disposalReport?.failures.some(
+						(failure) =>
+							isSandboxError(failure, SandboxCleanupError) &&
+							failure.closeReport !== undefined
+					) === true &&
+					this.#dependencies.mode !== 'copy'
+				) {
+					error = new SandboxCleanupError(
+						{
+							operation: 'dispose',
+							...(error.providerId !== undefined && {
+								providerId: error.providerId
+							}),
+							...(error.backendId !== undefined && {
+								backendId: error.backendId
+							}),
+							closeReport: this.#closeReport(
+								[slot],
+								slot.disposalReport.failures
+							)
+						},
+						{ cause: error }
+					);
 					slot.failure = error;
 				}
 			}
@@ -662,32 +727,28 @@ export class SandboxGeneration {
 
 			scope.check('unknown');
 
-			if (result.kind !== 'resolved') {
-				throw new SandboxCleanupError(
-					{
-						operation: 'dispose',
-						...(slot.recovery.kind !== 'none' && { recovery: slot.recovery })
-					},
-					{
-						cause:
-							result.kind === 'rejected'
-								? result.error
-								: scope.cancellationError('unknown')
-					}
-				);
+			if (result.kind === 'rejected') {
+				throw result.error;
+			}
+
+			if (result.kind === 'cancelled') {
+				throw scope.cancellationError('unknown');
 			}
 
 			pending.resolve(true);
 		} catch (error) {
-			this.#cleanupFailures.push(
-				new SandboxCleanupError(
-					{
-						operation: 'dispose',
-						...(slot.recovery.kind !== 'none' && { recovery: slot.recovery })
-					},
-					{ cause: error }
-				)
-			);
+			const failure = isSandboxError(error, SandboxCleanupError)
+				? error
+				: new SandboxCleanupError(
+						{
+							operation: 'dispose',
+							...(slot.recovery.kind !== 'none' && { recovery: slot.recovery })
+						},
+						{ cause: error }
+					);
+
+			slot.disposalReport = failedCloseReport(failure);
+			this.#cleanupFailures.push(...slot.disposalReport.failures);
 			pending.resolve(false);
 		} finally {
 			scope.dispose();
@@ -699,13 +760,19 @@ export class SandboxGeneration {
 		failures: readonly SandboxErrorInfo[]
 	): SandboxCloseReport {
 		const recoveries = Object.freeze(
-			unconfirmed.flatMap((slot) => [
-				...(slot.recovery.kind === 'allocation' ? [slot.recovery] : []),
-				...(slot.candidateRecovery?.kind === 'allocation' &&
-				!isSameRecovery(slot.recovery, slot.candidateRecovery)
-					? [slot.candidateRecovery]
-					: [])
-			])
+			unconfirmed
+				.flatMap((slot) => [
+					...(slot.recovery.kind === 'allocation' ? [slot.recovery] : []),
+					...(slot.candidateRecovery?.kind === 'allocation' &&
+					!isSameRecovery(slot.recovery, slot.candidateRecovery)
+						? [slot.candidateRecovery]
+						: []),
+					...(slot.disposalReport?.recoveries ?? [])
+				])
+				.filter(
+					(recovery, index, all) =>
+						all.findIndex((other) => isSameRecovery(recovery, other)) === index
+				)
 		);
 
 		return Object.freeze({
@@ -789,23 +856,39 @@ export class SandboxGeneration {
 		}
 	}
 
-	#negotiate(provider: ProviderServiceV1, options: SandboxAcquireOptions) {
-		const selection = this.#selection;
-
-		if (selection === undefined) {
+	async #negotiate(
+		provider: ProviderServiceV1,
+		options: SandboxAcquireOptions,
+		profiles = provider.profiles.open,
+		mode: ProfileMode = this.#dependencies.mode === 'copy' ? 'copy' : 'open',
+		limit = this.#selection?.policy
+	) {
+		if (limit === undefined) {
 			throw new SandboxInitialisationError({ operation: 'acquire' });
 		}
 
-		const identity = {
-			operation: 'acquire' as const,
-			providerId: selection.providerId
-		};
-
 		this.#checkDemand(provider, options);
 
-		checkDeclaredCapabilities(provider.capabilities, options, identity);
+		const paths = await resolvePathGrants(
+			this.#session.workspace,
+			options.access?.paths
+		);
+		const result = selectProfile({
+			profiles,
+			limit,
+			requirements: options,
+			mode,
+			paths
+		});
 
-		return resolvePolicy(selection.policy, provider, options, identity);
+		if (!result.ok) {
+			refuseProfile(result.detail, {
+				operation: 'acquire',
+				providerId: provider.id
+			});
+		}
+
+		return { profile: result.profile, paths };
 	}
 
 	#copyOrigin(
@@ -832,7 +915,7 @@ export class SandboxGeneration {
 			throw new StaleSandboxHandleError({ operation: 'acquire' });
 		}
 
-		if (!slot.provided.capabilities.operations.includes('copy')) {
+		if (!slot.provided.profile.capabilities.includes('copy')) {
 			throw new UnsupportedSandboxCapabilityError({
 				operation: 'acquire',
 				providerId,
@@ -881,9 +964,14 @@ export class SandboxGeneration {
 				throw prepared.error;
 			}
 
-			const slot = this.#slot(
-				this.#negotiate(prepared.value.provider, options)
+			const { profile, paths } = await this.#negotiate(
+				prepared.value.provider,
+				options
 			);
+
+			scope.check();
+
+			const slot = this.#slot(profile, paths);
 			const result = await Promise.race([
 				this.#start(slot),
 				scope.whenCancelled()
@@ -903,12 +991,6 @@ export class SandboxGeneration {
 			this.#assertOpen('acquire', slot);
 
 			const sandbox = createSandbox(this.#owner(context, slot, result.value));
-
-			for (const required of this.#requirements) {
-				checkRequirements(sandbox, required);
-			}
-
-			checkRequirements(sandbox, options);
 
 			return sandbox;
 		} finally {
@@ -962,7 +1044,10 @@ export class SandboxGeneration {
 			this.#checkDemand(provider, options);
 
 			if (typeof copy !== 'function') {
-				throw new UnsupportedSandboxCapabilityError(identity);
+				throw new UnsupportedSandboxCapabilityError({
+					...identity,
+					detail: { kind: 'capability', field: 'capabilities', value: 'copy' }
+				});
 			}
 
 			const origin = this.#copyOrigin(source, provider.id);
@@ -972,15 +1057,18 @@ export class SandboxGeneration {
 				throw new SandboxInitialisationError({ operation: 'acquire' });
 			}
 
-			checkDeclaredCapabilities(provider.capabilities, options, identity);
-
 			const limit = this.#dependencies.copyLimit ?? selection.policy;
-			const policy = resolveCopyPolicy(
-				limit,
+			const { profile } = await this.#negotiate(
 				provider,
-				[options, ...this.#requirements],
-				identity
+				options,
+				provider.profiles.copy,
+				'copy',
+				limit
 			);
+			const policy = profile.policy;
+
+			scope.check();
+
 			const copier = (
 				request: Parameters<typeof copy>[0],
 				opening: SandboxOpenContext
@@ -991,13 +1079,11 @@ export class SandboxGeneration {
 					protocol: this.#dependencies.protocol
 				}),
 				copyLimit: limit,
+				mode: 'copy',
 				providers: () => [
 					{
 						...provider,
-						policies: {
-							...provider.policies,
-							workspaceRelationship: ['copied']
-						},
+						profiles: { ...provider.profiles, open: [profile] },
 						configure: () => ({
 							open: (request, opening) =>
 								copier({ ...request, source: origin }, opening),
@@ -1009,8 +1095,7 @@ export class SandboxGeneration {
 					Promise.resolve({
 						selection: { source: 'extension', providerId: provider.id, policy },
 						providerConfig: {},
-						cleanup: this.#cleanup,
-						requirements: this.#requirements
+						cleanup: this.#cleanup
 					})
 			});
 
@@ -1070,10 +1155,9 @@ export class SandboxGeneration {
 		try {
 			const prepared = await this.#prepare();
 
-			return Object.freeze({
-				ok: true,
-				policy: this.#negotiate(prepared.provider, options)
-			});
+			const { profile } = await this.#negotiate(prepared.provider, options);
+
+			return Object.freeze({ ok: true, profile });
 		} catch (error) {
 			if (!isSandboxError(error)) {
 				throw error;
@@ -1088,21 +1172,27 @@ export class SandboxGeneration {
 			await observe(this.#prepare());
 		}
 
-		const personal =
-			this.#selection === undefined
+		const defaultKey =
+			this.#defaultProfile === undefined
 				? undefined
-				: this.#slots.get(policyKey(this.#selection.policy));
+				: profileKey(this.#defaultProfile);
+		const personal = this.#slots
+			.values()
+			.find(
+				(slot) =>
+					slot.paths.length === 0 && profileKey(slot.profile) === defaultKey
+			);
 		const backend = personal?.backend;
 		const failure = this.#failure ?? personal?.failure;
 		const backends = this.#slots
 			.values()
 			.map((slot): SandboxBackendStatus =>
 				Object.freeze({
-					policy: slot.policy,
+					policy: slot.profile.policy,
 					state: slot.state,
 					...(slot.backend !== undefined && {
 						backendId: slot.backend.id,
-						effectivePolicy: effectivePolicy(slot.backend)
+						effectivePolicy: slot.backend.profile.policy
 					})
 				})
 			)
@@ -1130,8 +1220,8 @@ export class SandboxGeneration {
 			...(backend !== undefined && {
 				backendId: backend.id,
 				workspace: backend.workspace,
-				capabilities: backend.capabilities,
-				policy: effectivePolicy(backend),
+				capabilities: profileCapabilities(backend.profile),
+				policy: backend.profile.policy,
 				policyDescription: backend.policyDescription
 			}),
 			...(failure !== undefined && { failure }),

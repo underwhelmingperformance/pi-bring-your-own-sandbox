@@ -1,5 +1,7 @@
 import type { SandboxProvider } from '../api.js';
 
+import { fixtureProfile, fixtureProfiles } from './profile-fixture.js';
+
 interface ImageConfig {
 	readonly image: string;
 }
@@ -7,18 +9,22 @@ interface ImageConfig {
 export const imageProvider: SandboxProvider<ImageConfig> = {
 	id: 'fixture.image',
 	label: 'Image protocol fixture',
-	capabilities: {
-		processKinds: ['argv'],
-		terminationScope: 'workload',
-		exitStatus: 'guaranteed',
-		operations: ['exec'],
-		shells: []
-	},
-	policies: {
-		workspaceAccess: ['read-write'],
-		filesystemScope: ['provider-default'],
-		networkAccess: ['provider-default']
-	},
+	profiles: fixtureProfiles(
+		{
+			processKinds: ['argv'],
+			terminationScope: 'workload',
+			exitStatus: 'guaranteed',
+			operations: ['exec'],
+			shells: []
+		},
+		{
+			hostWorkspaceWrites: [true],
+			hostUserData: ['denied'],
+			hostSystemFiles: ['read-only'],
+			network: [false]
+		}
+	),
+
 	validateConfig(input) {
 		if (
 			typeof input !== 'object' ||
@@ -39,17 +45,17 @@ export const imageProvider: SandboxProvider<ImageConfig> = {
 			workspace: {
 				root: '/workspace',
 				pathFlavor: 'posix',
-				relationship: 'copied',
+				relationship: 'shared',
 				description: 'In-memory protocol fixture; no image is started.'
 			},
-			capabilities: {
+			profile: fixtureProfile(request.profile.policy, {
 				processKinds: ['argv'],
 				terminationScope: 'workload',
 				exitStatus: 'guaranteed',
 				operations: ['exec'],
 				shells: []
-			},
-			policy: request.policy,
+			}),
+
 			policyDescription: 'Protocol fixture only; no isolation.',
 			recovery: { kind: 'none' },
 			exec(_process, operation) {

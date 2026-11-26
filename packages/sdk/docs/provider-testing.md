@@ -79,6 +79,9 @@ Fixtures that cannot expose the allowed side of a property still test the denial
 and the controlled failure case. Use a broker fixture with both profiles to test
 the paired selection rule independently of the provider.
 
+For live checkouts, prepare a checkout with a socket or FIFO before opening.
+Assert that the provider refuses to open it and allocates no resources.
+
 ## Path grants
 
 Supply separate read and write markers and report where the granted paths appear

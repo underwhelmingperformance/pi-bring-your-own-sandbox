@@ -6,6 +6,8 @@ import { bindProtocolAddress } from '../protocol-address.js';
 import { PROVIDER_CHANNEL } from '../protocol-envelope.js';
 import { isRecord } from '../validation.js';
 
+import { fixtureProfiles } from './profile-fixture.js';
+
 export function fixtureEvents(extensionSource: string) {
 	const events = createEventBus();
 
@@ -21,18 +23,22 @@ export function providerReply(id = 'independent') {
 		service: {
 			id,
 			label: 'Independent protocol fixture',
-			capabilities: {
-				processKinds: ['argv'],
-				terminationScope: 'workload',
-				exitStatus: 'guaranteed',
-				operations: ['exec'],
-				shells: []
-			},
-			policies: {
-				workspaceAccess: ['read-write'],
-				filesystemScope: ['provider-default'],
-				networkAccess: ['provider-default']
-			},
+			profiles: fixtureProfiles(
+				{
+					processKinds: ['argv'],
+					terminationScope: 'workload',
+					exitStatus: 'guaranteed',
+					operations: ['exec'],
+					shells: []
+				},
+				{
+					hostWorkspaceWrites: [true],
+					hostUserData: ['denied'],
+					hostSystemFiles: ['read-only'],
+					network: [false]
+				}
+			),
+
 			configure: (_input: unknown) => ({
 				open: () => Promise.reject(new Error('Fixture only.'))
 			})

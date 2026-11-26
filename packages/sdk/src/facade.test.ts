@@ -6,6 +6,7 @@ import { createSandbox } from './facade.js';
 import { writeOptions } from './file-input.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
+import { fixtureProfile } from './fixtures/profile-fixture.js';
 import { observe } from './lifecycle.js';
 
 afterEach(() => {
@@ -268,14 +269,14 @@ function writerFixture(
 	const backend: SandboxBackend = {
 		id: 'writer',
 		workspace,
-		capabilities: {
+		profile: fixtureProfile(template.policy, {
 			processKinds: ['argv'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: ['exec', 'files.write'],
 			shells: []
-		},
-		policy: template.policy,
+		}),
+
 		policyDescription: template.policyDescription,
 		recovery: template.recovery,
 		exec: template.exec.bind(template),
@@ -319,7 +320,7 @@ it.each([
 		const { sandbox, calls } = writerFixture({
 			root,
 			pathFlavor,
-			relationship: 'remote',
+			relationship: 'shared',
 			description: 'Test fixture.'
 		});
 		const options = { createParents: true };
@@ -345,7 +346,7 @@ it('does not write after cancellation during confirmed parent creation', async (
 		{
 			root: '/target',
 			pathFlavor: 'posix',
-			relationship: 'remote',
+			relationship: 'shared',
 			description: 'Test fixture.'
 		},
 		async () => {

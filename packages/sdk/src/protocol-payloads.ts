@@ -2,6 +2,12 @@ import { Type } from 'typebox';
 
 import { backendSchema, workspaceSchema } from './backend-schemas.js';
 import { closeReportSchema, errorSchema } from './error-schema.js';
+import {
+	accessPolicySchema as policySchema,
+	pathGrantsSchema,
+	profileSchema,
+	providerInfoSchema
+} from './policy-model.js';
 import { protocolEnvelopeSchema } from './protocol-envelope.js';
 import {
 	acquireOptionsSchema,
@@ -13,7 +19,6 @@ import {
 	processOptionsSchema,
 	processRequestSchema,
 	providerConfigSchema,
-	sandboxRequirementsSchema,
 	writeOptionsSchema
 } from './request-schemas.js';
 import {
@@ -25,8 +30,6 @@ import {
 	callable,
 	capabilitiesSchema,
 	nonEmptyStringSchema,
-	policySchema,
-	providerInfoSchema,
 	recoverySchema
 } from './schemas.js';
 import {
@@ -68,10 +71,6 @@ export const providerAdvertisement = Type.Object(
 	},
 	{ additionalProperties: false }
 );
-export const requirementsService = Type.Object(
-	{ id: nonEmptyStringSchema, requirements: sandboxRequirementsSchema },
-	{ additionalProperties: false }
-);
 export const findReviewRequest = Type.Object(
 	{
 		type: Type.Literal('find-source'),
@@ -95,9 +94,7 @@ export const configBindingSchema = Type.Object(
 	},
 	{ additionalProperties: false }
 );
-export const copyOptionsSchema = Type.Omit(acquireOptionsSchema, [
-	'workspaceRelationship'
-]);
+export const copyOptionsSchema = acquireOptionsSchema;
 
 export const hostBindingSchema = Type.Object(
 	{ id: nonEmptyStringSchema, options: hostOptionsSchema },
@@ -151,7 +148,8 @@ const providerOpenRequest = Type.Object({
 	generationId: nonEmptyStringSchema,
 	sessionId: nonEmptyStringSchema,
 	hostWorkspace: nonEmptyStringSchema,
-	policy: policySchema
+	profile: profileSchema,
+	paths: Type.Optional(pathGrantsSchema)
 });
 
 const providerCopySource = Type.Union([
@@ -193,8 +191,6 @@ export const protocolSchemas = {
 		'configuration-outside',
 		configBindingSchema
 	),
-	'runtime.get-requirements': message('get-requirements'),
-	'runtime.requirements': runtimeService('requirements', requirementsService),
 	'runtime.get-shell-integration': message('get-shell-integration'),
 	'runtime.shell-integration': shellIntegration,
 	'provider.get-providers': providerRequest,

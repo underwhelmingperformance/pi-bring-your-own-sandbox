@@ -1,4 +1,9 @@
 import type { Sandbox, SandboxCopy } from './contracts.js';
+import {
+	accessPolicySchema as policySchema,
+	profileSchema,
+	providerInfoSchema
+} from './policy-model.js';
 import type { BrokerServiceV1 } from './protocol.js';
 import type { ProtocolIdentity } from './protocol-envelope.js';
 import { copyOptionsSchema } from './protocol-payloads.js';
@@ -9,16 +14,12 @@ import {
 	unavailableFeature
 } from './protocol-version.js';
 import { rethrowCopyError } from './sandbox-copy.js';
-import {
-	capabilitiesSchema,
-	checker,
-	policySchema,
-	providerInfoSchema
-} from './schemas.js';
+import { capabilitiesSchema, checker } from './schemas.js';
 
 const isCapabilities = checker(capabilitiesSchema);
 const isProviderInfo = checker(providerInfoSchema);
 const isPolicy = checker(policySchema);
+const isProfile = checker(profileSchema);
 
 export function brokerOffers(
 	service: BrokerServiceV1,
@@ -80,6 +81,21 @@ export function brokerOffers(
 		...service,
 		async acquire(context, options) {
 			return reduceSandbox(await service.acquire(context, options));
+		},
+		async negotiate(context, options) {
+			const result = await service.negotiate(context, options);
+
+			if (!result.ok) {
+				return result;
+			}
+
+			const profile = projectOffer(profileSchema, result.profile, level);
+
+			if (!isProfile(profile)) {
+				throw unavailableFeature('negotiation result', level, peer);
+			}
+
+			return Object.freeze({ ok: true, profile });
 		},
 		async copy(context, source, options) {
 			return reduceCopy(await service.copy(context, source, options));

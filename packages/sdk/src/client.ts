@@ -9,17 +9,58 @@ import type {
 	SandboxContext,
 	SandboxCopy,
 	SandboxCopyOptions,
+	SandboxErrorInfo,
 	SandboxHost
 } from './contracts.js';
 import { bindFactory, ensureSandboxService } from './default-broker.js';
-import { SandboxInitialisationError } from './errors.js';
+import {
+	isSandboxError,
+	rehydrateSandboxError,
+	SandboxInitialisationError
+} from './errors.js';
 import { closeApprovals } from './execution-approval.js';
 import { closeOutsideExecution } from './outside-execution.js';
 import type { SandboxNegotiation } from './protocol.js';
-import { isPiBound } from './protocol-address.js';
+import { isPiBound, protocolAddress } from './protocol-address.js';
 import { findShellReviewSource, hasShellReviewRoute } from './review-route.js';
 import { runtimeSettings } from './runtime-settings.js';
-import { copyOptions, rethrowCopyError } from './sandbox-copy.js';
+import {
+	checkCopiedSandbox,
+	copyOptions,
+	rethrowCopyError
+} from './sandbox-copy.js';
+
+function identifyRequester(
+	error: SandboxErrorInfo,
+	extensionSource: string
+): SandboxErrorInfo {
+	if (error.extensionSource !== undefined || error.detail === undefined) {
+		return error;
+	}
+
+	const {
+		operation,
+		configurationSource,
+		providerId,
+		backendId,
+		recovery,
+		detail
+	} = error;
+
+	return rehydrateSandboxError(
+		error,
+		{ cause: error.cause },
+		{
+			operation,
+			extensionSource,
+			detail,
+			...(configurationSource !== undefined && { configurationSource }),
+			...(providerId !== undefined && { providerId }),
+			...(backendId !== undefined && { backendId }),
+			...(recovery !== undefined && { recovery })
+		}
+	);
+}
 
 /**
 Acquire the selected sandbox from a live Pi event, command or tool context.
@@ -36,17 +77,23 @@ export async function getSandbox(
 ): Promise<Sandbox> {
 	inspectContext(context, 'acquire');
 
-	const settings = acquireOptions(options);
-	const sandbox = await ensureSandboxService(pi).acquire(context, settings);
+	const source = protocolAddress(pi.events).extensionSource;
+	const settings = acquireOptions(options, source);
 
-	checkRequirements(sandbox, settings);
+	try {
+		const sandbox = await ensureSandboxService(pi).acquire(context, settings);
 
-	return sandbox;
+		checkRequirements(sandbox, settings, source);
+
+		return sandbox;
+	} catch (error) {
+		throw isSandboxError(error) ? identifyRequester(error, source) : error;
+	}
 }
 
 /**
 Copy the host workspace into a private sandbox from the selected provider. The
-broker opens the strictest policy that satisfies the options and the session's
+broker ranks profiles within the session's
 configured access. Close the copy when it is no longer needed. Use
 `sandbox.copy` instead to copy a sandbox whose files can differ from the host.
 */
@@ -57,16 +104,19 @@ export async function copyHostWorkspace(
 ): Promise<SandboxCopy> {
 	inspectContext(context, 'acquire');
 
-	const settings = copyOptions(options);
+	const source = protocolAddress(pi.events).extensionSource;
+	const settings = copyOptions(options, source);
 	const broker = ensureSandboxService(pi);
-
-	const copy = await broker.copy(context, { kind: 'host' }, settings);
+	let copy: SandboxCopy;
 
 	try {
-		checkRequirements(copy.sandbox, {
-			...settings,
-			workspaceRelationship: 'copied'
-		});
+		copy = await broker.copy(context, { kind: 'host' }, settings);
+	} catch (error) {
+		throw isSandboxError(error) ? identifyRequester(error, source) : error;
+	}
+
+	try {
+		checkCopiedSandbox(copy.sandbox, settings, source);
 
 		return copy;
 	} catch (error) {
@@ -80,9 +130,8 @@ export async function copyHostWorkspace(
 
 /**
 Check whether `getSandbox` with the same options could succeed, without
-provisioning a backend. Returns the policy that acquisition would open, or the
-typed error that it would throw. An opened backend can still advertise fewer
-capabilities than its provider declares, so acquisition validates it again.
+provisioning a backend. Returns the profile for acquisition, or a typed refusal. Acquisition validates the
+opened backend against the selected profile.
 */
 export async function negotiateSandbox(
 	pi: SandboxHost,
@@ -91,7 +140,15 @@ export async function negotiateSandbox(
 ): Promise<SandboxNegotiation> {
 	inspectContext(context, 'acquire');
 
-	return ensureSandboxService(pi).negotiate(context, options);
+	const source = protocolAddress(pi.events).extensionSource;
+	const result = await ensureSandboxService(pi).negotiate(
+		context,
+		acquireOptions(options, source)
+	);
+
+	return result.ok
+		? result
+		: { ok: false, error: identifyRequester(result.error, source) };
 }
 
 /**

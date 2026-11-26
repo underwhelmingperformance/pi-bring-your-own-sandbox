@@ -9,6 +9,7 @@ import type {
 import { createSandbox } from './facade.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
+import { fixtureProfile } from './fixtures/profile-fixture.js';
 
 function fixture(findResult: unknown, grepResult: unknown) {
 	const memory = new MemoryBackend('exec');
@@ -24,8 +25,8 @@ function fixture(findResult: unknown, grepResult: unknown) {
 		{
 			id: memory.id,
 			workspace: memory.workspace,
-			capabilities,
-			policy: memory.policy,
+			profile: fixtureProfile(memory.policy, capabilities),
+
 			policyDescription: memory.policyDescription,
 			recovery: memory.recovery,
 			exec: memory.exec.bind(memory),
@@ -43,17 +44,8 @@ function fixture(findResult: unknown, grepResult: unknown) {
 				}
 			}
 		},
-		{
-			id: 'fixture',
-			label: 'Fixture',
-			capabilities,
-			policies: {
-				workspaceAccess: ['read-write'],
-				filesystemScope: ['provider-default'],
-				networkAccess: ['provider-default']
-			}
-		},
-		memory.policy
+		{ id: 'fixture' },
+		fixtureProfile(memory.policy, capabilities)
 	);
 	const owner = new TestBackendOwner(backend);
 

@@ -49,7 +49,7 @@ export default async function probe(marker: string): Promise<void> {
 						id,
 						acquire: () => Promise.resolve(sandbox),
 						negotiate: () =>
-							Promise.resolve({ ok: true, policy: sandbox.policy }),
+							Promise.resolve({ ok: true, profile: backend.profile }),
 						close: () =>
 							Promise.resolve({
 								confirmed: true,

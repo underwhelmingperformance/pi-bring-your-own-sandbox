@@ -13,6 +13,8 @@ import type {
 } from '../contracts.js';
 import { SandboxCancelledError, SandboxPathNotFoundError } from '../errors.js';
 
+import { fixtureProfile } from './profile-fixture.js';
+
 export class MemoryBackend implements SandboxBackend {
 	readonly #contents = new Map<string, Uint8Array>();
 	readonly #directories = new Set(['/remote/project']);
@@ -20,13 +22,14 @@ export class MemoryBackend implements SandboxBackend {
 	readonly workspace: SandboxWorkspace = {
 		root: '/remote/project',
 		pathFlavor: 'posix',
-		relationship: 'remote',
+		relationship: 'shared',
 		description: 'In-memory test fixture; no OS isolation.'
 	};
 	readonly policy: SandboxPolicy = {
-		workspaceAccess: 'read-write',
-		filesystemScope: 'provider-default',
-		networkAccess: 'provider-default'
+		hostWorkspaceWrites: true,
+		hostUserData: 'denied',
+		hostSystemFiles: 'read-only',
+		network: false
 	};
 	readonly policyDescription = 'In-memory test fixture; no OS isolation.';
 	readonly recovery = { kind: 'none' } as const;
@@ -179,6 +182,10 @@ export class MemoryBackend implements SandboxBackend {
 		}
 
 		throw new SandboxPathNotFoundError({ operation: 'stat' });
+	}
+
+	get profile() {
+		return fixtureProfile(this.policy, this.capabilities);
 	}
 
 	seed(filename: string, bytes: Uint8Array): void {

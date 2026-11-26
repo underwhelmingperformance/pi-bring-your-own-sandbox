@@ -5,6 +5,7 @@ import type {
 } from '../contracts.js';
 
 import { MemoryBackend } from './memory-backend.js';
+import { fixtureProfile } from './profile-fixture.js';
 
 export function shellBackend(output = 'target output') {
 	const template = new MemoryBackend('exec');
@@ -12,16 +13,16 @@ export function shellBackend(output = 'target output') {
 	const backend: SandboxBackend = {
 		id: template.id,
 		workspace: template.workspace,
-		policy: template.policy,
+
 		policyDescription: template.policyDescription,
 		recovery: template.recovery,
-		capabilities: {
+		profile: fixtureProfile(template.policy, {
 			processKinds: ['argv', 'shell'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations: ['exec'],
 			shells: ['bash', 'powershell']
-		},
+		}),
 		exec(request: ProcessRequest, context: BackendProcessContext) {
 			requests.push(request);
 			context.onOutput({

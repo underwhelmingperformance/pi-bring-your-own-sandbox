@@ -1,36 +1,21 @@
 import { InvalidSandboxConfigError } from './errors.js';
-import { openPassthrough } from './passthrough.js';
+import {
+	basePassthroughProfile,
+	openPassthrough,
+	probePassthrough
+} from './passthrough.js';
 import type { ProviderServiceV1 } from './protocol.js';
 import { isRecord } from './validation.js';
 
-export const passthroughProvider: ProviderServiceV1 =
-	Object.freeze<ProviderServiceV1>({
+type Inventory = Awaited<ReturnType<typeof probePassthrough>>;
+
+function provider(inventory?: Inventory): ProviderServiceV1 {
+	return Object.freeze<ProviderServiceV1>({
 		id: 'passthrough',
 		label: 'Host execution without isolation',
-		defaultPolicy: Object.freeze({
-			workspaceAccess: 'read-write',
-			filesystemScope: 'provider-default',
-			networkAccess: 'provider-default'
-		}),
-		capabilities: {
-			processKinds: ['argv', 'shell'],
-			terminationScope: 'process-group',
-			exitStatus: 'guaranteed',
-			operations: [
-				'exec',
-				'files.read',
-				'files.write',
-				'files.list',
-				'search.find',
-				'search.grep'
-			],
-			shells: ['bash', 'sh', 'powershell']
-		},
-		policies: {
-			workspaceRelationship: ['shared'],
-			workspaceAccess: ['read-write'],
-			filesystemScope: ['provider-default'],
-			networkAccess: ['provider-default']
+		profiles: {
+			open: [inventory?.profile ?? basePassthroughProfile],
+			copy: []
 		},
 		configure(input: unknown) {
 			if (!isRecord(input) || Object.keys(input).length > 0) {
@@ -42,7 +27,21 @@ export const passthroughProvider: ProviderServiceV1 =
 
 			return {
 				open: (request, context) =>
-					openPassthrough(request.hostWorkspace, context)
+					openPassthrough(
+						request.hostWorkspace,
+						context,
+						inventory,
+						request.paths
+					)
 			};
 		}
 	});
+}
+
+export const passthroughProvider = provider();
+
+export async function createPassthroughProvider(
+	workspace: string
+): Promise<ProviderServiceV1> {
+	return provider(await probePassthrough(workspace));
+}

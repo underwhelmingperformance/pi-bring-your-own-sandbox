@@ -22,6 +22,7 @@ import sandboxTools from '../pi-tools.js';
 import { checker } from '../schemas.js';
 
 import { FixtureConfig } from './config.js';
+import { fixtureProfile, fixtureProfiles } from './profile-fixture.js';
 import { ScriptedModel } from './scripted-model.js';
 
 const modelArgumentsSchema = Type.Record(
@@ -56,9 +57,10 @@ export default async function approvalRpcFixture(
 			`${JSON.stringify(record)}\n`
 		);
 	const policy = {
-		workspaceAccess: 'read-write',
-		filesystemScope: 'provider-default',
-		networkAccess: 'provider-default'
+		hostWorkspaceWrites: true,
+		hostUserData: 'denied',
+		hostSystemFiles: 'read-only',
+		network: false
 	} as const;
 	const capabilities = {
 		processKinds: ['argv', 'shell'],
@@ -69,12 +71,12 @@ export default async function approvalRpcFixture(
 	} as const;
 	const backend: SandboxBackend = {
 		id: 'rpc-outside',
-		capabilities,
-		policy,
+		profile: fixtureProfile(policy, capabilities),
+
 		workspace: {
 			root: '/rpc/target',
 			pathFlavor: 'posix',
-			relationship: 'remote',
+			relationship: 'shared',
 			description: 'RPC fixture workspace.'
 		},
 		policyDescription: 'Outside execution in a fake remote environment.',
@@ -109,12 +111,13 @@ export default async function approvalRpcFixture(
 	config_.activate(pi, {
 		id: 'rpc-provider',
 		label: 'RPC sandbox',
-		capabilities,
-		policies: {
-			workspaceAccess: ['read-write'],
-			filesystemScope: ['provider-default'],
-			networkAccess: ['provider-default']
-		},
+		profiles: fixtureProfiles(capabilities, {
+			hostWorkspaceWrites: [true],
+			hostUserData: ['denied'],
+			hostSystemFiles: ['read-only'],
+			network: [false]
+		}),
+
 		validateConfig: () => ({}),
 		async open() {
 			await journal({ kind: 'ordinary-open' });

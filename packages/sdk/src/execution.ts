@@ -115,7 +115,7 @@ function executionOutcome(
 		if (
 			'completion' in error &&
 			error.completion === 'not-guaranteed' &&
-			owner.backend.capabilities.terminationScope !== 'none'
+			owner.backend.profile.terminationScope !== 'none'
 		) {
 			throw unknownCompletion(owner, scope, error, SandboxTransportError);
 		}
@@ -142,7 +142,7 @@ function executionOutcome(
 	if (
 		result.value.kind === 'exited' &&
 		result.value.exit.kind === 'unavailable' &&
-		owner.backend.capabilities.exitStatus === 'guaranteed'
+		owner.backend.profile.exitStatus === 'guaranteed'
 	) {
 		throw unknownCompletion(owner, scope, undefined, SandboxTransportError);
 	}
@@ -151,7 +151,7 @@ function executionOutcome(
 		result.value.kind === 'cancelled' &&
 		(result.value.termination === 'unconfirmed' ||
 			(result.value.termination === 'not-guaranteed' &&
-				owner.backend.capabilities.terminationScope !== 'none'))
+				owner.backend.profile.terminationScope !== 'none'))
 	) {
 		throw unknownCompletion(owner, scope);
 	}
@@ -177,9 +177,9 @@ export async function executeProcess(
 	const snapshot = snapshotProcessRequest(request);
 
 	if (
-		!owner.backend.capabilities.processKinds.includes(snapshot.kind) ||
+		!owner.backend.profile.processKinds.includes(snapshot.kind) ||
 		(snapshot.kind === 'shell' &&
-			!owner.backend.capabilities.shells.includes(snapshot.dialect))
+			!owner.backend.profile.shells.includes(snapshot.dialect))
 	) {
 		throw new UnsupportedSandboxCapabilityError({
 			...owner.identity,
@@ -257,7 +257,7 @@ export async function executeProcess(
 				Promise.try(() =>
 					owner.backend.exec(snapshot, { ...scope.context, onOutput })
 				),
-				owner.backend.capabilities.terminationScope
+				owner.backend.profile.terminationScope
 			);
 			const outcome = executionOutcome(owner, scope, result);
 

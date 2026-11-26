@@ -5,7 +5,6 @@ import path from 'node:path';
 
 import type {
 	SandboxBackend,
-	SandboxCapabilities,
 	SandboxOpenContext,
 	ShellDialect
 } from './contracts.js';
@@ -13,6 +12,8 @@ import { hostFiles } from './host-files.js';
 import { HostOperations } from './host-operations.js';
 import { PosixProcessRunner } from './host-process.js';
 import { HostSearch } from './host-search.js';
+import type { PathGrants, Profile } from './policy-model.js';
+import { unrestrictedPolicy } from './policy-model.js';
 
 async function executable(
 	command: string,
@@ -40,62 +41,84 @@ async function executable(
 	return undefined;
 }
 
+export const basePassthroughProfile: Profile = Object.freeze({
+	policy: unrestrictedPolicy,
+	capabilities: ['exec', 'files.read', 'files.write', 'files.list'] as const,
+	processKinds: ['argv'] as const,
+	terminationScope: 'process-group',
+	exitStatus: 'guaranteed',
+	shells: []
+});
+
+export async function probePassthrough(workspace: string) {
+	const environment = { ...process.env };
+	const shells = new Map<ShellDialect, string>();
+
+	for (const [dialect, command] of [
+		['bash', 'bash'],
+		['sh', 'sh'],
+		['powershell', 'pwsh']
+	] as const) {
+		const filename = await executable(command, workspace, environment);
+
+		if (filename !== undefined) {
+			shells.set(dialect, filename);
+		}
+	}
+
+	const [fd, fdfind, grep] = await Promise.all([
+		executable('fd', workspace, environment),
+		executable('fdfind', workspace, environment),
+		executable('rg', workspace, environment)
+	]);
+	const find = fd ?? fdfind;
+	const profile: Profile = {
+		...basePassthroughProfile,
+		processKinds: shells.size === 0 ? ['argv'] : ['argv', 'shell'],
+		capabilities: [
+			...basePassthroughProfile.capabilities,
+			...(find === undefined ? [] : ['search.find' as const]),
+			...(grep === undefined ? [] : ['search.grep' as const])
+		],
+		shells: shells.keys().toArray()
+	};
+
+	return { environment, profile, shells, find, grep };
+}
+
+type Inventory = Awaited<ReturnType<typeof probePassthrough>>;
+
 export async function openPassthrough(
 	workspace: string,
-	context: SandboxOpenContext
+	context: SandboxOpenContext,
+	inventory?: Inventory,
+	paths?: PathGrants
 ): Promise<SandboxBackend> {
+	const { environment, shells, profile, find, grep } =
+		inventory ?? (await probePassthrough(workspace));
 	const operations = new HostOperations();
-	const environment = { ...process.env };
 
-	return operations.run('open', context, async () => {
-		const shells = new Map<ShellDialect, string>();
-
-		for (const [dialect, command] of [
-			['bash', 'bash'],
-			['sh', 'sh'],
-			['powershell', 'pwsh']
-		] as const) {
-			const filename = await executable(command, workspace, environment);
-
-			if (filename !== undefined) {
-				shells.set(dialect, filename);
-			}
-		}
-
+	return operations.run('open', context, () => {
 		const processes = new PosixProcessRunner(workspace, environment, shells);
-		const [fd, fdfind, rg] = await Promise.all([
-			executable('fd', workspace, environment),
-			executable('fdfind', workspace, environment),
-			executable('rg', workspace, environment)
-		]);
-		const find = fd ?? fdfind;
 		const search = new HostSearch(
 			workspace,
 			{
 				...(find !== undefined && { find }),
-				...(rg !== undefined && { grep: rg })
+				...(grep !== undefined && { grep })
 			},
 			processes,
 			operations
 		).methods();
-		const capabilities: SandboxCapabilities = {
-			processKinds:
-				shells.keys().toArray().length === 0 ? ['argv'] : ['argv', 'shell'],
-			terminationScope: 'process-group',
-			exitStatus: 'guaranteed',
-			operations: [
-				'exec',
-				'files.read',
-				'files.write',
-				'files.list',
-				...(search?.find === undefined ? [] : ['search.find' as const]),
-				...(search?.grep === undefined ? [] : ['search.grep' as const])
-			],
-			shells: shells.keys().toArray()
-		};
 		const defaultShell = shells.keys().next().value;
+		const grantedPaths = (['read', 'write'] as const).flatMap((kind) =>
+			(paths?.[kind] ?? []).map((hostPath) => ({
+				kind,
+				hostPath,
+				targetPath: hostPath
+			}))
+		);
 
-		return {
+		return Promise.resolve({
 			id: `passthrough:${context.operationId}`,
 			workspace: {
 				root: workspace,
@@ -106,12 +129,8 @@ export async function openPassthrough(
 					'The host workspace is shared. No sandbox isolation is applied.',
 				...(defaultShell !== undefined && { defaultShell })
 			},
-			capabilities,
-			policy: {
-				workspaceAccess: 'read-write',
-				filesystemScope: 'provider-default',
-				networkAccess: 'provider-default'
-			},
+			profile,
+			...(grantedPaths.length > 0 && { grantedPaths }),
 			policyDescription:
 				'Processes use the host filesystem, network and inherited environment. No sandbox isolation is applied.',
 			recovery: { kind: 'none' },
@@ -122,6 +141,6 @@ export async function openPassthrough(
 			files: hostFiles(workspace, operations),
 			...(search !== undefined && { search }),
 			dispose: (disposal) => operations.dispose(disposal)
-		};
+		} satisfies SandboxBackend);
 	});
 }

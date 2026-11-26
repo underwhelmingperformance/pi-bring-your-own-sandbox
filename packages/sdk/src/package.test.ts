@@ -280,22 +280,9 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 				expect(paths).toContain(`src/${subpath}.ts`);
 			}
 
-			const guardRoot = path.resolve('../guard');
-
-			await run(guardRoot, 'pnpm', ['build']);
-
-			const guardPacked = await run(guardRoot, 'pnpm', [
-				'pack',
-				'--json',
-				'--pack-destination',
-				artifacts
-			]);
-			const guardTarball = packedArchive(guardPacked.stdout).filename;
-
 			await project(host, tarball);
 			await project(provider);
 			await add(host, [
-				guardTarball,
 				tarball,
 				'@earendil-works/pi-coding-agent@1.5.0',
 				'@earendil-works/pi-ai@1.5.0'
@@ -365,32 +352,6 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 						{ types: `./dist/${entry}.d.ts`, import: `./dist/${entry}.js` }
 					])
 				)
-			});
-
-			const guardManifest: unknown = JSON.parse(
-				await readFile(
-					path.join(
-						host,
-						'node_modules/pi-bring-your-own-sandbox-guard/package.json'
-					),
-					'utf8'
-				)
-			);
-
-			if (!isRecord(guardManifest)) {
-				throw new Error('The installed guard manifest must be an object.');
-			}
-
-			expect({
-				pi: guardManifest['pi'],
-				exports: guardManifest['exports'],
-				dependencies: guardManifest['dependencies']
-			}).toStrictEqual({
-				pi: { extensions: ['./src/extension.ts'] },
-				exports: {
-					'.': { types: './dist/index.d.ts', import: './dist/index.js' }
-				},
-				dependencies: { 'pi-bring-your-own-sandbox': `^${archive.version}` }
 			});
 
 			const declarations = await readFile(

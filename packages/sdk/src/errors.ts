@@ -31,6 +31,9 @@ export abstract class SandboxError<Name extends string = string> extends Error {
 	/**
 	The source of invalid extension configuration.
 	*/
+	declare readonly extensionSource?: string;
+	declare readonly detail?: NonNullable<SandboxErrorContext['detail']>;
+
 	declare readonly configurationSource?: 'extension';
 
 	/**
@@ -57,6 +60,14 @@ export abstract class SandboxError<Name extends string = string> extends Error {
 		super(message, options);
 		this.name = name;
 		this.operation = context.operation;
+
+		if (context.extensionSource !== undefined) {
+			this.extensionSource = context.extensionSource;
+		}
+
+		if (context.detail !== undefined) {
+			this.detail = Object.freeze({ ...context.detail });
+		}
 
 		if (context.configurationSource !== undefined) {
 			this.configurationSource = context.configurationSource;
@@ -700,8 +711,23 @@ constructor.
 export function rehydrateSandboxError(
 	error: SandboxErrorInfo,
 	options?: ErrorOptions,
-	context: SandboxErrorContext = error
+	override?: SandboxErrorContext
 ): SandboxErrorInfo {
+	const { operation, providerId, recovery, configurationSource } =
+		override ?? error;
+	const extensionSource = override?.extensionSource ?? error.extensionSource;
+	const detail = override?.detail ?? error.detail;
+	const backendId = override?.backendId ?? error.backendId;
+	const context: SandboxErrorContext = {
+		operation,
+		...(extensionSource !== undefined && { extensionSource }),
+		...(detail !== undefined && { detail }),
+		...(backendId !== undefined && { backendId }),
+		...(providerId !== undefined && { providerId }),
+		...(recovery !== undefined && { recovery }),
+		...(configurationSource !== undefined && { configurationSource })
+	};
+
 	switch (error.name) {
 		case 'SandboxProviderMismatchError': {
 			return new SandboxProviderMismatchError(context, options);

@@ -10,6 +10,7 @@ import { approvalDecisionSchema } from './approval-schemas.js';
 import { registerApprovalPolicy } from './execution-approval.js';
 import { FixtureConfig } from './fixtures/config.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { fixtureProfiles } from './fixtures/profile-fixture.js';
 import { ScriptedModel } from './fixtures/scripted-model.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import { initialiseSandboxHost } from './host.js';
@@ -17,6 +18,7 @@ import { outsideShellOperations } from './outside-shell-operations.js';
 import sandboxTools from './pi-tools.js';
 import { findShellReviewSource } from './review-route.js';
 import { checker } from './schemas.js';
+import { profileCapabilities } from './validation.js';
 
 const isDecision = checker(approvalDecisionSchema);
 
@@ -67,12 +69,16 @@ it.each([
 					config.activate(pi, {
 						id: 'fixture',
 						label: 'Fixture sandbox',
-						capabilities: backend.backend.capabilities,
-						policies: {
-							workspaceAccess: ['read-write'],
-							filesystemScope: ['provider-default'],
-							networkAccess: ['provider-default']
-						},
+						profiles: fixtureProfiles(
+							profileCapabilities(backend.backend.profile),
+							{
+								hostWorkspaceWrites: [true],
+								hostUserData: ['denied'],
+								hostSystemFiles: ['read-only'],
+								network: [false]
+							}
+						),
+
 						validateConfig: () => ({}),
 						open() {
 							ordinaryOpens++;
@@ -83,8 +89,8 @@ it.each([
 						},
 						outsideSandbox: {
 							label: 'Fixture remote outside execution',
-							capabilities: backend.backend.capabilities,
-							policy: backend.backend.policy,
+							capabilities: profileCapabilities(backend.backend.profile),
+							policy: backend.backend.profile.policy,
 							open: () => {
 								outsideOpens++;
 
@@ -234,7 +240,7 @@ it.each([
 								cwd: destination === 'normal' ? workspace : '/remote/project'
 							},
 							kind: destination,
-							relationship: destination === 'normal' ? 'shared' : 'remote',
+							relationship: destination === 'normal' ? 'shared' : 'shared',
 							justification: 'Print the fixture output.'
 						}
 					],
@@ -279,7 +285,7 @@ it.each([
 					workspace = directory_;
 					config.set({
 						provider: 'fixture',
-						policy: backend.backend.policy,
+						policy: backend.backend.profile.policy,
 						approval: { policy: 'scripted-review' },
 						outsideSandbox: { destination }
 					});

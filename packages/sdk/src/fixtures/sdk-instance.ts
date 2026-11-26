@@ -10,7 +10,6 @@ import type {
 	isSandboxError,
 	registerApprovalPolicy,
 	registerSandboxProvider,
-	registerSandboxRequirement,
 	requestExecutionApproval,
 	SandboxCancelledError,
 	SandboxOperationError
@@ -22,7 +21,6 @@ export interface FixtureApi {
 	readonly closeSandboxSession: typeof closeSandboxSession;
 	readonly registerSandboxProvider: typeof registerSandboxProvider;
 	readonly SandboxCancelledError: typeof SandboxCancelledError;
-	readonly registerSandboxRequirement: typeof registerSandboxRequirement;
 	readonly registerApprovalPolicy: typeof registerApprovalPolicy;
 	readonly requestExecutionApproval: typeof requestExecutionApproval;
 	readonly getOutsideSandboxExecutor: typeof getOutsideSandboxExecutor;
@@ -37,7 +35,6 @@ function isFixtureApi(value: unknown): value is FixtureApi {
 	return (
 		isRecord(value) &&
 		typeof value['createSandboxClient'] === 'function' &&
-		typeof value['registerSandboxRequirement'] === 'function' &&
 		typeof value['closeSandboxSession'] === 'function' &&
 		typeof value['registerSandboxProvider'] === 'function' &&
 		typeof value['isSandboxError'] === 'function' &&

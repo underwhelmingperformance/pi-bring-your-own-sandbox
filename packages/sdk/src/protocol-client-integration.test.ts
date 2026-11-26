@@ -102,7 +102,6 @@ const factoryArguments = new Map<string, readonly unknown[]>([
 			{ configure: () => ({ configuration: { image: 'fixture' } }) }
 		]
 	],
-	['registerSandboxRequirement', []],
 	['registerShellOnlyTools', []]
 ]);
 

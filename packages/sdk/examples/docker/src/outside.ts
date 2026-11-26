@@ -15,17 +15,30 @@ export function createDockerOutsideDestination(
 ): OutsideSandboxProvider<DockerConfig> {
 	const connection = dockerConfig(config);
 	const provider = createDockerProvider(options);
+	const [profile] = provider.profiles.copy;
+
+	if (profile === undefined) {
+		throw new Error('The Docker provider does not supply a copy profile.');
+	}
+
+	const copy = provider.copy;
+	const { capabilities, exitStatus, processKinds, shells, terminationScope } =
+		profile;
 
 	return {
 		label: 'Separate writable Docker workspace',
-		capabilities: provider.capabilities,
-		policy: {
-			workspaceRelationship: 'copied',
-			workspaceAccess: 'read-write',
-			filesystemScope: 'workspace-only',
-			networkAccess: 'denied'
+		capabilities: {
+			operations: capabilities,
+			exitStatus,
+			processKinds,
+			shells,
+			terminationScope
 		},
+		policy: profile.policy,
 		open: (request, context) =>
-			provider.open({ ...request, configuration: connection }, context)
+			copy(
+				{ ...request, configuration: connection, source: { kind: 'host' } },
+				context
+			)
 	};
 }

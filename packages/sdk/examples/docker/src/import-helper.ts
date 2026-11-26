@@ -143,19 +143,6 @@ class ImportPass {
 			);
 		}
 
-		if (
-			depth === 0 &&
-			this.#copy &&
-			this.#linkedFiles
-				.values()
-				.some((file) => BigInt(file.paths) < file.expected)
-		) {
-			throw new ImportFailure(
-				44,
-				'A workspace file also has a link outside the import root.'
-			);
-		}
-
 		await this.record(relative, stat, pinned, content);
 	}
 

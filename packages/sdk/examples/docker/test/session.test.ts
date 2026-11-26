@@ -37,6 +37,7 @@ import { copyHostWorkspace } from '../../../src/client.js';
 import { FixtureConfig } from '../../../src/fixtures/config.js';
 import { getSandbox } from '../../../src/fixtures/fixture-client.js';
 import { withPiRuntime } from '../../../src/fixtures/pi-runtime.js';
+import { firstCopyProfile } from '../../../src/fixtures/profile-fixture.js';
 import { ScriptedModel } from '../../../src/fixtures/scripted-model.js';
 import sandboxTools from '../../../src/pi-tools.js';
 import { snapshotProcessRequest } from '../../../src/process-input.js';
@@ -69,9 +70,19 @@ const readCopy = async (copy: SandboxCopy) =>
 async function withDockerSession(
 	run: (session: DockerSession) => Promise<void>,
 	extensions: readonly InlineExtension[] = [],
-	filesystemScope: SandboxPolicy['filesystemScope'] = 'workspace-only',
-	outsideApproval?: 'always' | 'never'
+	options: {
+		readonly hostSystemFiles?: SandboxPolicy['hostSystemFiles'];
+		readonly outsideApproval?: 'always' | 'never';
+		readonly hasGitMetadata?: boolean;
+		readonly prepareWorkspace?: (fixture: DockerFixture) => Promise<void>;
+	} = {}
 ): Promise<void> {
+	const {
+		hostSystemFiles = 'denied',
+		outsideApproval,
+		hasGitMetadata,
+		prepareWorkspace
+	} = options;
 	let fixture: DockerFixture | undefined;
 	const current: { pi?: SandboxHost; context?: ExtensionContext } = {};
 
@@ -139,20 +150,19 @@ async function withDockerSession(
 				await fixture.verifyDisposed();
 			},
 			{
-				...(process.platform === 'darwin' &&
-					filesystemScope === 'provider-default' && {
-						temporaryDirectory: homedir()
-					}),
+				...(process.platform === 'darwin' && { temporaryDirectory: homedir() }),
 				prepare: async (directory, agentDirectory) => {
 					fixture = await DockerFixture.create(directory);
 
-					if (filesystemScope === 'provider-default') {
+					await mkdir(path.join(directory, '.pi'), { recursive: true });
+
+					if (hasGitMetadata) {
 						await promisify(execFile)('git', ['init', '--quiet', directory]);
-						await mkdir(path.join(directory, '.pi'));
 						await writeFile(path.join(directory, '.pi', 'settings.json'), '{}');
 						await writeFile(path.join(directory, '.envrc'), 'initial');
 					}
 
+					await prepareWorkspace?.(fixture);
 					vi.stubEnv('PI_CODING_AGENT_DIR', agentDirectory);
 					config.set({
 						provider: 'example.docker',
@@ -162,12 +172,10 @@ async function withDockerSession(
 							outsideSandbox: { destination: 'provider' }
 						}),
 						policy: {
-							workspaceAccess: 'read-write',
-							filesystemScope,
-							networkAccess:
-								filesystemScope === 'provider-default'
-									? 'provider-default'
-									: 'denied'
+							hostWorkspaceWrites: true,
+							hostUserData: 'denied',
+							hostSystemFiles,
+							network: false
 						}
 					});
 				}
@@ -176,6 +184,20 @@ async function withDockerSession(
 	} finally {
 		await fixture?.cleanup();
 	}
+}
+
+function withDockerCopy(
+	run: (session: DockerSession) => Promise<void>
+): Promise<void> {
+	return withDockerSession(async (session) => {
+		const copy = await session.sandbox.copy();
+
+		try {
+			await run({ ...session, sandbox: copy.sandbox });
+		} finally {
+			await copy.close();
+		}
+	});
 }
 
 describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
@@ -248,14 +270,13 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 								'utf8'
 							)
 						}).toStrictEqual({
-							outside: approval === 'always' ? 'approved' : 'original',
+							outside: approval === 'always' ? 'approved' : 'ordinary',
 							ordinary: 'ordinary',
-							host: 'original'
+							host: 'ordinary'
 						});
 					},
 					[],
-					'workspace-only',
-					approval
+					{ outsideApproval: approval }
 				);
 			}
 		);
@@ -279,9 +300,10 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 						result: { ...result, durationMs: 0 }
 					}).toStrictEqual({
 						policy: {
-							workspaceAccess: 'read-write',
-							filesystemScope: 'workspace-only',
-							networkAccess: 'denied'
+							hostWorkspaceWrites: true,
+							hostUserData: 'denied',
+							hostSystemFiles: 'denied',
+							network: false
 						},
 						result: {
 							exit: { kind: 'code', code: 0 },
@@ -293,7 +315,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 					});
 				},
 				[],
-				'system-read-only'
+				{ hostSystemFiles: 'read-only' }
 			);
 		}, 30_000);
 
@@ -390,7 +412,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 					expect(await readFile(filename, 'utf8')).toBe('editor');
 				},
 				[],
-				'provider-default'
+				{ hasGitMetadata: true }
 			);
 		});
 
@@ -412,12 +434,12 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 							readCopy(second),
 							readCopy(host)
 						])
-					).toStrictEqual(['first', 'second', 'original']);
+					).toStrictEqual(['first', 'second', 'second']);
 					expect(host.sandbox.policy).toStrictEqual({
-						workspaceRelationship: 'copied',
-						workspaceAccess: 'read-only',
-						filesystemScope: 'workspace-only',
-						networkAccess: 'denied'
+						hostWorkspaceWrites: false,
+						hostUserData: 'denied',
+						hostSystemFiles: 'denied',
+						network: false
 					});
 					await first.close();
 
@@ -428,40 +450,55 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 					});
 
 					expect(new TextDecoder().decode(shell.stdout)).toBe('second');
-					await expect(
-						host.sandbox.files.writeFile('source.txt', Uint8Array.of(9))
-					).rejects.toMatchObject({ name: 'SandboxPermissionDeniedError' });
+					await host.sandbox.files.writeFile(
+						'source.txt',
+						Buffer.from('private')
+					);
+					expect(
+						await Promise.all([readCopy(host), readCopy(second)])
+					).toStrictEqual(['private', 'second']);
 				} finally {
 					await Promise.all([first.close(), second.close(), host.close()]);
 				}
 			});
 		}, 30_000);
 
-		it('writes in a copy that needs workspace writes without changing its source', async () => {
-			await withDockerSession(async ({ sandbox }) => {
-				const copy = await sandbox.copy({ needs: ['workspace-writes'] });
+		it('rejects a copy requirement to write the live checkout and grants writes inside the copy', async () => {
+			await withDockerSession(async ({ sandbox, fixture }) => {
+				const allocations = fixture.allocations.size;
+
+				await expect(
+					sandbox.copy({ access: { hostWorkspaceWrites: 'needed' } })
+				).rejects.toMatchObject({
+					name: 'UnsupportedSandboxPolicyError',
+					detail: {
+						kind: 'access',
+						property: 'hostWorkspaceWrites',
+						value: 'needed',
+						reason: 'profile'
+					}
+				});
+				expect(fixture.allocations.size).toBe(allocations);
+
+				const copy = await sandbox.copy({
+					access: { paths: { write: ['source.txt'] } }
+				});
 
 				try {
 					await copy.sandbox.files.writeFile('source.txt', Buffer.from('copy'));
-
-					const shell = await copy.sandbox.exec({
-						kind: 'shell',
-						dialect: 'sh',
-						command: 'cat source.txt'
-					});
-
 					expect({
 						policy: copy.sandbox.policy,
-						copy: new TextDecoder().decode(shell.stdout),
-						source: new TextDecoder().decode(
-							await sandbox.files.readFile('source.txt')
+						copy: await readCopy(copy),
+						source: await readFile(
+							path.join(fixture.workspace, 'source.txt'),
+							'utf8'
 						)
 					}).toStrictEqual({
 						policy: {
-							workspaceRelationship: 'copied',
-							workspaceAccess: 'read-write',
-							filesystemScope: 'workspace-only',
-							networkAccess: 'denied'
+							hostWorkspaceWrites: false,
+							hostUserData: 'denied',
+							hostSystemFiles: 'denied',
+							network: false
 						},
 						copy: 'copy',
 						source: 'original'
@@ -499,42 +536,63 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 			});
 		}, 30_000);
 
-		it.each([
-			[
-				'external hard link',
-				'A regular file has a hard link outside the workspace.'
-			],
-			[
-				'oversized file',
-				'The Docker workspace exceeds the snapshot import limits.'
-			]
-		])(
-			'rejects a host copy with an %s and preserves the active backend',
-			async (defect, message) => {
-				await withDockerSession(async ({ pi, context, fixture, sandbox }) => {
-					const added = path.join(fixture.workspace, 'added');
+		it('copies an entry with a link outside the checkout as workspace content', async () => {
+			await withDockerSession(
+				async ({ pi, context, fixture }) => {
+					const copy = await copyHostWorkspace(pi, context);
 
-					if (defect === 'external hard link') {
-						await link(fixture.outside, added);
-					} else {
-						await using file = await open(added, 'wx');
-						await file.truncate(512 * 1024 * 1024 + 1);
+					try {
+						const contents = new TextDecoder().decode(
+							await copy.sandbox.files.readFile('added')
+						);
+
+						await copy.sandbox.files.writeFile('added', Buffer.from('private'));
+						expect({
+							contents,
+							outside: await readFile(fixture.outside, 'utf8')
+						}).toStrictEqual({
+							contents: 'host-only',
+							outside: 'host-only'
+						});
+					} finally {
+						await copy.close();
 					}
+				},
+				[],
+				{
+					prepareWorkspace: (fixture) =>
+						link(fixture.outside, path.join(fixture.workspace, 'added'))
+				}
+			);
+		}, 30_000);
 
-					await expect(copyHostWorkspace(pi, context)).rejects.toMatchObject({
-						name: 'SandboxOperationError',
-						operation: 'open',
-						cause: { cause: { message } }
-					});
-					await expect(
-						sandbox.files.readFile('source.txt')
-					).resolves.toStrictEqual(new TextEncoder().encode('original'));
+		it('rejects a host copy with an oversized file and preserves the active backend', async () => {
+			await withDockerSession(async ({ pi, context, fixture, sandbox }) => {
+				await using file = await open(
+					path.join(fixture.workspace, 'added'),
+					'wx'
+				);
+
+				await file.truncate(512 * 1024 * 1024 + 1);
+
+				await expect(copyHostWorkspace(pi, context)).rejects.toMatchObject({
+					name: 'SandboxOperationError',
+					operation: 'open',
+					cause: {
+						cause: {
+							message:
+								'The Docker workspace exceeds the snapshot import limits.'
+						}
+					}
 				});
-			},
-			30_000
-		);
-		it('keeps a host file unchanged when a hard link appears after opening', async () => {
-			await withDockerSession(async ({ sandbox, fixture }) => {
+				await expect(
+					sandbox.files.readFile('source.txt')
+				).resolves.toStrictEqual(new TextEncoder().encode('original'));
+			});
+		}, 30_000);
+
+		it('keeps a host file unchanged when a hard link appears after copying', async () => {
+			await withDockerCopy(async ({ sandbox, fixture }) => {
 				await link(fixture.outside, path.join(fixture.workspace, 'alias'));
 
 				const result = await sandbox.exec({
@@ -564,8 +622,8 @@ try {
 			});
 		}, 30_000);
 
-		it('isolates a host FIFO created in the workspace after opening', async () => {
-			await withDockerSession(async ({ sandbox, fixture }) => {
+		it('excludes a FIFO added to the host checkout after copying', async () => {
+			await withDockerCopy(async ({ sandbox, fixture }) => {
 				const channel = path.join(fixture.workspace, 'channel');
 
 				await promisify(execFile)('mkfifo', [channel]);
@@ -610,8 +668,8 @@ try {
 			});
 		}, 30_000);
 
-		it('isolates a host socket created in the workspace after opening', async () => {
-			await withDockerSession(async ({ sandbox, fixture }) => {
+		it('excludes a socket added to the host checkout after copying', async () => {
+			await withDockerCopy(async ({ sandbox, fixture }) => {
 				const socketPath = await fixture.socketEndpoint();
 				let connections = 0;
 				const listener = createServer((peer) => {
@@ -656,13 +714,13 @@ socket.on('error', error => {
 			{
 				execution: 'sandbox',
 				prefixChanged: false,
-				contents: 'target-only edit',
-				text: 'target bash\n65534\n',
+				contents: 'checkout edit',
+				text: `target bash\n${String(process.getuid?.())}\n`,
 				blocked: false
 			},
 			{
 				execution: 'sandbox',
-				contents: 'target-only edit',
+				contents: 'checkout edit',
 				prefixChanged: true,
 				text: new sandboxClient.StaleSandboxHandleError({ operation: 'exec' })
 					.message,
@@ -671,7 +729,7 @@ socket.on('error', error => {
 			{
 				execution: 'outside-sandbox',
 				prefixChanged: false,
-				contents: 'original',
+				contents: 'checkout edit',
 				text: 'Host command reviewed.',
 				blocked: true
 			}
@@ -704,7 +762,7 @@ socket.on('error', error => {
 
 						await sandbox.files.writeFile(
 							'source.txt',
-							Buffer.from('target-only edit')
+							Buffer.from('checkout edit')
 						);
 						runtime.session.setActiveToolsByName(['bash']);
 
@@ -872,13 +930,13 @@ socket.on('error', error => {
 					stderr: result.stderr
 				}).toStrictEqual({
 					exit: { kind: 'code', code: 0 },
-					stdout: `${forged}\n65534\n65534\n`,
+					stdout: `${forged}\n${String(process.getuid?.())}\n${String(process.getgid?.())}\n`,
 					stderr: new Uint8Array()
 				});
 			});
 		}, 30_000);
 
-		it('persists target changes between jobs, keeps host files unchanged and excludes host environment', async () => {
+		it('persists target changes in the checkout between jobs and excludes host environment', async () => {
 			vi.stubEnv('BYOS_DOCKER_SENTINEL', 'synthetic-host-secret');
 			await withDockerSession(async ({ sandbox, fixture }) => {
 				expect(await sandbox.files.readFile('source.txt')).toStrictEqual(
@@ -927,7 +985,7 @@ socket.on('error', error => {
 					hasPath: false,
 					exit: { kind: 'code', code: 0 },
 					target: 'target',
-					host: 'original'
+					host: 'target'
 				});
 			});
 		}, 30_000);
@@ -1052,8 +1110,8 @@ socket.on('error', error => {
 			});
 		}, 30_000);
 
-		it('searches representable filenames and truncates before reading omitted context', async () => {
-			await withDockerSession(async ({ sandbox }) => {
+		it('searches representable filenames in a copy and truncates before reading omitted context', async () => {
+			await withDockerCopy(async ({ sandbox }) => {
 				const setup = await sandbox.exec({
 					kind: 'argv',
 					executable: '/usr/local/bin/node',
@@ -1138,17 +1196,14 @@ socket.on('error', error => {
 
 				for (let index = 0; index < 2; index++) {
 					backends.push(
-						await provider.open(
+						await provider.copy(
 							{
 								generationId: randomUUID(),
 								sessionId: randomUUID(),
 								hostWorkspace: fixture.workspace,
 								configuration: fixture.config,
-								policy: {
-									workspaceAccess: 'read-write',
-									filesystemScope: 'workspace-only',
-									networkAccess: 'denied'
-								}
+								profile: firstCopyProfile(provider),
+								source: { kind: 'host' }
 							},
 							{
 								...operationContext(),

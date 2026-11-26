@@ -110,10 +110,10 @@ function answer(
 }
 
 const permissive = {
-	workspaceRelationship: 'copied',
-	workspaceAccess: 'read-only',
-	filesystemScope: 'workspace-only',
-	networkAccess: 'provider-default'
+	hostWorkspaceWrites: false,
+	hostUserData: 'denied',
+	hostSystemFiles: 'denied',
+	network: false
 } as const;
 
 it.each([true, false])(
@@ -161,7 +161,7 @@ it('checks a routed copy against the options in this SDK copy and closes one tha
 
 	await expect(
 		source?.copy({
-			guarantees: ['no-network'],
+			access: { network: 'needed' },
 			capabilities: ['exec'],
 			signal,
 			timeoutMs: 5000
@@ -175,7 +175,7 @@ it('checks a routed copy against the options in this SDK copy and closes one tha
 	expect({ requested, closes: routed.close.mock.calls.length }).toStrictEqual({
 		requested: [
 			{
-				guarantees: ['no-network'],
+				access: { network: 'needed' },
 				capabilities: ['exec'],
 				signal,
 				timeoutMs: 5000
@@ -188,14 +188,14 @@ it('checks a routed copy against the options in this SDK copy and closes one tha
 it('returns a routed copy that satisfies the options', async () => {
 	const pi = host();
 	const scope = context();
-	const routed = routedCopy({ ...permissive, networkAccess: 'denied' });
+	const routed = routedCopy({ ...permissive, network: false });
 
 	answer(pi, scope.sessionManager.getSessionId(), [
 		{ copy: () => Promise.resolve(routed.copy) }
 	]);
 
 	const copy = await findShellReviewSource(pi, scope, call)?.copy({
-		guarantees: ['no-network', 'no-workspace-writes'],
+		access: { network: 'prevented', hostWorkspaceWrites: 'prevented' },
 		shells: ['sh']
 	});
 
@@ -216,7 +216,7 @@ it('returns a routed copy that satisfies the options', async () => {
 it('rejects a routed copy that does not report a copied workspace', async () => {
 	const pi = host();
 	const scope = context();
-	const routed = routedCopy({ ...permissive, networkAccess: 'denied' });
+	const routed = routedCopy({ ...permissive, network: false });
 	const shared = {
 		...routed.copy,
 		sandbox: {
@@ -231,22 +231,22 @@ it('rejects a routed copy that does not report a copied workspace', async () => 
 
 	await expect(
 		findShellReviewSource(pi, scope, call)?.copy()
-	).rejects.toMatchObject({ name: 'UnsupportedSandboxPolicyError' });
+	).rejects.toMatchObject({ name: 'InvalidSandboxDeclarationError' });
 	expect(routed.close).toHaveBeenCalledOnce();
 });
 
-it('rejects options that select a workspace relationship before asking the route', async () => {
+it('rejects options that select a workspace relationship before asking the route', () => {
 	const pi = host();
 	const scope = context();
 	const copy = vi.fn();
 
 	answer(pi, scope.sessionManager.getSessionId(), [{ copy }]);
 
-	await expect(
+	expect(() =>
 		findShellReviewSource(pi, scope, call)?.copy({
 			workspaceRelationship: 'shared'
 		} as SandboxCopyOptions)
-	).rejects.toMatchObject({ name: 'InvalidSandboxRequestError' });
+	).toThrow(expect.objectContaining({ name: 'InvalidSandboxRequestError' }));
 	expect(copy).not.toHaveBeenCalled();
 });
 

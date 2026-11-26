@@ -16,6 +16,7 @@ import type {
 	OutsideProviderServiceV1,
 	OutsideServiceV1
 } from './outside-execution.js';
+import { accessPolicySchema, providerInfoSchema } from './policy-model.js';
 import type { BrokerServiceV1, ProviderServiceV1 } from './protocol.js';
 import type { DiagnosticStore } from './provider-diagnostics.js';
 import type { RuntimeSettingsV1 } from './runtime-settings.js';
@@ -24,9 +25,7 @@ import {
 	capabilitiesSchema,
 	denseArray,
 	nonEmptyStringSchema,
-	policySchema,
 	positiveIntegerSchema,
-	providerInfoSchema,
 	recordSchema,
 	signalSchema
 } from './schemas.js';
@@ -47,14 +46,14 @@ export const discoveryRequestSchema = Type.Object({
 export const outsideProviderSchema = Type.Object({
 	label: nonEmptyStringSchema,
 	capabilities: capabilitiesSchema,
-	policy: policySchema,
+	policy: accessPolicySchema,
 	configure: callable<OutsideProviderServiceV1['configure']>()
 });
 
 const outsideDeclarationSchema = Type.Object({
 	label: nonEmptyStringSchema,
 	capabilities: capabilitiesSchema,
-	policy: policySchema,
+	policy: accessPolicySchema,
 	open: callable<OutsideSandboxProvider<unknown>['open']>()
 });
 
@@ -93,8 +92,7 @@ const providerMethodsSchema = Type.Object({
 export const providerDeclarationSchema = Type.Refine(
 	Type.Intersect([providerInfoSchema, providerMethodsSchema]),
 	(provider) =>
-		provider.capabilities.operations.includes('copy') ===
-		(provider.copy !== undefined)
+		provider.profiles.copy.length > 0 === (provider.copy !== undefined)
 );
 
 export const approvalPolicyDeclarationSchema = Type.Object({

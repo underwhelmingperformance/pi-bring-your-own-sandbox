@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { lstat, realpath } from 'node:fs/promises';
+import { lstat, readdir, realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -8,10 +8,7 @@ import type {
 	SandboxOperation,
 	SandboxOperationContext
 } from 'pi-bring-your-own-sandbox/api';
-import {
-	HOST_CONFIGURATION_PROTECTION,
-	UnsupportedSandboxPolicyError
-} from 'pi-bring-your-own-sandbox/api';
+import { UnsupportedSandboxPolicyError } from 'pi-bring-your-own-sandbox/api';
 
 import type { DockerClient } from './contracts.js';
 import { findHostExecutable } from './host-executable.js';
@@ -34,9 +31,51 @@ async function entry(filename: string) {
 
 const runGit = promisify(execFile);
 
-const guardPaths = HOST_CONFIGURATION_PROTECTION.map((resource) =>
-	resource.kind === 'git-metadata' ? '.git' : resource.path
-);
+const guardPaths = [
+	'.git',
+	'.pi',
+	'.envrc',
+	'.direnv',
+	'.vscode',
+	'.idea',
+	'.devcontainer'
+];
+
+async function hasSpecialFiles(
+	root: string,
+	signal: AbortSignal
+): Promise<boolean> {
+	const directories = [root];
+
+	while (directories.length > 0) {
+		signal.throwIfAborted();
+
+		const directory = directories.pop();
+
+		if (directory === undefined) {
+			break;
+		}
+
+		const entries = await readdir(directory, { withFileTypes: true });
+
+		for (const entry of entries) {
+			if (
+				entry.isSocket() ||
+				entry.isFIFO() ||
+				entry.isCharacterDevice() ||
+				entry.isBlockDevice()
+			) {
+				return true;
+			}
+
+			if (entry.isDirectory()) {
+				directories.push(path.join(directory, entry.name));
+			}
+		}
+	}
+
+	return false;
+}
 
 function hasVolumeSubpaths(version: string): boolean {
 	const api = /^(\d+)\.(\d+)$/u.exec(version);
@@ -71,6 +110,10 @@ export class SharedCheckout {
 			!owner.isDirectory()
 		) {
 			return 'The checkout needs a non-root owner matching the Pi process.';
+		}
+
+		if (await hasSpecialFiles(root, context.signal)) {
+			return 'The live checkout contains a socket, FIFO or device file.';
 		}
 
 		const checkout = new SharedCheckout(

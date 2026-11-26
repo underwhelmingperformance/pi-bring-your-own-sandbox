@@ -5,8 +5,7 @@ import { expect, it } from 'vitest';
 import {
 	acquireOptionsSchema,
 	processRequestSchema,
-	providerConfigSchema,
-	sandboxRequirementsSchema
+	providerConfigSchema
 } from './request-schemas.js';
 import {
 	capabilitiesSchema,
@@ -19,26 +18,26 @@ const sparse: string[] = ['exec'];
 sparse.length++;
 
 it.each([
-	{ schema: sandboxRequirementsSchema, input: {}, expected: true },
+	{ schema: acquireOptionsSchema, input: {}, expected: true },
 	{
-		schema: sandboxRequirementsSchema,
-		input: { providerId: 'expected', terminationScope: 'workload' },
+		schema: acquireOptionsSchema,
+		input: { terminationScope: 'workload' },
 		expected: true
 	},
 	{
-		schema: sandboxRequirementsSchema,
+		schema: acquireOptionsSchema,
 		input: { providerId: '' },
 		expected: false
 	},
 	{
-		schema: sandboxRequirementsSchema,
+		schema: acquireOptionsSchema,
 		input: { timeoutMs: 100 },
-		expected: false
+		expected: true
 	},
 	{
-		schema: sandboxRequirementsSchema,
+		schema: acquireOptionsSchema,
 		input: { signal: new AbortController().signal },
-		expected: false
+		expected: true
 	},
 
 	{
@@ -120,7 +119,7 @@ it.each([
 	},
 	{
 		schema: providerConfigSchema,
-		input: { configuration: {}, userShell: undefined },
+		input: { configuration: {}, settings: { userShell: undefined } },
 		expected: true
 	},
 	{ schema: providerConfigSchema, input: { extra: true }, expected: false },
@@ -128,9 +127,10 @@ it.each([
 		schema: providerConfigSchema,
 		input: {
 			policy: {
-				workspaceAccess: 'read-write',
-				filesystemScope: 'provider-default',
-				networkAccess: 'denied',
+				hostWorkspaceWrites: true,
+				hostUserData: 'denied',
+				hostSystemFiles: 'read-only',
+				network: false,
 				extra: true
 			}
 		},

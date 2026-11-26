@@ -22,10 +22,6 @@
 				"!examples/docker/build-matcher.ts!",
 				"!examples/**/test/**!"
 			]
-		},
-		"packages/guard": {
-			"entry": ["src/**/*.test.ts", "src/extension.ts!"],
-			"project": ["src/**/*.ts!"]
 		}
 	}
 }

@@ -3,7 +3,6 @@ import type {
 	ExtensionContext
 } from '@earendil-works/pi-coding-agent';
 
-import { checkRequirements } from './acquire-options.js';
 import { copyHostWorkspace, getSandbox } from './client.js';
 import type { Sandbox, SandboxCopy, SandboxCopyOptions } from './contracts.js';
 import {
@@ -17,7 +16,11 @@ import { onProtocolRequest, REVIEW_CHANNEL } from './protocol-envelope.js';
 import { findReviewRequest, sourceReply } from './protocol-payloads.js';
 import { projectReply } from './protocol-version.js';
 import { runtimeSettings } from './runtime-settings.js';
-import { copyOptions, rethrowCopyError } from './sandbox-copy.js';
+import {
+	checkCopiedSandbox,
+	copyOptions,
+	rethrowCopyError
+} from './sandbox-copy.js';
 import { checker } from './schemas.js';
 import { isRecord } from './validation.js';
 
@@ -167,10 +170,7 @@ export class ShellReviewRoutes {
 
 		try {
 			check();
-			checkRequirements(copy.sandbox, {
-				...options,
-				workspaceRelationship: 'copied'
-			});
+			checkCopiedSandbox(copy.sandbox, options);
 
 			const previous = route.destination;
 

@@ -23,9 +23,10 @@ async function fixture(
 				provider: 'fixture',
 				providerConfig: { shouldWaitForReady },
 				policy: {
-					workspaceAccess: 'read-write',
-					filesystemScope: 'provider-default',
-					networkAccess: 'provider-default'
+					hostWorkspaceWrites: true,
+					hostUserData: 'denied',
+					hostSystemFiles: 'read-only',
+					network: false
 				}
 			})
 		);

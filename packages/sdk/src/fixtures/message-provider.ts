@@ -11,8 +11,12 @@ import type {
 	SandboxProvider
 } from '../contracts.js';
 import { SandboxOperationError, SandboxTransportError } from '../errors.js';
+import { unrestrictedPolicy } from '../policy-model.js';
 import type { SandboxProviderTestOptions } from '../provider-test-contracts.js';
 import { isRecord } from '../validation.js';
+
+import { fixtureProfile } from './profile-fixture.js';
+import { fixtureProfiles } from './profile-fixture.js';
 
 interface PendingProcess {
 	readonly context: BackendProcessContext;
@@ -33,7 +37,7 @@ class MessageBackend implements SandboxBackend {
 	readonly workspace = {
 		root: '/message/project',
 		pathFlavor: 'posix',
-		relationship: 'remote',
+		relationship: 'shared',
 		description: 'Message-channel test double without OS isolation.'
 	} as const;
 	readonly capabilities = {
@@ -271,6 +275,10 @@ class MessageBackend implements SandboxBackend {
 		await this.#disposed.promise;
 		await this.close();
 	}
+
+	get profile() {
+		return fixtureProfile(this.policy, this.capabilities);
+	}
 }
 
 export function messageScenario(): SandboxProviderTestOptions<undefined> {
@@ -278,25 +286,29 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 	const provider: SandboxProvider<undefined> = {
 		id: 'fixture.message',
 		label: 'Message-channel provider without OS isolation',
-		capabilities: {
-			processKinds: ['argv', 'shell'],
-			terminationScope: 'workload',
-			exitStatus: 'guaranteed',
-			operations: ['exec'],
-			shells: ['sh']
-		},
-		policies: {
-			workspaceAccess: ['read-write'],
-			filesystemScope: ['provider-default'],
-			networkAccess: ['provider-default']
-		},
+		profiles: fixtureProfiles(
+			{
+				processKinds: ['argv', 'shell'],
+				terminationScope: 'workload',
+				exitStatus: 'guaranteed',
+				operations: ['exec'],
+				shells: ['sh']
+			},
+			{
+				hostWorkspaceWrites: [true],
+				hostUserData: ['read-write'],
+				hostSystemFiles: ['read-write'],
+				network: [true]
+			}
+		),
+
 		validateConfig(input) {
 			assert.deepEqual(input, {});
 		},
 		open(request, context) {
 			context.reportRecovery({ kind: 'none' });
 
-			const backend = new MessageBackend(request.policy);
+			const backend = new MessageBackend(request.profile.policy);
 
 			connections.push(backend);
 
@@ -316,11 +328,7 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 			Promise.resolve({
 				configuration: {},
 				hostWorkspace: '/host/message-fixture',
-				policy: {
-					workspaceAccess: 'read-write',
-					filesystemScope: 'provider-default',
-					networkAccess: 'provider-default'
-				},
+				policy: unrestrictedPolicy,
 				processes: [
 					{
 						...probe,

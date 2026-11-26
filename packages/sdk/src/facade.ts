@@ -46,11 +46,7 @@ import {
 } from './file-result.js';
 import type { MutationQueue } from './mutation-queue.js';
 import { runOperation } from './operation-runner.js';
-import {
-	isRecord,
-	snapshotCapabilities,
-	snapshotPolicy
-} from './validation.js';
+import { isRecord, profileCapabilities, snapshotPolicy } from './validation.js';
 
 export interface SandboxOwner extends BackendOwner {
 	readonly identity: {
@@ -83,7 +79,7 @@ class Files implements SandboxFiles {
 		const group = this.#owner.backend.files?.read;
 
 		return group === undefined ||
-			!this.#owner.backend.capabilities.operations.includes('files.read')
+			!this.#owner.backend.profile.capabilities.includes('files.read')
 			? this.#unsupported(operation)
 			: group;
 	}
@@ -94,7 +90,7 @@ class Files implements SandboxFiles {
 		const group = this.#owner.backend.files?.write;
 
 		return group === undefined ||
-			!this.#owner.backend.capabilities.operations.includes('files.write')
+			!this.#owner.backend.profile.capabilities.includes('files.write')
 			? this.#unsupported(operation)
 			: group;
 	}
@@ -105,7 +101,7 @@ class Files implements SandboxFiles {
 		const group = this.#owner.backend.files?.list;
 
 		return group === undefined ||
-			!this.#owner.backend.capabilities.operations.includes('files.list')
+			!this.#owner.backend.profile.capabilities.includes('files.list')
 			? this.#unsupported(operation)
 			: group;
 	}
@@ -209,7 +205,7 @@ class Files implements SandboxFiles {
 		filename: string,
 		input?: SandboxOperationOptions
 	): Promise<FileStat> {
-		const group = this.#owner.backend.capabilities.operations.includes(
+		const group = this.#owner.backend.profile.capabilities.includes(
 			'files.read'
 		)
 			? this.#read('stat')
@@ -335,7 +331,7 @@ class Search implements SandboxSearch {
 		const group = backend.search;
 
 		if (
-			!backend.capabilities.operations.includes('search.find') ||
+			!backend.profile.capabilities.includes('search.find') ||
 			group?.find === undefined
 		) {
 			throw new UnsupportedSandboxCapabilityError({
@@ -381,7 +377,7 @@ class Search implements SandboxSearch {
 		const group = backend.search;
 
 		if (
-			!backend.capabilities.operations.includes('search.grep') ||
+			!backend.profile.capabilities.includes('search.grep') ||
 			group?.grep === undefined
 		) {
 			throw new UnsupportedSandboxCapabilityError({
@@ -438,8 +434,11 @@ export function createSandbox(owner: SandboxOwner): Sandbox {
 		backendId: owner.identity.backendId,
 		generationId: owner.generationId,
 		workspace: Object.freeze({ ...backend.workspace }),
-		capabilities: snapshotCapabilities(backend.capabilities),
-		policy: snapshotPolicy(backend.policy),
+		capabilities: profileCapabilities(backend.profile),
+		policy: snapshotPolicy(backend.profile.policy),
+		...(backend.grantedPaths !== undefined && {
+			grantedPaths: backend.grantedPaths
+		}),
 		policyDescription: backend.policyDescription,
 		exec: (request, options) => executeProcess(owner, request, options),
 		files: Object.freeze(new Files(owner)),
@@ -447,7 +446,7 @@ export function createSandbox(owner: SandboxOwner): Sandbox {
 		copy: async (options) => {
 			owner.assertLive('acquire');
 
-			if (!backend.capabilities.operations.includes('copy')) {
+			if (!backend.profile.capabilities.includes('copy')) {
 				throw new UnsupportedSandboxCapabilityError({
 					...owner.identity,
 					operation: 'acquire'

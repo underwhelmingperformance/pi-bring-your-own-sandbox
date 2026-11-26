@@ -1,73 +1,27 @@
 import { expect, it } from 'vitest';
 
 import { resolveSandboxConfig, selectProvider } from './config.js';
+import {
+	ProviderNotFoundError,
+	UnsupportedSandboxPolicyError
+} from './errors.js';
+import { MemoryBackend } from './fixtures/memory-backend.js';
+import { fixtureProfile } from './fixtures/profile-fixture.js';
+import { defaultPolicy, unrestrictedPolicy } from './policy-model.js';
 import type { ProviderServiceV1 } from './protocol.js';
-import { applySandboxRequirements } from './requirements.js';
 
-const defaultPolicy = {
-	workspaceAccess: 'read-write',
-	filesystemScope: 'provider-default',
-	networkAccess: 'provider-default'
-} as const;
-const isolatedPolicy = {
-	...defaultPolicy,
-	filesystemScope: 'workspace-only',
-	networkAccess: 'denied'
-} as const;
+const backend = new MemoryBackend('exec');
+const open = (policy = defaultPolicy) =>
+	fixtureProfile(policy, backend.capabilities);
+const provider: ProviderServiceV1 = {
+	id: 'fixture',
+	label: 'Fixture',
+	profiles: { open: [open(), open(unrestrictedPolicy)], copy: [] },
+	configure: () => ({ open: () => Promise.resolve(backend) })
+};
 
-function service(id: string): ProviderServiceV1 {
-	return {
-		id,
-		label: id,
-		capabilities: {
-			processKinds: ['argv'],
-			terminationScope: 'workload',
-			exitStatus: 'guaranteed',
-			operations: ['exec'],
-			shells: []
-		},
-		policies: {
-			workspaceAccess: ['read-write'],
-			filesystemScope: ['provider-default'],
-			networkAccess: ['provider-default']
-		},
-		configure: () => ({
-			open: () => Promise.reject(new Error('Selection must not allocate.'))
-		})
-	};
-}
-
-it.each([
-	{
-		selection: {
-			providerId: 'missing',
-			source: 'extension',
-			policy: defaultPolicy
-		},
-		name: 'ProviderNotFoundError'
-	},
-	{
-		selection: {
-			providerId: 'passthrough',
-			source: 'extension',
-			policy: isolatedPolicy
-		},
-		name: 'UnsupportedSandboxPolicyError'
-	}
-] as const)(
-	'rejects an unsatisfied selection without a host fallback: $name',
-	({ selection, name }) => {
-		expect(() =>
-			selectProvider({ selection, providerConfig: {} }, [
-				service('passthrough')
-			])
-		).toThrow(expect.objectContaining({ name }));
-	}
-);
-
-it('uses the declared default policy and preserves typed configuration', () => {
-	const provider = { ...service('fixture'), defaultPolicy };
-	const config = { image: 'selected' };
+it('uses the SDK default and keeps the provider configuration separate', () => {
+	const config = { image: 'fixture' };
 
 	expect(
 		resolveSandboxConfig(provider, { configuration: config }, 'extension')
@@ -81,105 +35,75 @@ it('uses the declared default policy and preserves typed configuration', () => {
 		providerConfigSource: 'extension'
 	});
 });
-it('requires a policy when the provider has no default', () => {
-	expect(() =>
-		resolveSandboxConfig(service('fixture'), { configuration: {} }, 'extension')
-	).toThrow(expect.objectContaining({ name: 'InvalidSandboxConfigError' }));
+
+it('narrows an omitted policy to the best supported profile', () => {
+	const restricted = { ...defaultPolicy, hostSystemFiles: 'denied' as const };
+	const candidate = {
+		...provider,
+		profiles: { open: [open(restricted)], copy: [] }
+	};
+
+	expect(
+		resolveSandboxConfig(candidate, { configuration: {} }, 'extension')
+	).toStrictEqual({
+		selection: {
+			providerId: 'fixture',
+			source: 'extension',
+			policy: restricted
+		},
+		providerConfig: {},
+		providerConfigSource: 'extension'
+	});
 });
-it('uses a complete supplied policy and snapshots its protected resources', () => {
-	const resources = [{ kind: 'git-metadata' as const }];
+
+it('uses an explicit policy as the limit and snapshots shared settings', () => {
+	const policy = { ...unrestrictedPolicy };
 	const result = resolveSandboxConfig(
-		{ ...service('fixture'), defaultPolicy },
+		provider,
 		{
 			configuration: {},
-			policy: { ...isolatedPolicy, workspaceProtection: resources },
-			userShell: 'sh',
-			cleanup: { cancellationGraceMs: 8000 }
+			settings: {
+				policy,
+				userShell: 'bash',
+				cleanup: { disposalTimeoutMs: 300 }
+			}
 		},
 		'extension'
 	);
 
-	resources.push({ kind: 'git-metadata' });
+	policy.network = false;
+
 	expect(result).toStrictEqual({
 		selection: {
 			providerId: 'fixture',
 			source: 'extension',
-			policy: {
-				...isolatedPolicy,
-				workspaceProtection: [{ kind: 'git-metadata' }]
-			},
-			userShell: 'sh'
+			policy: unrestrictedPolicy,
+			userShell: 'bash'
 		},
 		providerConfig: {},
 		providerConfigSource: 'extension',
 		policySource: 'extension',
-		cleanup: { cancellationGraceMs: 8000 }
+		cleanup: { disposalTimeoutMs: 300 }
 	});
 });
 
-it('rejects an unsupported configured relationship and conflicting registered requirements', () => {
-	const provider = service('fixture');
-	const config = resolveSandboxConfig(
-		provider,
-		{ configuration: {}, policy: defaultPolicy },
-		'extension'
-	);
-	const copied = { workspaceRelationship: 'copied' } as const;
-	const shared = { workspaceRelationship: 'shared' } as const;
+it('rejects a provider that supports no profile within the configured limit', () => {
+	const candidate = {
+		...provider,
+		profiles: { open: [open(unrestrictedPolicy)], copy: [] }
+	};
 
 	expect(() =>
-		selectProvider(
-			{
-				...config,
-				selection: {
-					...config.selection,
-					policy: { ...defaultPolicy, ...copied }
-				}
-			},
-			[provider]
-		)
-	).toThrow(expect.objectContaining({ name: 'UnsupportedSandboxPolicyError' }));
-	expect(() =>
-		applySandboxRequirements(
-			config,
-			{
-				...provider,
-				policies: {
-					...provider.policies,
-					workspaceRelationship: ['shared', 'copied']
-				}
-			},
-			[copied, shared]
-		)
-	).toThrow(expect.objectContaining({ name: 'UnsupportedSandboxPolicyError' }));
+		resolveSandboxConfig(candidate, { configuration: {} }, 'extension')
+	).toThrow(UnsupportedSandboxPolicyError);
 });
 
-it.each([
-	[[{ needs: ['network'] }, { guarantees: ['no-network'] }]],
-	[[{ guarantees: ['no-network'] }, { needs: ['network'] }]]
-] as const)(
-	'rejects registered requirements that conflict in either order: %j',
-	(requirements) => {
-		const provider = service('fixture');
+it('refuses to select a missing provider', () => {
+	const config = resolveSandboxConfig(
+		provider,
+		{ configuration: {} },
+		'extension'
+	);
 
-		expect(() =>
-			applySandboxRequirements(
-				resolveSandboxConfig(
-					provider,
-					{ configuration: {}, policy: defaultPolicy },
-					'extension'
-				),
-				{
-					...provider,
-					policies: {
-						...provider.policies,
-						networkAccess: ['provider-default', 'denied']
-					}
-				},
-				requirements
-			)
-		).toThrow(
-			expect.objectContaining({ name: 'UnsupportedSandboxPolicyError' })
-		);
-	}
-);
+	expect(() => selectProvider(config, [])).toThrow(ProviderNotFoundError);
+});

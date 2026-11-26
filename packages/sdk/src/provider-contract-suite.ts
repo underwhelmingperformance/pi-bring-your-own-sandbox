@@ -25,6 +25,9 @@ import {
 	isGrepResult
 } from './file-result.js';
 import { observe, OperationScope, settleOperation } from './lifecycle.js';
+import type { AccessProperty, Policy, Profile } from './policy-model.js';
+import { accessOrder } from './policy-model.js';
+import { selectProfile } from './profile-negotiation.js';
 import type {
 	SandboxPolicyScenario,
 	SandboxProcessProbe,
@@ -35,7 +38,12 @@ import {
 	isTerminationScopeSatisfied,
 	settleProcess
 } from './termination-scope.js';
-import { isProviderInfo, isRecord, isRecovery } from './validation.js';
+import {
+	isProviderInfo,
+	isRecord,
+	isRecovery,
+	profileCapabilities
+} from './validation.js';
 import { checkWorkspaceVisibility } from './workspace-visibility-suite.js';
 
 function compareEntries(left: DirectoryEntry, right: DirectoryEntry): number {
@@ -105,29 +113,56 @@ async function bounded<Value>(
 	}
 }
 
+function fixtureProfile<Config>(
+	options: SandboxProviderTestOptions<Config>,
+	fixture: SandboxProviderTestFixture
+): Profile {
+	const mode = options.workspaceVisibility === 'copied' ? 'copy' : 'open';
+	const selected = selectProfile({
+		profiles: options.provider.profiles[mode],
+		limit: fixture.policy,
+		mode
+	});
+
+	if (!selected.ok) {
+		throw new Error('The fixture policy does not select a provider profile.');
+	}
+
+	return selected.profile;
+}
+
 function openFixture<Config>(
 	options: SandboxProviderTestOptions<Config>,
 	fixture: SandboxProviderTestFixture,
 	context: SandboxOperationContext,
 	confirmCleanup: () => void
 ): Promise<SandboxBackend> {
-	const config = options.provider.validateConfig(fixture.configuration);
-
-	return options.provider.open(
-		{
-			generationId: randomUUID(),
-			sessionId: randomUUID(),
-			hostWorkspace: fixture.hostWorkspace,
-			policy: fixture.policy,
-			configuration: config
-		},
-		{
-			...context,
-			confirmCleanup,
-			reportRecovery: (recovery) => {
-				expect(isRecovery(recovery)).toBe(true);
-			}
+	const request = {
+		generationId: randomUUID(),
+		sessionId: randomUUID(),
+		hostWorkspace: fixture.hostWorkspace,
+		profile: fixtureProfile(options, fixture),
+		configuration: options.provider.validateConfig(fixture.configuration)
+	};
+	const opening = {
+		...context,
+		confirmCleanup,
+		reportRecovery: (recovery: unknown) => {
+			expect(isRecovery(recovery)).toBe(true);
 		}
+	};
+
+	if (options.workspaceVisibility !== 'copied') {
+		return options.provider.open(request, opening);
+	}
+
+	if (options.provider.copy === undefined) {
+		throw new Error('The fixture provider cannot copy the workspace.');
+	}
+
+	return options.provider.copy(
+		{ ...request, source: { kind: 'host' } },
+		opening
 	);
 }
 
@@ -164,35 +199,49 @@ export async function usingProviderFixture<Config>(
 
 			backends.push(backend);
 			expect(isConfirmed).toBe(false);
-			validateBackend(backend, options.provider, fixture.policy);
+			validateBackend(
+				backend,
+				options.provider,
+				fixtureProfile(options, fixture),
+				options.workspaceVisibility === 'copied' ? 'copy' : 'open'
+			);
 
 			return backend;
 		}
 
 		const backend = await open();
-		const capabilities = options.capabilities ?? options.provider.capabilities;
+		const declared =
+			options.provider.profiles[
+				options.workspaceVisibility === 'copied' ? 'copy' : 'open'
+			][0];
+
+		if (declared === undefined) {
+			throw new Error('The fixture provider declares no open profile.');
+		}
+
+		const capabilities = options.capabilities ?? profileCapabilities(declared);
 
 		expect(
 			isTerminationScopeSatisfied(
-				backend.capabilities.terminationScope,
+				backend.profile.terminationScope,
 				capabilities.terminationScope
 			)
 		).toBe(true);
 
 		for (const capability of capabilities.operations) {
-			expect(backend.capabilities.operations).toContain(capability);
+			expect(backend.profile.capabilities).toContain(capability);
 		}
 
 		for (const shell of capabilities.shells) {
-			expect(backend.capabilities.shells).toContain(shell);
+			expect(backend.profile.shells).toContain(shell);
 		}
 
 		for (const kind of capabilities.processKinds) {
-			expect(backend.capabilities.processKinds).toContain(kind);
+			expect(backend.profile.processKinds).toContain(kind);
 		}
 
 		if (capabilities.exitStatus === 'guaranteed') {
-			expect(backend.capabilities.exitStatus).toBe('guaranteed');
+			expect(backend.profile.exitStatus).toBe('guaranteed');
 		}
 
 		const check = (target: SandboxBackend) =>
@@ -307,7 +356,7 @@ async function checkProcess(
 		}
 	});
 
-	if (backend.capabilities.exitStatus === 'guaranteed') {
+	if (backend.profile.exitStatus === 'guaranteed') {
 		expect(probe.exit.kind).not.toBe('unavailable');
 	}
 
@@ -336,20 +385,17 @@ async function checkPolicyEffects(
 
 	switch (scenario) {
 		case 'read-only': {
-			expect(backend.policy.workspaceAccess).toBe('read-only');
+			expect(backend.profile.policy.hostWorkspaceWrites).toBe(false);
 			break;
 		}
 
 		case 'denied-network': {
-			expect(backend.policy.networkAccess).toBe('denied');
+			expect(backend.profile.policy.network).toBe(false);
 			break;
 		}
 
 		case 'protected-path':
 		case 'protected-alias': {
-			expect(backend.policy.workspaceProtection?.length ?? 0).toBeGreaterThan(
-				0
-			);
 			break;
 		}
 		// No default
@@ -415,7 +461,7 @@ async function checkPolicyEffects(
 	const isRead = scenario === 'late-special-file';
 	const operation = isRead ? 'files.read' : 'files.write';
 
-	if (!backend.capabilities.operations.includes(operation)) {
+	if (!backend.profile.capabilities.includes(operation)) {
 		return;
 	}
 
@@ -473,7 +519,7 @@ async function cancelReadyJob(
 	const stdout: Uint8Array[] = [];
 	let outcome: BackendProcessOutcome;
 	const expectedTermination =
-		backend.capabilities.terminationScope === 'none'
+		backend.profile.terminationScope === 'none'
 			? 'not-guaranteed'
 			: 'confirmed';
 
@@ -494,7 +540,7 @@ async function cancelReadyJob(
 					}
 				}
 			}),
-			backend.capabilities.terminationScope
+			backend.profile.terminationScope
 		);
 
 		if (result.kind === 'rejected') {
@@ -600,7 +646,7 @@ async function checkConcurrentCancellation(
 
 		const outcome = await Promise.race([running, scope.whenCancelled()]);
 		const exit =
-			backend.capabilities.exitStatus === 'optional' &&
+			backend.profile.exitStatus === 'optional' &&
 			outcome.kind === 'exited' &&
 			outcome.exit.kind === 'unavailable'
 				? outcome.exit
@@ -618,21 +664,33 @@ async function checkConcurrentCancellation(
 		controller.abort();
 
 		try {
-			await settleProcess(
-				scope,
-				running,
-				backend.capabilities.terminationScope
-			);
+			await settleProcess(scope, running, backend.profile.terminationScope);
 		} finally {
 			scope.dispose();
 		}
 	}
 }
 
+const restrictionChecks = {
+	hostWorkspaceWrites: (policy: Policy) => !policy.hostWorkspaceWrites,
+	network: (policy: Policy) => !policy.network,
+	hostUserData: (policy: Policy) => policy.hostUserData !== 'read-write',
+	hostSystemFiles: (policy: Policy) => policy.hostSystemFiles !== 'read-write'
+} satisfies Record<AccessProperty, (policy: Policy) => boolean>;
+
 export function providerContractCases<Config>(
 	options: SandboxProviderTestOptions<Config>
 ): readonly ContractCase[] {
-	const capabilities = options.capabilities ?? options.provider.capabilities;
+	const declared =
+		options.provider.profiles[
+			options.workspaceVisibility === 'copied' ? 'copy' : 'open'
+		][0];
+
+	if (declared === undefined) {
+		throw new Error('The fixture provider declares no open profile.');
+	}
+
+	const capabilities = options.capabilities ?? profileCapabilities(declared);
 	const cleanup = resolveCleanupBudgets(options.cleanup);
 
 	if (
@@ -647,11 +705,9 @@ export function providerContractCases<Config>(
 		{
 			label: 'metadata and policy',
 			run: async (fixture, backend, context) => {
-				const hasRestrictions =
-					(fixture.policy.workspaceProtection?.length ?? 0) > 0 ||
-					fixture.policy.workspaceAccess === 'read-only' ||
-					fixture.policy.filesystemScope !== 'provider-default' ||
-					fixture.policy.networkAccess === 'denied';
+				const hasRestrictions = accessOrder.some((property) =>
+					restrictionChecks[property](backend.profile.policy)
+				);
 
 				if (hasRestrictions) {
 					expect(
@@ -676,7 +732,7 @@ export function providerContractCases<Config>(
 
 				await cancelReadyJob(fixture, backend, context, cleanup);
 
-				if (backend.capabilities.terminationScope === 'none') {
+				if (backend.profile.terminationScope === 'none') {
 					return;
 				}
 
@@ -850,7 +906,10 @@ export function providerContractCases<Config>(
 					return;
 				}
 
-				if (fixture.policy.workspaceAccess === 'read-only') {
+				if (
+					backend.workspace.relationship === 'shared' &&
+					!backend.profile.policy.hostWorkspaceWrites
+				) {
 					await expect(async () =>
 						writer.writeFile(probe.path, new Uint8Array([42]), context)
 					).rejects.toSatisfy((error: unknown) =>

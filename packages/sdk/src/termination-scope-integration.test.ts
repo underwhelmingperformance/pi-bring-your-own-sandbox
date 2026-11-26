@@ -7,10 +7,12 @@ import { isSandboxError } from './errors.js';
 import { FixtureConfig } from './fixtures/config.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { fixtureProfile, fixtureProfiles } from './fixtures/profile-fixture.js';
 import { initialiseSandboxHost } from './host.js';
 import { observe } from './lifecycle.js';
 import { getOutsideSandboxExecutor } from './outside-execution.js';
 import { outsideShellOperations } from './outside-shell-operations.js';
+import { profileCapabilities } from './validation.js';
 
 it.each(['sandbox', 'normal', 'provider'] as const)(
 	'keeps %s execution usable after cancellation without a termination guarantee',
@@ -23,10 +25,13 @@ it.each(['sandbox', 'normal', 'provider'] as const)(
 		const backend: SandboxBackend = {
 			id: template.id,
 			workspace: template.workspace,
-			policy: template.policy,
+
 			policyDescription: template.policyDescription,
 			recovery: template.recovery,
-			capabilities: { ...template.capabilities, terminationScope: 'none' },
+			profile: fixtureProfile(template.policy, {
+				...template.capabilities,
+				terminationScope: 'none'
+			}),
 			exec() {
 				calls++;
 
@@ -49,8 +54,8 @@ it.each(['sandbox', 'normal', 'provider'] as const)(
 		};
 		const outside = {
 			label: 'Fixture destination',
-			capabilities: backend.capabilities,
-			policy: backend.policy,
+			capabilities: profileCapabilities(backend.profile),
+			policy: backend.profile.policy,
 			open: () => Promise.resolve(backend)
 		};
 
@@ -68,12 +73,16 @@ it.each(['sandbox', 'normal', 'provider'] as const)(
 							config.activate(pi, {
 								id: 'fixture',
 								label: 'Termination fixture',
-								capabilities: backend.capabilities,
-								policies: {
-									workspaceAccess: ['read-write'],
-									filesystemScope: ['provider-default'],
-									networkAccess: ['provider-default']
-								},
+								profiles: fixtureProfiles(
+									profileCapabilities(backend.profile),
+									{
+										hostWorkspaceWrites: [true],
+										hostUserData: ['denied'],
+										hostSystemFiles: ['read-only'],
+										network: [false]
+									}
+								),
+
 								validateConfig: () => ({}),
 								open: () => Promise.resolve(backend),
 								outsideSandbox: outside
@@ -193,7 +202,7 @@ it.each(['sandbox', 'normal', 'provider'] as const)(
 					prepare(_cwd, _personal) {
 						config.set({
 							provider: 'fixture',
-							policy: backend.policy,
+							policy: backend.profile.policy,
 							approval: { policy: 'always' },
 							...(destination !== 'sandbox' && {
 								outsideSandbox: { destination }

@@ -15,24 +15,13 @@ import { FixtureConfig } from './fixtures/config.js';
 import { imageProvider } from './fixtures/image-provider.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { fixtureProfile, fixtureProfiles } from './fixtures/profile-fixture.js';
 import { loadSdkInstance } from './fixtures/sdk-instance.js';
 import { bindProtocolAddress } from './protocol-address.js';
 
-it.each([
-	{ filesystemScope: 'provider-default', guarantees: [], protection: false },
-	{
-		filesystemScope: 'system-read-only',
-		guarantees: ['no-host-user-data'],
-		protection: false
-	},
-	{
-		filesystemScope: 'system-read-only',
-		guarantees: ['no-host-user-data'],
-		protection: true
-	}
-] as const)(
-	'shares execution contracts across independent SDK instances under $filesystemScope with protection $protection',
-	async ({ filesystemScope, guarantees, protection }) => {
+it.each(['denied', 'read-only'] as const)(
+	'shares profile contracts across SDK copies with host system files %s',
+	async (hostSystemFiles) => {
 		const config = new FixtureConfig();
 
 		await withPiRuntime(
@@ -47,16 +36,14 @@ it.each([
 							import.meta.filename
 						);
 						const template = new MemoryBackend('exec');
-						const policy = {
-							...template.policy,
-							filesystemScope,
-							...(protection && {
-								workspaceProtection: [{ kind: 'git-metadata' as const }]
-							})
-						};
-						const operations = protection
-							? (['exec', 'workspace.protection'] as const)
-							: (['exec'] as const);
+						const policy = { ...template.policy, hostSystemFiles };
+						const profile = fixtureProfile(policy, {
+							operations: ['exec'],
+							processKinds: ['shell'],
+							shells: ['sh'],
+							terminationScope: 'process-group',
+							exitStatus: 'optional'
+						});
 
 						first.initialiseSandboxHost(pi, import.meta.filename, {
 							cleanup: { disposalTimeoutMs: 9000 }
@@ -66,33 +53,17 @@ it.each([
 							{
 								...imageProvider,
 								id: 'fixture',
-								defaultPolicy: policy,
-								policies: {
-									...imageProvider.policies,
-									filesystemScope: [filesystemScope]
-								},
-								capabilities: {
-									operations,
-									processKinds: ['shell'],
-									shells: ['sh'],
-									terminationScope: 'process-group',
-									exitStatus: 'optional'
-								},
+
+								profiles: { open: [profile], copy: [] },
 								validateConfig: () => ({ image: 'fixture' }),
 								open: () =>
 									Promise.resolve({
 										id: template.id,
 										workspace: template.workspace,
-										policy,
+
 										policyDescription: template.policyDescription,
 										recovery: template.recovery,
-										capabilities: {
-											operations,
-											processKinds: ['shell'],
-											shells: ['sh'],
-											terminationScope: 'process-group',
-											exitStatus: 'optional'
-										},
+										profile,
 										exec: (_request, execution) => {
 											execution.reportDiagnostic({
 												level: 'warning',
@@ -114,7 +85,7 @@ it.each([
 							description: 'Check independently installed execution contracts.',
 							async handler(_arguments, context) {
 								const sandbox = await secondClient.get(context, {
-									guarantees,
+									access: { hostUserData: 'prevented' },
 									processKinds: ['shell'],
 									shells: ['sh'],
 									terminationScope: 'process-group'
@@ -343,13 +314,14 @@ it.each([
 					first.registerSandboxProvider(pi, import.meta.filename, {
 						id: 'fixture',
 						label: 'Fixture sandbox',
-						defaultPolicy: backend.policy,
-						capabilities: backend.capabilities,
-						policies: {
-							workspaceAccess: ['read-write'],
-							filesystemScope: ['provider-default'],
-							networkAccess: ['provider-default']
-						},
+
+						profiles: fixtureProfiles(backend.capabilities, {
+							hostWorkspaceWrites: [true],
+							hostUserData: ['denied'],
+							hostSystemFiles: ['read-only'],
+							network: [false]
+						}),
+
 						validateConfig: () => ({}),
 						open: () =>
 							Promise.reject(new Error('The ordinary sandbox must not start.')),

@@ -6,15 +6,25 @@ import type { Static } from 'typebox';
 
 import type { OutsideSandboxProvider } from './approval-contracts.js';
 import type {
+	errorDetailSchema,
 	operationSchema,
 	ordinaryErrorNameSchema
 } from './error-schema.js';
-import type { environmentSchema } from './request-schemas.js';
+import type { PathGrants, Policy, Profile } from './policy-model.js';
+export type {
+	Access,
+	AccessProperty,
+	PathGrants,
+	Profile
+} from './policy-model.js';
+import type { ProfileRequirements } from './profile-negotiation.js';
+import type {
+	environmentSchema,
+	sharedSettingsSchema
+} from './request-schemas.js';
 import type { processExitSchema } from './result-schemas.js';
 import type {
-	accessSchema,
 	capabilitySchema,
-	guaranteeSchema,
 	shellSchema,
 	terminationScopeSchema
 } from './schemas.js';
@@ -72,13 +82,11 @@ Operation groups that consumers can require before using a shared backend.
 export type SandboxCapability = Static<typeof capabilitySchema>;
 
 /**
-Implemented operations and shell dialects. An opened
-backend may advertise a subset of its provider declaration.
+Implemented operations and shell dialects from the chosen profile.
 */
 export interface SandboxCapabilities {
 	/**
-	Minimum termination scope guaranteed for every invocation. An opened backend
-	may strengthen the provider declaration, but cannot weaken it.
+	Minimum termination scope guaranteed for every invocation.
 	*/
 	readonly terminationScope: TerminationScope;
 	/**
@@ -102,108 +110,7 @@ export interface SandboxCapabilities {
 	readonly shells: readonly ShellDialect[];
 }
 
-/**
-A workspace resource that must remain immutable through every provider operation.
-Git metadata includes worktree pointers, common metadata and repository hooks.
-Paths identify a workspace-relative subtree, including absent entries and aliases.
-*/
-export type WorkspaceProtection =
-	| { readonly kind: 'git-metadata' }
-	| { readonly kind: 'path'; readonly path: string };
-
-/**
-A restriction that a backend promises to enforce on every operation.
-
-- `no-workspace-writes`: workspace files cannot be changed.
-- `no-network`: outbound network access is denied, including through host
-  services.
-- `no-host-user-data`: host files outside the workspace are inaccessible,
-  except read-only operating-system files and installed runtime dependencies.
-- `no-host-system-files`: those operating-system and runtime files are also
-  inaccessible. A provider may still expose its own isolated runtime image.
-
-Each guarantee corresponds to a policy value: `read-only` workspace access,
-`denied` network access, and `system-read-only` or `workspace-only` filesystem
-scope.
-*/
-export type SandboxGuarantee = Static<typeof guaranteeSchema>;
-
-/**
-Access that a consumer needs. Each access is the opposite of one guarantee:
-`workspace-writes` of `no-workspace-writes`, `network` of `no-network`,
-`host-user-data` of `no-host-user-data` and `host-system-files` of
-`no-host-system-files`.
-*/
-export type SandboxAccess = Static<typeof accessSchema>;
-
-/**
-Protection requirements for opening a backend, or effective protections
-after opening. `provider-default` delegates the boundary to the provider and
-promises no specific isolation.
-*/
-export interface SandboxPolicy {
-	/**
-	Required relationship between the target and host workspace.
-	*/
-	readonly workspaceRelationship?: SandboxWorkspace['relationship'];
-
-	/**
-	Immutable workspace resources. Omission requests no resource-specific
-	protection. Providers must prevent creation, writes, removal, replacement
-	and renames of protected entries, including through aliases and parent
-	directories. An atomic regular-file save over an authorised unprotected
-	entry may change only link count and change time on the displaced inode.
-	Read-only workspace permissions alone do not establish immutability through
-	external aliases or referenced Git metadata.
-	*/
-	readonly workspaceProtection?: readonly WorkspaceProtection[];
-
-	/**
-	Required or effective ability to mutate the workspace. Read-only and
-	read-write requirements must match exactly.
-	*/
-	readonly workspaceAccess: 'read-only' | 'read-write';
-
-	/**
-	The filesystem boundary. `system-read-only` permits read-only host system
-	and runtime paths outside the workspace, but excludes other host user data.
-	`workspace-only` also excludes those host system paths.
-	*/
-	readonly filesystemScope:
-		'workspace-only' | 'system-read-only' | 'provider-default';
-
-	/**
-	Whether the provider must deny network access or apply its default
-	policy.
-	*/
-	readonly networkAccess: 'denied' | 'provider-default';
-}
-
-/**
-Policy values that a provider accepts before allocating a backend.
-*/
-export interface SupportedSandboxPolicies {
-	/**
-	Every workspace relationship that an opened backend can report.
-	Omit this field if the provider cannot negotiate a relationship.
-	*/
-	readonly workspaceRelationship?: readonly SandboxWorkspace['relationship'][];
-
-	/**
-	Workspace modes available when opening a backend.
-	*/
-	readonly workspaceAccess: readonly SandboxPolicy['workspaceAccess'][];
-
-	/**
-	Filesystem boundaries available when opening a backend.
-	*/
-	readonly filesystemScope: readonly SandboxPolicy['filesystemScope'][];
-
-	/**
-	Network restrictions available when opening a backend.
-	*/
-	readonly networkAccess: readonly SandboxPolicy['networkAccess'][];
-}
+export type SandboxPolicy = Policy;
 
 /**
 Target filesystem metadata. Paths use the target flavour and are not host
@@ -222,10 +129,9 @@ export interface SandboxWorkspace {
 	readonly pathFlavor: 'posix' | 'win32';
 
 	/**
-	Whether workspace content is shared with the host, copied on opening or
-	available only remotely.
+	Whether the target exposes the live checkout or a private copy.
 	*/
-	readonly relationship: 'shared' | 'copied' | 'remote';
+	readonly relationship: 'shared' | 'copied';
 
 	/**
 	Operator-facing explanation of workspace synchronisation and
@@ -310,52 +216,10 @@ export interface SandboxWriteOptions extends SandboxOperationOptions {
 Requirements checked against the selected, shared backend. Requirements do
 not select another provider or reconfigure an existing backend.
 */
-export interface SandboxAcquireOptions extends SandboxOperationOptions {
-	/**
-	Minimum execution termination scope. Omitting this requirement accepts any
-	declared scope and does not change the selected provider.
-	*/
-	readonly terminationScope?: TerminationScope;
-	/**
-	Request forms that must be available on the shared backend.
-	*/
-	readonly processKinds?: readonly ProcessKind[];
-	/**
-	Shell dialects that must be available on the shared backend.
-	*/
-	readonly shells?: readonly ShellDialect[];
-	/**
-	Require an exit code or signal for every completed invocation.
-	*/
-	readonly exitStatus?: 'guaranteed';
-	/**
-	Every requested operation group must be available.
-	*/
-	readonly capabilities?: readonly SandboxCapability[];
+export type SandboxRequirements = ProfileRequirements;
 
-	/**
-	Guarantees that the backend must provide. Each one tightens the selected
-	policy where the provider supports a stronger value.
-	*/
-	readonly guarantees?: readonly SandboxGuarantee[];
-
-	/**
-	Access that the consumer must keep. An acquisition cannot gain access that
-	the configured policy does not grant.
-	*/
-	readonly needs?: readonly SandboxAccess[];
-
-	/**
-	Required relationship between the target and host workspace.
-	*/
-	readonly workspaceRelationship?: SandboxWorkspace['relationship'];
-
-	/**
-	Workspace resources that must remain immutable, in addition to those in
-	the configured policy.
-	*/
-	readonly workspaceProtection?: readonly WorkspaceProtection[];
-}
+export interface SandboxAcquireOptions
+	extends SandboxOperationOptions, SandboxRequirements {}
 
 /**
 Broker-supplied operation identity, composed cancellation and remaining
@@ -958,28 +822,14 @@ export interface SandboxOpenRequest<Config = unknown> {
 	/**
 	Complete policy that the allocated backend must satisfy.
 	*/
-	readonly policy: SandboxPolicy;
+	readonly profile: Profile;
+	readonly paths?: PathGrants;
 
 	/**
 	Provider-specific validated value; never include it in routine
 	diagnostics.
 	*/
 	readonly configuration: Config;
-}
-
-/**
-Minimum provider identity, capabilities and policy required for every SDK
-consumer in this runtime. Installing a requirement always requires explicit
-provider activation. Per-call cancellation and timeout options are excluded.
-*/
-export interface SandboxRequirements extends Omit<
-	SandboxAcquireOptions,
-	'signal' | 'timeoutMs'
-> {
-	/**
-	Expected activated provider ID. Omit to accept any activated provider.
-	*/
-	readonly providerId?: string;
 }
 
 /**
@@ -1005,35 +855,20 @@ export type SandboxConfigResolver<Value> = (
 Provider-owned configuration and execution defaults. An omitted policy uses the
 provider declaration's default; provider configuration is never displayed.
 */
+export type SandboxSharedSettings = Readonly<
+	Static<typeof sharedSettingsSchema>
+>;
+
 export interface SandboxProviderConfig<Config> {
-	/**
-	Typed input for the provider's configuration validator.
-	*/
 	readonly configuration: Config;
-	/**
-	Base policy that consumer and guard requirements may tighten.
-	*/
-	readonly policy?: SandboxPolicy;
-	/**
-	Target dialect for user-shell commands.
-	*/
-	readonly userShell?: ShellDialect;
-	/**
-	Cleanup overrides for this runtime generation.
-	*/
-	readonly cleanup?: Partial<SandboxCleanupBudgets>;
+	readonly settings?: SandboxSharedSettings;
 }
-/**
-Activates a provider before resolving its extension-owned configuration. Omit
-the resolver only when the provider accepts empty configuration and has a
-default policy.
-@typeParam Input - Raw input accepted by the provider validator.
-*/
+
 export interface SandboxProviderRegistration<Input> {
-	/**
-	Returns raw input for the provider validator after extension factories complete.
-	*/
-	readonly configure: SandboxConfigResolver<SandboxProviderConfig<Input>>;
+	readonly configure: (
+		context: SandboxConfigContext,
+		schema: typeof sharedSettingsSchema
+	) => SandboxProviderConfig<Input> | Promise<SandboxProviderConfig<Input>>;
 }
 
 /**
@@ -1044,11 +879,6 @@ share one backend per generation.
 and received by opening.
 */
 export interface SandboxProvider<Config> {
-	/**
-	Complete policy to use when extension settings select this provider without
-	specifying a policy. Every value must be supported by `policies`.
-	*/
-	readonly defaultPolicy?: SandboxPolicy;
 	/**
 	Non-empty discovery identity. IDs of registered built-in providers are
 	reserved; duplicate IDs fail discovery.
@@ -1065,15 +895,10 @@ export interface SandboxProvider<Config> {
 	*/
 	readonly outsideSandbox?: OutsideSandboxProvider<Config>;
 
-	/**
-	Maximum operation groups and shells that an opened backend may advertise.
-	*/
-	readonly capabilities: SandboxCapabilities;
-
-	/**
-	Policy values supported before allocation.
-	*/
-	readonly policies: SupportedSandboxPolicies;
+	readonly profiles: {
+		readonly open: readonly Profile[];
+		readonly copy: readonly Profile[];
+	};
 
 	/**
 	Synchronously validate unknown input and return typed configuration
@@ -1112,16 +937,7 @@ export type SandboxCopySource =
 	| { readonly kind: 'host' }
 	| { readonly kind: 'backend'; readonly backend: SandboxBackend };
 
-/**
-Requirements for a copy. The broker opens the strictest policy that the
-provider supports, that provides every required guarantee and that keeps every
-need. Needs cannot exceed the access that the session's configured policy
-grants. Session-wide requirements also apply.
-*/
-export type SandboxCopyOptions = Omit<
-	SandboxAcquireOptions,
-	'workspaceRelationship'
->;
+export type SandboxCopyOptions = SandboxAcquireOptions;
 
 /**
 A private copy owned by its caller. The copy is not shared with other
@@ -1158,6 +974,12 @@ Provider-owned target execution environment. Consumers receive a broker
 facade. All operations must respect cancellation, deadlines and effective
 policy; paths refer to the target.
 */
+export interface GrantedPath {
+	readonly kind: 'read' | 'write';
+	readonly hostPath: string;
+	readonly targetPath: string;
+}
+
 export interface SandboxBackend {
 	/**
 	Provider-assigned identity for the allocated target.
@@ -1169,21 +991,8 @@ export interface SandboxBackend {
 	*/
 	readonly workspace: SandboxWorkspace;
 
-	/**
-	Operations actually available on this backend, limited to the provider
-	declaration.
-	*/
-	readonly capabilities: SandboxCapabilities;
-
-	/**
-	Effective protections, validated before publishing a consumer handle.
-	*/
-	readonly policy: SandboxPolicy;
-
-	/**
-	Operator-facing explanation of the effective boundary, including
-	provider-default behaviour.
-	*/
+	readonly profile: Profile;
+	readonly grantedPaths?: readonly GrantedPath[];
 	readonly policyDescription: string;
 
 	/**
@@ -1360,6 +1169,7 @@ export interface Sandbox {
 	Readonly snapshot of target paths and workspace synchronisation.
 	*/
 	readonly workspace: SandboxWorkspace;
+	readonly grantedPaths?: readonly GrantedPath[];
 
 	/**
 	Readonly snapshot used to check consumer requirements.
@@ -1432,6 +1242,8 @@ export interface SandboxErrorContext {
 	/**
 	The SDK operation that failed.
 	*/
+	readonly extensionSource?: string;
+	readonly detail?: Readonly<Static<typeof errorDetailSchema>>;
 	readonly operation: SandboxOperation;
 
 	/**

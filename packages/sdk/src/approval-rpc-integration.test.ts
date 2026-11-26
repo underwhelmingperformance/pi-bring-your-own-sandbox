@@ -72,9 +72,10 @@ async function fixture(
 				options.config ?? {
 					provider: 'rpc-provider',
 					policy: {
-						workspaceAccess: 'read-write',
-						filesystemScope: 'provider-default',
-						networkAccess: 'provider-default'
+						hostWorkspaceWrites: true,
+						hostUserData: 'denied',
+						hostSystemFiles: 'read-only',
+						network: false
 					},
 					outsideSandbox: { destination: options.destination ?? 'provider' }
 				}
@@ -635,9 +636,10 @@ it.each([
 				config: {
 					provider: 'rpc-provider',
 					policy: {
-						workspaceAccess: 'read-write',
-						filesystemScope: 'provider-default',
-						networkAccess: 'provider-default'
+						hostWorkspaceWrites: true,
+						hostUserData: 'denied',
+						hostSystemFiles: 'read-only',
+						network: false
 					},
 					outsideSandbox: { destination: 'provider' },
 					approval: { policy, config }
@@ -847,9 +849,10 @@ it('reports selected and unavailable approval policies through RPC without alloc
 			config: {
 				provider: 'rpc-provider',
 				policy: {
-					workspaceAccess: 'read-write',
-					filesystemScope: 'provider-default',
-					networkAccess: 'provider-default'
+					hostWorkspaceWrites: true,
+					hostUserData: 'denied',
+					hostSystemFiles: 'read-only',
+					network: false
 				},
 				outsideSandbox: { destination: 'provider' },
 				approval: { policy: 'missing', config: { secret: 'synthetic-secret' } }

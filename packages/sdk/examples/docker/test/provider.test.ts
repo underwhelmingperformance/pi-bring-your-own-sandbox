@@ -1,6 +1,8 @@
 import { defineSandboxProviderTests } from 'pi-bring-your-own-sandbox/testing';
 import { describe } from 'vitest';
 
+import { firstOpenProfile } from '../../../src/fixtures/profile-fixture.js';
+import { profileCapabilities } from '../../../src/validation.js';
 import { createDockerProvider } from '../src/provider.js';
 
 import { DockerFixture } from './fixture.js';
@@ -8,19 +10,28 @@ import { DockerFixture } from './fixture.js';
 describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 	'Docker reference provider (pnpm test:provider requires a local daemon and the pinned image)',
 	() => {
-		for (const workspaceAccess of ['read-write', 'read-only'] as const) {
+		for (const [relationship, hostWorkspaceWrites] of [
+			['shared', true],
+			['shared', false],
+			['copied', false]
+		] as const) {
 			let fixture: DockerFixture | undefined;
 
 			defineSandboxProviderTests({
-				workspaceVisibility: 'copied',
-				policyEffects:
-					workspaceAccess === 'read-only'
-						? ['read-only', 'denied-network', 'late-special-file']
-						: ['denied-network', 'late-special-file'],
+				workspaceVisibility: relationship,
+				policyEffects: [
+					'denied-network',
+					...(relationship === 'copied'
+						? (['late-special-file'] as const)
+						: []),
+					...(relationship === 'shared' && !hostWorkspaceWrites
+						? (['read-only'] as const)
+						: [])
+				],
 				verifyRecoveryAfterCancellation: true,
 				verifyIndependentAllocations: true,
 				verifyConcurrentCancellation: true,
-				label: `Docker ${workspaceAccess}`,
+				label: `Docker ${relationship} with host writes ${String(hostWorkspaceWrites)}`,
 				provider: createDockerProvider(() => {
 					if (fixture === undefined) {
 						throw new Error('The Docker fixture has not been prepared.');
@@ -33,9 +44,10 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 					fixture = await DockerFixture.create();
 
 					return fixture.contract({
-						workspaceAccess,
-						filesystemScope: 'workspace-only',
-						networkAccess: 'denied'
+						hostWorkspaceWrites,
+						hostUserData: 'denied',
+						hostSystemFiles: 'denied',
+						network: false
 					});
 				}
 			});
@@ -64,7 +76,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 			provider,
 			timeoutMs: 30_000,
 			capabilities: {
-				...provider.capabilities,
+				...profileCapabilities(firstOpenProfile(provider)),
 				operations: ['exec'],
 				processKinds: ['shell'],
 				shells: ['powershell']
@@ -75,9 +87,10 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				prepared = fixture;
 
 				const base = fixture.contract({
-					workspaceAccess: 'read-only',
-					filesystemScope: 'workspace-only',
-					networkAccess: 'denied'
+					hostWorkspaceWrites: false,
+					hostUserData: 'denied',
+					hostSystemFiles: 'denied',
+					network: false
 				});
 
 				return {

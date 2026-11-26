@@ -47,6 +47,7 @@ function observedProvider<Config>(
 
 					return {
 						...backend,
+						profile: backend.profile,
 						exec: (request, context) => {
 							calls.push(request);
 
@@ -70,9 +71,10 @@ it.each([
 	{
 		provider: 'fixture.image',
 		policy: {
-			workspaceAccess: 'read-write',
-			filesystemScope: 'provider-default',
-			networkAccess: 'provider-default'
+			hostWorkspaceWrites: true,
+			hostUserData: 'denied',
+			hostSystemFiles: 'read-only',
+			network: false
 		},
 		config: { image: 'fixture-image' },
 		target: '/workspace'
@@ -80,9 +82,10 @@ it.each([
 	{
 		provider: 'fixture.connection',
 		policy: {
-			workspaceAccess: 'read-write',
-			filesystemScope: 'workspace-only',
-			networkAccess: 'denied'
+			hostWorkspaceWrites: true,
+			hostUserData: 'denied',
+			hostSystemFiles: 'denied',
+			network: false
 		},
 		config: { endpoint: 'https://fixture.invalid' },
 		target: '/project'
@@ -90,9 +93,10 @@ it.each([
 	...['fixture.memory', 'fixture.message'].map((provider) => ({
 		provider,
 		policy: {
-			workspaceAccess: 'read-write',
-			filesystemScope: 'provider-default',
-			networkAccess: 'provider-default'
+			hostWorkspaceWrites: true,
+			hostUserData: 'read-write',
+			hostSystemFiles: 'read-write',
+			network: true
 		},
 		config: {},
 		target:
@@ -276,9 +280,10 @@ it('uses Pi approval before the consumer can acquire or execute', async () => {
 					provider: 'fixture.image',
 					providerConfig: { image: 'fixture-image' },
 					policy: {
-						workspaceAccess: 'read-write',
-						filesystemScope: 'provider-default',
-						networkAccess: 'provider-default'
+						hostWorkspaceWrites: true,
+						hostUserData: 'denied',
+						hostSystemFiles: 'read-only',
+						network: false
 					}
 				});
 			}

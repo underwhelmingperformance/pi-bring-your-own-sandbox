@@ -2,9 +2,11 @@ import { expect } from 'vitest';
 
 import type { SandboxBackend, SandboxProvider } from '../contracts.js';
 import { SandboxCancelledError } from '../errors.js';
+import { unrestrictedPolicy } from '../policy-model.js';
 import type { SandboxProviderTestOptions } from '../provider-test-contracts.js';
 
 import { MemoryBackend } from './memory-backend.js';
+import { fixtureProfiles } from './profile-fixture.js';
 
 const encode = (text: string) => new TextEncoder().encode(text);
 
@@ -15,22 +17,26 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 	const provider: SandboxProvider<undefined> = {
 		id: 'fixture.memory',
 		label: 'Contract test double without OS isolation',
-		capabilities: {
-			processKinds: ['argv', 'shell'],
-			terminationScope: 'workload',
-			exitStatus: 'guaranteed',
-			operations: ['exec', 'files.read', 'files.write', 'files.list'],
-			shells: ['sh']
-		},
-		policies: {
-			workspaceAccess: ['read-write'],
-			filesystemScope: ['provider-default'],
-			networkAccess: ['provider-default']
-		},
+		profiles: fixtureProfiles(
+			{
+				processKinds: ['argv', 'shell'],
+				terminationScope: 'workload',
+				exitStatus: 'guaranteed',
+				operations: ['exec', 'files.read', 'files.write', 'files.list'],
+				shells: ['sh']
+			},
+			{
+				hostWorkspaceWrites: [true],
+				hostUserData: ['read-write'],
+				hostSystemFiles: ['read-write'],
+				network: [true]
+			}
+		),
+
 		validateConfig: () => {
 			return;
 		},
-		open(_request, context) {
+		open(request, context) {
 			context.reportRecovery({ kind: 'none' });
 			memory = new MemoryBackend();
 			memory.seed('seed', new Uint8Array([0, 255, 10]));
@@ -39,11 +45,11 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 			const backend: SandboxBackend = {
 				id: memory.id,
 				workspace: memory.workspace,
-				policy: memory.policy,
+
 				policyDescription: memory.policyDescription,
 				recovery: memory.recovery,
 				...(memory.files !== undefined && { files: memory.files }),
-				capabilities: provider.capabilities,
+				profile: request.profile,
 				exec: async (request, execution) => {
 					const target = request;
 
@@ -123,11 +129,7 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 			Promise.resolve({
 				configuration: undefined,
 				hostWorkspace: '/host',
-				policy: {
-					workspaceAccess: 'read-write',
-					filesystemScope: 'provider-default',
-					networkAccess: 'provider-default'
-				},
+				policy: unrestrictedPolicy,
 				processes: [
 					{
 						...probe,

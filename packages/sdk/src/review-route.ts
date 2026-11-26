@@ -1,4 +1,3 @@
-import { checkRequirements } from './acquire-options.js';
 import { inspectContext } from './context.js';
 import type {
 	ReviewedToolCall,
@@ -14,7 +13,11 @@ import { protocolAddress } from './protocol-address.js';
 import { collectProtocolReplies, REVIEW_CHANNEL } from './protocol-envelope.js';
 import { copyOptionsSchema, sourceReply } from './protocol-payloads.js';
 import { checkDemand, sharedFeatureLevel } from './protocol-version.js';
-import { copyOptions, rethrowCopyError } from './sandbox-copy.js';
+import {
+	checkCopiedSandbox,
+	copyOptions,
+	rethrowCopyError
+} from './sandbox-copy.js';
 import { checker } from './schemas.js';
 import { isRecord } from './validation.js';
 
@@ -79,10 +82,7 @@ async function checkedCopy(
 	}
 
 	try {
-		checkRequirements(sandbox, {
-			...options,
-			workspaceRelationship: 'copied'
-		});
+		checkCopiedSandbox(sandbox, options);
 
 		return { sandbox, close: () => copy.close() };
 	} catch (error) {

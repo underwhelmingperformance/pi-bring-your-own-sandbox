@@ -14,10 +14,10 @@ import type {
 	SandboxOpenRequest,
 	SandboxPolicy,
 	SandboxWorkspace,
-	ShellDialect,
-	SupportedSandboxPolicies
+	ShellDialect
 } from './contracts.js';
 import type { OutsideProviderServiceV1 } from './outside-execution.js';
+import type { Profile } from './policy-model.js';
 import type { ProtocolIdentity } from './protocol-envelope.js';
 
 /**
@@ -61,41 +61,12 @@ export interface ConfiguredProviderV1 {
 Version 1 provider responder shared across separately installed SDK copies.
 Discovery and configuration allocate no backend.
 */
-export interface ProviderServiceV1 {
+export interface ProviderServiceV1 extends ProviderInfo {
 	readonly protocol?: ProtocolIdentity;
-	/**
-	Policy used when extension settings omit a policy. Must use supported values.
-	*/
-	readonly defaultPolicy?: SandboxPolicy;
-	/**
-	Optional provider-defined execution destination, independent of approval selection.
-	*/
 	readonly outsideSandbox?: OutsideProviderServiceV1;
-	/**
-	Discovery identity; duplicate IDs prevent selection.
-	*/
-	readonly id: string;
-
-	/**
-	Operator-facing provider label.
-	*/
-	readonly label: string;
-
-	/**
-	Declared maximum operations and shell dialects.
-	*/
-	readonly capabilities: SandboxCapabilities;
-
-	/**
-	Protection values accepted during selection.
-	*/
-	readonly policies: SupportedSandboxPolicies;
-
-	/**
-	Synchronously validate unknown input and capture it in an opening
-	closure without allocation.
-	*/
-	readonly configure: (input: unknown) => ConfiguredProviderV1;
+	readonly configure: (
+		input: unknown
+	) => ConfiguredProviderV1 | Promise<ConfiguredProviderV1>;
 }
 
 /**
@@ -249,7 +220,7 @@ policy that a matching acquisition would open, or the typed error that it
 would throw.
 */
 export type SandboxNegotiation =
-	| { readonly ok: true; readonly policy: SandboxPolicy }
+	| { readonly ok: true; readonly profile: Profile }
 	| { readonly ok: false; readonly error: SandboxErrorInfo };
 
 /**
@@ -257,29 +228,12 @@ Provider metadata safe to enumerate without provisioning resources or
 exposing configuration.
 */
 export interface ProviderInfo {
-	/**
-	Declared policy default, available without configuration or allocation.
-	*/
-	readonly defaultPolicy?: SandboxPolicy;
-	/**
-	Discovery identity without provider configuration.
-	*/
 	readonly id: string;
-
-	/**
-	Operator-facing label for enumeration.
-	*/
 	readonly label: string;
-
-	/**
-	Declared maximum operations without allocating a backend.
-	*/
-	readonly capabilities: SandboxCapabilities;
-
-	/**
-	Supported protection choices without allocating a backend.
-	*/
-	readonly policies: SupportedSandboxPolicies;
+	readonly profiles: {
+		readonly open: readonly Profile[];
+		readonly copy: readonly Profile[];
+	};
 }
 
 /**

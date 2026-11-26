@@ -10,8 +10,8 @@ Install the provider extension and its dependencies in a trusted directory
 outside the writable workspace. For example, install them in a separate package
 under `~/.pi/agent/` and load the extension by absolute path. Commands with
 write access to a checkout can rewrite packages installed in that checkout.
-Project trust allows extension code to load. Live checkout writes require an
-explicit provider setting.
+Project trust allows extension code to load. The configured policy controls
+writes to the live checkout.
 
 ## Run this checkout
 
@@ -39,7 +39,7 @@ its extension factory runs.
 
 For the checkout's offline shell preset, load `src/shell-profile.ts` in place of
 `src/index.ts` with Pi's `--tools bash` option. The provider ships this preset
-with requirements for Docker, network denial and isolation from host user data
+with a default policy that denies network access and access to host user data
 and system files.
 
 [pi]: ../../docs/pi-integration.md
@@ -54,16 +54,14 @@ profiles for explicit copies. The project's trust setting selects neither the
 workspace nor the policy. The [workspace guide][editing] describes live work and
 explicit copies for permission review.
 
-Put policy, shell, cleanup and path protection settings in the provider's
-settings file. With no policy setting, the SDK default applies within Docker's
-supported profiles. It permits live writes and host system reads when supported,
-and denies network access and host user data.
+The example supplies shared settings through provider registration. The default
+permits live checkout writes and denies network access, host user data and host
+system files. Docker mounts the checkout's `.pi` directory read-only to protect
+Pi's project settings. Create an empty `.pi` directory if the checkout lacks
+one. Opening fails if Docker cannot mount the checkout with the selected policy.
 
-A `bash` call can request extra access with `escalate`. Set `allowEscalation` to
-false in the provider's settings to refuse such requests. If Docker cannot grant
-the request, the proposed destination is the host, with no restrictions from the
-provider. The decision is required before execution. Use `/byos log` to inspect
-the session's decision record.
+Milestone 5 adds `escalate` for Bash, the `allowEscalation` setting and the
+`/byos log` command for inspecting decisions.
 
 [editing]: workspace-editing.md
 

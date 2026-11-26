@@ -21,10 +21,12 @@ import {
 } from './api.js';
 import type { SandboxBackend } from './contracts.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { fixtureProfile, fixtureProfiles } from './fixtures/profile-fixture.js';
 import { ScriptedModel } from './fixtures/scripted-model.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import { createShellOperations } from './pi-shell-operations.js';
 import sandboxTools, { registerShellOnlyTools } from './pi-tools.js';
+import { profileCapabilities } from './validation.js';
 import { isRecord } from './validation.js';
 
 function provider(backend: SandboxBackend): InlineExtension {
@@ -33,14 +35,15 @@ function provider(backend: SandboxBackend): InlineExtension {
 		factory(pi) {
 			registerSandboxProvider(pi, import.meta.filename, {
 				id: 'fixture',
-				defaultPolicy: backend.policy,
+
 				label: 'In-memory shell; no OS isolation.',
-				capabilities: backend.capabilities,
-				policies: {
-					workspaceAccess: ['read-write'],
-					filesystemScope: ['provider-default'],
-					networkAccess: ['provider-default']
-				},
+				profiles: fixtureProfiles(profileCapabilities(backend.profile), {
+					hostWorkspaceWrites: [true],
+					hostUserData: ['denied'],
+					hostSystemFiles: ['read-only'],
+					network: [false]
+				}),
+
 				validateConfig: () => ({}),
 				open: () => Promise.resolve(backend)
 			});
@@ -63,13 +66,13 @@ it('preserves shell-only provider output when exit details are unavailable', asy
 	const { backend } = shellBackend();
 	const unavailable: SandboxBackend = {
 		...backend,
-		capabilities: {
+		profile: fixtureProfile(backend.profile.policy, {
 			operations: ['exec'],
 			processKinds: ['shell'],
 			shells: ['bash'],
 			terminationScope: 'workload',
 			exitStatus: 'optional'
-		},
+		}),
 		exec(_request, context) {
 			context.onOutput({
 				stream: 'stdout',

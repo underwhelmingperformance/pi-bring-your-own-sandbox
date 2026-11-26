@@ -2,6 +2,7 @@ import type { EventBus } from '@earendil-works/pi-coding-agent';
 
 import { builtinProviders } from './builtin-providers.js';
 import { DuplicateBrokerError, DuplicateProviderError } from './errors.js';
+import { providerInfoSchema } from './policy-model.js';
 import type { BrokerServiceV1, ProviderServiceV1 } from './protocol.js';
 import { protocolAddress } from './protocol-address.js';
 import type { ProtocolIdentity } from './protocol-envelope.js';
@@ -15,7 +16,7 @@ import { brokerReply, providerAdvertisement } from './protocol-payloads.js';
 import { projectOffer } from './protocol-schema.js';
 import { checkDemand, sharedFeatureLevel } from './protocol-version.js';
 import { acquireOptionsSchema } from './request-schemas.js';
-import { checker, providerInfoSchema } from './schemas.js';
+import { checker } from './schemas.js';
 import { brokerServiceSchema } from './service-schemas.js';
 import { snapshotCapabilities, snapshotProviderInfo } from './validation.js';
 

@@ -1,7 +1,6 @@
 import type {
 	SandboxHost,
 	SandboxProvider,
-	SandboxProviderConfig,
 	SandboxProviderRegistration
 } from './contracts.js';
 import { bindFactory } from './default-broker.js';
@@ -9,14 +8,14 @@ import {
 	InvalidSandboxConfigError,
 	InvalidSandboxDeclarationError,
 	InvalidSandboxRequestError,
-	isSandboxError,
-	UnsupportedSandboxPolicyError
+	isSandboxError
 } from './errors.js';
 import type { ConfiguredProviderV1, ProviderServiceV1 } from './protocol.js';
 import { protocolAddress } from './protocol-address.js';
 import { onProtocolRequest, PROVIDER_CHANNEL } from './protocol-envelope.js';
 import { providerAdvertisement } from './protocol-payloads.js';
 import { projectReply } from './protocol-version.js';
+import { sharedSettingsSchema } from './request-schemas.js';
 import { registerProviderConfig } from './runtime-settings.js';
 import { checker } from './schemas.js';
 import { providerDeclarationSchema } from './service-schemas.js';
@@ -49,37 +48,28 @@ export function registerSandboxProvider<Config, Input = Config>(
 ): void {
 	if (!isProviderDeclaration(provider)) {
 		throw new InvalidSandboxDeclarationError({
-			operation: 'discover'
+			operation: 'discover',
+			extensionSource,
+			detail: { kind: 'declaration', field: 'provider' }
 		});
 	}
 
 	const configure = options?.configure;
 
 	if (configure !== undefined && typeof configure !== 'function') {
-		throw new InvalidSandboxRequestError({ operation: 'configure' });
+		throw new InvalidSandboxRequestError({
+			operation: 'configure',
+			extensionSource,
+			detail: { kind: 'request', field: 'configure' }
+		});
 	}
 
 	bindFactory(pi, extensionSource);
-	registerProviderConfig(pi, provider.id, async (context) => {
-		const configured: SandboxProviderConfig<unknown> =
-			configure === undefined
-				? { configuration: {} }
-				: await configure(context);
-		const relationship = configured.policy?.workspaceRelationship;
-
-		if (
-			relationship !== undefined &&
-			!provider.policies.workspaceRelationship?.includes(relationship)
-		) {
-			throw new UnsupportedSandboxPolicyError({
-				operation: 'configure',
-				configurationSource: 'extension',
-				providerId: provider.id
-			});
-		}
-
-		return configured;
-	});
+	registerProviderConfig(pi, provider.id, (context) =>
+		configure === undefined
+			? { configuration: {} }
+			: configure(context, sharedSettingsSchema)
+	);
 
 	const { id } = provider;
 	const validate = provider.validateConfig.bind(provider);
@@ -104,10 +94,15 @@ export function registerSandboxProvider<Config, Input = Config>(
 				{
 					operation: 'configure',
 					providerId: id,
-					...(isSandboxError(error) &&
-						error.configurationSource !== undefined && {
-							configurationSource: error.configurationSource
-						})
+					extensionSource,
+					configurationSource: 'extension',
+					detail: {
+						kind: 'config',
+						field:
+							isSandboxError(error) && error.detail?.kind === 'config'
+								? error.detail.field
+								: 'configuration'
+					}
 				},
 				{ cause: error }
 			);

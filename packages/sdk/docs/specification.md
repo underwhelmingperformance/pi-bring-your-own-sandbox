@@ -93,12 +93,11 @@ before the broker returns a facade.
 
 ### Provider presets
 
-Providers can ship presets that require stricter access or capabilities than
-their ordinary configuration. For example, the Docker offline shell preset
-requires network denial and confinement from host files. The broker applies
-preset restrictions before allocating a backend. Users choose the preset from
-the provider. The provider kit reports a failed provider factory as a
-configuration error.
+A provider can ship a separate extension entry point with its own default
+configured policy. The entry point registers the provider and supplies the
+default through the ordinary shared settings. The Docker offline shell entry
+point prevents access to the network and to host files outside the checkout. It
+also registers only the shell tools.
 
 ### Access requirements
 
@@ -120,10 +119,14 @@ system or its system-wide runtimes. Examples are OS binaries in `/bin` or
 Host user data includes user files outside the checkout, such as credentials,
 other projects and user-installed tools. User data under a system-managed
 directory stays user data. Classify mixed content as user data if the provider
-cannot enforce distinct policies within it. A path alias or mount does not
-change the classification of the underlying files. The provider's own files,
-including a container image's operating system and dependencies, are outside
-both host classes. Exposed host files still belong to their original classes.
+cannot enforce distinct policies within it. The user gives the agent the entire
+workspace tree. Every entry in that tree is workspace content, including a hard
+link with another link outside the tree. Host file restrictions govern access to
+host paths outside the workspace. A provider that exposes the live checkout
+refuses sockets, FIFOs and device files in the checkout when it opens. A host
+process can add entries after open, which falls outside this contract. Target
+files, including a container image's operating system and dependencies, fall
+outside both host classes.
 
 The pi-permission-auto-review extension sets `hostWorkspaceWrites`, `network`
 and `hostUserData` to `prevented` for investigation. It leaves `hostSystemFiles`
@@ -137,10 +140,13 @@ the copy accepts writes. Any changes stay in the copy.
 The `paths` part of the access record lists paths that the consumer needs to
 read or write. For host paths, resolve `~` against the host user's home and
 relative paths against Pi's workspace before evaluating policy. Read and write
-requirements are separate. If a path falls beyond the configured policy or is
-unreachable, negotiation fails with a typed error that identifies the path. An
-ordinary grant confirms existing access. It leaves the policy unchanged. A copy
-may require paths reachable in the copy. Copy writes stay in the copy.
+requirements are separate. Before allocation, the broker classifies each
+resolved host path and checks it against the configured policy and eligible
+profiles. After opening, the backend reports the target location of each path.
+The broker returns a typed error for a missing or unreachable grant and disposes
+of the backend. An ordinary grant confirms existing access. It leaves the policy
+unchanged. A copy may require paths reachable in the copy. Copy writes stay in
+the copy.
 
 Escalation can add access to requested paths beyond the configured policy. A
 profile declares whether the provider can grant extra read paths or extra write

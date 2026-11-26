@@ -6,11 +6,13 @@ import { expect, it } from 'vitest';
 
 import { FixtureConfig } from './fixtures/config.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { fixtureProfiles } from './fixtures/profile-fixture.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import { initialiseSandboxHost } from './host.js';
 import { outsideShellOperations } from './outside-shell-operations.js';
 import { createShellOperations } from './pi-shell-operations.js';
 import { registerUserShell } from './user-shell.js';
+import { profileCapabilities } from './validation.js';
 
 it.each([
 	{ route: 'sandbox', dialect: 'bash' },
@@ -49,7 +51,7 @@ it.each([
 
 		config.set({
 			provider: 'fixture',
-			policy: backend.policy,
+			policy: backend.profile.policy,
 			approval: { policy: 'always' },
 			outsideSandbox: {
 				destination: route === 'outside-provider' ? 'provider' : 'normal'
@@ -65,18 +67,19 @@ it.each([
 						config.activate(pi, {
 							id: 'fixture',
 							label: 'Fixture sandbox',
-							capabilities: backend.capabilities,
-							policies: {
-								workspaceAccess: ['read-write'],
-								filesystemScope: ['provider-default'],
-								networkAccess: ['provider-default']
-							},
+							profiles: fixtureProfiles(profileCapabilities(backend.profile), {
+								hostWorkspaceWrites: [true],
+								hostUserData: ['denied'],
+								hostSystemFiles: ['read-only'],
+								network: [false]
+							}),
+
 							validateConfig: () => ({}),
 							open: () => Promise.resolve(backend),
 							outsideSandbox: {
 								label: 'Fixture outside destination',
-								capabilities: backend.capabilities,
-								policy: backend.policy,
+								capabilities: profileCapabilities(backend.profile),
+								policy: backend.profile.policy,
 								open: () => Promise.resolve(backend)
 							}
 						});

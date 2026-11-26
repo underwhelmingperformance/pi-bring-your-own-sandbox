@@ -1,13 +1,18 @@
 import { Type } from 'typebox';
 
-import { acquireOptions } from './acquire-options.js';
+import { acquireOptions, checkRequirements } from './acquire-options.js';
 import { settleSandboxClose } from './cleanup-report.js';
 import type {
+	Sandbox,
 	SandboxCloseReport,
 	SandboxCopyOptions,
 	SandboxErrorContext
 } from './contracts.js';
-import { InvalidSandboxRequestError, SandboxCleanupError } from './errors.js';
+import {
+	InvalidSandboxDeclarationError,
+	InvalidSandboxRequestError,
+	SandboxCleanupError
+} from './errors.js';
 import type { CopySourceIdentity } from './protocol.js';
 import { checker, nonEmptyStringSchema } from './schemas.js';
 
@@ -34,14 +39,29 @@ export function copySource(input: unknown): CopySourceIdentity {
 	return Object.freeze({ ...input });
 }
 
-export function copyOptions(input: unknown): SandboxCopyOptions {
-	const options = acquireOptions(input);
+export function copyOptions(
+	input: unknown,
+	extensionSource?: string
+): SandboxCopyOptions {
+	return acquireOptions(input, extensionSource);
+}
 
-	if (options.workspaceRelationship !== undefined) {
-		throw new InvalidSandboxRequestError({ operation: 'acquire' });
+export function checkCopiedSandbox(
+	sandbox: Sandbox,
+	options: SandboxCopyOptions,
+	extensionSource?: string
+): void {
+	checkRequirements(sandbox, options, extensionSource);
+
+	if (sandbox.workspace.relationship !== 'copied') {
+		throw new InvalidSandboxDeclarationError({
+			operation: 'acquire',
+			providerId: sandbox.providerId,
+			backendId: sandbox.backendId,
+			...(extensionSource !== undefined && { extensionSource }),
+			detail: { kind: 'declaration', field: 'workspace.relationship' }
+		});
 	}
-
-	return options;
 }
 
 export async function rethrowCopyError(

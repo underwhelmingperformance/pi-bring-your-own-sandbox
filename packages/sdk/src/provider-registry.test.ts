@@ -35,31 +35,22 @@ it('rejects duplicate built-in identities', () => {
 	).toThrow(DuplicateProviderError);
 });
 
-it('validates built-in default policies against their declarations', () => {
-	const provider = {
-		...passthroughProvider,
-		defaultPolicy: {
-			workspaceAccess: 'read-write',
-			filesystemScope: 'workspace-only',
-			networkAccess: 'denied'
-		}
-	} as const;
+it('requires an open profile for every built-in provider', () => {
+	const provider = { ...passthroughProvider, profiles: { open: [], copy: [] } };
 
 	expect(() => new ProviderRegistry(provider)).toThrow(
 		InvalidSandboxDeclarationError
 	);
 });
 
-it('rejects a default workspace relationship outside the declaration', () => {
+it('rejects a copy profile that permits writes to the host checkout', () => {
 	const provider = {
 		...passthroughProvider,
-		defaultPolicy: {
-			workspaceAccess: 'read-write',
-			filesystemScope: 'provider-default',
-			networkAccess: 'provider-default',
-			workspaceRelationship: 'copied'
+		profiles: {
+			...passthroughProvider.profiles,
+			copy: passthroughProvider.profiles.open
 		}
-	} as const;
+	};
 
 	expect(() => new ProviderRegistry(provider)).toThrow(
 		InvalidSandboxDeclarationError

@@ -1,5 +1,7 @@
 import type { SandboxProvider } from '../api.js';
 
+import { fixtureProfile, fixtureProfiles } from './profile-fixture.js';
+
 interface ConnectionConfig {
 	readonly endpoint: URL;
 }
@@ -7,18 +9,22 @@ interface ConnectionConfig {
 export const connectionProvider: SandboxProvider<ConnectionConfig> = {
 	id: 'fixture.connection',
 	label: 'Connection protocol fixture',
-	capabilities: {
-		processKinds: ['argv', 'shell'],
-		terminationScope: 'workload',
-		exitStatus: 'guaranteed',
-		operations: ['exec'],
-		shells: ['sh']
-	},
-	policies: {
-		workspaceAccess: ['read-only', 'read-write'],
-		filesystemScope: ['workspace-only'],
-		networkAccess: ['denied']
-	},
+	profiles: fixtureProfiles(
+		{
+			processKinds: ['argv', 'shell'],
+			terminationScope: 'workload',
+			exitStatus: 'guaranteed',
+			operations: ['exec'],
+			shells: ['sh']
+		},
+		{
+			hostWorkspaceWrites: [false, true],
+			hostUserData: ['denied'],
+			hostSystemFiles: ['denied'],
+			network: [false]
+		}
+	),
+
 	validateConfig(input) {
 		if (
 			typeof input !== 'object' ||
@@ -39,18 +45,18 @@ export const connectionProvider: SandboxProvider<ConnectionConfig> = {
 			workspace: {
 				root: '/project',
 				pathFlavor: 'posix',
-				relationship: 'remote',
+				relationship: 'shared',
 				description: 'In-memory protocol fixture; no connection is opened.',
 				defaultShell: 'sh'
 			},
-			capabilities: {
+			profile: fixtureProfile(request.profile.policy, {
 				processKinds: ['argv', 'shell'],
 				terminationScope: 'workload',
 				exitStatus: 'guaranteed',
 				operations: ['exec'],
 				shells: ['sh']
-			},
-			policy: request.policy,
+			}),
+
 			policyDescription: 'Protocol fixture only; no isolation.',
 			recovery: { kind: 'none' },
 			exec(_request, operation) {

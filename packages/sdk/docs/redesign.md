@@ -66,10 +66,10 @@ redesign is complete.
 - The SDK routes Pi's file tools through the facade, so file tools and `bash`
   always use the same workspace. MXC's own file tools are retired.
 - Entry points are split by audience: `/consumer`, `/provider`, `/host`,
-  `/review`, `/pi-tools`, `/guard` and `/testing`. The Docker provider moves to
+  `/review`, `/pi-tools` and `/testing`. The Docker provider moves to
   `packages/provider-docker`.
-- Remove user-written guard extensions. The guard package folds into the SDK.
-  Providers register the presets that they ship through `/guard`.
+- Providers ship presets as extension entry points with their own defaults in
+  shared settings. Remove the user-written guard and the guard package.
 - The SDK provides a provider kit: argv encoding over a POSIX shell, a process
   runner with process-group termination and a hook for wrappers, file and search
   helpers that run inside the sandbox, errno mapping, cleanup budgets in the
@@ -106,7 +106,8 @@ changes use red/green TDD.
    creation after load by the highest build.
 4. Policy model: access record, profiles for `open` and `copy`, one negotiation
    function, decisions before allocation, removal of workspace protection and of
-   the relationship from the policy, and errors with structured detail.
+   the relationship from the policy, removal of the guard package, and errors
+   with structured detail.
 5. Escalation and model feedback: extend `bash` with an escalation request,
    including path grants. Decide once per call, record decisions in the ledger,
    and describe effective restrictions and reported violations to the model.
@@ -115,7 +116,7 @@ changes use red/green TDD.
 6. Review route: identity replies, copies through the reviewer's broker,
    negotiation without allocation, typed reasons and a destination description.
 7. Surface: audience entry points, a committed public API report, import
-   boundary lint, the guard folded in, and Docker moved to its own package.
+   boundary lint, and Docker moved to its own package.
 8. Provider kit, conformance suite, and file-tool routing through the facade.
 
 ### MXC

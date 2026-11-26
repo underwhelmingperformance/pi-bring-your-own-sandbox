@@ -71,9 +71,7 @@ export type {
 	SandboxStatus
 } from './protocol.js';
 export { registerSandboxProvider } from './provider-registration.js';
-export { registerSandboxRequirement } from './requirements.js';
 export {
 	configureExecutionApproval,
 	configureOutsideExecution
 } from './runtime-settings.js';
-export { HOST_CONFIGURATION_PROTECTION } from './workspace-protection.js';

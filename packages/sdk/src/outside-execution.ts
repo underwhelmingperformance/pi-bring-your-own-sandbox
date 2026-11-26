@@ -26,8 +26,7 @@ import type {
 	SandboxContext,
 	SandboxErrorInfo,
 	SandboxHost,
-	SandboxPolicy,
-	SupportedSandboxPolicies
+	SandboxPolicy
 } from './contracts.js';
 import { discoverProviders } from './discovery.js';
 import {
@@ -47,6 +46,8 @@ import {
 	ensureExtensionService
 } from './extension-services.js';
 import { OperationRegistry, OperationScope } from './lifecycle.js';
+import { createPassthroughProvider } from './passthrough-provider.js';
+import type { Profile } from './policy-model.js';
 import {
 	snapshotProcessOptions,
 	snapshotProcessRequest
@@ -62,7 +63,7 @@ import {
 	outsideProviderSchema,
 	outsideServiceSchema
 } from './service-schemas.js';
-import { snapshotCapabilities } from './validation.js';
+import { snapshotProfile } from './validation.js';
 
 /**
 Optional provider service extension for execution outside its ordinary sandbox.
@@ -92,15 +93,15 @@ const isOutsideProvider = checker(outsideProviderSchema);
 const isOutsideService = checker(outsideServiceSchema);
 const isOutsideOptions = checker(outsideProcessOptionsSchema);
 
-function supportedPolicies(policy: SandboxPolicy): SupportedSandboxPolicies {
-	return {
-		...(policy.workspaceRelationship !== undefined && {
-			workspaceRelationship: [policy.workspaceRelationship]
-		}),
-		workspaceAccess: [policy.workspaceAccess],
-		filesystemScope: [policy.filesystemScope],
-		networkAccess: [policy.networkAccess]
-	};
+function profileFor(
+	policy: SandboxPolicy,
+	capabilities: OutsideSandboxProvider<unknown>['capabilities']
+): Profile {
+	return snapshotProfile({
+		...capabilities,
+		capabilities: capabilities.operations,
+		policy
+	});
 }
 
 function outsideProvider(
@@ -131,9 +132,10 @@ function outsideProvider(
 	return {
 		id: provider.id,
 		label: outside.label,
-		capabilities: snapshotCapabilities(outside.capabilities),
-		defaultPolicy: outside.policy,
-		policies: supportedPolicies(outside.policy),
+		profiles: {
+			open: [profileFor(outside.policy, outside.capabilities)],
+			copy: []
+		},
 		configure: outside.configure.bind(outside)
 	};
 }
@@ -144,9 +146,10 @@ function normalProvider(
 	return {
 		id: 'normal',
 		label: provider.label,
-		capabilities: snapshotCapabilities(provider.capabilities),
-		defaultPolicy: provider.policy,
-		policies: supportedPolicies(provider.policy),
+		profiles: {
+			open: [profileFor(provider.policy, provider.capabilities)],
+			copy: []
+		},
 		configure: () => ({
 			open: (request, context) =>
 				provider.open({ ...request, configuration: undefined }, context)
@@ -275,11 +278,11 @@ function outsideService(pi: SandboxHost): OutsideServiceV1 {
 							kind === 'provider'
 								? outsideProvider(pi, config)
 								: settings.normalExecutor === undefined
-									? builtinProviders.defaultProvider
+									? await createPassthroughProvider(context.cwd)
 									: normalProvider(settings.normalExecutor);
 
 						const provider = selected;
-						const policy = provider.defaultPolicy;
+						const policy = provider.profiles.open[0]?.policy;
 
 						if (policy === undefined) {
 							throw new InvalidSandboxDeclarationError({
@@ -292,6 +295,7 @@ function outsideService(pi: SandboxHost): OutsideServiceV1 {
 							pi,
 							{
 								providers: () => [provider],
+								mode: 'outside',
 								readConfig: () =>
 									Promise.resolve({
 										selection: {

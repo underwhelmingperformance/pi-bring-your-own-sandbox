@@ -15,14 +15,14 @@ guide][validation] lists the separate package and provider gates.
 | Select a provider independently of consumers.     | Load different SDK builds as provider, consumer and host. Vary extension order and assert the same broker, provider and policy selection.                                                                        |
 | Discover an incompatible build.                   | Verify that older peers reduce offers, reject newer demands, and identify both builds and extensions on a major mismatch.                                                                                        |
 | Fail to configure or start the selected provider. | Check typed diagnostic detail and verify that the host executes no workload. Assert that diagnostics allocate nothing.                                                                                           |
-| Load a preset that the provider ships.            | Verify that the preset requires the declared restrictions or capabilities. Reject incompatible requirements before allocation.                                                                                   |
+| Load a preset that the provider ships.            | Verify that the entry point uses its default policy. Reject incompatible requirements before allocation.                                                                                                         |
 | Inspect or reload a session.                      | Check build identity in status, new generations after reload, and rejection of cached facades after close. Verify cleanup reports through the real shutdown path.                                                |
 
-Extend the [broker][broker], [guard][guard] and [diagnostics][diagnostics]
-suites for these cases.
+Extend the [broker][broker], [Docker provider][docker-provider] and
+[diagnostics][diagnostics] suites for these cases.
 
 [broker]: ../src/broker-integration.test.ts
-[guard]: ../src/guard-integration.test.ts
+[docker-provider]: ../examples/docker/test/provider-unit.test.ts
 [diagnostics]: ../src/diagnostics-integration.test.ts
 
 ## Tools and permission

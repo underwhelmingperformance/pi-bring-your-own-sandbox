@@ -15,7 +15,6 @@ import { closeSandboxSession, getSandbox } from './client.js';
 import type {
 	SandboxBackend,
 	SandboxConfigContext,
-	SandboxGuarantee,
 	SandboxOpenRequest,
 	SandboxProvider
 } from './contracts.js';
@@ -34,6 +33,7 @@ import { publishService } from './extension-services.js';
 import { FixtureConfig } from './fixtures/config.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { fixtureProfiles } from './fixtures/profile-fixture.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import { initialiseSandboxHost } from './host.js';
 import { OperationScope } from './lifecycle.js';
@@ -44,6 +44,7 @@ import {
 	trackOutsideExecution
 } from './outside-execution.js';
 import { registerSandboxProvider } from './provider-registration.js';
+import { profileCapabilities } from './validation.js';
 
 afterEach(() => {
 	vi.useRealTimers();
@@ -155,15 +156,16 @@ it.each(['allow', 'deny'] as const)(
 		);
 		const captured: ExecutionApprovalRequest[] = [];
 		const provider: SandboxProvider<unknown> = {
-			id: 'remote',
+			id: 'shared',
 			label: 'Remote sandbox',
-			defaultPolicy: backend.policy,
-			capabilities: backend.capabilities,
-			policies: {
-				workspaceAccess: ['read-write'],
-				filesystemScope: ['provider-default'],
-				networkAccess: ['provider-default']
-			},
+
+			profiles: fixtureProfiles(backend.capabilities, {
+				hostWorkspaceWrites: [true],
+				hostUserData: ['denied'],
+				hostSystemFiles: ['read-only'],
+				network: [false]
+			}),
+
 			validateConfig: (input) => input,
 			open: ordinaryOpen,
 			outsideSandbox: {
@@ -176,7 +178,7 @@ it.each(['allow', 'deny'] as const)(
 
 		await scenario({
 			config: {
-				provider: 'remote',
+				provider: 'shared',
 				policy: backend.policy,
 				approval: { policy: 'fixture' },
 				outsideSandbox: { destination: 'provider' }
@@ -260,13 +262,14 @@ it('fails when the selected provider has no outside capability', async () => {
 					registerSandboxProvider(pi, import.meta.filename, {
 						id: 'fixture',
 						label: 'Fixture',
-						defaultPolicy: backend.policy,
-						capabilities: backend.capabilities,
-						policies: {
-							workspaceAccess: ['read-write'],
-							filesystemScope: ['provider-default'],
-							networkAccess: ['provider-default']
-						},
+
+						profiles: fixtureProfiles(backend.capabilities, {
+							hostWorkspaceWrites: [true],
+							hostUserData: ['denied'],
+							hostSystemFiles: ['read-only'],
+							network: [false]
+						}),
+
 						validateConfig: (input) => input,
 						open: () => Promise.resolve(backend)
 					});
@@ -386,7 +389,7 @@ it('closes an embedded normal executor through the SDK shutdown helper', async (
 			}).toStrictEqual({
 				report: { confirmed: true, failures: [], recoveries: [] },
 				disposals: 1,
-				destination: 'remote'
+				destination: 'shared'
 			});
 			await expect(
 				executor.exec(
@@ -434,10 +437,10 @@ it('snapshots acquisition requirements before awaiting configuration', async () 
 	await scenario({
 		config: { approval: { policy: 'always' } },
 		async run(pi, context) {
-			const guarantees: SandboxGuarantee[] = ['no-network'];
-			const acquiring = getOutsideSandboxExecutor(pi, context, { guarantees });
+			const access: { network?: 'prevented' } = { network: 'prevented' };
+			const acquiring = getOutsideSandboxExecutor(pi, context, { access });
 
-			guarantees.pop();
+			delete access.network;
 			await expect(acquiring).rejects.toMatchObject({
 				name: 'UnsupportedSandboxPolicyError'
 			});
@@ -453,30 +456,20 @@ it.each(['normal', 'provider'] as const)(
 		const review = vi.fn(() => Promise.resolve({ kind: 'allow' as const }));
 		const backend: SandboxBackend = {
 			...template,
-			capabilities: {
-				operations: ['exec', 'workspace.protection'],
+			profile: {
+				...template.profile,
+				capabilities: ['exec'],
 				processKinds: ['shell'],
-				shells: ['bash'],
-				terminationScope: 'workload',
-				exitStatus: 'guaranteed'
-			},
-			policy: {
-				...template.policy,
-				workspaceProtection: [{ kind: 'git-metadata' }]
+				shells: ['bash']
 			},
 			exec: execute
 		};
 		const outside = {
 			label: 'Shell-only outside fixture',
-			capabilities: backend.capabilities,
-			policy: {
-				...backend.policy,
-				workspaceRelationship: backend.workspace.relationship
-			},
+			capabilities: profileCapabilities(backend.profile),
+			policy: backend.profile.policy,
 			open: (request: SandboxOpenRequest) => {
-				expect(request.policy.workspaceProtection).toStrictEqual([
-					{ kind: 'git-metadata' }
-				]);
+				expect(request.profile).toStrictEqual(backend.profile);
 
 				return Promise.resolve(backend);
 			}
@@ -485,7 +478,7 @@ it.each(['normal', 'provider'] as const)(
 		await scenario({
 			config: {
 				provider: 'fixture',
-				policy: backend.policy,
+				policy: backend.profile.policy,
 				approval: { policy: 'review' },
 				outsideSandbox: { destination }
 			},
@@ -509,13 +502,14 @@ it.each(['normal', 'provider'] as const)(
 						registerSandboxProvider(pi, import.meta.filename, {
 							id: 'fixture',
 							label: 'Fixture',
-							defaultPolicy: backend.policy,
-							capabilities: backend.capabilities,
-							policies: {
-								workspaceAccess: ['read-write'],
-								filesystemScope: ['provider-default'],
-								networkAccess: ['provider-default']
-							},
+
+							profiles: fixtureProfiles(profileCapabilities(backend.profile), {
+								hostWorkspaceWrites: [true],
+								hostUserData: ['denied'],
+								hostSystemFiles: ['read-only'],
+								network: [false]
+							}),
+
 							validateConfig: () => ({}),
 							open: () => Promise.resolve(backend),
 							outsideSandbox: outside
@@ -524,9 +518,7 @@ it.each(['normal', 'provider'] as const)(
 				}
 			],
 			async run(pi, context) {
-				const executor = await getOutsideSandboxExecutor(pi, context, {
-					workspaceRelationship: backend.workspace.relationship
-				});
+				const executor = await getOutsideSandboxExecutor(pi, context);
 
 				await expect(
 					executor.exec(
@@ -849,13 +841,13 @@ it('retains configuration warnings when outside execution resolves settings firs
 						{
 							id: 'fixture',
 							label: 'Configuration fixture',
-							capabilities: backend.capabilities,
-							defaultPolicy: backend.policy,
-							policies: {
-								workspaceAccess: ['read-write'],
-								filesystemScope: ['provider-default'],
-								networkAccess: ['provider-default']
-							},
+							profiles: fixtureProfiles(backend.capabilities, {
+								hostWorkspaceWrites: [true],
+								hostUserData: ['denied'],
+								hostSystemFiles: ['read-only'],
+								network: [false]
+							}),
+
 							validateConfig: () => ({}),
 							open
 						},

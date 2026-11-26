@@ -11,6 +11,7 @@ import type {
 } from './contracts.js';
 import { InvalidSandboxConfigError, SandboxCancelledError } from './errors.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
+import { fixtureProfiles } from './fixtures/profile-fixture.js';
 import { SandboxGeneration } from './generation.js';
 import { observe } from './lifecycle.js';
 import type { ProviderServiceV1 } from './protocol.js';
@@ -115,7 +116,11 @@ it.each(['providerConfig', 'policy'] as const)(
 						source: 'extension',
 						policy:
 							field === 'policy'
-								? { ...backend.policy, filesystemScope: 'workspace-only' }
+								? {
+										...backend.policy,
+										hostUserData: 'denied',
+										hostSystemFiles: 'denied'
+									}
 								: backend.policy
 					},
 					providerConfig: {},
@@ -126,12 +131,13 @@ it.each(['providerConfig', 'policy'] as const)(
 				{
 					id: 'fixture',
 					label: 'Fixture',
-					capabilities: backend.capabilities,
-					policies: {
-						workspaceAccess: ['read-write'],
-						filesystemScope: ['provider-default'],
-						networkAccess: ['provider-default']
-					},
+					profiles: fixtureProfiles(backend.capabilities, {
+						hostWorkspaceWrites: [true],
+						hostUserData: ['denied'],
+						hostSystemFiles: ['read-only'],
+						network: [false]
+					}),
+
 					configure() {
 						throw new InvalidSandboxConfigError({ operation: 'configure' });
 					}
@@ -141,10 +147,7 @@ it.each(['providerConfig', 'policy'] as const)(
 
 		try {
 			await expect(selected.acquire(context)).rejects.toMatchObject({
-				name:
-					field === 'policy'
-						? 'UnsupportedSandboxPolicyError'
-						: 'InvalidSandboxConfigError',
+				name: 'InvalidSandboxConfigError',
 				configurationSource: 'extension'
 			});
 		} finally {
@@ -297,12 +300,13 @@ function fixture(
 	const provider: ProviderServiceV1 = {
 		id: 'fixture',
 		label: 'Fixture',
-		capabilities: backend.capabilities,
-		policies: {
-			workspaceAccess: ['read-write'],
-			filesystemScope: ['provider-default'],
-			networkAccess: ['provider-default']
-		},
+		profiles: fixtureProfiles(backend.capabilities, {
+			hostWorkspaceWrites: [true],
+			hostUserData: ['denied'],
+			hostSystemFiles: ['read-only'],
+			network: [false]
+		}),
+
 		configure: () => {
 			configure?.();
 
@@ -595,12 +599,13 @@ it('freezes provider services before asynchronous configuration completes', asyn
 		{
 			id: 'fixture',
 			label: 'Fixture',
-			capabilities: backend.capabilities,
-			policies: {
-				workspaceAccess: ['read-write'],
-				filesystemScope: ['provider-default'],
-				networkAccess: ['provider-default']
-			},
+			profiles: fixtureProfiles(backend.capabilities, {
+				hostWorkspaceWrites: [true],
+				hostUserData: ['denied'],
+				hostSystemFiles: ['read-only'],
+				network: [false]
+			}),
+
 			configure: () => ({ open: () => Promise.resolve(backend) })
 		}
 	];
@@ -652,12 +657,13 @@ it('closes before configuration completes without starting a provider afterwards
 	const provider: ProviderServiceV1 = {
 		id: 'fixture',
 		label: 'Fixture',
-		capabilities: backend.capabilities,
-		policies: {
-			workspaceAccess: ['read-write'],
-			filesystemScope: ['provider-default'],
-			networkAccess: ['provider-default']
-		},
+		profiles: fixtureProfiles(backend.capabilities, {
+			hostWorkspaceWrites: [true],
+			hostUserData: ['denied'],
+			hostSystemFiles: ['read-only'],
+			network: [false]
+		}),
+
 		configure: () => ({
 			open: () => {
 				opens++;
@@ -912,26 +918,28 @@ it('rejects an attempt to erase outstanding recovery metadata', async () => {
 	}).toStrictEqual({ confirmed: false, recoveries: [recovery] });
 });
 
-it.each([
-	'guarantees',
-	'needs',
-	'workspaceRelationship',
-	'workspaceProtection'
-] as const)('treats undefined %s requirements as omitted', async (field) => {
-	const options = acquireOptions({ [field]: undefined });
+it.each(['access', 'processKinds', 'shells', 'capabilities'] as const)(
+	'treats undefined %s requirements as omitted',
+	async (field) => {
+		const options = acquireOptions({ [field]: undefined });
 
-	expect(options).toStrictEqual({ signal: undefined, timeoutMs: undefined });
+		expect(options).toStrictEqual({
+			[field]: undefined,
+			signal: undefined,
+			timeoutMs: undefined
+		});
 
-	const { generation, context } = fixture();
+		const { generation, context } = fixture();
 
-	try {
-		const sandbox = await generation.acquire(context, options);
+		try {
+			const sandbox = await generation.acquire(context, options);
 
-		expect(sandbox.backendId).toBe('memory');
-	} finally {
-		await generation.close();
+			expect(sandbox.backendId).toBe('memory');
+		} finally {
+			await generation.close();
+		}
 	}
-});
+);
 
 it('rejects unknown acquisition options even when undefined', () => {
 	expect(() => acquireOptions({ unrecognised: undefined })).toThrow(

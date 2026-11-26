@@ -29,8 +29,8 @@ guide][pi] describes how provider authors enable the integration.
 Provider authors use `/provider` and run the [conformance suite][testing] from
 `/testing`. The [Docker example][docker] shows provider setup. Embedding hosts
 use `/host` to manage the session. Permission extensions use `/review` for
-pending calls and escalation decisions. Providers use `/guard` to ship presets
-with stricter requirements.
+pending calls and escalation decisions. Providers can ship separate entry points
+with stricter default policies.
 
 [consumer]: examples/consumer/README.md
 [pi]: docs/pi-integration.md

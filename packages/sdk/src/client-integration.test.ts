@@ -21,8 +21,10 @@ import { FixtureConfig } from './fixtures/config.js';
 import { getSandbox, negotiateSandbox } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { fixtureProfiles } from './fixtures/profile-fixture.js';
 import { ScriptedModel } from './fixtures/scripted-model.js';
 import { loadSdkInstance } from './fixtures/sdk-instance.js';
+import { probePassthrough } from './passthrough.js';
 import { bindProtocolAddress } from './protocol-address.js';
 import { ensureBroker } from './service.js';
 
@@ -87,14 +89,15 @@ function provider(open: () => Promise<MemoryBackend>): InlineExtension {
 		factory(pi) {
 			registerSandboxProvider(pi, import.meta.filename, {
 				id: 'fixture',
-				defaultPolicy: template.policy,
+
 				label: 'Fixture',
-				capabilities: template.capabilities,
-				policies: {
-					workspaceAccess: ['read-write'],
-					filesystemScope: ['provider-default'],
-					networkAccess: ['provider-default']
-				},
+				profiles: fixtureProfiles(template.capabilities, {
+					hostWorkspaceWrites: [true],
+					hostUserData: ['denied'],
+					hostSystemFiles: ['read-only'],
+					network: [false]
+				}),
+
 				validateConfig: () => ({}),
 				open
 			});
@@ -148,9 +151,10 @@ it('provides a shared host backend with only a consumer and no configuration', a
 it('negotiates requirements against the host backend without provisioning it', async () => {
 	await fixture(async ({ pi, context, errors }) => {
 		const denied = await negotiateSandbox(pi, context, {
-			guarantees: ['no-network']
+			access: { network: 'prevented' }
 		});
 		const unrestricted = await negotiateSandbox(pi, context);
+		const passthrough = await probePassthrough(context.cwd);
 		const status = await discoverBroker(pi.events)?.status(context);
 
 		expect({
@@ -163,11 +167,7 @@ it('negotiates requirements against the host backend without provisioning it', a
 			denied: 'UnsupportedSandboxPolicyError',
 			unrestricted: {
 				ok: true,
-				policy: {
-					workspaceAccess: 'read-write',
-					filesystemScope: 'provider-default',
-					networkAccess: 'provider-default'
-				}
+				profile: passthrough.profile
 			},
 			backends: undefined
 		});
@@ -472,9 +472,9 @@ it.each([true, false])(
 );
 
 it.each([
-	{ workspaceProtection: [{ kind: 'git-metadata' }] },
-	{ guarantees: ['no-host-user-data'] },
-	{ workspaceRelationship: 'copied' }
+	{ access: { hostWorkspaceWrites: 'prevented' } },
+	{ access: { hostUserData: 'needed' } },
+	{ access: { network: 'needed' } }
 ] as const)(
 	'rejects an independent broker that ignores the requested policy: %j',
 	async (requirement) => {
@@ -498,7 +498,7 @@ it.each([
 					copy: () => Promise.reject(new Error('Fixture does not copy.')),
 					acquire: () => Promise.resolve(sandbox),
 					negotiate: () =>
-						Promise.resolve({ ok: true, policy: sandbox.policy }),
+						Promise.resolve({ ok: true, profile: backend.profile }),
 					close: () =>
 						Promise.resolve({ confirmed: true, failures: [], recoveries: [] }),
 					status: () =>

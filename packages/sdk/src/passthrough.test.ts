@@ -264,9 +264,10 @@ it('shares host files, preserves byte ownership and follows filesystem links', a
 				'The host workspace is shared. No sandbox isolation is applied.'
 		},
 		policy: {
-			workspaceAccess: 'read-write',
-			filesystemScope: 'provider-default',
-			networkAccess: 'provider-default'
+			hostWorkspaceWrites: true,
+			hostUserData: 'read-write',
+			hostSystemFiles: 'read-write',
+			network: true
 		},
 		update: { before: 'first\r\n', after: 'first\r\nsecond\n' },
 		content: 'first\r\nsecond\n',

@@ -31,14 +31,10 @@ import type { DiagnosticStore } from './provider-diagnostics.js';
 import { ProviderDiagnostics } from './provider-diagnostics.js';
 import {
 	approvalSelectionSchema,
+	invalidField,
 	outsideSelectionSchema,
 	providerConfigSchema
 } from './request-schemas.js';
-import {
-	applySandboxRequirements,
-	checkRequiredProvider,
-	sandboxRequirements
-} from './requirements.js';
 import {
 	discoverRuntimeServices,
 	publishRuntimeService
@@ -204,15 +200,6 @@ export function createRuntimeSettings(pi: SandboxHost): RuntimeSettingsV1 {
 				);
 			});
 
-			const requirements = sandboxRequirements(pi);
-
-			checkRequiredProvider(
-				requirements,
-				provider,
-				activation !== undefined,
-				pi
-			);
-
 			const approvalBindings = bindings(pi, 'approval');
 			const outsideBindings = bindings(pi, 'outside');
 			const resolutionContext: SandboxConfigContext = Object.freeze({
@@ -231,27 +218,36 @@ export function createRuntimeSettings(pi: SandboxHost): RuntimeSettingsV1 {
 
 					scope.check();
 
-					if (
-						!isProviderConfig(provided) ||
-						(approval !== undefined && !isApprovalSelection(approval)) ||
-						(outside !== undefined && !isOutsideSelection(outside))
-					) {
+					const extensionSource = provider.protocol?.extensionSource;
+					const identity = {
+						operation: 'configure' as const,
+						providerId: provider.id,
+						configurationSource: 'extension' as const,
+						...(extensionSource !== undefined && { extensionSource })
+					};
+
+					if (!isProviderConfig(provided)) {
+						const field =
+							invalidField(providerConfigSchema, provided).join('.') ||
+							'settings';
+
 						throw new InvalidSandboxConfigError({
-							operation: 'configure',
-							providerId: provider.id,
-							configurationSource: 'extension'
+							...identity,
+							detail: { kind: 'config', field }
 						});
 					}
 
-					const resolved = resolveSandboxConfig(
+					if (
+						(approval !== undefined && !isApprovalSelection(approval)) ||
+						(outside !== undefined && !isOutsideSelection(outside))
+					) {
+						throw new InvalidSandboxConfigError(identity);
+					}
+
+					const value = resolveSandboxConfig(
 						provider,
 						provided,
 						activation === undefined ? 'default' : 'extension'
-					);
-					const value = applySandboxRequirements(
-						resolved,
-						provider,
-						requirements
 					);
 
 					return Object.freeze({

@@ -2,7 +2,7 @@
 	"name": "pi-byos-workspace",
 	"version": "0.0.0",
 	"private": true,
-	"description": "Development workspace for the BYOS SDK and guard",
+	"description": "Development workspace for the BYOS SDK",
 	"type": "module",
 	"packageManager": "pnpm@12.18.0",
 	"engines": {

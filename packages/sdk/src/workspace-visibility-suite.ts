@@ -34,7 +34,7 @@ async function execute(
 	});
 
 	const isOptionalStatus =
-		backend.capabilities.exitStatus === 'optional' &&
+		backend.profile.exitStatus === 'optional' &&
 		outcome.kind === 'exited' &&
 		outcome.exit.kind === 'unavailable';
 
@@ -69,11 +69,12 @@ export async function checkWorkspaceVisibility(
 		initial
 	);
 
+	const canWrite =
+		relationship === 'shared'
+			? backend.profile.policy.hostWorkspaceWrites
+			: fixture.write !== undefined;
 	const saved = randomBytes(32);
-	const save =
-		fixture.policy.workspaceAccess === 'read-write'
-			? probe.stageSave?.(saved)
-			: undefined;
+	const save = canWrite ? probe.stageSave?.(saved) : undefined;
 
 	if (save !== undefined) {
 		await execute(backend, save.prepare, context);
@@ -124,7 +125,7 @@ export async function checkWorkspaceVisibility(
 
 	await checkReader(expected);
 
-	if (fixture.policy.workspaceAccess === 'read-only') {
+	if (!canWrite) {
 		return;
 	}
 
@@ -220,7 +221,7 @@ export async function checkWorkspaceVisibility(
 				await settleProcess(
 					execution,
 					running,
-					backend.capabilities.terminationScope
+					backend.profile.terminationScope
 				);
 			} finally {
 				execution.dispose();

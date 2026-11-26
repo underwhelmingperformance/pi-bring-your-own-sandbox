@@ -8,14 +8,17 @@ import type {
 	SandboxPolicy
 } from './contracts.js';
 import { SandboxCleanupError, SandboxOperationError } from './errors.js';
+import { firstOpenProfile } from './fixtures/profile-fixture.js';
 import { contractScenario } from './fixtures/provider-contract.js';
 import { observe } from './lifecycle.js';
+import type { AccessProperty } from './policy-model.js';
 import {
 	providerContractCases,
 	usingProviderFixture
 } from './provider-contract-suite.js';
 import type { SandboxProviderTestOptions } from './provider-test-contracts.js';
 import { defineSandboxProviderTests } from './testing.js';
+import { profileCapabilities } from './validation.js';
 
 defineSandboxProviderTests(contractScenario());
 
@@ -27,12 +30,18 @@ defineSandboxProviderTests({
 	label: 'shell-only provider with unavailable exit details',
 	provider: {
 		...shellOnly.provider,
-		capabilities: {
-			operations: ['exec'],
-			processKinds: ['shell'],
-			shells: ['sh'],
-			terminationScope: 'workload',
-			exitStatus: 'optional'
+		profiles: {
+			open: [
+				{
+					...firstOpenProfile(shellOnly.provider),
+					capabilities: ['exec'],
+					processKinds: ['shell'],
+					shells: ['sh'],
+					terminationScope: 'workload',
+					exitStatus: 'optional'
+				}
+			],
+			copy: []
 		},
 		async open(request, context) {
 			const backend = await openShellOnly(request, context);
@@ -40,13 +49,7 @@ defineSandboxProviderTests({
 
 			return {
 				...executionOnly,
-				capabilities: {
-					operations: ['exec'],
-					processKinds: ['shell'],
-					shells: ['sh'],
-					terminationScope: 'workload',
-					exitStatus: 'optional'
-				},
+				profile: request.profile,
 				async exec(process, execution) {
 					if (process.kind === 'shell' && process.command === 'wait') {
 						return backend.exec(
@@ -90,16 +93,21 @@ defineSandboxProviderTests({
 	label: 'provider without a termination guarantee',
 	provider: {
 		...unmanaged.provider,
-		capabilities: {
-			...unmanaged.provider.capabilities,
-			terminationScope: 'none'
+		profiles: {
+			open: [
+				{
+					...firstOpenProfile(unmanaged.provider),
+					terminationScope: 'none'
+				}
+			],
+			copy: []
 		},
 		async open(request, context) {
 			const backend = await unmanagedOpen(request, context);
 
 			return {
 				...backend,
-				capabilities: { ...backend.capabilities, terminationScope: 'none' },
+				profile: request.profile,
 				exec(request, execution) {
 					if (request.kind === 'argv' && request.executable === 'wait') {
 						execution.onOutput({
@@ -134,7 +142,10 @@ it.each([
 		label: 'an unsupported effective policy',
 		change: (backend: SandboxBackend) => ({
 			...backend,
-			policy: { ...backend.policy, networkAccess: 'denied' as const }
+			profile: {
+				...backend.profile,
+				policy: { ...backend.profile.policy, network: false }
+			}
 		}),
 		error: 'InvalidSandboxDeclarationError'
 	}
@@ -257,48 +268,36 @@ it.each([
 	await expect(usingProviderFixture(broken, selected)).rejects.toThrow();
 });
 
-it.each([
-	['network', 'missing'],
-	['network', 'failing'],
-	['filesystem', 'missing'],
-	['filesystem', 'failing'],
-	['workspace', 'missing'],
-	['workspace', 'failing']
-] as const)(
-	'rejects a restrictive %s policy with %s independent checks',
-	async (restriction, verification) => {
+const restrictions = {
+	hostWorkspaceWrites: false,
+	network: false,
+	hostUserData: 'denied',
+	hostSystemFiles: 'denied'
+} as const satisfies Record<AccessProperty, SandboxPolicy[AccessProperty]>;
+
+it.each(
+	Object.entries(restrictions).flatMap(([property, denied]) =>
+		(['missing', 'failing'] as const).map(
+			(verification) => [property, denied, verification] as const
+		)
+	)
+)(
+	'rejects a restrictive %s policy without successful independent checks',
+	async (property, denied, verification) => {
 		const options = contractScenario();
 		const open = options.provider.open;
-		const capabilities = {
-			...options.provider.capabilities,
-			operations: [
-				...options.provider.capabilities.operations,
-				'workspace.protection' as const
-			]
-		};
-		const policy: SandboxPolicy = {
-			...(restriction === 'workspace' && {
-				workspaceProtection: [{ kind: 'git-metadata' as const }]
-			}),
-			workspaceAccess: 'read-write',
-			filesystemScope:
-				restriction === 'filesystem' ? 'system-read-only' : 'provider-default',
-			networkAccess: restriction === 'network' ? 'denied' : 'provider-default'
-		};
+		const base = firstOpenProfile(options.provider);
+		const policy = { ...base.policy, [property]: denied };
+		const profile = { ...base, policy };
+
 		const scenario = {
 			...options,
 			provider: {
 				...options.provider,
-				capabilities,
-				policies: {
-					...options.provider.policies,
-					networkAccess: ['denied', 'provider-default'] as const,
-					filesystemScope: ['system-read-only', 'provider-default'] as const
-				},
+				profiles: { open: [profile], copy: [] },
 				open: async (...arguments_: Parameters<typeof open>) => ({
 					...(await open(...arguments_)),
-					capabilities,
-					policy
+					profile
 				})
 			},
 			createFixture: async () => {
@@ -586,73 +585,82 @@ it.each([
 		executable: 'write',
 		args: [Buffer.from(bytes).toString('base64')]
 	});
+	const baseProfile = firstOpenProfile(base.provider);
+	const copyProfile = {
+		...baseProfile,
+		policy: { ...baseProfile.policy, hostWorkspaceWrites: false }
+	};
+	const openWithVisibility = async (...arguments_: Parameters<typeof open>) => {
+		const backend = await open(...arguments_);
+
+		return {
+			...backend,
+			async dispose(context: SandboxOperationContext) {
+				await backend.dispose(context);
+
+				if (defect === 'a copy written back on disposal') {
+					source = target;
+				}
+			},
+			workspace: { ...backend.workspace, relationship },
+			files: {
+				...backend.files,
+				read: {
+					access: () => Promise.resolve(),
+					stat: () =>
+						Promise.resolve({ kind: 'file' as const, size: target.length }),
+					readFile: () =>
+						Promise.resolve(
+							defect === 'a file reader stuck on the opening copy'
+								? Buffer.from('seed')
+								: target
+						)
+				}
+			},
+			exec(request: ProcessRequest, context: BackendProcessContext) {
+				if (request.kind === 'argv' && request.executable === 'wait') {
+					return Promise.withResolvers<never>().promise;
+				}
+
+				if (request.kind === 'argv' && request.executable === 'write') {
+					target = Buffer.from(request.args[0] ?? '', 'base64');
+
+					if (defect === 'an editor changing the other hard link') {
+						links--;
+					}
+
+					if (
+						defect === 'a copied write leaking to the source' ||
+						defect === 'an editor changing the other hard link'
+					) {
+						source = target;
+					}
+				} else {
+					context.onOutput({ stream: 'stdout', data: target });
+				}
+
+				return Promise.resolve({
+					kind: 'exited' as const,
+					exit: { kind: 'code' as const, code: 0 }
+				});
+			}
+		};
+	};
+
 	const scenario = {
 		...base,
 		workspaceVisibility: relationship,
 		timeoutMs: 500,
 		cleanup: { cancellationGraceMs: 5, disposalTimeoutMs: 100 },
 		capabilities: {
-			...base.provider.capabilities,
+			...profileCapabilities(firstOpenProfile(base.provider)),
 			operations: ['exec', 'files.read'] as const
 		},
 		provider: {
 			...base.provider,
-			async open(...arguments_: Parameters<typeof open>) {
-				const backend = await open(...arguments_);
-
-				return {
-					...backend,
-					async dispose(context: SandboxOperationContext) {
-						await backend.dispose(context);
-
-						if (defect === 'a copy written back on disposal') {
-							source = target;
-						}
-					},
-					workspace: { ...backend.workspace, relationship },
-					files: {
-						...backend.files,
-						read: {
-							access: () => Promise.resolve(),
-							stat: () =>
-								Promise.resolve({ kind: 'file' as const, size: target.length }),
-							readFile: () =>
-								Promise.resolve(
-									defect === 'a file reader stuck on the opening copy'
-										? Buffer.from('seed')
-										: target
-								)
-						}
-					},
-					exec(request: ProcessRequest, context: BackendProcessContext) {
-						if (request.kind === 'argv' && request.executable === 'wait') {
-							return Promise.withResolvers<never>().promise;
-						}
-
-						if (request.kind === 'argv' && request.executable === 'write') {
-							target = Buffer.from(request.args[0] ?? '', 'base64');
-
-							if (defect === 'an editor changing the other hard link') {
-								links--;
-							}
-
-							if (
-								defect === 'a copied write leaking to the source' ||
-								defect === 'an editor changing the other hard link'
-							) {
-								source = target;
-							}
-						} else {
-							context.onOutput({ stream: 'stdout', data: target });
-						}
-
-						return Promise.resolve({
-							kind: 'exited' as const,
-							exit: { kind: 'code' as const, code: 0 }
-						});
-					}
-				};
-			}
+			profiles: { open: [baseProfile], copy: [copyProfile] },
+			open: openWithVisibility,
+			copy: openWithVisibility
 		},
 		async createFixture() {
 			return {
@@ -804,7 +812,10 @@ it('rejects a recovery scenario without a termination guarantee before opening',
 	expect(() =>
 		providerContractCases({
 			...base,
-			capabilities: { ...base.provider.capabilities, terminationScope: 'none' },
+			capabilities: {
+				...profileCapabilities(firstOpenProfile(base.provider)),
+				terminationScope: 'none'
+			},
 			verifyRecoveryAfterCancellation: true
 		})
 	).toThrow('Continued use requires confirmed termination.');
@@ -1042,15 +1053,26 @@ it.each([
 			policyEffects: ['denied-network'],
 			provider: {
 				...base.provider,
-				capabilities: { ...base.provider.capabilities, exitStatus: 'optional' },
-				policies: { ...base.provider.policies, networkAccess: ['denied'] },
+				profiles: {
+					open: [
+						{
+							...firstOpenProfile(base.provider),
+							exitStatus: 'optional',
+							policy: {
+								...firstOpenProfile(base.provider).policy,
+								network: false
+							}
+						}
+					],
+					copy: []
+				},
+
 				async open(...arguments_) {
 					const backend = await open(...arguments_);
 
 					return {
 						...backend,
-						capabilities: { ...backend.capabilities, exitStatus: 'optional' },
-						policy: { ...backend.policy, networkAccess: 'denied' },
+						profile: arguments_[0].profile,
 						exec(request, context) {
 							if (
 								mode === 'connected' &&
@@ -1075,7 +1097,7 @@ it.each([
 
 				return {
 					...fixture,
-					policy: { ...fixture.policy, networkAccess: 'denied' },
+					policy: { ...fixture.policy, network: false },
 					policyEffects: {
 						'denied-network': () =>
 							Promise.resolve({

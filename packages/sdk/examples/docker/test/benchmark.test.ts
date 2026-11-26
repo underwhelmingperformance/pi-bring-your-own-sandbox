@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import { expect, it } from 'vitest';
 
+import { firstCopyProfile } from '../../../src/fixtures/profile-fixture.js';
 import { createDockerProvider } from '../src/provider.js';
 
 import { DockerFixture, operationContext } from './fixture.js';
@@ -47,18 +48,14 @@ it.skipIf(
 			);
 
 			const backend = await measure('openMs', () =>
-				provider.open(
+				provider.copy(
 					{
 						sessionId: randomUUID(),
 						generationId: randomUUID(),
 						hostWorkspace: fixture.workspace,
 						configuration: fixture.config,
-						policy: {
-							workspaceRelationship: 'copied',
-							workspaceAccess: 'read-write',
-							networkAccess: 'denied',
-							filesystemScope: 'workspace-only'
-						}
+						profile: firstCopyProfile(provider),
+						source: { kind: 'host' }
 					},
 					{
 						...operationContext(),

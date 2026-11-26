@@ -1,8 +1,8 @@
 import { formatCleanupReport } from './cleanup-report.js';
-import type { SandboxPolicy } from './contracts.js';
+import type { SandboxErrorInfo, SandboxPolicy } from './contracts.js';
 import type { DisplayText } from './display-text.js';
 import { cleanDisplayText, joinDisplayLines } from './display-text.js';
-import { policyKey } from './negotiation.js';
+import { accessOrder } from './policy-model.js';
 import type { ProviderInfo, SandboxStatus } from './protocol.js';
 
 function list(values: readonly string[]): string {
@@ -23,19 +23,16 @@ function quoted(value: string): string {
 	);
 }
 
-function policy(
-	value: SandboxPolicy,
-	workspaceRelationship = value.workspaceRelationship
-): string {
-	const relationship =
-		workspaceRelationship === undefined ? '' : ` (${workspaceRelationship})`;
+function policyKey(value: SandboxPolicy): string {
+	return JSON.stringify(accessOrder.map((property) => value[property]));
+}
 
-	const protectedResources = (value.workspaceProtection ?? []).map(
-		(resource) =>
-			resource.kind === 'git-metadata' ? 'Git metadata' : quoted(resource.path)
-	);
+function policy(value: SandboxPolicy, relationship?: string): string {
+	const checkout = relationship === undefined ? '' : ` (${relationship})`;
+	const access = value.hostWorkspaceWrites ? 'read-write' : 'read-only';
+	const network = value.network ? 'allowed' : 'denied';
 
-	return `workspace ${value.workspaceAccess}${relationship}; filesystem ${value.filesystemScope}; network ${value.networkAccess}; protected resources: ${list(protectedResources)}`;
+	return `workspace ${access}${checkout}, network ${network}, host user data ${value.hostUserData}, host system files ${value.hostSystemFiles}`;
 }
 
 function userShell(status: SandboxStatus): string {
@@ -51,6 +48,54 @@ function userShell(status: SandboxStatus): string {
 	return status.workspace === undefined
 		? 'provider default (not opened)'
 		: (status.workspace.defaultShell ?? 'unavailable');
+}
+
+function failureDetail(error: SandboxErrorInfo): string[] {
+	const detail = error.detail;
+	const source = error.extensionSource;
+	const lines = source === undefined ? [] : [`Extension: ${source}`];
+
+	switch (detail?.kind) {
+		case 'access': {
+			return [
+				...lines,
+				`Access: ${detail.property} is ${detail.value} (${detail.reason})`
+			];
+		}
+
+		case 'path': {
+			return [
+				...lines,
+				`Path: ${detail.access} ${quoted(detail.path)} (${detail.reason})`
+			];
+		}
+
+		case 'capability': {
+			return [
+				...lines,
+				`Requirement: ${detail.field} = ${JSON.stringify(detail.value)}`
+			];
+		}
+
+		case 'request': {
+			return [
+				...lines,
+				`Request field: ${detail.field}${detail.value === undefined ? '' : ' = ' + JSON.stringify(detail.value)}`
+			];
+		}
+
+		case 'config': {
+			return [...lines, `Settings key: ${detail.field}`];
+		}
+
+		case 'declaration': {
+			return [...lines, `Declaration: ${detail.field}`];
+		}
+
+		default: {
+			return lines;
+		}
+	}
 }
 
 export function formatStatus(status: SandboxStatus): DisplayText {
@@ -118,7 +163,10 @@ export function formatStatus(status: SandboxStatus): DisplayText {
 	}
 
 	if (status.failure !== undefined) {
-		lines.push(`Failure: ${status.failure.name}: ${status.failure.message}`);
+		lines.push(
+			`Failure: ${status.failure.name}: ${status.failure.message}`,
+			...failureDetail(status.failure)
+		);
 	}
 
 	const display = lines.map((line) => cleanDisplayText(line));
@@ -184,21 +232,25 @@ export function formatProviderDiagnostics(
 export function formatProviders(
 	providers: readonly ProviderInfo[]
 ): DisplayText {
-	const lines = ['Available sandbox providers (declared capabilities):'];
+	const lines = ['Available sandbox providers (declared profiles)'];
 
 	for (const provider of providers) {
-		lines.push(
-			`${provider.id}: ${provider.label}`,
-			...(provider.policies.workspaceRelationship === undefined
-				? []
-				: [
-						`  Workspace relationships: ${list(provider.policies.workspaceRelationship)}`
-					]),
-			`  Operations: ${list(provider.capabilities.operations)}`,
-			`  Termination scope: ${provider.capabilities.terminationScope}`,
-			`  Shells: ${list(provider.capabilities.shells)}`,
-			`  Policies: workspace ${list(provider.policies.workspaceAccess)}; filesystem ${list(provider.policies.filesystemScope)}; network ${list(provider.policies.networkAccess)}`
-		);
+		lines.push(`${provider.id}: ${provider.label}`);
+
+		const modes = ['open', 'copy'] as const;
+
+		for (const mode of modes) {
+			const profiles = provider.profiles[mode];
+
+			for (const profile of profiles) {
+				lines.push(
+					`  ${mode}: ${policy(profile.policy, mode === 'copy' ? 'copied' : 'shared')}`,
+					`    Operations: ${list(profile.capabilities)}`,
+					`    Termination scope: ${profile.terminationScope}`,
+					`    Shells: ${list(profile.shells)}`
+				);
+			}
+		}
 	}
 
 	return joinDisplayLines(lines.map((line) => cleanDisplayText(line)));

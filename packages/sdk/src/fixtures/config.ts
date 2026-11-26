@@ -3,6 +3,7 @@ import { Type } from 'typebox';
 import { cleanupSelectionSchema } from '../cleanup-budgets.js';
 import type { SandboxHost, SandboxProvider } from '../contracts.js';
 import { InvalidSandboxConfigError } from '../errors.js';
+import { accessPolicySchema } from '../policy-model.js';
 import { hasProtocolAddress, protocolAddress } from '../protocol-address.js';
 import { registerSandboxProvider } from '../provider-registration.js';
 import {
@@ -13,12 +14,12 @@ import {
 	configureExecutionApproval,
 	configureOutsideExecution
 } from '../runtime-settings.js';
-import { checker, policySchema, shellSchema } from '../schemas.js';
+import { checker, shellSchema } from '../schemas.js';
 
 const schema = Type.Object(
 	{
 		provider: Type.Optional(Type.String()),
-		policy: Type.Optional(policySchema),
+		policy: Type.Optional(accessPolicySchema),
 		providerConfig: Type.Optional(Type.Unknown()),
 		approval: Type.Optional(approvalSelectionSchema),
 		outsideSandbox: Type.Optional(outsideSelectionSchema),
@@ -28,11 +29,6 @@ const schema = Type.Object(
 	{ additionalProperties: false }
 );
 const isSettings = checker(schema);
-const defaultPolicy = {
-	workspaceAccess: 'read-write',
-	filesystemScope: 'provider-default',
-	networkAccess: 'provider-default'
-} as const;
 
 function source(pi: SandboxHost): string {
 	return hasProtocolAddress(pi.events)
@@ -94,9 +90,11 @@ export class FixtureConfig {
 
 				return {
 					configuration: value.providerConfig ?? {},
-					policy: value.policy ?? provider.defaultPolicy ?? defaultPolicy,
-					...(value.cleanup !== undefined && { cleanup: value.cleanup }),
-					...(value.userShell !== undefined && { userShell: value.userShell })
+					settings: {
+						...(value.policy !== undefined && { policy: value.policy }),
+						...(value.cleanup !== undefined && { cleanup: value.cleanup }),
+						...(value.userShell !== undefined && { userShell: value.userShell })
+					}
 				};
 			}
 		});

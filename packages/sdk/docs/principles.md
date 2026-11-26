@@ -276,9 +276,9 @@ Enforced by:
 ## 11. A small surface, split by audience
 
 Each audience has its own entry point: consumers, providers, the embedding host,
-reviewers, the Pi tool integration, provider presets and the test kit. Nothing
-is exported unless someone in that audience uses it. Message formats and channel
-names stay internal.
+reviewers, the Pi tool integration and the test kit. Nothing is exported unless
+someone in that audience uses it. Message formats and channel names stay
+internal.
 
 Every capability in the contract has a consumer that uses it. A capability
 without one waits until a consumer exists.

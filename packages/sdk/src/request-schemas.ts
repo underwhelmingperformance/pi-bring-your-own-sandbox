@@ -1,16 +1,16 @@
+import type { TSchema } from 'typebox';
 import { Type } from 'typebox';
+import { Value } from 'typebox/value';
 
 import { cleanupSelectionSchema } from './cleanup-budgets.js';
 import type { ProcessOptions } from './contracts.js';
+import { accessPolicySchema, accessSchema } from './policy-model.js';
 import {
-	accessSchema,
 	callable,
 	capabilitySchema,
 	denseArray,
-	guaranteeSchema,
 	nonEmptyStringSchema,
 	nonNegativeIntegerSchema,
-	policySchema,
 	positiveIntegerSchema,
 	processKindSchema,
 	safeTextSchema,
@@ -18,9 +18,7 @@ import {
 	signalSchema,
 	targetPathSchema,
 	terminationScopeSchema,
-	timeoutSchema,
-	workspaceProtectionSchema,
-	workspaceRelationshipSchema
+	timeoutSchema
 } from './schemas.js';
 
 export const MAX_CAPTURE_BYTES = 1_048_576;
@@ -35,12 +33,18 @@ export const outsideSelectionSchema = Type.Object(
 	},
 	{ additionalProperties: false }
 );
+export const sharedSettingsSchema = Type.Object(
+	{
+		policy: Type.Optional(accessPolicySchema),
+		userShell: Type.Optional(shellSchema),
+		cleanup: Type.Optional(cleanupSelectionSchema)
+	},
+	{ additionalProperties: false }
+);
 export const providerConfigSchema = Type.Object(
 	{
 		configuration: Type.Unknown(),
-		policy: Type.Optional(policySchema),
-		userShell: Type.Optional(shellSchema),
-		cleanup: Type.Optional(cleanupSelectionSchema)
+		settings: Type.Optional(sharedSettingsSchema)
 	},
 	{ additionalProperties: false }
 );
@@ -116,20 +120,7 @@ export const acquireOptionsSchema = Type.Object(
 		capabilities: Type.Optional(
 			denseArray(capabilitySchema, { uniqueItems: true })
 		),
-		guarantees: Type.Optional(
-			denseArray(guaranteeSchema, { uniqueItems: true })
-		),
-		needs: Type.Optional(denseArray(accessSchema, { uniqueItems: true })),
-		workspaceRelationship: Type.Optional(workspaceRelationshipSchema),
-		workspaceProtection: Type.Optional(workspaceProtectionSchema)
-	},
-	{ additionalProperties: false }
-);
-
-export const sandboxRequirementsSchema = Type.Object(
-	{
-		...Type.Omit(acquireOptionsSchema, ['signal', 'timeoutMs']).properties,
-		providerId: Type.Optional(nonEmptyStringSchema)
+		access: Type.Optional(accessSchema)
 	},
 	{ additionalProperties: false }
 );
@@ -161,3 +152,35 @@ export const accessModeSchema = Type.Union([
 	Type.Literal('read'),
 	Type.Literal('write')
 ]);
+
+export function invalidField(
+	schema: TSchema,
+	input: unknown
+): readonly string[] {
+	const [issue] = Value.Errors(schema, input);
+
+	if (issue === undefined) {
+		return [];
+	}
+
+	const keys = issue.instancePath
+		.split('/')
+		.slice(1)
+		.map((key) => key.replaceAll('~1', '/').replaceAll('~0', '~'));
+
+	if (issue.keyword === 'additionalProperties') {
+		const [extra] = issue.params.additionalProperties;
+
+		if (extra !== undefined) {
+			keys.push(extra);
+		}
+	} else if (issue.keyword === 'required') {
+		const [missing] = issue.params.requiredProperties;
+
+		if (missing !== undefined) {
+			keys.push(missing);
+		}
+	}
+
+	return keys;
+}

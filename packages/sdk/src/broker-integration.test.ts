@@ -15,6 +15,7 @@ import { discoverProviders } from './discovery.js';
 import { InvalidSandboxConfigError } from './errors.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { fixtureProfiles } from './fixtures/profile-fixture.js';
 import { ScriptedModel } from './fixtures/scripted-model.js';
 import type { FixtureApi } from './fixtures/sdk-instance.js';
 import { loadSdkInstance } from './fixtures/sdk-instance.js';
@@ -86,12 +87,13 @@ function fixture(
 				register(pi, import.meta.filename, {
 					id: 'fixture',
 					label: 'Fixture',
-					capabilities: template.capabilities,
-					policies: {
-						workspaceAccess: ['read-write'],
-						filesystemScope: ['provider-default'],
-						networkAccess: ['provider-default']
-					},
+					profiles: fixtureProfiles(template.capabilities, {
+						hostWorkspaceWrites: [true],
+						hostUserData: ['denied'],
+						hostSystemFiles: ['read-only'],
+						network: [false]
+					}),
+
 					validateConfig(input: unknown): Record<string, never> {
 						configurations++;
 
@@ -503,12 +505,13 @@ it.each([
 						{
 							id: 'fixture',
 							label: 'Fixture',
-							capabilities: template.capabilities,
-							policies: {
-								workspaceAccess: ['read-write'],
-								filesystemScope: ['provider-default'],
-								networkAccess: ['provider-default']
-							},
+							profiles: fixtureProfiles(template.capabilities, {
+								hostWorkspaceWrites: [true],
+								hostUserData: ['denied'],
+								hostSystemFiles: ['read-only'],
+								network: [false]
+							}),
+
 							configure: () => ({
 								open: (_request, opening) => {
 									opening.reportRecovery(recovery);

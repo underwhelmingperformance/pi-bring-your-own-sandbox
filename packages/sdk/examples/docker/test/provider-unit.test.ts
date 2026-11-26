@@ -1,6 +1,10 @@
+import { execFile } from 'node:child_process';
+import { once } from 'node:events';
 import { chown, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { promisify } from 'node:util';
 
 import type {
 	BackendProcessContext,
@@ -11,7 +15,8 @@ import {
 	closeSandboxSession,
 	initialiseSandboxHost,
 	registerSandboxDiagnostics,
-	SandboxTransportError
+	SandboxTransportError,
+	UnsupportedSandboxPolicyError
 } from 'pi-bring-your-own-sandbox/api';
 import { afterEach, expect, it, vi } from 'vitest';
 
@@ -22,8 +27,13 @@ import {
 	negotiateSandbox
 } from '../../../src/fixtures/fixture-client.js';
 import { withPiRuntime } from '../../../src/fixtures/pi-runtime.js';
+import {
+	firstCopyProfile,
+	firstOpenProfile
+} from '../../../src/fixtures/profile-fixture.js';
 import { remainingBudget } from '../../../src/fixtures/remaining-budget.js';
 import { OperationScope } from '../../../src/lifecycle.js';
+import { profileCapabilities } from '../../../src/validation.js';
 import type {
 	DockerClient,
 	DockerCommand,
@@ -266,23 +276,21 @@ function context(
 	};
 }
 
-const request: SandboxOpenRequest<DockerConfig> = {
+const request = {
 	generationId: 'generation',
 	sessionId: 'session',
 	hostWorkspace: process.cwd(),
-	policy: {
-		workspaceAccess: 'read-write',
-		filesystemScope: 'workspace-only',
-		networkAccess: 'denied'
-	},
+	profile: firstCopyProfile(createDockerProvider()),
 	configuration: {
 		executable: '/fixture/docker',
 		socketPath: '/fixture/docker.sock'
 	}
-};
+} satisfies SandboxOpenRequest<DockerConfig>;
+
+const hostCopy = { ...request, source: { kind: 'host' } as const };
 
 it.each([true, false])(
-	'selects the Docker development policy for project trust %s',
+	'selects the same live Docker profile for project trust %s',
 	async (projectTrusted) => {
 		await withFakeDockerCli(() =>
 			withPiRuntime(
@@ -296,15 +304,7 @@ it.each([true, false])(
 								async handler(_arguments, context) {
 									expect(await negotiateSandbox(pi, context)).toStrictEqual({
 										ok: true,
-										policy: {
-											workspaceAccess: 'read-write',
-											filesystemScope: projectTrusted
-												? 'provider-default'
-												: 'workspace-only',
-											networkAccess: projectTrusted
-												? 'provider-default'
-												: 'denied'
-										}
+										profile: createDockerProvider().profiles.open[1]
 									});
 								}
 							});
@@ -361,9 +361,9 @@ it('reports a missing Docker CLI through status when configuration fails', async
 it.each([
 	['Docker Desktop', '1.45 1.45', 0, 'shared'],
 	['Linux', '1.52 1.52', 0, 'shared'],
-	['Linux', '1.52 1.44', 0, 'copied'],
-	['Linux', '1.44 1.52', 0, 'copied'],
-	['Linux', '1.52 1.52', 1, 'copied']
+	['Linux', '1.52 1.44', 0, 'refused'],
+	['Linux', '1.44 1.52', 0, 'refused'],
+	['Linux', '1.52 1.52', 1, 'refused']
 ] as const)(
 	'selects a workspace for %s API %s with mount check %d',
 	async (os, api, probe, relationship) => {
@@ -389,15 +389,11 @@ it.each([
 
 			const provider = createDockerProvider(() => docker);
 			const messages: string[] = [];
-			const backend = await provider.open(
+			const pending = provider.open(
 				{
 					...request,
 					hostWorkspace,
-					policy: {
-						workspaceAccess: 'read-write',
-						networkAccess: 'provider-default',
-						filesystemScope: 'provider-default'
-					}
+					profile: firstOpenProfile(provider)
 				},
 				{
 					...context(),
@@ -412,6 +408,20 @@ it.each([
 					}
 				}
 			);
+
+			if (relationship === 'refused') {
+				await expect(pending).rejects.toBeInstanceOf(
+					UnsupportedSandboxPolicyError
+				);
+				expect(
+					docker.commands.some(({ args }) => args.includes('import-helper'))
+				).toBe(false);
+				expect(docker.isVolumePresent).toBe(false);
+
+				return;
+			}
+
+			const backend = await pending;
 
 			try {
 				expect({
@@ -433,9 +443,7 @@ it.each([
 					],
 					probed: !api.includes('1.44')
 				});
-				expect(
-					messages.some((message) => message.includes('private copy'))
-				).toBe(relationship === 'copied');
+				expect(messages).toStrictEqual([]);
 			} finally {
 				await backend.dispose(context());
 			}
@@ -456,12 +464,7 @@ it('declines an explicit shared checkout for a root Pi process before allocation
 			provider.open(
 				{
 					...request,
-					policy: {
-						workspaceAccess: 'read-write',
-						filesystemScope: 'provider-default',
-						networkAccess: 'provider-default',
-						workspaceRelationship: 'shared'
-					}
+					profile: firstOpenProfile(provider)
 				},
 				{
 					...context(),
@@ -483,7 +486,7 @@ it('declines an explicit shared checkout for a root Pi process before allocation
 it('reports confirmed broker cleanup after Docker opening releases partial allocations', async () => {
 	const docker = new FakeDocker();
 
-	docker.bootstrapStatus = 1;
+	docker.mountProbeStatus = 1;
 
 	const config = new FixtureConfig();
 
@@ -501,7 +504,7 @@ it('reports confirmed broker cleanup after Docker opening releases partial alloc
 						description: 'Exercise failed opening.',
 						async handler(_arguments, context) {
 							await expect(getSandbox(pi, context)).rejects.toMatchObject({
-								name: 'SandboxOperationError'
+								name: 'UnsupportedSandboxPolicyError'
 							});
 							expect({
 								report: await closeSandboxSession(pi, context),
@@ -528,10 +531,11 @@ it('reports confirmed broker cleanup after Docker opening releases partial alloc
 			expect(errors).toStrictEqual([]);
 		},
 		{
-			prepare(_directory, _runtimeDirectory) {
+			async prepare(directory, _runtimeDirectory) {
+				await mkdir(path.join(directory, '.pi'));
 				config.set({
 					provider: 'example.docker',
-					policy: request.policy,
+					policy: request.profile.policy,
 					providerConfig: request.configuration
 				});
 			}
@@ -540,9 +544,9 @@ it('reports confirmed broker cleanup after Docker opening releases partial alloc
 });
 
 it.each([
-	{ workspaceRelationship: 'remote' },
-	{ workspaceRelationship: 'shared' },
-	{ workspaceProtection: [{ kind: 'path', path: '.pi' }] }
+	{ network: true },
+	{ hostUserData: 'read-only' },
+	{ hostSystemFiles: 'read-only' }
 ] as const)('rejects policy %j before contacting Docker', async (policy) => {
 	const docker = new FakeDocker();
 	const provider = createDockerProvider(() => docker);
@@ -551,7 +555,10 @@ it.each([
 		provider.open(
 			{
 				...request,
-				policy: { ...request.policy, ...policy }
+				profile: {
+					...request.profile,
+					policy: { ...request.profile.policy, ...policy }
+				}
 			},
 			{
 				...context(),
@@ -567,53 +574,11 @@ it.each([
 	expect(docker.commands).toStrictEqual([]);
 });
 
-it.each([
-	['provider-default', 'provider-default', 'read-write'],
-	['provider-default', 'denied', 'read-write'],
-	['workspace-only', 'provider-default', 'read-write'],
-	['provider-default', 'provider-default', 'read-only']
-] as const)(
-	'reports the effective isolation for a %s/%s/%s copy',
-	async (filesystemScope, networkAccess, workspaceAccess) => {
-		const docker = new FakeDocker();
-		const provider = createDockerProvider(() => docker);
-		const backend = await provider.open(
-			{
-				...request,
-				policy: {
-					filesystemScope,
-					networkAccess,
-					workspaceAccess,
-					workspaceRelationship: 'copied'
-				}
-			},
-			{
-				...context(),
-				confirmCleanup() {
-					return;
-				},
-				reportRecovery() {
-					return;
-				}
-			}
-		);
-
-		expect(backend.workspace.relationship).toBe('copied');
-		expect(backend.policy).toStrictEqual({
-			workspaceRelationship: 'copied',
-			workspaceAccess,
-			filesystemScope: 'workspace-only',
-			networkAccess: 'denied'
-		});
-		await backend.dispose(context());
-	}
-);
-
 it('uses literal argv, isolated mounts and explicit target environment overrides', async () => {
 	const docker = new FakeDocker();
 	const provider = createDockerProvider(() => docker);
 	const recoveries: unknown[] = [];
-	const backend = await provider.open(request, {
+	const backend = await provider.copy(hostCopy, {
 		...context(),
 		confirmCleanup() {
 			return;
@@ -646,7 +611,7 @@ it('uses literal argv, isolated mounts and explicit target environment overrides
 
 	expect({
 		outcome,
-		capabilities: backend.capabilities,
+		capabilities: profileCapabilities(backend.profile),
 		workspace: backend.workspace,
 		recoveries
 	}).toStrictEqual({
@@ -672,8 +637,7 @@ it('uses literal argv, isolated mounts and explicit target environment overrides
 			relationship: 'copied',
 			home: '/tmp',
 			defaultShell: 'sh',
-			description:
-				'The host workspace is copied on opening. Changes remain in a generation-owned Docker volume until disposal.'
+			description: 'Private copy of the host checkout.'
 		},
 		recoveries: [backend.recovery]
 	});
@@ -738,7 +702,7 @@ it('uses literal argv, isolated mounts and explicit target environment overrides
 
 it('confirms cancellation through daemon removal before permitting another job', async () => {
 	const docker = new FakeDocker();
-	const backend = await createDockerProvider(() => docker).open(request, {
+	const backend = await createDockerProvider(() => docker).copy(hostCopy, {
 		...context(),
 		confirmCleanup() {
 			return;
@@ -772,7 +736,7 @@ it('confirms cancellation through daemon removal before permitting another job',
 
 it('uses the broker cleanup deadline for cancelled Docker jobs', async () => {
 	const docker = new FakeDocker();
-	const backend = await createDockerProvider(() => docker).open(request, {
+	const backend = await createDockerProvider(() => docker).copy(hostCopy, {
 		...context(),
 		confirmCleanup() {
 			return;
@@ -826,7 +790,7 @@ it('uses the broker cleanup deadline for cancelled Docker jobs', async () => {
 
 it('reports unconfirmed termination when the client finishes but the daemon cannot remove the job', async () => {
 	const docker = new FakeDocker();
-	const backend = await createDockerProvider(() => docker).open(request, {
+	const backend = await createDockerProvider(() => docker).copy(hostCopy, {
 		...context(),
 		confirmCleanup() {
 			return;
@@ -868,7 +832,7 @@ it('releases a partial allocation when copying the workspace fails', async () =>
 	let failure: unknown;
 
 	try {
-		await createDockerProvider(() => docker).open(request, {
+		await createDockerProvider(() => docker).copy(hostCopy, {
 			...context(),
 			confirmCleanup() {
 				return;
@@ -912,7 +876,7 @@ it.each(['volume', 'container'] as const)(
 		let failure: unknown;
 
 		try {
-			await createDockerProvider(() => docker).open(request, {
+			await createDockerProvider(() => docker).copy(hostCopy, {
 				...context(),
 				confirmCleanup() {
 					confirmations++;
@@ -963,7 +927,7 @@ it.each(['volume', 'container'] as const)(
 
 it('updates an already-running removal when cancellation publishes a longer deadline', async () => {
 	const docker = new FakeDocker();
-	const backend = await createDockerProvider(() => docker).open(request, {
+	const backend = await createDockerProvider(() => docker).copy(hostCopy, {
 		...context(),
 		confirmCleanup() {
 			return;
@@ -1090,13 +1054,9 @@ it.each(['session', 'socket', 'backend'])(
 				return;
 			}
 		};
-		const parent = await provider.open(request, opening);
+		const parent = await provider.copy(hostCopy, opening);
 
 		try {
-			if (!provider.copy) {
-				throw new Error('Expected Docker copy support.');
-			}
-
 			const before = docker.commands.length;
 
 			await expect(
@@ -1111,11 +1071,16 @@ it.each(['session', 'socket', 'backend'])(
 									? '/different'
 									: request.configuration.socketPath
 						},
-						policy: { ...request.policy, workspaceAccess: 'read-only' },
 						source: {
 							kind: 'backend',
 							backend:
-								field === 'backend' ? { ...parent, id: parent.id } : parent
+								field === 'backend'
+									? {
+											...parent,
+											exec: parent.exec.bind(parent),
+											dispose: parent.dispose.bind(parent)
+										}
+									: parent
 						}
 					},
 					opening
@@ -1135,10 +1100,6 @@ it('accepts a copy as the source of another copy', async () => {
 	const docker = new FakeDocker();
 	const provider = createDockerProvider(() => docker);
 
-	if (!provider.copy) {
-		throw new Error('Expected Docker copy support.');
-	}
-
 	const opening = {
 		...context(),
 		reportRecovery() {
@@ -1148,19 +1109,16 @@ it('accepts a copy as the source of another copy', async () => {
 			return;
 		}
 	};
-	const copyRequest = {
-		...request,
-		policy: { ...request.policy, workspaceAccess: 'read-only' as const }
-	};
-	const parent = await provider.open(request, opening);
+
+	const parent = await provider.copy(hostCopy, opening);
 	const first = await provider.copy(
-		{ ...copyRequest, source: { kind: 'backend', backend: parent } },
+		{ ...request, source: { kind: 'backend', backend: parent } },
 		opening
 	);
 
 	try {
 		const second = await provider.copy(
-			{ ...copyRequest, source: { kind: 'backend', backend: first } },
+			{ ...request, source: { kind: 'backend', backend: first } },
 			opening
 		);
 
@@ -1175,9 +1133,9 @@ it('advertises PowerShell only for a trusted image selected by immutable ID', ()
 	const image = 'sha256:' + 'a'.repeat(64);
 
 	expect(
-		createDockerProvider({ powerShellImage: image }).capabilities.shells
+		firstOpenProfile(createDockerProvider({ powerShellImage: image })).shells
 	).toStrictEqual(['sh', 'bash', 'powershell']);
-	expect(createDockerProvider().capabilities.shells).toStrictEqual([
+	expect(firstOpenProfile(createDockerProvider()).shells).toStrictEqual([
 		'sh',
 		'bash'
 	]);
@@ -1246,18 +1204,21 @@ it.each([
 			powerShellImage
 		});
 		const diagnostics: unknown[] = [];
-		const pending = provider.open(request, {
-			...context(),
-			reportDiagnostic(entry) {
-				diagnostics.push(entry);
-			},
-			reportRecovery() {
-				return;
-			},
-			confirmCleanup() {
-				return;
+		const pending = provider.copy(
+			{ ...hostCopy, profile: firstCopyProfile(provider) },
+			{
+				...context(),
+				reportDiagnostic(entry) {
+					diagnostics.push(entry);
+				},
+				reportRecovery() {
+					return;
+				},
+				confirmCleanup() {
+					return;
+				}
 			}
-		});
+		);
 
 		if (mode !== 'available') {
 			await expect(pending).rejects.toMatchObject({
@@ -1385,3 +1346,75 @@ it('registers the Docker provider and Bash integration from the shell profile fa
 		{ bindFixtureSources: false }
 	);
 });
+
+it.each(['FIFO', 'socket'] as const)(
+	'refuses a live checkout containing a %s before contacting Docker',
+	async (kind) => {
+		const directory = await mkdtemp(path.join(tmpdir(), 'byos-special-'));
+		const docker = new FakeDocker();
+		const provider = createDockerProvider(() => docker);
+		const listener = createServer();
+		const diagnostics: string[] = [];
+		const recovery = vi.fn();
+
+		try {
+			if (process.getuid?.() === 0) {
+				await chown(directory, 1000, 1000);
+				vi.spyOn(process, 'getuid').mockReturnValue(1000);
+			}
+
+			if (process.getgid?.() === 0) {
+				vi.spyOn(process, 'getgid').mockReturnValue(1000);
+			}
+
+			await mkdir(path.join(directory, '.pi'));
+			await mkdir(path.join(directory, 'nested'));
+
+			const filename = path.join(directory, 'nested', 'special');
+
+			if (kind === 'FIFO') {
+				await promisify(execFile)('mkfifo', [filename]);
+			} else {
+				listener.listen(filename);
+				await once(listener, 'listening');
+			}
+
+			await expect(
+				provider.open(
+					{
+						...request,
+						hostWorkspace: directory,
+						profile: firstOpenProfile(provider)
+					},
+					{
+						...context(),
+						reportRecovery: recovery,
+						confirmCleanup: vi.fn(),
+						reportDiagnostic: (entry) => {
+							diagnostics.push(entry.message);
+						}
+					}
+				)
+			).rejects.toBeInstanceOf(UnsupportedSandboxPolicyError);
+
+			expect({
+				commands: docker.commands,
+				recoveries: recovery.mock.calls,
+				diagnostics
+			}).toStrictEqual({
+				commands: [],
+				recoveries: [],
+				diagnostics: [
+					'The live checkout contains a socket, FIFO or device file.'
+				]
+			});
+		} finally {
+			if (listener.listening) {
+				await promisify(listener.close.bind(listener))();
+			}
+
+			vi.restoreAllMocks();
+			await rm(directory, { recursive: true, force: true });
+		}
+	}
+);

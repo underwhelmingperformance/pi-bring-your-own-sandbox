@@ -1,24 +1,19 @@
-import type {
-	SandboxCapabilities,
-	SandboxPolicy,
-	SupportedSandboxPolicies
-} from './contracts.js';
+import type { SandboxCapabilities, SandboxPolicy } from './contracts.js';
+import type { Profile } from './policy-model.js';
+import { accessPolicySchema, providerInfoSchema } from './policy-model.js';
 import type { ProviderInfo } from './protocol.js';
 import {
 	checker,
 	nonEmptyStringSchema,
-	policySchema,
-	providerInfoSchema,
 	recordSchema,
 	recoverySchema,
 	shellSchema
 } from './schemas.js';
-import { snapshotWorkspaceProtection } from './workspace-protection.js';
 
 export const isRecord = checker(recordSchema);
 export const isNonEmptyString = checker(nonEmptyStringSchema);
 export const isShell = checker(shellSchema);
-export const isPolicy = checker(policySchema);
+export const isPolicy = checker(accessPolicySchema);
 export const isProviderInfo = checker(providerInfoSchema);
 export const isRecovery = checker(recoverySchema);
 
@@ -35,42 +30,38 @@ export function snapshotCapabilities(
 }
 
 export function snapshotPolicy(policy: SandboxPolicy): SandboxPolicy {
+	return Object.freeze({ ...policy });
+}
+
+export function snapshotProfile(profile: Profile): Profile {
 	return Object.freeze({
-		workspaceAccess: policy.workspaceAccess,
-		...(policy.workspaceRelationship !== undefined && {
-			workspaceRelationship: policy.workspaceRelationship
-		}),
-		filesystemScope: policy.filesystemScope,
-		networkAccess: policy.networkAccess,
-		...(policy.workspaceProtection !== undefined && {
-			workspaceProtection: snapshotWorkspaceProtection(
-				policy.workspaceProtection
-			)
-		})
+		policy: snapshotPolicy(profile.policy),
+		capabilities: Object.freeze([...profile.capabilities]),
+		processKinds: Object.freeze([...profile.processKinds]),
+		shells: Object.freeze([...profile.shells]),
+		exitStatus: profile.exitStatus,
+		terminationScope: profile.terminationScope
 	});
+}
+
+export function profileCapabilities(profile: Profile): SandboxCapabilities {
+	return snapshotCapabilities({ ...profile, operations: profile.capabilities });
 }
 
 export function snapshotProviderInfo(provider: ProviderInfo): ProviderInfo {
+	const open = provider.profiles.open.map((profile) =>
+		snapshotProfile(profile)
+	);
+	const copy = provider.profiles.copy.map((profile) =>
+		snapshotProfile(profile)
+	);
+
 	return Object.freeze({
 		id: provider.id,
 		label: provider.label,
-		capabilities: snapshotCapabilities(provider.capabilities),
-		policies: snapshotPolicies(provider.policies),
-		...(provider.defaultPolicy !== undefined && {
-			defaultPolicy: snapshotPolicy(provider.defaultPolicy)
+		profiles: Object.freeze({
+			open: Object.freeze(open),
+			copy: Object.freeze(copy)
 		})
-	});
-}
-
-function snapshotPolicies(
-	value: SupportedSandboxPolicies
-): SupportedSandboxPolicies {
-	return Object.freeze({
-		workspaceAccess: Object.freeze([...value.workspaceAccess]),
-		...(value.workspaceRelationship !== undefined && {
-			workspaceRelationship: Object.freeze([...value.workspaceRelationship])
-		}),
-		filesystemScope: Object.freeze([...value.filesystemScope]),
-		networkAccess: Object.freeze([...value.networkAccess])
 	});
 }

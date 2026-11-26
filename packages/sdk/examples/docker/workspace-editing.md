@@ -11,8 +11,7 @@ Pi's ordinary tools omit the access record. They can edit the checkout when the
 configured policy permits live writes and Docker supports them. With a read-only
 policy, Pi can still acquire the sandbox and read the checkout.
 
-The provider's protected-path settings cover files that host tools may later
-interpret as configuration. The provider kit supplies defaults and a matcher.
+Docker mounts Git metadata and host configuration paths such as `.pi` read-only.
 Install the provider and its dependencies outside the checkout so workload
 changes cannot replace the running integration.
 

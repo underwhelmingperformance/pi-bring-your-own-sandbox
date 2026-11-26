@@ -6,7 +6,9 @@ import type {
 	BackendProcessContext,
 	BackendProcessOutcome,
 	BackendSearch,
+	GrantedPath,
 	ProcessRequest,
+	Profile,
 	SandboxBackend,
 	SandboxCapabilities,
 	SandboxCopySource,
@@ -109,8 +111,6 @@ export interface DockerProviderOptions {
 	readonly powerShellImage?: string;
 }
 
-class SharedMountUnavailableError extends Error {}
-
 class DockerBackend implements SandboxBackend {
 	static readonly copiedDescription =
 		'Jobs use a copied workspace, a read-only Debian image, private scratch space, UID 65534 and no network. Host files outside the copied workspace are not mounted.';
@@ -129,26 +129,33 @@ class DockerBackend implements SandboxBackend {
 	readonly id: string;
 	readonly workspace: SandboxBackend['workspace'];
 
-	readonly capabilities: SandboxCapabilities;
-	readonly policy: SandboxBackend['policy'];
+	readonly profile: Profile;
+	readonly grantedPaths?: readonly GrantedPath[];
 	readonly recovery: SandboxBackend['recovery'];
 	readonly policyDescription: string;
 
 	constructor(
 		resources: DockerResources,
-		policy: SandboxBackend['policy'],
+		profile: Profile,
+		grantedPaths: readonly GrantedPath[],
 		launcher: string,
 		client: DockerClient,
 		helpers: DockerFileHelpers,
 		onClose: () => void,
-		toolchain: { image: string; capabilities: SandboxCapabilities },
+		image: string,
 		source?: SandboxCopySource,
 		shared?: SharedCheckout
 	) {
 		this.#shared = shared;
+		this.profile = profile;
 		this.policyDescription = shared
-			? 'Jobs edit the host checkout with the developer’s identity. Existing host configuration paths are mounted read-only. Container networking is disabled. Workspace entries can refer to host files or services.'
+			? 'Jobs use the live checkout and the container image. Host paths outside the checkout are unavailable. Container networking is disabled.'
 			: DockerBackend.copiedDescription;
+
+		if (grantedPaths.length > 0) {
+			this.grantedPaths = grantedPaths;
+		}
+
 		this.workspace = shared
 			? {
 					...copiedWorkspace,
@@ -166,8 +173,7 @@ class DockerBackend implements SandboxBackend {
 								: 'Private copy of another Docker workspace.'
 					};
 		this.#onClose = onClose;
-		this.#image = toolchain.image;
-		this.capabilities = toolchain.capabilities;
+		this.#image = image;
 		this.#resources = resources;
 		this.#launcher = launcher;
 		this.id = resources.volume;
@@ -176,8 +182,8 @@ class DockerBackend implements SandboxBackend {
 			resources,
 			client,
 			{
-				mount: this.#mount(policy.workspaceAccess === 'read-only'),
-				readOnly: policy.workspaceAccess === 'read-only',
+				mount: this.#mount(this.#isWorkspaceReadOnly()),
+				readOnly: this.#isWorkspaceReadOnly(),
 				...(shared && { shared })
 			},
 			helpers,
@@ -196,7 +202,12 @@ class DockerBackend implements SandboxBackend {
 				writeFile: this.#worker.writeFile.bind(this.#worker)
 			}
 		};
-		this.policy = { ...policy };
+	}
+
+	#isWorkspaceReadOnly(): boolean {
+		return (
+			this.#shared !== undefined && !this.profile.policy.hostWorkspaceWrites
+		);
 	}
 
 	#mount(isReadOnly: boolean): string {
@@ -299,7 +310,7 @@ class DockerBackend implements SandboxBackend {
 				'--workdir=/',
 				'--tmpfs=/tmp:rw,nosuid,nodev,size=16m',
 				'--mount',
-				this.#mount(this.policy.workspaceAccess === 'read-only'),
+				this.#mount(this.#isWorkspaceReadOnly()),
 				...(guards?.args ?? []),
 				'--entrypoint=/usr/local/bin/node',
 				this.#image,
@@ -377,7 +388,6 @@ class DockerBackend implements SandboxBackend {
 		const failures = new Map([
 			[42, 'The workspace changed during the Docker import.'],
 			[43, 'The Docker workspace exceeds the snapshot import limits.'],
-			[44, 'A regular file has a hard link outside the workspace.'],
 			[45, 'A workspace entry has a filename that is not valid UTF-8.'],
 			[
 				46,
@@ -559,12 +569,16 @@ class DockerBackend implements SandboxBackend {
 						'--mount',
 						sourceMount,
 						'--mount',
-						this.#mount(false),
+						this.#mount(this.#isWorkspaceReadOnly()),
 						...guards.args,
 						'--entrypoint=/bin/sh',
 						DOCKER_IMAGE,
 						'-c',
-						'test /workspace -ef /source && test "$(stat -c %u /workspace)" = "$(id -u)" && test -w /workspace && test ! -w /workspace/.pi'
+						'test /workspace -ef /source && test "$(stat -c %u /workspace)" = "$(id -u)" && ' +
+							(this.#isWorkspaceReadOnly()
+								? 'test ! -w /workspace'
+								: 'test -w /workspace') +
+							' && test ! -w /workspace/.pi'
 					],
 					{
 						...context,
@@ -589,7 +603,7 @@ class DockerBackend implements SandboxBackend {
 					context.reportDiagnostic({
 						level: 'warning',
 						message:
-							'Docker could not verify writable access to the live checkout and read-only access to .pi.'
+							'Docker could not verify the selected access to the live checkout and read-only access to .pi.'
 					});
 
 					throw new UnsupportedSandboxPolicyError({
@@ -601,7 +615,7 @@ class DockerBackend implements SandboxBackend {
 				await this.#import(sourceMount, importer, context);
 			}
 
-			if (this.capabilities.shells.includes('powershell')) {
+			if (this.profile.shells.includes('powershell')) {
 				await this.#checkPowerShell(context);
 			}
 		} catch (error) {
@@ -622,17 +636,6 @@ class DockerBackend implements SandboxBackend {
 							'Docker opening and cleanup failed.'
 						)
 					}
-				);
-			}
-
-			if (
-				this.#shared &&
-				this.policy.workspaceRelationship === undefined &&
-				isSandboxError(error, UnsupportedSandboxPolicyError)
-			) {
-				throw new SharedMountUnavailableError(
-					'Docker could not share this checkout.',
-					{ cause: error }
 				);
 			}
 
@@ -658,7 +661,7 @@ class DockerBackend implements SandboxBackend {
 
 		if (
 			request.kind === 'shell' &&
-			!this.capabilities.shells.includes(request.dialect)
+			!this.profile.shells.includes(request.dialect)
 		) {
 			return Promise.reject(
 				new UnsupportedSandboxCapabilityError({
@@ -699,7 +702,7 @@ Use an immutable image ID to add PowerShell, or supply a client factory for test
 */
 export function createDockerProvider(
 	options: DockerProviderOptions | ((config: DockerConfig) => DockerClient) = {}
-): SandboxProvider<DockerConfig> {
+) {
 	const { createClient, powerShellImage } =
 		typeof options === 'function'
 			? { createClient: options, powerShellImage: undefined }
@@ -721,7 +724,30 @@ export function createDockerProvider(
 					...defaultCapabilities,
 					shells: [...defaultCapabilities.shells, 'powershell']
 				};
-	const toolchain = { image: powerShellImage ?? DOCKER_IMAGE, capabilities };
+	const image = powerShellImage ?? DOCKER_IMAGE;
+	const restricted: Profile = {
+		policy: {
+			hostWorkspaceWrites: false,
+			network: false,
+			hostUserData: 'denied',
+			hostSystemFiles: 'denied'
+		},
+		capabilities: capabilities.operations,
+		processKinds: capabilities.processKinds,
+		shells: capabilities.shells,
+		exitStatus: capabilities.exitStatus,
+		terminationScope: capabilities.terminationScope
+	};
+	const profiles = {
+		open: [
+			restricted,
+			{
+				...restricted,
+				policy: { ...restricted.policy, hostWorkspaceWrites: true }
+			}
+		],
+		copy: [restricted]
+	};
 
 	const active = new Map<
 		string,
@@ -736,29 +762,19 @@ export function createDockerProvider(
 		request: SandboxOpenRequest<DockerConfig>,
 		context: SandboxOpenContext,
 		source?: SandboxCopySource
-	) {
+	): Promise<SandboxBackend> {
+		const profile = (source === undefined ? profiles.open : profiles.copy).find(
+			(candidate) =>
+				candidate.policy.hostWorkspaceWrites ===
+				request.profile.policy.hostWorkspaceWrites
+		);
+
 		if (
-			(request.policy.filesystemScope !== 'workspace-only' &&
-				request.policy.filesystemScope !== 'provider-default') ||
-			(request.policy.workspaceRelationship !== undefined &&
-				request.policy.workspaceRelationship !== 'copied' &&
-				request.policy.workspaceRelationship !== 'shared') ||
-			(request.policy.workspaceProtection?.length ?? 0) > 0
+			profile === undefined ||
+			request.profile.policy.network ||
+			request.profile.policy.hostUserData !== 'denied' ||
+			request.profile.policy.hostSystemFiles !== 'denied'
 		) {
-			throw new UnsupportedSandboxPolicyError({
-				operation: 'open',
-				providerId: 'example.docker'
-			});
-		}
-
-		const canShare =
-			source === undefined &&
-			request.policy.workspaceRelationship !== 'copied' &&
-			request.policy.workspaceAccess === 'read-write' &&
-			request.policy.networkAccess === 'provider-default' &&
-			request.policy.filesystemScope === 'provider-default';
-
-		if (!canShare && request.policy.workspaceRelationship === 'shared') {
 			throw new UnsupportedSandboxPolicyError({
 				operation: 'open',
 				providerId: 'example.docker'
@@ -782,29 +798,21 @@ export function createDockerProvider(
 			createClient?.(request.configuration) ??
 			new NodeDockerClient(request.configuration);
 
-		const choice = canShare
-			? await SharedCheckout.select(request.hostWorkspace, client, context)
-			: undefined;
+		const choice =
+			source === undefined
+				? await SharedCheckout.select(request.hostWorkspace, client, context)
+				: undefined;
 
 		if (typeof choice === 'string') {
-			if (request.policy.workspaceRelationship === 'shared') {
-				context.reportDiagnostic({ level: 'warning', message: choice });
+			context.reportDiagnostic({ level: 'warning', message: choice });
 
-				throw new UnsupportedSandboxPolicyError({
-					operation: 'open',
-					providerId: 'example.docker'
-				});
-			}
-
-			context.reportDiagnostic({
-				level: 'warning',
-				message:
-					choice +
-					' Docker will use a private copy. Changes will stay in that copy.'
+			throw new UnsupportedSandboxPolicyError({
+				operation: 'open',
+				providerId: 'example.docker'
 			});
 		}
 
-		const shared = choice instanceof SharedCheckout ? choice : undefined;
+		const shared = choice;
 
 		if (powerShellImage !== undefined) {
 			const inspected = await client.command({
@@ -869,72 +877,44 @@ export function createDockerProvider(
 			readDockerMatcher()
 		]);
 
-		const host =
-			parent === undefined ? await realpath(request.hostWorkspace) : undefined;
+		const root = await realpath(request.hostWorkspace);
+		const grantedPaths = (['read', 'write'] as const).flatMap((kind) =>
+			(request.paths?.[kind] ?? []).map((hostPath) => ({
+				kind,
+				hostPath,
+				targetPath: path.posix.resolve(
+					'/workspace',
+					...path.relative(root, hostPath).split(path.sep)
+				)
+			}))
+		);
+		const resources = new DockerResources(
+			client,
+			request.configuration.socketPath
+		);
+		const backend = new DockerBackend(
+			resources,
+			profile,
+			grantedPaths,
+			launcher,
+			client,
+			{ files, search, matcher },
+			() => {
+				active.delete(resources.volume);
+			},
+			image,
+			source,
+			shared
+		);
 
-		async function openWorkspace(candidate: SharedCheckout | undefined) {
-			const resources = new DockerResources(
-				client,
-				request.configuration.socketPath
+		if (parent === undefined) {
+			await backend.initialise(
+				mount(['type=bind', `source=${root}`, 'target=/source', 'readonly']),
+				importer,
+				context
 			);
-			const backend = new DockerBackend(
-				resources,
-				candidate
-					? request.policy
-					: {
-							...request.policy,
-							filesystemScope: 'workspace-only',
-							networkAccess: 'denied'
-						},
-				launcher,
-				client,
-				{ files, search, matcher },
-				() => {
-					active.delete(resources.volume);
-				},
-				toolchain,
-				source,
-				candidate
-			);
-
-			if (host !== undefined) {
-				await backend.initialise(
-					mount(['type=bind', `source=${host}`, 'target=/source', 'readonly']),
-					importer,
-					context
-				);
-			} else if (parent) {
-				await parent.backend.copyInto(backend, importer, context);
-			}
-
-			return backend;
-		}
-
-		let backend: DockerBackend;
-
-		try {
-			backend = await openWorkspace(shared);
-		} catch (error) {
-			if (!(error instanceof SharedMountUnavailableError)) {
-				throw error;
-			}
-
-			if (context.signal.aborted) {
-				context.confirmCleanup();
-
-				throw new SandboxCancelledError({
-					operation: 'open',
-					reason: 'caller',
-					completion: 'confirmed'
-				});
-			}
-
-			context.reportDiagnostic({
-				level: 'warning',
-				message:
-					'Docker could not share this checkout. Changes will stay in a private copy.'
-			});
-			backend = await openWorkspace(undefined);
+		} else {
+			await parent.backend.copyInto(backend, importer, context);
 		}
 
 		active.set(backend.id, {
@@ -948,21 +928,10 @@ export function createDockerProvider(
 
 	return {
 		id: 'example.docker',
-		defaultPolicy: {
-			workspaceAccess: 'read-write',
-			filesystemScope: 'workspace-only',
-			networkAccess: 'denied'
-		},
 		label: 'Docker reference provider',
-		capabilities,
-		policies: {
-			workspaceRelationship: ['copied', 'shared'],
-			workspaceAccess: ['read-only', 'read-write'],
-			filesystemScope: ['workspace-only', 'provider-default'],
-			networkAccess: ['denied', 'provider-default']
-		},
+		profiles,
 		validateConfig: dockerConfig,
 		open: (request, context) => allocate(request, context),
 		copy: (request, context) => allocate(request, context, request.source)
-	};
+	} satisfies SandboxProvider<DockerConfig>;
 }

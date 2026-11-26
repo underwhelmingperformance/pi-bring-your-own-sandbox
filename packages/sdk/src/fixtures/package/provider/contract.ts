@@ -20,12 +20,13 @@ defineSandboxProviderTests({
 			configuration: {},
 			hostWorkspace: process.cwd(),
 			policy: {
-				workspaceAccess: 'read-only',
-				filesystemScope: 'provider-default',
-				networkAccess: 'provider-default'
+				hostWorkspaceWrites: false,
+				network: false,
+				hostUserData: 'denied',
+				hostSystemFiles: 'read-only'
 			},
 			verifyPolicy(backend) {
-				assert.equal(backend.policy.workspaceAccess, 'read-only');
+				assert.equal(backend.profile.policy.hostWorkspaceWrites, false);
 
 				return Promise.resolve();
 			},

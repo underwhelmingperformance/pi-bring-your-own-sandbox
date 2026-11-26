@@ -1,40 +1,134 @@
-import { Value } from 'typebox/value';
+import path from 'node:path';
 
-import {
-	providerBackendSchema,
-	requiredPolicySchema
-} from './backend-schemas.js';
-import type { SandboxBackend, SandboxPolicy } from './contracts.js';
+import { backendSchema } from './backend-schemas.js';
+import type { SandboxBackend, SandboxOperationContext } from './contracts.js';
 import {
 	InvalidSandboxDeclarationError,
 	UnsupportedSandboxPolicyError
 } from './errors.js';
-import type { ProviderInfo } from './protocol.js';
+import type { Profile } from './policy-model.js';
+import { profileKey } from './policy-model.js';
+import type { ProfileMode, ResolvedPath } from './profile-negotiation.js';
+import type { ProviderServiceV1 } from './protocol.js';
+import { checker } from './schemas.js';
+
+const isBackend = checker(backendSchema);
 
 export function validateBackend(
 	value: unknown,
-	provider: ProviderInfo,
-	required: SandboxPolicy
+	provider: Pick<ProviderServiceV1, 'id' | 'protocol'>,
+	required: Profile,
+	mode: ProfileMode | 'outside' = 'open'
 ): SandboxBackend {
-	if (!Value.Check(providerBackendSchema(provider), value)) {
+	const extensionSource = provider.protocol?.extensionSource;
+	const identity = {
+		operation: 'open' as const,
+		providerId: provider.id,
+		...(extensionSource !== undefined && { extensionSource })
+	};
+
+	if (!isBackend(value)) {
 		throw new InvalidSandboxDeclarationError({
-			operation: 'open',
-			providerId: provider.id
+			...identity,
+			detail: { kind: 'declaration', field: 'backend' }
 		});
 	}
 
-	if (
-		!Value.Check(requiredPolicySchema(required), {
-			...value.policy,
-			workspaceRelationship: value.workspace.relationship
-		})
-	) {
-		throw new UnsupportedSandboxPolicyError({
-			operation: 'open',
-			providerId: provider.id,
-			backendId: value.id
+	const workspace = mode === 'copy' ? 'copied' : 'shared';
+
+	const hasWrongWorkspace =
+		mode !== 'outside' && value.workspace.relationship !== workspace;
+
+	if (hasWrongWorkspace || profileKey(value.profile) !== profileKey(required)) {
+		throw new InvalidSandboxDeclarationError({
+			...identity,
+			backendId: value.id,
+			detail: {
+				kind: 'declaration',
+				field: hasWrongWorkspace ? 'workspace.relationship' : 'profile'
+			}
 		});
 	}
 
 	return value;
+}
+
+function isWithinTarget(
+	root: string,
+	target: string,
+	flavor: typeof path.posix
+): boolean {
+	const relative = flavor.relative(root, target);
+
+	return (
+		relative !== '..' &&
+		!relative.startsWith('..' + flavor.sep) &&
+		!flavor.isAbsolute(relative)
+	);
+}
+
+export async function verifyGrantedPaths(
+	backend: SandboxBackend,
+	requested: readonly ResolvedPath[],
+	context: SandboxOperationContext,
+	provider: Pick<ProviderServiceV1, 'id' | 'protocol'>
+): Promise<void> {
+	const extensionSource = provider.protocol?.extensionSource;
+	const identity = {
+		operation: 'open' as const,
+		providerId: provider.id,
+		backendId: backend.id,
+		...(extensionSource !== undefined && { extensionSource })
+	};
+	const grants = backend.grantedPaths ?? [];
+	const flavor = path[backend.workspace.pathFlavor];
+
+	for (const request of requested) {
+		const matches = grants.filter(
+			(grant) => grant.kind === request.kind && grant.hostPath === request.path
+		);
+		const [grant] = matches;
+
+		function unreachable(cause?: unknown): never {
+			throw new UnsupportedSandboxPolicyError(
+				{
+					...identity,
+					detail: {
+						kind: 'path',
+						access: request.kind,
+						path: request.path,
+						reason: 'unreachable'
+					}
+				},
+				{ cause }
+			);
+		}
+
+		if (
+			grant === undefined ||
+			matches.length !== 1 ||
+			!flavor.isAbsolute(grant.targetPath) ||
+			(request.location === 'workspace' &&
+				!isWithinTarget(backend.workspace.root, grant.targetPath, flavor))
+		) {
+			unreachable();
+		}
+
+		const files = backend.files?.[request.kind];
+
+		if (files !== undefined) {
+			try {
+				await files.access(grant.targetPath, context);
+			} catch (error) {
+				unreachable(error);
+			}
+		}
+	}
+
+	if (grants.length !== requested.length) {
+		throw new InvalidSandboxDeclarationError({
+			...identity,
+			detail: { kind: 'declaration', field: 'grantedPaths' }
+		});
+	}
 }

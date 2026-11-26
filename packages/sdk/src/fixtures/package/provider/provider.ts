@@ -31,22 +31,21 @@ export const state: ProviderState = {
 export const provider: SandboxProvider<undefined> = {
 	id: 'packed.fixture',
 	label: 'Packed provider fixture without OS isolation',
-	defaultPolicy: {
-		workspaceAccess: 'read-write',
-		filesystemScope: 'provider-default',
-		networkAccess: 'provider-default'
-	},
-	capabilities: {
-		processKinds: ['argv'],
-		terminationScope: 'workload',
-		exitStatus: 'guaranteed',
-		operations: ['exec'],
-		shells: []
-	},
-	policies: {
-		workspaceAccess: ['read-write', 'read-only'],
-		filesystemScope: ['provider-default'],
-		networkAccess: ['provider-default']
+	profiles: {
+		open: [true, false].map((hostWorkspaceWrites) => ({
+			policy: {
+				hostWorkspaceWrites,
+				network: false,
+				hostUserData: 'denied',
+				hostSystemFiles: 'read-only'
+			},
+			processKinds: ['argv'],
+			terminationScope: 'workload',
+			exitStatus: 'guaranteed',
+			capabilities: ['exec'],
+			shells: []
+		})),
+		copy: []
 	},
 	validateConfig(input) {
 		assert.deepEqual(input, {});
@@ -62,17 +61,10 @@ export const provider: SandboxProvider<undefined> = {
 			workspace: {
 				root: '/packed/project',
 				pathFlavor: 'posix',
-				relationship: 'remote',
+				relationship: 'shared',
 				description: 'In-memory fixture without OS isolation.'
 			},
-			capabilities: {
-				processKinds: ['argv'],
-				terminationScope: 'workload',
-				exitStatus: 'guaranteed',
-				operations: ['exec'],
-				shells: []
-			},
-			policy: request.policy,
+			profile: request.profile,
 			policyDescription: 'In-memory fixture without OS isolation.',
 			recovery: { kind: 'none' },
 			async exec(invocation, execution) {
@@ -82,7 +74,7 @@ export const provider: SandboxProvider<undefined> = {
 					invocation.kind === 'argv' &&
 					invocation.executable === 'replace-sample'
 				) {
-					if (request.policy.workspaceAccess === 'read-only') {
+					if (!request.profile.policy.hostWorkspaceWrites) {
 						return { kind: 'exited', exit: { kind: 'code', code: 1 } };
 					}
 
@@ -153,9 +145,10 @@ export const provider: SandboxProvider<undefined> = {
 			shells: []
 		},
 		policy: {
-			workspaceAccess: 'read-write',
-			filesystemScope: 'provider-default',
-			networkAccess: 'provider-default'
+			hostWorkspaceWrites: true,
+			network: false,
+			hostUserData: 'denied',
+			hostSystemFiles: 'read-only'
 		},
 		open: (request, context) => provider.open(request, context)
 	}

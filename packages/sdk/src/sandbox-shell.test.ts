@@ -17,6 +17,7 @@ import { SandboxCancelledError, SandboxTransportError } from './errors.js';
 import { createSandbox } from './facade.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
+import { fixtureProfile } from './fixtures/profile-fixture.js';
 import { observe } from './lifecycle.js';
 import type { ShellInvocation } from './sandbox-shell.js';
 import { SandboxShell } from './sandbox-shell.js';
@@ -60,14 +61,14 @@ function fixture(
 	const backend = {
 		id: memory.id,
 		workspace: { ...memory.workspace, root: '/work' },
-		capabilities: {
+		profile: fixtureProfile(memory.policy, {
 			processKinds: ['argv', 'shell'] as const,
 			terminationScope: 'workload' as const,
 			exitStatus: 'guaranteed' as const,
 			operations: ['exec'] as const,
 			shells: ['bash', 'powershell'] as const
-		},
-		policy: memory.policy,
+		}),
+
 		policyDescription: memory.policyDescription,
 		recovery: memory.recovery,
 		exec(request: ProcessRequest, context: BackendProcessContext) {

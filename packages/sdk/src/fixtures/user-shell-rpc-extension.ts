@@ -13,6 +13,7 @@ import { registerUserShell } from '../user-shell.js';
 import { isRecord } from '../validation.js';
 
 import { FixtureConfig } from './config.js';
+import { fixtureProfile, fixtureProfiles } from './profile-fixture.js';
 
 export default function rpcFixture(pi: ExtensionAPI): void {
 	const ready = Promise.withResolvers<'ready'>();
@@ -50,12 +51,13 @@ export default function rpcFixture(pi: ExtensionAPI): void {
 	config.activate(pi, {
 		id: 'fixture',
 		label: 'RPC fixture',
-		capabilities,
-		policies: {
-			workspaceAccess: ['read-write'],
-			filesystemScope: ['provider-default'],
-			networkAccess: ['provider-default']
-		},
+		profiles: fixtureProfiles(capabilities, {
+			hostWorkspaceWrites: [true],
+			hostUserData: ['denied'],
+			hostSystemFiles: ['read-only'],
+			network: [false]
+		}),
+
 		validateConfig(input: unknown) {
 			if (
 				!isRecord(input) ||
@@ -82,16 +84,20 @@ export default function rpcFixture(pi: ExtensionAPI): void {
 				workspace: {
 					root: '/rpc/target',
 					pathFlavor: 'posix',
-					relationship: 'remote',
+					relationship: 'shared',
 					description: 'RPC test fixture; no OS isolation.',
 					defaultShell: 'sh'
 				},
-				capabilities,
-				policy: {
-					workspaceAccess: 'read-write',
-					filesystemScope: 'provider-default',
-					networkAccess: 'provider-default'
-				},
+				profile: fixtureProfile(
+					{
+						hostWorkspaceWrites: true,
+						hostUserData: 'denied',
+						hostSystemFiles: 'read-only',
+						network: false
+					},
+					capabilities
+				),
+
 				policyDescription: 'RPC test fixture; no OS isolation.',
 				recovery: { kind: 'none' },
 				exec(command, context) {

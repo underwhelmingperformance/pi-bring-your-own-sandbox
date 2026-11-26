@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import type { SandboxSharedSettings } from 'pi-bring-your-own-sandbox/api';
 import {
 	cleanDisplayText,
 	registerSandboxProvider,
@@ -15,7 +16,8 @@ Each session uses the Docker CLI and daemon that are current when it starts.
 */
 export default function dockerExtension(
 	pi: ExtensionAPI,
-	extensionSource = import.meta.filename
+	extensionSource = import.meta.filename,
+	settings?: SandboxSharedSettings
 ): void {
 	const provider = createDockerProvider();
 
@@ -46,13 +48,7 @@ export default function dockerExtension(
 						{},
 						{ workspace: session.cwd, signal, reportDiagnostic }
 					),
-					...(session.isProjectTrusted?.() === true && {
-						policy: {
-							workspaceAccess: 'read-write',
-							filesystemScope: 'provider-default',
-							networkAccess: 'provider-default'
-						} as const
-					})
+					...(settings !== undefined && { settings })
 				};
 			}
 		}

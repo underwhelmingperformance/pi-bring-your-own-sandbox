@@ -16,7 +16,6 @@ implementation reaches this design.
 | `/host`     | `initialiseSandboxHost`, `closeSandboxSession`, host options and diagnostic registration    |
 | `/review`   | Review and escalation types for the bound client                                            |
 | `/pi-tools` | Pi tool integration factory                                                                 |
-| `/guard`    | `registerSandboxRequirement` for provider presets                                           |
 | `/testing`  | Provider conformance runner, fixtures and probe interfaces                                  |
 
 The package prefix is `pi-bring-your-own-sandbox`. Wire schemas, channel
@@ -48,17 +47,13 @@ initialiseSandboxHost(
   pi: SandboxHost, extensionSource: string, options: SandboxHostOptions
 ): void;
 closeSandboxSession(pi: SandboxHost, context: SandboxContext): Promise<SandboxCloseReport>;
-registerSandboxRequirement(
-  pi: SandboxHost, extensionSource: string, requirements: SandboxRequirements
-): void;
 ```
 
 Create the client in the extension factory. Pass `import.meta.filename` for
 `extensionSource`. The client uses that path for build election, errors and
-ledger entries. Provider registration, the Pi tools, guard presets and
-standalone settings publishers register their builds through their factory entry
-points. Standalone registration accepts the extension source as the second
-argument.
+ledger entries. Provider registration, the Pi tools and standalone settings
+publishers register their builds through their factory entry points. Standalone
+registration accepts the extension source as the second argument.
 
 `/host` is for embedding hosts. `SandboxHostOptions` has only
 `cleanup?: Partial<SandboxCleanupBudgets>` for embedding defaults. The
@@ -132,7 +127,6 @@ interface Profile {
   readonly shells: readonly ShellDialect[];
   readonly exitStatus: ExitStatus;
   readonly terminationScope: TerminationScope;
-  readonly pathGrantKinds: readonly ('read' | 'write')[];
 }
 
 type SandboxNegotiation =
@@ -157,9 +151,8 @@ same identifier.
 | `hostUserData`                   | `denied`, `read-only`, `read-write`         | `denied`    | At least `read-only`           |
 | `hostSystemFiles`                | `denied`, `read-only`, `read-write`         | `denied`    | At least `read-only`           |
 
-`pathGrantKinds` contains the unique kinds of extra access that a profile can
-grant. An empty array means neither kind is available. The specification defines
-[profile ranking and path checks][access].
+The specification defines [profile ranking and path checks][access]. Milestone 5
+adds `pathGrantKinds` for extra access during escalation.
 
 [access]: specification.md#configuration-and-negotiation
 
@@ -169,11 +162,6 @@ asynchronous work. Abort signals and synchronous callbacks retain their
 identity.
 
 ## Provider contract
-
-<!--
-The provider profile fields, `grantedPaths` and its entry shape are
-provisional.
--->
 
 ```typescript
 interface SandboxProvider<Config> {
@@ -218,6 +206,7 @@ interface SandboxBackend {
   readonly id: string;
   readonly workspace: SandboxWorkspace;
   readonly profile: Profile;
+  readonly policyDescription: string;
   readonly recovery: RecoveryDescriptor;
   readonly grantedPaths?: readonly {
     readonly kind: 'read' | 'write';
@@ -288,8 +277,8 @@ operation ends are ignored. Status exposes the retained `diagnostics` and
 ## Provider settings
 
 <!--
-`SandboxSharedSettings`, the `settings` result field and the
-`sharedSettingsSchema` callback parameter and `allowEscalation` setting
+`SandboxSharedSettings`, the `settings` result field, the
+`sharedSettingsSchema` callback parameter and the `allowEscalation` setting
 are provisional.
 -->
 
@@ -655,34 +644,37 @@ omitted from the offer. `/byos status` includes the chosen build identity. See
 `isSandboxError(value)` recognises the structural error union across SDK copies.
 A constructor as the second argument narrows to its literal error identity. An
 error includes `name`, `message`, `operation` and the applicable provider,
-backend, extension or recovery context. A requirement failure includes the field
-and rejected value. Providers can supply an underlying cause for debugging.
-User-facing diagnostics omit raw settings.
+backend, extension or recovery context. `extensionSource` identifies the
+responsible extension by its source path. An access refusal includes the
+requested property and state in `detail`. A path refusal includes the access
+kind, resolved host path and reason. Configuration errors include the invalid
+setting key. Providers can supply an underlying cause for debugging. User-facing
+diagnostics omit raw settings.
 
 This is the complete feature level 0 error list.
 
-| Error                                | Detail                                                                                                          |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `SandboxInitialisationError`         | Runtime or host initialisation failure                                                                          |
-| `DuplicateBrokerError`               | Conflicting broker identities                                                                                   |
-| `IncompatibleSandboxProtocolError`   | Both build identities for a major mismatch, or the unsupported feature and extension to update                  |
-| `InvalidSandboxDeclarationError`     | Provider and rejected declaration detail                                                                        |
-| `InvalidSandboxConfigError`          | Extension source and invalid setting or factory failure                                                         |
-| `InvalidSandboxRequestError`         | Invalid field and rejected value                                                                                |
-| `ProviderNotFoundError`              | Selected provider ID                                                                                            |
-| `ConflictingSandboxProviderError`    | Conflicting provider selections                                                                                 |
-| `DuplicateProviderError`             | Duplicate provider ID                                                                                           |
-| `UnsupportedSandboxCapabilityError`  | Capability, process kind, dialect, exit status or termination scope and value                                   |
-| `UnsupportedSandboxPolicyError`      | Failed access property and requested state, the path that cannot be granted, or the disabled escalation setting |
-| `SandboxStartupError`                | Startup failure and outstanding recovery, when applicable                                                       |
-| `StaleSandboxHandleError`            | Expired facade or runtime identity                                                                              |
-| `SandboxSessionClosingError`         | Session closure prevents new work                                                                               |
-| `SandboxPermissionDeniedError`       | Rejected operation or access                                                                                    |
-| `SandboxPathNotFoundError`           | Target path or executable                                                                                       |
-| `SandboxOperationError`              | Target operation failure                                                                                        |
-| `SandboxCleanupError`                | Unconfirmed disposal and the complete close report when available                                               |
-| `SandboxCancelledError`              | `caller` or `shutdown`, with completion                                                                         |
-| `SandboxTimeoutError`                | `deadline`, with completion                                                                                     |
-| `SandboxOutputCallbackError`         | `output`, with completion                                                                                       |
-| `SandboxTransportError`              | Transport failure and unknown completion                                                                        |
-| `UnconfirmedSandboxTerminationError` | Termination scope and unknown completion                                                                        |
+| Error                                | Detail                                                                                                             |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `SandboxInitialisationError`         | Runtime or host initialisation failure                                                                             |
+| `DuplicateBrokerError`               | Conflicting broker identities                                                                                      |
+| `IncompatibleSandboxProtocolError`   | Both build identities for a major mismatch, or the unsupported feature and extension to update                     |
+| `InvalidSandboxDeclarationError`     | Provider and rejected declaration detail                                                                           |
+| `InvalidSandboxConfigError`          | Extension source and invalid setting or factory failure                                                            |
+| `InvalidSandboxRequestError`         | Invalid field and rejected value                                                                                   |
+| `ProviderNotFoundError`              | Selected provider ID                                                                                               |
+| `ConflictingSandboxProviderError`    | Conflicting provider selections                                                                                    |
+| `DuplicateProviderError`             | Duplicate provider ID                                                                                              |
+| `UnsupportedSandboxCapabilityError`  | Capability, process kind, dialect, exit status or termination scope and value                                      |
+| `UnsupportedSandboxPolicyError`      | Failed access property and requested state, the path that cannot be granted, or the absence of an eligible profile |
+| `SandboxStartupError`                | Startup failure and outstanding recovery, when applicable                                                          |
+| `StaleSandboxHandleError`            | Expired facade or runtime identity                                                                                 |
+| `SandboxSessionClosingError`         | Session closure prevents new work                                                                                  |
+| `SandboxPermissionDeniedError`       | Rejected operation or access                                                                                       |
+| `SandboxPathNotFoundError`           | Target path or executable                                                                                          |
+| `SandboxOperationError`              | Target operation failure                                                                                           |
+| `SandboxCleanupError`                | Unconfirmed disposal and the complete close report when available                                                  |
+| `SandboxCancelledError`              | `caller` or `shutdown`, with completion                                                                            |
+| `SandboxTimeoutError`                | `deadline`, with completion                                                                                        |
+| `SandboxOutputCallbackError`         | `output`, with completion                                                                                          |
+| `SandboxTransportError`              | Transport failure and unknown completion                                                                           |
+| `UnconfirmedSandboxTerminationError` | Termination scope and unknown completion                                                                           |

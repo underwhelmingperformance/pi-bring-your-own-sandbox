@@ -5,6 +5,7 @@ import { wholeOffer } from './protocol-schema.js';
 import {
 	capabilitySchema,
 	denseArray,
+	nonEmptyStringSchema,
 	processKindSchema,
 	shellSchema,
 	targetPathSchema,
@@ -35,10 +36,11 @@ export const accessPolicySchema = wholeOffer(
 export type Policy = Frozen<Static<typeof accessPolicySchema>>;
 export type AccessProperty = keyof Policy;
 
-const accessStateSchema = Type.Union([
+export const accessStateSchema = Type.Union([
 	Type.Literal('needed'),
 	Type.Literal('prevented')
 ]);
+
 const optionalState = Type.Optional(accessStateSchema);
 const accessFields = {
 	hostWorkspaceWrites: optionalState,
@@ -62,10 +64,6 @@ export type Access = Frozen<Static<typeof accessSchema>>;
 export type AccessState = Static<typeof accessStateSchema>;
 export type PathGrants = Frozen<Static<typeof pathGrantsSchema>>;
 
-const capability = Type.Exclude(
-	capabilitySchema,
-	Type.Literal('workspace.protection')
-);
 const exitStatus = Type.Union([
 	Type.Literal('guaranteed'),
 	Type.Literal('optional')
@@ -73,7 +71,7 @@ const exitStatus = Type.Union([
 const profileShape = Type.Object(
 	{
 		policy: accessPolicySchema,
-		capabilities: denseArray(capability, {
+		capabilities: denseArray(capabilitySchema, {
 			uniqueItems: true,
 			contains: Type.Literal('exec')
 		}),
@@ -140,3 +138,29 @@ export function profileKey(profile: Profile): string {
 		profile.terminationScope
 	]);
 }
+
+const profilesSchema = Type.Object(
+	{
+		open: denseArray(profileSchema, { minItems: 1 }),
+		copy: denseArray(profileSchema)
+	},
+	{ additionalProperties: false }
+);
+
+export const providerInfoSchema = Type.Refine(
+	Type.Object({
+		id: nonEmptyStringSchema,
+		label: nonEmptyStringSchema,
+		profiles: profilesSchema
+	}),
+	({ profiles }) =>
+		new Set(profiles.open.map((profile) => profileKey(profile))).size ===
+			profiles.open.length &&
+		new Set(profiles.copy.map((profile) => profileKey(profile))).size ===
+			profiles.copy.length &&
+		profiles.copy.every((profile) => !profile.policy.hostWorkspaceWrites) &&
+		[...profiles.open, ...profiles.copy].every(
+			(profile) =>
+				!profile.capabilities.includes('copy') || profiles.copy.length > 0
+		)
+);

@@ -34,59 +34,44 @@ it('accepts an independently authored provider on the actual Pi event bus', () =
 		discoverProviders(events).map((service) => ({
 			id: service.id,
 			label: service.label,
-			capabilities: service.capabilities,
-			policies: service.policies,
+			profiles: service.profiles,
 			configureType: typeof service.configure
 		}))
 	).toStrictEqual([
 		{
 			id: reply.id,
 			label: 'Independent protocol fixture',
-			capabilities: {
-				processKinds: ['argv'],
-				terminationScope: 'workload',
-				exitStatus: 'guaranteed',
-				operations: ['exec'],
-				shells: []
-			},
-			policies: {
-				workspaceAccess: ['read-write'],
-				filesystemScope: ['provider-default'],
-				networkAccess: ['provider-default']
-			},
+			profiles: reply.service.profiles,
 			configureType: 'function'
 		}
 	]);
 	expect(discoverBroker(events)).toBeUndefined();
 });
 
-it('snapshots metadata from an independent peer before asynchronous work', () => {
+it('snapshots whole profiles from an independent peer before asynchronous work', () => {
 	const events = fixtureEvents(import.meta.filename);
 	const reply = providerReply();
+	const [offered] = reply.service.profiles.open;
 
 	respond(events, 'pi-byos:provider', reply);
 
-	const services = discoverProviders(events);
+	const [service] = discoverProviders(events);
 
-	reply.service.capabilities.operations.push('files.write');
+	if (offered === undefined || service === undefined) {
+		throw new Error('The fixture must declare one open profile.');
+	}
 
-	expect(
-		services.map((service) => ({
-			capabilities: service.capabilities,
-			frozen: Object.isFrozen(service.capabilities.operations)
-		}))
-	).toStrictEqual([
-		{
-			capabilities: {
-				processKinds: ['argv'],
-				terminationScope: 'workload',
-				exitStatus: 'guaranteed',
-				operations: ['exec'],
-				shells: []
-			},
-			frozen: true
-		}
-	]);
+	const expected = { ...offered };
+
+	Object.assign(offered, { capabilities: ['exec', 'files.write'] });
+
+	expect({
+		profiles: service.profiles,
+		frozen: Object.isFrozen(service.profiles.open[0]?.capabilities)
+	}).toStrictEqual({
+		profiles: { open: [expected], copy: [] },
+		frozen: true
+	});
 });
 
 it('accepts an independent broker service and preserves its method receiver', async () => {
@@ -162,55 +147,34 @@ it.each([
 		},
 		'InvalidSandboxDeclarationError'
 	],
-	[
-		'missing exec capability',
-		{
-			...providerReply(),
-			service: {
-				...providerReply().service,
-				capabilities: {
-					processKinds: ['argv'],
-					terminationScope: 'workload',
-					exitStatus: 'guaranteed',
-					operations: [],
-					shells: []
-				}
-			}
-		},
-		'InvalidSandboxDeclarationError'
-	],
-	[
-		'unknown capability',
-		{
-			...providerReply(),
-			service: {
-				...providerReply().service,
-				capabilities: {
-					processKinds: ['argv'],
-					terminationScope: 'workload',
-					exitStatus: 'guaranteed',
-					operations: ['exec', 'pty'],
-					shells: []
-				}
-			}
-		},
-		'InvalidSandboxDeclarationError'
-	],
-	[
-		'invalid policies',
-		{
-			...providerReply(),
-			service: {
-				...providerReply().service,
-				policies: {
-					workspaceAccess: [],
-					filesystemScope: ['provider-default'],
-					networkAccess: ['provider-default']
-				}
-			}
-		},
-		'InvalidSandboxDeclarationError'
-	]
+	...(
+		[
+			[
+				'missing exec capability',
+				[{ ...providerReply().service.profiles.open[0], capabilities: [] }]
+			],
+			[
+				'unknown capability',
+				[
+					{
+						...providerReply().service.profiles.open[0],
+						capabilities: ['exec', 'pty']
+					}
+				]
+			],
+			['missing open profiles', []]
+		] as const
+	).map(
+		([label, open]) =>
+			[
+				label,
+				{
+					...providerReply(),
+					service: { ...providerReply().service, profiles: { open, copy: [] } }
+				},
+				'InvalidSandboxDeclarationError'
+			] as [string, unknown, string]
+	)
 ])('fails on %s even alongside a valid provider', (_label, reply, name) => {
 	const events = fixtureEvents(import.meta.filename);
 
@@ -246,30 +210,6 @@ it('rejects a repeated provider callback', () => {
 	expect(() => discoverProviders(events)).toThrow(
 		expect.objectContaining({ name: 'DuplicateProviderError' })
 	);
-});
-
-it('includes workspace relationships in the level-zero provider offer', () => {
-	const events = fixtureEvents(import.meta.filename);
-
-	registerSandboxProvider(
-		{
-			events,
-			sendMessage: vi.fn(),
-			appendEntry: vi.fn(),
-			on: vi.fn(),
-			getActiveTools() {
-				throw new Error('Factory loading.');
-			}
-		},
-		import.meta.filename,
-		{
-			...imageProvider,
-			policies: { ...imageProvider.policies, workspaceRelationship: ['copied'] }
-		}
-	);
-	expect(
-		discoverProviders(events)[0]?.policies.workspaceRelationship
-	).toStrictEqual(['copied']);
 });
 
 it('registers a typed provider without allocating or validating configuration', () => {
@@ -383,8 +323,8 @@ it.each([
 			{
 				id: imageProvider.id,
 				label: imageProvider.label,
-				capabilities: imageProvider.capabilities,
-				policies: imageProvider.policies,
+				profiles: imageProvider.profiles,
+
 				validateConfig,
 				open: () => Promise.reject(new Error('Opening must not occur.'))
 			}
@@ -395,91 +335,6 @@ it.each([
 		expect(() => service?.configure({})).toThrow(
 			expect.objectContaining({ name: 'InvalidSandboxConfigError' })
 		);
-	}
-);
-
-it('snapshots provider default policies and rejects unsupported defaults', () => {
-	const events = fixtureEvents(import.meta.filename);
-	const defaultPolicy = {
-		workspaceAccess: 'read-write',
-		filesystemScope: 'provider-default',
-		networkAccess: 'provider-default'
-	} as const;
-	const reply = providerReply();
-
-	respond(events, 'pi-byos:provider', {
-		...reply,
-		service: { ...reply.service, defaultPolicy }
-	});
-
-	const provider = discoverProviders(events)[0];
-
-	expect(provider?.defaultPolicy).toStrictEqual(defaultPolicy);
-	expect(Object.isFrozen(provider?.defaultPolicy)).toBe(true);
-
-	const invalid = fixtureEvents(import.meta.filename);
-
-	respond(invalid, 'pi-byos:provider', {
-		...reply,
-		service: {
-			...reply.service,
-			defaultPolicy: { ...defaultPolicy, networkAccess: 'denied' }
-		}
-	});
-	expect(() => discoverProviders(invalid)).toThrow(
-		expect.objectContaining({ name: 'InvalidSandboxDeclarationError' })
-	);
-});
-
-it.each([false, true])(
-	'requires an explicit capability for protected default policies: %s',
-	(canProtect) => {
-		const events = fixtureEvents(import.meta.filename);
-		const reply = providerReply();
-		const defaultPolicy = {
-			workspaceAccess: 'read-write',
-			filesystemScope: 'provider-default',
-			networkAccess: 'provider-default',
-			workspaceProtection: [{ kind: 'git-metadata' }]
-		};
-
-		respond(events, 'pi-byos:provider', {
-			...reply,
-			service: {
-				...reply.service,
-				defaultPolicy,
-				capabilities: {
-					...reply.service.capabilities,
-					operations: canProtect ? ['exec', 'workspace.protection'] : ['exec']
-				}
-			}
-		});
-
-		if (!canProtect) {
-			expect(() => discoverProviders(events)).toThrow(
-				expect.objectContaining({ name: 'InvalidSandboxDeclarationError' })
-			);
-
-			return;
-		}
-
-		const provider = discoverProviders(events)[0];
-
-		defaultPolicy.workspaceProtection.push({ kind: 'git-metadata' });
-		expect({
-			policy: provider?.defaultPolicy,
-			frozen: Object.isFrozen(provider?.defaultPolicy?.workspaceProtection),
-			resourceFrozen: Object.isFrozen(
-				provider?.defaultPolicy?.workspaceProtection?.[0]
-			)
-		}).toStrictEqual({
-			policy: {
-				...defaultPolicy,
-				workspaceProtection: [{ kind: 'git-metadata' }]
-			},
-			frozen: true,
-			resourceFrozen: true
-		});
 	}
 );
 

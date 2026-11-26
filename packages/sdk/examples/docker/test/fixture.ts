@@ -10,7 +10,7 @@ import {
 	writeFile
 } from 'node:fs/promises';
 import { connect, createServer, type Server } from 'node:net';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 
 import type {
@@ -107,7 +107,12 @@ export class DockerFixture {
 				}
 			}
 		);
-		const temporary = await mkdtemp(path.join(tmpdir(), 'pi-byos-docker-'));
+		const temporary = await mkdtemp(
+			path.join(
+				process.platform === 'darwin' ? homedir() : tmpdir(),
+				'pi-byos-docker-'
+			)
+		);
 		const directory = await realpath(temporary);
 		const fixture = new DockerFixture(
 			directory,
@@ -118,6 +123,7 @@ export class DockerFixture {
 		try {
 			await mkdir(fixture.workspace, { recursive: true });
 			await mkdir(path.join(fixture.workspace, 'nested'));
+			await mkdir(path.join(fixture.workspace, '.pi'), { recursive: true });
 			await writeFile(path.join(fixture.workspace, 'source.txt'), 'original');
 			await writeFile(fixture.outside, 'host-only');
 			await symlink(fixture.outside, path.join(fixture.workspace, 'escape'));
@@ -372,7 +378,10 @@ server.listen(8080, '0.0.0.0');`
 			exit: { kind: 'code', code: 0 }
 		});
 
-		if (backend.policy.workspaceAccess === 'read-only') {
+		if (
+			backend.workspace.relationship === 'shared' &&
+			!backend.profile.policy.hostWorkspaceWrites
+		) {
 			const denied = await backend.exec(
 				{
 					kind: 'argv',
@@ -496,6 +505,7 @@ server.listen(8080, '0.0.0.0');`
 					size: Number(await this.volumeFile('stat', '.'))
 				}),
 				entries: [
+					{ name: '.pi', kind: 'directory' },
 					{ name: 'nested', kind: 'directory' },
 					{ name: 'source.txt', kind: 'file' },
 					{ name: 'escape', kind: 'symlink' }

@@ -18,6 +18,7 @@ import type { SandboxAcquireOptions, SandboxHost } from './contracts.js';
 import type * as discovery from './discovery.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { fixtureProfiles } from './fixtures/profile-fixture.js';
 import type * as build from './protocol-build.js';
 import { isRecord } from './validation.js';
 
@@ -68,8 +69,8 @@ async function loadBuild(
 
 		await rewrite(
 			schemas,
-			'import { wholeOffer }',
-			'import { introducedAt, wholeOffer }'
+			"import { Compile } from 'typebox/compile';",
+			"import { Compile } from 'typebox/compile';\nimport { introducedAt } from './protocol-schema.js';"
 		);
 		await rewrite(
 			schemas,
@@ -138,21 +139,28 @@ it.each([
 					if (sdkCopy === provider) {
 						sdkCopy.api.registerSandboxProvider(pi, sdkCopy.name, {
 							id: 'fixture',
-							defaultPolicy: template.policy,
+
 							label: 'Fixture',
-							capabilities: { ...template.capabilities, operations },
-							policies: {
-								workspaceAccess: ['read-write'],
-								filesystemScope: ['provider-default'],
-								networkAccess: ['provider-default']
-							},
+							profiles: fixtureProfiles(
+								{ ...template.capabilities, operations },
+								{
+									hostWorkspaceWrites: [true],
+									hostUserData: ['denied'],
+									hostSystemFiles: ['read-only'],
+									network: [false]
+								}
+							),
+
 							validateConfig: () => ({}),
-							open: () =>
-								Promise.resolve(
-									Object.assign(new MemoryBackend(), {
-										capabilities: { ...template.capabilities, operations }
-									})
-								)
+							open: (request) => {
+								const backend = new MemoryBackend();
+
+								Object.defineProperty(backend, 'profile', {
+									value: request.profile
+								});
+
+								return Promise.resolve(backend);
+							}
 						});
 					}
 
@@ -170,7 +178,9 @@ it.each([
 								sandbox.capabilities.operations.includes(capability),
 							hasNewOffer: providers
 								?.find((entry) => entry.id === 'fixture')
-								?.capabilities.operations.includes(capability)
+								?.profiles.open.some((profile) =>
+									profile.capabilities.includes(capability)
+								)
 						});
 
 						if (sdkCopy !== current) {

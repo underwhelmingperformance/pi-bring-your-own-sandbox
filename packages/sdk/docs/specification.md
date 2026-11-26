@@ -24,23 +24,40 @@ independent SDK installations.
 
 The broker uses passthrough when the user selects no provider. A missing
 selected provider, failed factory, invalid configuration, unsupported
-requirement or failed backend produces an error. BYOS never switches
-destinations after failure or retries a possibly completed operation.
+requirement or failed backend produces an error. The broker reports failures at
+the chosen destination and never retries a possibly completed operation.
 
 [outer]: outer-runtime.md
 
 ## Configuration and negotiation
 
 The user installs the provider in Pi and configures it in the provider's
-settings file. The provider loads the Pi tool integration as part of its
-extension factory. It composes the SDK's [shared settings keys][settings] with
-its own keys and validates the file before allocation. The shared keys include
-the configured policy, user shell, cleanup budgets and outside settings. The SDK
-reads no configuration files. A provider may supply a default configured policy.
-Project trust controls whether Pi loads project extensions. The trust setting
-selects neither the workspace nor the policy. Settings take effect on reload.
+settings file. The provider loads the Pi tool integration in its extension
+factory and validates its own settings and the SDK's [shared settings
+keys][settings] before allocation. The SDK reads no configuration files. Project
+trust controls whether Pi loads project extensions. It selects neither the
+workspace nor the policy. Settings take effect on reload.
 
 [settings]: api-protocol.md#provider-settings
+
+### Default configured policy
+
+<!-- `allowEscalation` is provisional. -->
+
+When the user supplies no policy, the SDK default permits live checkout writes
+and reads of host system files. It denies network access and reads and writes of
+host user data. It enables `allowEscalation` by default. Passthrough stays
+unrestricted when no provider is selected.
+
+A provider can narrow a default access setting only when it has no eligible
+ordinary profile that can supply the default settings together. The broker ranks
+the provider's ordinary profiles within the SDK default and uses the
+highest-ranked policy. If no profile fits, configuration fails before
+allocation. An explicit user policy supplies the limit directly. Pi's tools and
+SDK consumers rely on the same default, and users can choose a stricter policy
+without changing tool requests.
+
+### Ordinary negotiation
 
 Each provider lists separate profiles for `open` and `copy`. A profile combines
 policy settings, capabilities, process kinds, shell dialects, exit status and
@@ -49,19 +66,15 @@ checkout. The only relationships at feature level 0 are `shared` for the live
 checkout and `copied` for a private copy. A remote relationship can be added at
 a later feature level.
 
-Acquisitions, copies, guard checks and outside destinations use the same
-ranking. The ordinary sandbox and its copies use the ordinary configured policy.
-Each allowed outside destination has its own configured policy.
+Ordinary acquisitions and copies use the configured policy as both the limit and
+the default. Pi's shell, file and search tools omit the access record. They can
+use a read-only checkout without needing write access for acquisition.
 
-1. Keep profiles within the destination's configured policy that satisfy every
-   need, restriction and operation requirement. Fail before allocation if no
-   profile remains.
-2. Keep the profiles that grant as many preferences as possible. Count a
-   preferred property once if the profile grants the access. Read-only and
-   read-write each count once for a file access preference.
-3. Compare the remaining profiles by the fixed property order. At the first
-   property with different settings, the more restrictive setting wins for an
-   omitted or needed property. The less restrictive setting wins for a preferred
+1. Keep profiles within the configured policy that satisfy every need,
+   restriction, path grant and operation requirement. Fail before allocation if
+   none remain.
+2. Compare the remaining profiles in the fixed property order. At the first
+   difference, the least restrictive setting wins for an omitted or needed
    property. A restriction already requires the denied setting.
 
 <!-- The fixed property order is provisional. -->
@@ -72,51 +85,34 @@ property.
 
 [mapping]: api-protocol.md#requirements-and-profiles
 
-Negotiation selects a profile before allocation. The guard and the reviewer use
-the result to decide whether a route is available. After startup, the broker
+Negotiation selects a profile before allocation. The permission reviewer uses
+this result to check whether a copy is available. After startup, the broker
 checks the backend's workspace, policy, operations and execution metadata
 against the chosen profile. A mismatch rejects the backend and starts disposal
 before the broker returns a facade.
 
-### Pi's tools and guard requirements
+### Provider presets
 
-Pi's `bash`, `user_bash`, file and search tools use ordinary acquisition and
-mark every access property `preferred`. The user can grant access through the
-configured policy. A read-only policy gives Pi read-only tools without making
-acquisition fail.
-
-<!-- The guard's place under principle 16 is provisional and undecided. -->
-
-The user installs the guard to require an explicitly activated provider. The
-user can also require a provider ID, access or operation capabilities. The
-broker applies the guard to each acquisition and copy request. Identical states
-combine, and an omitted property takes the other request's state. A need or
-restriction takes precedence over a preference. A guard restriction caps access
-for all ordinary acquisitions and copies, including for Pi's tools. A guard need
-requires the corresponding access within the configured policy. Opposite hard
-states fail before allocation with an unsupported policy error that identifies
-the property and both states. Outside calls use their own allowed destinations
-and approval.
+Providers can ship presets that require stricter access or capabilities than
+their ordinary configuration. For example, the Docker offline shell preset
+requires network denial and confinement from host files. The broker applies
+preset restrictions before allocating a backend. Users choose the preset from
+the provider. The provider kit reports a failed provider factory as a
+configuration error.
 
 ### Access requirements
 
-A consumer specifies an `access` record. Each property maps to exactly one
-policy setting. Use `needed` for access that the consumer requires and
-`prevented` for access that the sandbox must deny. Use `preferred` for access
-that helps the consumer when available. An omitted property gets the most
-restrictive setting that the provider supports. Passthrough supports only full
-access. An omitted property prevents nothing there, and a restriction fails
-before allocation. One property cannot be both needed and prevented. Adding a
+Each property of the `access` record maps to one policy setting. The `needed`
+state requires access and the `prevented` state requires denial. Adding a
 property must fail compilation until negotiation, the policy mapping and the
-conformance cases handle that property. The [API appendix][mapping] defines the
-mapping.
+conformance cases handle it.
 
-| Property              | Restriction and consumer                                                                                                                                  | Need and consumer                                                                                                                                                                                |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `hostWorkspaceWrites` | Prevents all changes to the host checkout, including changes through aliases. The permission reviewer relies on this during investigations.               | Requires write access to the live checkout. The outside tool uses it for commands that must edit the live checkout through an allowed destination when the configured policy keeps it read-only. |
-| `network`             | Prevents workload network access. The permission reviewer and Docker shell profile rely on it for offline commands.                                       | Requires network access. The outside tool uses it for operations such as fetching a dependency.                                                                                                  |
-| `hostUserData`        | Prevents reads and writes to host user data. The permission reviewer and Docker shell profile rely on it to exclude host credentials and unrelated files. | Requires read access to host user data. The outside tool uses it for commands that must read user configuration outside the checkout.                                                            |
-| `hostSystemFiles`     | Prevents reads and writes to host system files. The Docker shell profile relies on it to run against the container image's system files.                  | Requires read access to host system files. The outside tool uses it for commands that require a toolchain or configuration installed on the host.                                                |
+| Property              | Restriction and consumer                                                                                                                                  | Need and consumer                                                                                                                                                 |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hostWorkspaceWrites` | Prevents all changes to the host checkout, including changes through aliases. The permission reviewer relies on this during investigations.               | Requires write access to the live checkout. Escalated `bash` uses it for commands that must edit the live checkout when the configured policy keeps it read-only. |
+| `network`             | Prevents workload network access. The permission reviewer and Docker shell profile rely on it for offline commands.                                       | Requires network access. Escalated `bash` uses it for operations such as fetching a dependency.                                                                   |
+| `hostUserData`        | Prevents reads and writes to host user data. The permission reviewer and Docker shell profile rely on it to exclude host credentials and unrelated files. | Requires read access to host user data. Escalated `bash` uses it for commands that must read user configuration outside the checkout.                             |
+| `hostSystemFiles`     | Prevents reads and writes to host system files. The Docker shell profile relies on it to run against the container image's system files.                  | Requires read access to host system files. Escalated `bash` uses it for commands that require a toolchain or configuration installed on the host.                 |
 
 Host system files are files installed and maintained for the host operating
 system or its system-wide runtimes. Examples are OS binaries in `/bin` or
@@ -136,20 +132,37 @@ shell. The backend still must prevent reads and writes to host user data. The
 copy can expose files from the source workspace. The provider decides whether
 the copy accepts writes. Any changes stay in the copy.
 
+### Path grants
+
+The `paths` part of the access record lists paths that the consumer needs to
+read or write. For host paths, resolve `~` against the host user's home and
+relative paths against Pi's workspace before evaluating policy. Read and write
+requirements are separate. If a path falls beyond the configured policy or is
+unreachable, negotiation fails with a typed error that identifies the path. An
+ordinary grant confirms existing access. It leaves the policy unchanged. A copy
+may require paths reachable in the copy. Copy writes stay in the copy.
+
+Escalation can add access to requested paths beyond the configured policy. A
+profile declares whether the provider can grant extra read paths or extra write
+paths. The provider enforces the grant and reports where the path appears in the
+target. The caller uses that location to reach the granted file. For example, a
+command can read one host configuration file without access to the rest of the
+user's home directory.
+
 ## Execution and capabilities
 
 <!-- `violations` is provisional in milestone 1. -->
 
-| Capability    | Consumer and purpose                                                                                                                                         |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `exec`        | Pi's `bash`, `user_bash` and the outside tool run shell commands. The example consumer runs argv commands. The permission reviewer runs `sh` for inspection. |
-| `files.read`  | Pi's `read` and `edit` read target bytes. The permission reviewer reads evidence from its copy.                                                              |
-| `files.write` | Pi's `write` and `edit` change target files.                                                                                                                 |
-| `files.list`  | Pi's `ls` inspects target entries.                                                                                                                           |
-| `search.find` | Pi's `find` locates files under a target root.                                                                                                               |
-| `search.grep` | Pi's `grep` gets matches and context in the target.                                                                                                          |
-| `copy`        | The permission reviewer gets an independent workspace for inspection.                                                                                        |
-| `violations`  | The Pi integration appends structured restriction violations to a tool result so the model can decide how to proceed.                                        |
+| Capability    | Consumer and purpose                                                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `exec`        | Pi's `bash` and `user_bash` run shell commands. The example consumer runs argv commands. The permission reviewer runs `sh` for inspection. |
+| `files.read`  | Pi's `read` and `edit` read target bytes. The permission reviewer reads evidence from its copy.                                            |
+| `files.write` | Pi's `write` and `edit` change target files.                                                                                               |
+| `files.list`  | Pi's `ls` inspects target entries.                                                                                                         |
+| `search.find` | Pi's `find` locates files under a target root.                                                                                             |
+| `search.grep` | Pi's `grep` gets matches and context in the target.                                                                                        |
+| `copy`        | The permission reviewer gets an independent workspace for inspection.                                                                      |
+| `violations`  | The Pi integration appends structured restriction violations to a tool result so the model can decide how to proceed.                      |
 
 The facade checks capabilities before dispatch. Pi uses the same workspace for
 shell, file and search operations. Paths, executable lookup and environment
@@ -203,44 +216,47 @@ mutations. Shell commands and independent processes can change files outside it.
 Pi uses the SDK's file and search results, including truncation, to format tool
 output consistently across providers.
 
-## Destinations and permission
+## Escalation
 
-<!--
-`bash_outside`, `outsideDestinations` and `outsideApproval` are provisional.
--->
+<!-- `escalate` is provisional. -->
 
-`bash_outside` is a separate Pi tool with its own rule in permission extensions.
-The model supplies an `access` record and a justification. The selected provider
-may declare profiles for an outside destination.
+A `bash` call can request extra access through `escalate` and must give a
+justification. The tool translates listed property names into needs and puts the
+requested paths in the same access record. Calls that omit `escalate` use
+ordinary negotiation. When `allowEscalation` is false, the request fails with a
+typed reason before prompting or allocating.
 
-The user's provider settings control whether outside execution is available and
-who decides each call.
+The broker first seeks a provider profile that supplies the requested access
+within the full-access limit. The profile must keep unlisted properties at the
+ordinary configured policy and expose only the requested extra paths. Among
+eligible profiles, the broker chooses the least extra access that satisfies the
+request. If none can supply it, the broker selects the host before asking for a
+decision. The host enforces no restrictions. This destination is an explicit
+exception to preserving unlisted properties. A failure at a selected destination
+does not trigger another attempt.
 
-`outsideDestinations` sets the configured policy for the provider's outside
-destination and can explicitly enable passthrough. The passthrough destination
-has a full-access configured policy. It allows workspace writes and network
-access, as well as reads and writes to host user data and host system files. The
-broker applies the shared ranking to profiles within their destination's
-configured policy. An outside command can exceed the ordinary configured policy
-only at a destination that the user explicitly allows. An ordinary failure never
-triggers an outside call.
+The broker presents the command, justification, requested properties and paths,
+chosen destination and effective restrictions before a decision. For the host,
+the effective restrictions are `none`. A permission extension receives the same
+broker-resolved request that the confirmation would show. The decision function
+can allow or deny only this pending tool call. The broker checks the request
+against the pending call in the live session. The integration asks the user only
+if there is no recorded permission extension decision. The prompt identifies the
+provider by its label. The call runs only after an allow decision. Denial,
+dismissal, cancellation and expiry prevent dispatch. The user and permission
+extension can rely on the reviewed command and destination remaining fixed
+through execution. The added access applies only to that command.
 
-The `outsideApproval` setting decides who approves the call. By default the
-integration asks the user through Pi and identifies the provider by its label.
-The confirmation shows the command, justification, destination and effective
-restrictions. When a permission extension decides, the integration runs the call
-once Pi dispatches it. Denial, dismissal, unavailable confirmation, cancellation
-and expiry prevent dispatch. The user and permission extension can rely on the
-same command and destination being reviewed and executed. Changing either
-requires a new decision.
+The integration generates the model's restriction description from the
+negotiated policy and path grants. Providers can report structured violations
+for the tool result. The cleaning function returns the display text type for
+model, provider and extension text. User interfaces require that type and
+diagnostics omit raw settings.
 
-The Pi integration generates model-facing descriptions of the effective
-restrictions from the negotiated policy for each destination. This applies to
-the selected sandbox and any eligible outside destination. The cleaning function
-returns the display text type. User interfaces accept that type for text from
-the model, providers or other extensions. Errors identify the failed
-requirement, its value and the relevant extension or provider, without exposing
-configuration values.
+The [API appendix][escalation-api] defines the tool arguments, pending request
+and decision function.
+
+[escalation-api]: api-protocol.md#escalation-and-review
 
 ## Copies and review
 
@@ -288,7 +304,7 @@ an error after the generation closes.
 The generation stops accepting work when the broker observes shutdown. The
 embedding host closes the session before disposing of the Pi runtime. The broker
 rejects new work, cancels pending and active operations and disposes of
-ordinary, copy and outside backends within bounded cleanup budgets. The
+ordinary, copy and escalated backends within bounded cleanup budgets. The
 embedding host relies on those budgets to finish shutdown when a transport
 stalls. Each allocation has one owner and each close is idempotent. Providers
 clean up partial allocations on failed startup and dispose of any allocation
@@ -298,6 +314,27 @@ intervention. The host and reviewer rely on the close report to distinguish
 confirmed disposal from outstanding work. The user relies on status to find the
 affected allocation without revealing secrets. Provider leases or documented
 recovery cover crashes that prevent orderly shutdown.
+
+## Ledger
+
+<!-- `/byos log` is provisional. -->
+
+The broker records each escalation in a typed Pi session entry. The entry
+includes the command, justification, requested properties and paths, outcome,
+and the chosen destination and negotiated policy when available. It records who
+decided the call. Attribute a refusal under `allowEscalation: false` to the
+configuration. If a call is cancelled or expires before anyone decides, record
+the outcome without a decider. When an escalation is allowed, the ledger entry
+precedes execution. The confirmation, decision function input and ledger
+describe the same destination and effective restrictions, including `none` on
+the host.
+
+For each review copy, the broker records the requesting extension and the
+negotiated policy. A violation entry identifies the provider that reported it.
+Users can inspect the current session with `/byos log` and filter by tool call
+ID. Users rely on the ledger to see who approved added access. Permission
+extensions can correlate the executed destination, review copy and violations
+with the pending call that they reviewed.
 
 ## Diagnostics
 

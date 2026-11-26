@@ -68,6 +68,15 @@ export function formatStatus(status: SandboxStatus): DisplayText {
 		`Generation: ${status.generationId}`
 	];
 
+	if (status.protocol !== undefined) {
+		const build = status.protocol;
+
+		lines.push(
+			`SDK build: ${build.buildId} (${build.extensionSource})`,
+			`Protocol: major ${String(build.major)}, feature level ${String(build.featureLevel)}`
+		);
+	}
+
 	if (status.backendId !== undefined) {
 		lines.push(`Backend: ${status.backendId}`);
 	}

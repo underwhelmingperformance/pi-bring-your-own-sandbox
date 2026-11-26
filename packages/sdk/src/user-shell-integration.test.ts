@@ -19,6 +19,7 @@ import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { ScriptedModel } from './fixtures/scripted-model.js';
 import { observe } from './lifecycle.js';
 import type { ProviderServiceV1 } from './protocol.js';
+import { bindProtocolAddress } from './protocol-address.js';
 import { ensureBroker } from './service.js';
 import { registerUserShell } from './user-shell.js';
 
@@ -103,6 +104,7 @@ function fixture(
 	const extension: InlineExtension = {
 		name: 'sandbox-user-shell',
 		factory(pi) {
+			bindProtocolAddress(pi.events, import.meta.filename);
 			ensureBroker(
 				pi.events,
 				(id) =>

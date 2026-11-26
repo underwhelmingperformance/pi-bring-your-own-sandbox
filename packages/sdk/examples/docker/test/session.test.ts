@@ -30,11 +30,12 @@ import type {
 	SandboxPolicy
 } from 'pi-bring-your-own-sandbox/api';
 import * as sandboxClient from 'pi-bring-your-own-sandbox/api';
-import { closeSandboxSession, getSandbox } from 'pi-bring-your-own-sandbox/api';
+import { closeSandboxSession } from 'pi-bring-your-own-sandbox/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { copyHostWorkspace } from '../../../src/client.js';
 import { FixtureConfig } from '../../../src/fixtures/config.js';
+import { getSandbox } from '../../../src/fixtures/fixture-client.js';
 import { withPiRuntime } from '../../../src/fixtures/pi-runtime.js';
 import { ScriptedModel } from '../../../src/fixtures/scripted-model.js';
 import sandboxTools from '../../../src/pi-tools.js';
@@ -745,12 +746,13 @@ socket.on('error', error => {
 						{
 							name: 'fake-approver',
 							factory(pi) {
+								const client = sandboxClient.createSandboxClient(
+									pi,
+									import.meta.filename
+								);
+
 								pi.on('tool_call', async (event, context) => {
-									const source = sandboxClient.findShellReviewSource(
-										pi,
-										context,
-										event
-									);
+									const source = client.findShellReviewSource(context, event);
 
 									if (!source) {
 										return {
@@ -786,8 +788,10 @@ socket.on('error', error => {
 		it('runs the shared consumer example through the selected Docker provider', async () => {
 			await withDockerSession(async ({ pi, context, fixture }) => {
 				const result = await inspectWorkspace(
-					sandboxClient,
-					pi,
+					{
+						get: (clientContext, options) =>
+							getSandbox(pi, clientContext, options)
+					},
 					context,
 					new AbortController().signal
 				);

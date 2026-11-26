@@ -16,6 +16,8 @@ import {
 	extensionServiceAdvertisementSchema
 } from './service-schemas.js';
 
+// Milestone 5 removes this legacy service discovery.
+
 const isReservation = checker(
 	Type.Object({
 		id: nonEmptyStringSchema,

@@ -13,11 +13,8 @@ import {
 	configureOutsideExecution,
 	initialiseSandboxHost
 } from './api.js';
-import {
-	closeSandboxSession,
-	getSandbox,
-	registerSandboxProvider
-} from './api.js';
+import { registerSandboxProvider } from './api.js';
+import { createSandboxClient } from './client.js';
 import type {
 	SandboxConfigContext,
 	SandboxHost,
@@ -26,6 +23,11 @@ import type {
 import { formatStatus } from './diagnostics.js';
 import { discoverBroker } from './discovery.js';
 import { connectionProvider } from './fixtures/connection-provider.js';
+import {
+	closeSandboxSession,
+	fixtureTools
+} from './fixtures/fixture-client.js';
+import { getSandbox } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 
 afterEach(() => {
@@ -46,8 +48,12 @@ async function fixture(
 		events: createEventBus(),
 		on: vi.fn(() => vi.fn()),
 		sendMessage: vi.fn(),
-		appendEntry: vi.fn()
+		appendEntry: vi.fn(),
+		getActiveTools: () => fixtureTools(pi)
 	};
+
+	createSandboxClient(pi, import.meta.filename);
+
 	const context = {
 		cwd: directory,
 		sessionManager: SessionManager.inMemory(directory)
@@ -65,7 +71,6 @@ function provider(id: string, backend: MemoryBackend): SandboxProvider<object> {
 	return {
 		id,
 		label: id,
-		protocolVersion: 1,
 		defaultPolicy: backend.policy,
 		capabilities: backend.capabilities,
 		policies: {
@@ -86,7 +91,12 @@ it('activates a provider without a configuration file and shares lazy resolution
 			policy: backend.policy
 		}));
 
-		registerSandboxProvider(pi, provider('active', backend), { configure });
+		registerSandboxProvider(
+			pi,
+			import.meta.filename,
+			provider('active', backend),
+			{ configure }
+		);
 
 		const sandboxes = await Promise.all([
 			getSandbox(pi, context),
@@ -107,13 +117,18 @@ it.each([true, false, undefined])(
 			const backend = new MemoryBackend();
 			const decisions: (boolean | undefined)[] = [];
 
-			registerSandboxProvider(pi, provider('active', backend), {
-				configure({ pi: session }) {
-					decisions.push(session.isProjectTrusted?.());
+			registerSandboxProvider(
+				pi,
+				import.meta.filename,
+				provider('active', backend),
+				{
+					configure({ pi: session }) {
+						decisions.push(session.isProjectTrusted?.());
 
-					return { configuration: {} };
+						return { configuration: {} };
+					}
 				}
-			});
+			);
 			await getSandbox(pi, {
 				...context,
 				...(trusted !== undefined && { isProjectTrusted: () => trusted })
@@ -129,7 +144,9 @@ it('rejects distinct activated providers before configuration or allocation', as
 		const configure = vi.fn(() => ({ configuration: {} }));
 
 		for (const id of ['first', 'second']) {
-			registerSandboxProvider(pi, provider(id, backend), { configure });
+			registerSandboxProvider(pi, import.meta.filename, provider(id, backend), {
+				configure
+			});
 		}
 
 		await expect(getSandbox(pi, context)).rejects.toMatchObject({
@@ -149,6 +166,7 @@ it('retains configuration failure without opening or selecting passthrough', asy
 
 		registerSandboxProvider(
 			pi,
+			import.meta.filename,
 			{ ...provider('failed', backend), open },
 			{ configure }
 		);
@@ -172,7 +190,11 @@ it('rejects registration after configuration has started', async () => {
 	await fixture(async (pi, context) => {
 		await getSandbox(pi, context);
 		expect(() => {
-			registerSandboxProvider(pi, provider('late', new MemoryBackend()));
+			registerSandboxProvider(
+				pi,
+				import.meta.filename,
+				provider('late', new MemoryBackend())
+			);
 		}).toThrow(expect.objectContaining({ name: 'InvalidSandboxRequestError' }));
 	});
 });
@@ -183,13 +205,18 @@ it('keeps shared configuration running when one caller cancels', async () => {
 		const entered = Promise.withResolvers<AbortSignal>();
 		const configured = Promise.withResolvers<{ configuration: object }>();
 
-		registerSandboxProvider(pi, provider('active', backend), {
-			configure: (scope) => {
-				entered.resolve(scope.signal);
+		registerSandboxProvider(
+			pi,
+			import.meta.filename,
+			provider('active', backend),
+			{
+				configure: (scope) => {
+					entered.resolve(scope.signal);
 
-				return configured.promise;
+					return configured.promise;
+				}
 			}
-		});
+		);
 
 		const controller = new AbortController();
 		const cancelled = getSandbox(pi, context, { signal: controller.signal });
@@ -220,11 +247,11 @@ it.each(['approval', 'outside'] as const)(
 
 			for (const _binding of [1, 2]) {
 				if (domain === 'approval') {
-					configureExecutionApproval(pi, approval);
+					configureExecutionApproval(pi, import.meta.filename, approval);
 					continue;
 				}
 
-				configureOutsideExecution(pi, outside);
+				configureOutsideExecution(pi, import.meta.filename, outside);
 			}
 
 			await expect(getSandbox(pi, context)).rejects.toMatchObject({
@@ -240,15 +267,20 @@ it.each(['approval', 'outside'] as const)(
 
 it('applies provider cleanup overrides to host defaults', async () => {
 	await fixture(async (pi, context) => {
-		initialiseSandboxHost(pi, {
+		initialiseSandboxHost(pi, import.meta.filename, {
 			cleanup: { cancellationGraceMs: 200, disposalTimeoutMs: 400 }
 		});
-		registerSandboxProvider(pi, provider('active', new MemoryBackend()), {
-			configure: () => ({
-				configuration: {},
-				cleanup: { cancellationGraceMs: 300 }
-			})
-		});
+		registerSandboxProvider(
+			pi,
+			import.meta.filename,
+			provider('active', new MemoryBackend()),
+			{
+				configure: () => ({
+					configuration: {},
+					cleanup: { cancellationGraceMs: 300 }
+				})
+			}
+		);
 
 		const sandbox = await getSandbox(pi, context);
 
@@ -268,6 +300,7 @@ it('cancels shared configuration on shutdown and ignores its late result', async
 
 		registerSandboxProvider(
 			pi,
+			import.meta.filename,
 			{ ...provider('active', backend), open },
 			{
 				configure: (scope) => {
@@ -321,7 +354,12 @@ it.each(['success', 'failure'] as const)(
 				return { configuration: {} };
 			});
 
-			registerSandboxProvider(pi, provider('active', backend), { configure });
+			registerSandboxProvider(
+				pi,
+				import.meta.filename,
+				provider('active', backend),
+				{ configure }
+			);
 
 			const acquired = getSandbox(pi, context);
 
@@ -387,6 +425,7 @@ it('keeps raw registration input separate from transformed provider configuratio
 	await fixture(async (pi, context) => {
 		registerSandboxProvider<{ endpoint: URL }, { endpoint: string }>(
 			pi,
+			import.meta.filename,
 			connectionProvider,
 			{
 				configure: () => ({
@@ -430,18 +469,23 @@ it('shares one diagnostic allowance between configuration and execution', async 
 			});
 		};
 
-		registerSandboxProvider(pi, provider('active', backend), {
-			configure: (scope) => {
-				for (let index = 0; index < 63; index++) {
-					scope.reportDiagnostic({
-						level: 'warning',
-						message: `configuration ${String(index)}`
-					});
-				}
+		registerSandboxProvider(
+			pi,
+			import.meta.filename,
+			provider('active', backend),
+			{
+				configure: (scope) => {
+					for (let index = 0; index < 63; index++) {
+						scope.reportDiagnostic({
+							level: 'warning',
+							message: `configuration ${String(index)}`
+						});
+					}
 
-				return { configuration: {} };
+					return { configuration: {} };
+				}
 			}
-		});
+		);
 
 		const sandbox = await getSandbox(pi, context);
 
@@ -470,6 +514,7 @@ it('rejects a non-callable resolver at registration', async () => {
 		expect(() => {
 			Reflect.apply(registerSandboxProvider, undefined, [
 				pi,
+				import.meta.filename,
 				provider('active', new MemoryBackend()),
 				{ configure: false }
 			]);
@@ -488,12 +533,17 @@ it('attributes an unsupported configured relationship to the extension', async (
 	await fixture(async (pi, context) => {
 		const backend = new MemoryBackend();
 
-		registerSandboxProvider(pi, provider('active', backend), {
-			configure: () => ({
-				configuration: {},
-				policy: { ...backend.policy, workspaceRelationship: 'copied' }
-			})
-		});
+		registerSandboxProvider(
+			pi,
+			import.meta.filename,
+			provider('active', backend),
+			{
+				configure: () => ({
+					configuration: {},
+					policy: { ...backend.policy, workspaceRelationship: 'copied' }
+				})
+			}
+		);
 		await expect(getSandbox(pi, context)).rejects.toMatchObject({
 			name: 'UnsupportedSandboxPolicyError',
 			operation: 'configure',

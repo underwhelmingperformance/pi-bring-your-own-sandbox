@@ -16,11 +16,7 @@ import type {
 	OutsideProviderServiceV1,
 	OutsideServiceV1
 } from './outside-execution.js';
-import type {
-	BrokerServiceV1,
-	DiscoveryRequestV1,
-	ProviderServiceV1
-} from './protocol.js';
+import type { BrokerServiceV1, ProviderServiceV1 } from './protocol.js';
 import type { DiagnosticStore } from './provider-diagnostics.js';
 import type { RuntimeSettingsV1 } from './runtime-settings.js';
 import {
@@ -35,21 +31,17 @@ import {
 	signalSchema
 } from './schemas.js';
 
+export interface LegacyDiscoveryRequest {
+	readonly kind: 'pi-byos.discover';
+	readonly discoveryVersion: 1;
+	readonly reply: (value: unknown) => void;
+}
+
+// The approval services use this envelope until milestone 5.
 export const discoveryRequestSchema = Type.Object({
 	kind: Type.Literal('pi-byos.discover'),
 	discoveryVersion: Type.Literal(1),
-	reply: callable<DiscoveryRequestV1['reply']>()
-});
-
-export const advertisementSchema = Type.Object({
-	kind: Type.Enum(['pi-byos.broker', 'pi-byos.provider']),
-	discoveryVersion: Type.Literal(1),
-	id: nonEmptyStringSchema,
-	serviceVersions: denseArray(positiveIntegerSchema, {
-		minItems: 1,
-		uniqueItems: true
-	}),
-	service: recordSchema
+	reply: callable<LegacyDiscoveryRequest['reply']>()
 });
 
 export const outsideProviderSchema = Type.Object({
@@ -75,8 +67,7 @@ export const providerServiceSchema = Type.Intersect([
 ]);
 
 export const brokerServiceSchema = Type.Object({
-	guardVersion: Type.Literal(1),
-	copy: Type.Optional(callable<NonNullable<BrokerServiceV1['copy']>>()),
+	copy: callable<BrokerServiceV1['copy']>(),
 	id: nonEmptyStringSchema,
 	acquire: callable<BrokerServiceV1['acquire']>(),
 	negotiate: callable<BrokerServiceV1['negotiate']>(),
@@ -93,7 +84,6 @@ const providerIdSchema = Type.Refine(
 );
 const providerMethodsSchema = Type.Object({
 	id: providerIdSchema,
-	protocolVersion: Type.Literal(1),
 	validateConfig: callable<SandboxProvider<unknown>['validateConfig']>(),
 	open: callable<SandboxProvider<unknown>['open']>(),
 	copy: Type.Optional(copier),
@@ -116,11 +106,6 @@ export const approvalPolicyDeclarationSchema = Type.Object({
 	protocolVersion: Type.Literal(1),
 	validateConfig: callable<ApprovalPolicy<unknown>['validateConfig']>(),
 	decide: callable<ApprovalPolicy<unknown>['decide']>()
-});
-
-export const shellIntegrationSchema = Type.Object({
-	kind: Type.Literal('pi-byos.shell-integration'),
-	discoveryVersion: Type.Literal(1)
 });
 
 export const extensionServiceAdvertisementSchema = Type.Object({
@@ -158,8 +143,6 @@ export const runtimeSettingsSchema = Type.Object({
 		record: callable<DiagnosticStore['record']>(),
 		snapshot: callable<DiagnosticStore['snapshot']>()
 	}),
-	guardVersion: Type.Literal(1),
-	configurationVersion: Type.Enum([1, 2]),
 	assertConfigurable: callable<RuntimeSettingsV1['assertConfigurable']>(),
 	id: nonEmptyStringSchema,
 	lifetime: signalSchema,

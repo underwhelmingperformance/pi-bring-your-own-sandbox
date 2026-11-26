@@ -1,23 +1,34 @@
-import {
-	createEventBus,
-	SessionManager
-} from '@earendil-works/pi-coding-agent';
+import { SessionManager } from '@earendil-works/pi-coding-agent';
+import { Type } from 'typebox';
 import { expect, it, vi } from 'vitest';
 
-import { InvalidSandboxConfigError, registerSandboxProvider } from './api.js';
+import {
+	InvalidSandboxConfigError,
+	InvalidSandboxDeclarationError,
+	registerSandboxProvider
+} from './api.js';
 import { discoverBroker, discoverProviders } from './discovery.js';
+import { rehydrateSandboxError } from './errors.js';
 import { imageProvider } from './fixtures/image-provider.js';
+import { fixtureEvents } from './fixtures/protocol-peer.js';
 import {
 	brokerReply,
 	providerReply,
 	respond
 } from './fixtures/protocol-peer.js';
+import {
+	onProtocolRequest,
+	PROVIDER_CHANNEL,
+	RUNTIME_CHANNEL
+} from './protocol-envelope.js';
+import { discoverRuntimeServices } from './runtime-services.js';
+import { checker, nonEmptyStringSchema } from './schemas.js';
 
 it('accepts an independently authored provider on the actual Pi event bus', () => {
-	const events = createEventBus();
+	const events = fixtureEvents(import.meta.filename);
 	const reply = providerReply();
 
-	respond(events, 'pi-byos:discovery:v1:providers', reply);
+	respond(events, 'pi-byos:provider', reply);
 
 	expect(
 		discoverProviders(events).map((service) => ({
@@ -50,10 +61,10 @@ it('accepts an independently authored provider on the actual Pi event bus', () =
 });
 
 it('snapshots metadata from an independent peer before asynchronous work', () => {
-	const events = createEventBus();
+	const events = fixtureEvents(import.meta.filename);
 	const reply = providerReply();
 
-	respond(events, 'pi-byos:discovery:v1:providers', reply);
+	respond(events, 'pi-byos:provider', reply);
 
 	const services = discoverProviders(events);
 
@@ -79,10 +90,10 @@ it('snapshots metadata from an independent peer before asynchronous work', () =>
 });
 
 it('accepts an independent broker service and preserves its method receiver', async () => {
-	const events = createEventBus();
+	const events = fixtureEvents(import.meta.filename);
 	const reply = brokerReply();
 
-	respond(events, 'pi-byos:discovery:v1:brokers', reply);
+	respond(events, 'pi-byos:runtime', reply);
 
 	const service = discoverBroker(events);
 
@@ -100,12 +111,12 @@ it('accepts an independent broker service and preserves its method receiver', as
 });
 
 it('collects every synchronous reply before validating and ignores late replies', async () => {
-	const events = createEventBus();
+	const events = fixtureEvents(import.meta.filename);
 	const late = providerReply('late');
 
-	respond(events, 'pi-byos:discovery:v1:providers', providerReply('first'));
-	respond(events, 'pi-byos:discovery:v1:providers', late, true);
-	respond(events, 'pi-byos:discovery:v1:providers', providerReply('last'));
+	respond(events, 'pi-byos:provider', providerReply('first'));
+	respond(events, 'pi-byos:provider', late, true);
+	respond(events, 'pi-byos:provider', providerReply('last'));
 
 	const result = discoverProviders(events);
 
@@ -125,17 +136,17 @@ it.each([
 	],
 	[
 		'missing version',
-		{ ...providerReply(), discoveryVersion: undefined },
+		{ ...providerReply(), major: undefined },
 		'InvalidSandboxDeclarationError'
 	],
 	[
 		'future service',
-		{ ...providerReply(), serviceVersions: [3] },
+		{ ...providerReply(), major: 3 },
 		'IncompatibleSandboxProtocolError'
 	],
 	[
-		'duplicate versions',
-		{ ...providerReply(), serviceVersions: [1, 1] },
+		'fractional feature level',
+		{ ...providerReply(), featureLevel: 1.5 },
 		'InvalidSandboxDeclarationError'
 	],
 	[
@@ -201,10 +212,10 @@ it.each([
 		'InvalidSandboxDeclarationError'
 	]
 ])('fails on %s even alongside a valid provider', (_label, reply, name) => {
-	const events = createEventBus();
+	const events = fixtureEvents(import.meta.filename);
 
-	respond(events, 'pi-byos:discovery:v1:providers', reply);
-	respond(events, 'pi-byos:discovery:v1:providers', providerReply('valid'));
+	respond(events, 'pi-byos:provider', reply);
+	respond(events, 'pi-byos:provider', providerReply('valid'));
 
 	expect(() => discoverProviders(events)).toThrow(
 		expect.objectContaining({ name })
@@ -214,10 +225,10 @@ it.each([
 it.each(['same', 'different'])(
 	'rejects multiple brokers with %s identities',
 	(identity) => {
-		const events = createEventBus();
+		const events = fixtureEvents(import.meta.filename);
 
-		respond(events, 'pi-byos:discovery:v1:brokers', brokerReply('same'));
-		respond(events, 'pi-byos:discovery:v1:brokers', brokerReply(identity));
+		respond(events, 'pi-byos:runtime', brokerReply('same'));
+		respond(events, 'pi-byos:runtime', brokerReply(identity));
 
 		expect(() => discoverBroker(events)).toThrow(
 			expect.objectContaining({ name: 'DuplicateBrokerError' })
@@ -226,37 +237,35 @@ it.each(['same', 'different'])(
 );
 
 it('rejects a repeated provider callback', () => {
-	const events = createEventBus();
+	const events = fixtureEvents(import.meta.filename);
 	const reply = providerReply();
 
-	respond(events, 'pi-byos:discovery:v1:providers', reply);
-	respond(events, 'pi-byos:discovery:v1:providers', reply);
+	respond(events, 'pi-byos:provider', reply);
+	respond(events, 'pi-byos:provider', reply);
 
 	expect(() => discoverProviders(events)).toThrow(
 		expect.objectContaining({ name: 'DuplicateProviderError' })
 	);
 });
 
-it('requires relationship-aware peers for providers that offer a copy', () => {
-	const events = createEventBus();
+it('includes workspace relationships in the level-zero provider offer', () => {
+	const events = fixtureEvents(import.meta.filename);
 
 	registerSandboxProvider(
-		{ events, sendMessage: vi.fn(), appendEntry: vi.fn(), on: vi.fn() },
+		{
+			events,
+			sendMessage: vi.fn(),
+			appendEntry: vi.fn(),
+			on: vi.fn(),
+			getActiveTools() {
+				throw new Error('Factory loading.');
+			}
+		},
+		import.meta.filename,
 		{
 			...imageProvider,
 			policies: { ...imageProvider.policies, workspaceRelationship: ['copied'] }
 		}
-	);
-
-	const reply = vi.fn();
-
-	events.emit('pi-byos:discovery:v1:providers', {
-		kind: 'pi-byos.discover',
-		discoveryVersion: 1,
-		reply
-	});
-	expect(reply).toHaveBeenCalledExactlyOnceWith(
-		expect.objectContaining({ serviceVersions: [2] })
 	);
 	expect(
 		discoverProviders(events)[0]?.policies.workspaceRelationship
@@ -264,12 +273,15 @@ it('requires relationship-aware peers for providers that offer a copy', () => {
 });
 
 it('registers a typed provider without allocating or validating configuration', () => {
-	const events = createEventBus();
+	const events = fixtureEvents(import.meta.filename);
 	let opens = 0;
 
 	registerSandboxProvider(
 		{
 			events,
+			getActiveTools() {
+				throw new Error('Factory loading.');
+			},
 			sendMessage() {
 				throw new Error('Unexpected diagnostic message.');
 			},
@@ -278,6 +290,7 @@ it('registers a typed provider without allocating or validating configuration', 
 			},
 			on: vi.fn(() => vi.fn())
 		},
+		import.meta.filename,
 		{
 			...imageProvider,
 			open(request, context) {
@@ -300,11 +313,14 @@ it('registers a typed provider without allocating or validating configuration', 
 });
 
 it('preserves explicit provider configuration provenance through registration', () => {
-	const events = createEventBus();
+	const events = fixtureEvents(import.meta.filename);
 
 	registerSandboxProvider(
 		{
 			events,
+			getActiveTools() {
+				throw new Error('Factory loading.');
+			},
 			sendMessage() {
 				throw new Error('Unexpected diagnostic message.');
 			},
@@ -313,6 +329,7 @@ it('preserves explicit provider configuration provenance through registration', 
 			},
 			on: vi.fn(() => vi.fn())
 		},
+		import.meta.filename,
 		{
 			...imageProvider,
 			validateConfig() {
@@ -346,11 +363,14 @@ it.each([
 ])(
 	'rejects $outcome asynchronous validation before opening',
 	({ validateConfig }) => {
-		const events = createEventBus();
+		const events = fixtureEvents(import.meta.filename);
 
 		registerSandboxProvider(
 			{
 				events,
+				getActiveTools() {
+					throw new Error('Factory loading.');
+				},
 				sendMessage() {
 					throw new Error('Unexpected diagnostic message.');
 				},
@@ -359,10 +379,10 @@ it.each([
 				},
 				on: vi.fn(() => vi.fn())
 			},
+			import.meta.filename,
 			{
 				id: imageProvider.id,
 				label: imageProvider.label,
-				protocolVersion: 1,
 				capabilities: imageProvider.capabilities,
 				policies: imageProvider.policies,
 				validateConfig,
@@ -379,7 +399,7 @@ it.each([
 );
 
 it('snapshots provider default policies and rejects unsupported defaults', () => {
-	const events = createEventBus();
+	const events = fixtureEvents(import.meta.filename);
 	const defaultPolicy = {
 		workspaceAccess: 'read-write',
 		filesystemScope: 'provider-default',
@@ -387,7 +407,7 @@ it('snapshots provider default policies and rejects unsupported defaults', () =>
 	} as const;
 	const reply = providerReply();
 
-	respond(events, 'pi-byos:discovery:v1:providers', {
+	respond(events, 'pi-byos:provider', {
 		...reply,
 		service: { ...reply.service, defaultPolicy }
 	});
@@ -397,9 +417,9 @@ it('snapshots provider default policies and rejects unsupported defaults', () =>
 	expect(provider?.defaultPolicy).toStrictEqual(defaultPolicy);
 	expect(Object.isFrozen(provider?.defaultPolicy)).toBe(true);
 
-	const invalid = createEventBus();
+	const invalid = fixtureEvents(import.meta.filename);
 
-	respond(invalid, 'pi-byos:discovery:v1:providers', {
+	respond(invalid, 'pi-byos:provider', {
 		...reply,
 		service: {
 			...reply.service,
@@ -414,7 +434,7 @@ it('snapshots provider default policies and rejects unsupported defaults', () =>
 it.each([false, true])(
 	'requires an explicit capability for protected default policies: %s',
 	(canProtect) => {
-		const events = createEventBus();
+		const events = fixtureEvents(import.meta.filename);
 		const reply = providerReply();
 		const defaultPolicy = {
 			workspaceAccess: 'read-write',
@@ -423,7 +443,7 @@ it.each([false, true])(
 			workspaceProtection: [{ kind: 'git-metadata' }]
 		};
 
-		respond(events, 'pi-byos:discovery:v1:providers', {
+		respond(events, 'pi-byos:provider', {
 			...reply,
 			service: {
 				...reply.service,
@@ -463,13 +483,106 @@ it.each([false, true])(
 	}
 );
 
-it('rejects an independent broker without the required guard contract', () => {
-	const events = createEventBus();
+it('rejects an independent broker without a copy method', () => {
+	const events = fixtureEvents(import.meta.filename);
 	const reply = brokerReply();
 
-	Reflect.deleteProperty(reply.service, 'guardVersion');
-	respond(events, 'pi-byos:discovery:v1:brokers', reply);
+	Object.defineProperty(reply.service, 'copy', { value: undefined });
+	respond(events, 'pi-byos:runtime', reply);
 	expect(() => discoverBroker(events)).toThrow(
 		expect.objectContaining({ name: 'InvalidSandboxDeclarationError' })
 	);
 });
+
+const serviceSchema = Type.Object({ id: nonEmptyStringSchema });
+const isService = checker(serviceSchema);
+const runtimeReply = {
+	type: 'fixture',
+	id: 'registered',
+	service: { id: 'registered' }
+};
+const discoverFixture = (events: Parameters<typeof discoverBroker>[0]) =>
+	discoverRuntimeServices(events, 'fixture', serviceSchema, isService);
+
+it.each([
+	{
+		label: 'provider declaration',
+		channel: PROVIDER_CHANNEL,
+		request: 'get-providers',
+		replies: [{ ...providerReply(), id: 'mismatch' }],
+		discover: discoverProviders
+	},
+	{
+		label: 'broker service',
+		channel: RUNTIME_CHANNEL,
+		request: 'get-broker',
+		replies: [{ ...brokerReply(), id: 'mismatch' }],
+		discover: discoverBroker
+	},
+	{
+		label: 'runtime service',
+		channel: RUNTIME_CHANNEL,
+		request: 'get-fixture',
+		replies: [{ ...runtimeReply, id: 'mismatch' }],
+		discover: discoverFixture
+	},
+	{
+		label: 'duplicate runtime service',
+		channel: RUNTIME_CHANNEL,
+		request: 'get-fixture',
+		replies: [runtimeReply, runtimeReply],
+		discover: discoverFixture
+	}
+] as const)(
+	'identifies the peer in an error for a $label',
+	({ channel, request, replies, discover }) => {
+		expect.assertions(1);
+
+		const events = fixtureEvents(import.meta.filename);
+
+		for (const [index, reply] of replies.entries()) {
+			onProtocolRequest(
+				events,
+				channel,
+				{
+					major: 1,
+					featureLevel: 0,
+					packageVersion: '1.0.0',
+					buildId: `fixture-${String(index)}\u{200B}`,
+					extensionSource: `/fixture-${String(index)}.ts\n`
+				},
+				request,
+				() => reply,
+				channel === PROVIDER_CHANNEL ? 'advertisement' : 'reply'
+			);
+		}
+
+		try {
+			discover(events);
+		} catch (error) {
+			if (!(error instanceof InvalidSandboxDeclarationError)) {
+				throw error;
+			}
+
+			const last = String(replies.length - 1);
+			const message = String.raw`Invalid protocol service reply from /fixture-${last}.ts\x0a (build fixture-${last}\u{200b}).`;
+			const rehydrated = rehydrateSandboxError(error, undefined, {
+				operation: 'configure'
+			});
+			const serialised = JSON.stringify([error, rehydrated]);
+			const details: unknown = JSON.parse(serialised);
+			const name = 'InvalidSandboxDeclarationError';
+
+			expect({
+				details,
+				messages: [error.message, rehydrated.message]
+			}).toStrictEqual({
+				details: [
+					{ name, operation: 'discover' },
+					{ name, operation: 'configure' }
+				],
+				messages: [message, message]
+			});
+		}
+	}
+);

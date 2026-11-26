@@ -31,11 +31,10 @@ function provider(backend: SandboxBackend): InlineExtension {
 	return {
 		name: 'target-provider',
 		factory(pi) {
-			registerSandboxProvider(pi, {
+			registerSandboxProvider(pi, import.meta.filename, {
 				id: 'fixture',
 				defaultPolicy: backend.policy,
 				label: 'In-memory shell; no OS isolation.',
-				protocolVersion: 1,
 				capabilities: backend.capabilities,
 				policies: {
 					workspaceAccess: ['read-write'],

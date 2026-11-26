@@ -1,26 +1,30 @@
-import {
-	createEventBus,
-	SessionManager
-} from '@earendil-works/pi-coding-agent';
+import { SessionManager } from '@earendil-works/pi-coding-agent';
 import { expect, it, vi } from 'vitest';
 
-import { findShellReviewSource, hasShellReviewRoute } from './api.js';
 import type {
 	Sandbox,
 	SandboxCloseReport,
 	SandboxCopyOptions,
 	SandboxHost
 } from './contracts.js';
+import { fixtureEvents } from './fixtures/protocol-peer.js';
+import { protocolAddress } from './protocol-address.js';
+import { onProtocolRequest, REVIEW_CHANNEL } from './protocol-envelope.js';
+import { findReviewRequest } from './protocol-payloads.js';
+import { findShellReviewSource, hasShellReviewRoute } from './review-route.js';
+import { checker } from './schemas.js';
+import { isRecord } from './validation.js';
 
-const CHANNEL = 'pi-byos:review:tool-call:v2';
+const isReviewRequest = checker(findReviewRequest);
 const call = { toolName: 'bash', toolCallId: 'call-1' };
 
 function host(): SandboxHost {
 	return {
-		events: createEventBus(),
+		events: fixtureEvents(import.meta.filename),
 		on: vi.fn(() => vi.fn()),
 		sendMessage: vi.fn(),
-		appendEntry: vi.fn()
+		appendEntry: vi.fn(),
+		getActiveTools: () => []
 	};
 }
 
@@ -75,33 +79,34 @@ function answer(
 	replies: readonly unknown[],
 	isAvailable = true
 ) {
-	pi.events.on(CHANNEL, (message: unknown) => {
-		const query = message as {
-			kind?: string;
-			sessionId?: string;
-			toolName?: string;
-			toolCallId?: string;
-			reply: (source?: unknown) => void;
-		};
+	const peer = protocolAddress(pi.events);
 
-		if (query.kind === 'available') {
-			if (isAvailable) {
-				query.reply();
+	onProtocolRequest(pi.events, REVIEW_CHANNEL, peer, 'get-availability', () =>
+		isAvailable ? { type: 'available' } : undefined
+	);
+
+	for (const source of replies) {
+		onProtocolRequest(
+			pi.events,
+			REVIEW_CHANNEL,
+			peer,
+			'find-source',
+			(request) => {
+				const query = request.payload;
+
+				if (
+					!isReviewRequest(query) ||
+					query.sessionId !== sessionId ||
+					query.toolName !== call.toolName ||
+					query.toolCallId !== call.toolCallId
+				) {
+					return;
+				}
+
+				return { ...(isRecord(source) && source), type: 'source' };
 			}
-
-			return;
-		}
-
-		if (
-			query.sessionId === sessionId &&
-			query.toolName === call.toolName &&
-			query.toolCallId === call.toolCallId
-		) {
-			for (const reply of replies) {
-				query.reply(reply);
-			}
-		}
-	});
+		);
+	}
 }
 
 const permissive = {

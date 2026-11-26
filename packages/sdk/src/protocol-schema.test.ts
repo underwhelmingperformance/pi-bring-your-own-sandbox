@@ -90,3 +90,15 @@ it('requires a new field to be optional within a protocol major', () => {
 		'Protocol field field must be optional when added.'
 	);
 });
+
+it('removes fields added later even when the object permits other properties', () => {
+	const advertisement = Type.Object({
+		id: Type.String(),
+		label: Type.Optional(label)
+	});
+	const value = { id: 'provider', label: 'Provider label' };
+
+	expect(projectOffer(advertisement, value, 0)).toStrictEqual({
+		id: 'provider'
+	});
+});

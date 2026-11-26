@@ -1,8 +1,7 @@
 import type {
 	ProcessResult,
 	SandboxClient,
-	SandboxContext,
-	SandboxHost
+	SandboxContext
 } from 'pi-bring-your-own-sandbox/api';
 
 /**
@@ -12,13 +11,12 @@ The injected client lets tests substitute SDK behaviour without selecting a
 different provider in consumer code.
 */
 export async function inspectWorkspace(
-	client: SandboxClient,
-	pi: SandboxHost,
+	client: Pick<SandboxClient, 'get'>,
 	context: SandboxContext,
 	signal?: AbortSignal
 ): Promise<ProcessResult> {
 	const options = signal === undefined ? {} : { signal };
-	const sandbox = await client.getSandbox(pi, context, options);
+	const sandbox = await client.get(context, options);
 
 	return sandbox.exec({ kind: 'argv', executable: 'pwd', args: [] }, options);
 }

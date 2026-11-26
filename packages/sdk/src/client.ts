@@ -3,21 +3,24 @@ import { inspectContext } from './context.js';
 import type {
 	Sandbox,
 	SandboxAcquireOptions,
+	SandboxClient,
 	SandboxCloseReport,
 	SandboxContext,
 	SandboxCopy,
 	SandboxCopyOptions,
 	SandboxHost
 } from './contracts.js';
-import { ensureSandboxService } from './default-broker.js';
+import { bindFactory, ensureSandboxService } from './default-broker.js';
 import {
 	isSandboxError,
 	SandboxCleanupError,
-	UnsupportedSandboxCapabilityError
+	SandboxInitialisationError
 } from './errors.js';
 import { closeApprovals } from './execution-approval.js';
 import { closeOutsideExecution } from './outside-execution.js';
 import type { SandboxNegotiation } from './protocol.js';
+import { isPiBound } from './protocol-address.js';
+import { findShellReviewSource, hasShellReviewRoute } from './review-route.js';
 import { runtimeSettings } from './runtime-settings.js';
 import { copyOptions, rethrowCopyError } from './sandbox-copy.js';
 
@@ -59,10 +62,6 @@ export async function copyHostWorkspace(
 
 	const settings = copyOptions(options);
 	const broker = ensureSandboxService(pi);
-
-	if (broker.copy === undefined) {
-		throw new UnsupportedSandboxCapabilityError({ operation: 'acquire' });
-	}
 
 	const copy = await broker.copy(context, { kind: 'host' }, settings);
 
@@ -155,5 +154,28 @@ export async function closeSandboxSession(
 		confirmed: reports.every((report) => report.confirmed),
 		failures: Object.freeze(reports.flatMap((report) => report.failures)),
 		recoveries: Object.freeze(reports.flatMap((report) => report.recoveries))
+	});
+}
+
+/**
+Register a consumer during its Pi extension factory. The client records the
+extension source for discovery and review.
+*/
+export function createSandboxClient(
+	pi: SandboxHost,
+	extensionSource: string
+): SandboxClient {
+	if (isPiBound(pi)) {
+		throw new SandboxInitialisationError({ operation: 'configure' });
+	}
+
+	bindFactory(pi, extensionSource);
+
+	return Object.freeze<SandboxClient>({
+		get: (context, options) => getSandbox(pi, context, options),
+		negotiate: (context, options) => negotiateSandbox(pi, context, options),
+		hasShellReviewRoute: () => hasShellReviewRoute(pi),
+		findShellReviewSource: (context, call) =>
+			findShellReviewSource(pi, context, call)
 	});
 }

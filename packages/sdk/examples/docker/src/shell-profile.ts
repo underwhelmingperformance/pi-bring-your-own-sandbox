@@ -8,8 +8,8 @@ import dockerExtension from './extension.js';
 Load with Pi's Bash tool selected for a Docker development session.
 */
 export default function dockerShellProfile(pi: ExtensionAPI): void {
-	dockerExtension(pi);
-	registerSandboxRequirement(pi, {
+	dockerExtension(pi, import.meta.filename);
+	registerSandboxRequirement(pi, import.meta.filename, {
 		providerId: 'example.docker',
 		capabilities: ['exec'],
 		shells: ['bash'],

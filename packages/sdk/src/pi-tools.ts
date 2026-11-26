@@ -8,6 +8,7 @@ import { Type } from 'typebox';
 
 import { InvalidApprovalRequestError } from './approval-errors.js';
 import { justificationSchema } from './approval-schemas.js';
+import { bindFactory } from './default-broker.js';
 import { outsideShellOperations } from './outside-shell-operations.js';
 import { registerShellIntegrationDiagnostics } from './pi-integration-status.js';
 import { createShellOperations } from './pi-shell-operations.js';
@@ -120,6 +121,7 @@ export default function sandboxTools(
 	pi: ExtensionAPI,
 	extensionPath = import.meta.filename
 ): void {
+	bindFactory(pi, extensionPath);
 	pi.registerTool(shellDefinition(pi, 'bash', extensionPath).tool);
 	pi.registerTool(shellDefinition(pi, 'powershell', extensionPath).tool);
 	registerUserShell(pi);
@@ -135,6 +137,8 @@ export function registerShellOnlyTools(
 	pi: ExtensionAPI,
 	extensionPath: string
 ): void {
+	bindFactory(pi, extensionPath);
+
 	const bash = shellDefinition(pi, 'bash', extensionPath);
 
 	pi.registerTool(bash.tool);

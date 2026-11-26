@@ -279,19 +279,27 @@ mismatched identities. A reply's shape alone does not establish isolation.
 
 SDK copies with different protocol majors fail discovery. The error identifies
 both builds and their extensions. Copies with the same major use the lower
-feature level. The broker reduces offers to that level and rejects demands that
-require a higher level. Providers can therefore offer fewer operations to older
-peers, and consumers never lose a requirement silently. The [wire format][wire]
-specifies the version fields and identity envelopes.
+feature level. Senders reduce offers to that level. A demand that requires a
+higher level fails with an error that identifies the extension to update.
+Providers can therefore offer fewer operations to older peers, and consumers
+never lose a requirement silently. The [wire format][wire] specifies the version
+fields and identity envelopes.
 
 [wire]: api-protocol.md#internal-protocol
 
-<!-- The total order for tied builds is provisional in milestone 1. -->
+<!-- Factory entry points and the build election are provisional. -->
 
-The broker starts after all extensions load. For the shared protocol major, the
-build with the highest feature level supplies the broker. If different builds
-tie, a total order on build identity decides. Selection is independent of
-extension load order.
+During the Pi extension factory, consumers create a client with
+`createSandboxClient(pi, import.meta.filename)`. Provider registration and the
+Pi tool integration register their own builds. Embedding hosts can supply
+defaults outside an extension factory and do not enter the election.
+
+The broker starts after Pi binds actions for the loaded extensions. The build
+with the highest feature level supplies the broker. Ties use the SDK package
+version in SemVer order, then the build ID and extension source path in code
+unit order. Creating a client after Pi binds actions fails with
+`SandboxInitialisationError`. Calling `get` before Pi binds actions raises the
+same error.
 
 ## Lifetime and recovery
 

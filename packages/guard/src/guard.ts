@@ -9,9 +9,10 @@ and policy requirements. This guard does not authenticate provider extensions
 or intercept operations outside the SDK.
 */
 export function createSandboxGuard(
+	extensionSource: string,
 	requirements: SandboxRequirements = {}
 ): ExtensionFactory {
 	return (pi) => {
-		registerSandboxRequirement(pi, requirements);
+		registerSandboxRequirement(pi, extensionSource, requirements);
 	};
 }

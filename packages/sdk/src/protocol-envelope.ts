@@ -4,7 +4,9 @@ import type { EventBus } from '@earendil-works/pi-coding-agent';
 import type { Static } from 'typebox';
 import { Type } from 'typebox';
 
+import { cleanDisplayText } from './display-text.js';
 import { InvalidSandboxDeclarationError } from './errors.js';
+import { packageVersionSchema } from './protocol-version.js';
 import {
 	checker,
 	nonEmptyStringSchema,
@@ -22,7 +24,7 @@ export const PROTOCOL_FEATURE_LEVEL = 0;
 
 const identityFields = {
 	buildId: nonEmptyStringSchema,
-	packageVersion: nonEmptyStringSchema,
+	packageVersion: packageVersionSchema,
 	extensionSource: nonEmptyStringSchema,
 	major: positiveIntegerSchema,
 	featureLevel: nonNegativeIntegerSchema
@@ -55,6 +57,56 @@ type Channel =
 
 const isEnvelope = checker(protocolEnvelopeSchema);
 
+type Listener = (message: unknown) => void;
+
+const dispatchers = new WeakMap<EventBus, Map<Channel, Set<Listener>>>();
+
+function listen(
+	events: EventBus,
+	channel: Channel,
+	listener: Listener
+): () => void {
+	let channels = dispatchers.get(events);
+
+	if (channels === undefined) {
+		channels = new Map();
+		dispatchers.set(events, channels);
+	}
+
+	let listeners = channels.get(channel);
+
+	if (listeners === undefined) {
+		const handlers = new Set<Listener>();
+
+		events.on(channel, (message) => {
+			const currentHandlers = [...handlers];
+
+			for (const handle of currentHandlers) {
+				handle(message);
+			}
+		});
+		channels.set(channel, handlers);
+		listeners = handlers;
+	}
+
+	listeners.add(listener);
+
+	return () => {
+		listeners.delete(listener);
+	};
+}
+
+export function invalidProtocolServiceReply(
+	peer: ProtocolIdentity
+): InvalidSandboxDeclarationError {
+	return new InvalidSandboxDeclarationError({
+		operation: 'discover',
+		protocolMessage: cleanDisplayText(
+			`Invalid protocol service reply from ${peer.extensionSource} (build ${peer.buildId}).`
+		)
+	});
+}
+
 export function collectProtocolReplies(
 	events: EventBus,
 	channel: Channel,
@@ -63,7 +115,7 @@ export function collectProtocolReplies(
 ): readonly ProtocolEnvelope[] {
 	const requestId = randomUUID();
 	const candidates: unknown[] = [];
-	const stop = events.on(channel, (message) => {
+	const stop = listen(events, channel, (message) => {
 		if (
 			isRecord(message) &&
 			message['requestId'] === requestId &&
@@ -86,7 +138,18 @@ export function collectProtocolReplies(
 
 	return candidates.map((message) => {
 		if (!isEnvelope(message)) {
-			throw new InvalidSandboxDeclarationError({ operation: 'discover' });
+			const source = isRecord(message) ? message['extensionSource'] : undefined;
+			const build = isRecord(message) ? message['buildId'] : undefined;
+
+			throw new InvalidSandboxDeclarationError({
+				operation: 'discover',
+				...(typeof source === 'string' &&
+					typeof build === 'string' && {
+						protocolMessage: cleanDisplayText(
+							`Invalid protocol envelope from ${source} (build ${build}).`
+						)
+					})
+			});
 		}
 
 		return message;
@@ -101,7 +164,7 @@ export function onProtocolRequest(
 	respond: (request: ProtocolEnvelope) => ProtocolPayload | undefined,
 	kind: 'advertisement' | 'reply' = 'reply'
 ): () => void {
-	return events.on(channel, (message) => {
+	return listen(events, channel, (message) => {
 		if (
 			!isEnvelope(message) ||
 			message.kind !== 'request' ||

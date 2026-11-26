@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 
 import type { TSchema } from 'typebox';
 
-import { atFeatureLevel } from './protocol-schema.js';
+import { atFeatureLevel, featureLevelOf } from './protocol-schema.js';
 
 type Description =
 	| null
@@ -60,14 +60,21 @@ function describe(value: unknown): Description {
 export function protocolSnapshot(
 	major: number,
 	featureLevel: number,
-	schemas: Readonly<Record<string, TSchema>>
+	schemas: Readonly<Record<string, TSchema>>,
+	schemaLevel = featureLevel
 ): Description {
-	const projected = Object.entries(schemas).map(
-		([name, schema]): [string, TSchema] => [
+	const projected = Object.entries(schemas)
+		.filter(
+			([name, schema]) =>
+				name === 'envelope' || featureLevelOf(schema) <= schemaLevel
+		)
+		.map(([name, schema]): [string, TSchema] => [
 			name,
-			atFeatureLevel(schema, featureLevel)
-		]
-	);
+			atFeatureLevel(
+				schema,
+				name === 'envelope' ? Number.MAX_SAFE_INTEGER : schemaLevel
+			)
+		]);
 
 	return describe({
 		major,

@@ -30,7 +30,9 @@ export const approvalSelectionSchema = Type.Object(
 	{ additionalProperties: false }
 );
 export const outsideSelectionSchema = Type.Object(
-	{ destination: Type.Enum(['normal', 'provider']) },
+	{
+		destination: Type.Union([Type.Literal('normal'), Type.Literal('provider')])
+	},
 	{ additionalProperties: false }
 );
 export const providerConfigSchema = Type.Object(
@@ -155,4 +157,7 @@ export const grepRequestSchema = Type.Object(
 	{ additionalProperties: false }
 );
 
-export const accessModeSchema = Type.Enum(['read', 'write']);
+export const accessModeSchema = Type.Union([
+	Type.Literal('read'),
+	Type.Literal('write')
+]);

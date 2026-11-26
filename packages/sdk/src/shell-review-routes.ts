@@ -12,9 +12,13 @@ import {
 } from './errors.js';
 import { boundedApproval } from './execution-approval.js';
 import { OperationScope } from './lifecycle.js';
-import { SHELL_REVIEW_CHANNEL } from './review-route.js';
+import { protocolAddress } from './protocol-address.js';
+import { onProtocolRequest, REVIEW_CHANNEL } from './protocol-envelope.js';
+import { findReviewRequest, sourceReply } from './protocol-payloads.js';
+import { projectReply } from './protocol-version.js';
 import { runtimeSettings } from './runtime-settings.js';
 import { copyOptions, rethrowCopyError } from './sandbox-copy.js';
+import { checker } from './schemas.js';
 import { isRecord } from './validation.js';
 
 type BoundDestination =
@@ -28,41 +32,7 @@ interface Route {
 	destination?: BoundDestination;
 }
 
-function isAvailabilityQuery(
-	message: unknown
-): message is { kind: 'available'; reply: () => void } {
-	return (
-		isRecord(message) &&
-		message['kind'] === 'available' &&
-		typeof message['reply'] === 'function'
-	);
-}
-
-/**
-The pending tool call's destination, narrowed to one operation. A reviewer can
-copy the files that the command will see, but cannot run anything in the
-destination itself.
-*/
-interface ReviewSource {
-	readonly copy: (options?: SandboxCopyOptions) => Promise<SandboxCopy>;
-}
-
-interface ReviewQuery {
-	readonly toolName: string;
-	readonly toolCallId: string;
-	readonly sessionId: string;
-	readonly reply: (source: ReviewSource) => void;
-}
-
-function isReviewQuery(message: unknown): message is ReviewQuery {
-	return (
-		isRecord(message) &&
-		typeof message['toolName'] === 'string' &&
-		typeof message['toolCallId'] === 'string' &&
-		typeof message['sessionId'] === 'string' &&
-		typeof message['reply'] === 'function'
-	);
-}
+const isReviewQuery = checker(findReviewRequest);
 
 export class ShellReviewRoutes {
 	readonly #routes = new Map<string, Route>();
@@ -87,42 +57,57 @@ export class ShellReviewRoutes {
 				isOutside: input['execution'] === 'outside-sandbox'
 			});
 		});
-		pi.events.on(SHELL_REVIEW_CHANNEL, (message: unknown) => {
-			if (isAvailabilityQuery(message)) {
-				if (isSelected()) {
-					message.reply();
+
+		const local = protocolAddress(pi.events);
+
+		onProtocolRequest(
+			pi.events,
+			REVIEW_CHANNEL,
+			local,
+			'get-availability',
+			() => (isSelected() ? { type: 'available' } : undefined)
+		);
+
+		onProtocolRequest(
+			pi.events,
+			REVIEW_CHANNEL,
+			local,
+			'find-source',
+			(request) => {
+				const message = request.payload;
+
+				if (!isReviewQuery(message) || message.toolName !== toolName) {
+					return;
 				}
 
-				return;
+				const id = message.toolCallId;
+				const route = this.#routes.get(id);
+
+				if (
+					route === undefined ||
+					route.context.sessionManager.getSessionId() !== message.sessionId ||
+					!isSelected()
+				) {
+					return;
+				}
+
+				return projectReply(
+					sourceReply,
+					{
+						type: 'source',
+						copy: (options?: SandboxCopyOptions) =>
+							this.#copy(
+								pi,
+								route,
+								options,
+								() => this.#routes.get(id) === route && isSelected()
+							)
+					},
+					local,
+					request
+				);
 			}
-
-			if (!isReviewQuery(message) || message.toolName !== toolName) {
-				return;
-			}
-
-			const id = message.toolCallId;
-			const route = this.#routes.get(id);
-
-			if (
-				!route ||
-				route.context.sessionManager.getSessionId() !== message.sessionId ||
-				!isSelected()
-			) {
-				return;
-			}
-
-			message.reply(
-				Object.freeze({
-					copy: (options?: SandboxCopyOptions) =>
-						this.#copy(
-							pi,
-							route,
-							options,
-							() => this.#routes.get(id) === route && isSelected()
-						)
-				})
-			);
-		});
+		);
 
 		pi.on('tool_result', (event) => {
 			if (event.toolName === toolName) {

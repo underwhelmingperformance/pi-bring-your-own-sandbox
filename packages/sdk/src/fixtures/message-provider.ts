@@ -278,7 +278,6 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 	const provider: SandboxProvider<undefined> = {
 		id: 'fixture.message',
 		label: 'Message-channel provider without OS isolation',
-		protocolVersion: 1,
 		capabilities: {
 			processKinds: ['argv', 'shell'],
 			terminationScope: 'workload',

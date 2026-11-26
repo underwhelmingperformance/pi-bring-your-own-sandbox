@@ -62,13 +62,12 @@ it.each(['sandbox', 'normal', 'provider'] as const)(
 					{
 						name: 'scope-fixture',
 						factory(pi) {
-							initialiseSandboxHost(pi, {
+							initialiseSandboxHost(pi, import.meta.filename, {
 								...(destination === 'normal' && { normalExecutor: outside })
 							});
 							config.activate(pi, {
 								id: 'fixture',
 								label: 'Termination fixture',
-								protocolVersion: 1,
 								capabilities: backend.capabilities,
 								policies: {
 									workspaceAccess: ['read-write'],
@@ -218,7 +217,7 @@ it('reports native Pi outside-shell cancellation without a termination guarantee
 			{
 				name: 'native-shell-fixture',
 				factory(pi) {
-					initialiseSandboxHost(pi, {});
+					initialiseSandboxHost(pi, import.meta.filename, {});
 					pi.registerCommand('native-scope-test', {
 						description: 'Exercise native Pi cancellation.',
 						async handler(_arguments, context) {

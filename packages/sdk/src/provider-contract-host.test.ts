@@ -20,7 +20,6 @@ import { openPassthrough } from './passthrough.js';
 const provider: SandboxProvider<undefined> = {
 	id: 'fixture.host',
 	label: 'Host provider contract scenario without isolation',
-	protocolVersion: 1,
 	capabilities: {
 		processKinds: ['argv', 'shell'],
 		terminationScope: 'process-group',

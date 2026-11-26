@@ -2,18 +2,18 @@ import { randomUUID } from 'node:crypto';
 
 import type { EventBus } from '@earendil-works/pi-coding-agent';
 
-import {
-	discoverBroker,
-	isBrokerService,
-	isDiscoveryRequest
-} from './discovery.js';
+import { discoverBroker, isBrokerService } from './discovery.js';
 import {
 	InvalidSandboxDeclarationError,
-	SandboxInitialisationError,
-	UnsupportedSandboxCapabilityError
+	SandboxInitialisationError
 } from './errors.js';
-import type { BrokerServiceV1, ServiceAdvertisementV1 } from './protocol.js';
-import { BROKER_DISCOVERY_CHANNEL } from './protocol.js';
+import type { BrokerServiceV1 } from './protocol.js';
+import { protocolAddress } from './protocol-address.js';
+import { brokerOffers } from './protocol-broker-results.js';
+import type { ProtocolIdentity } from './protocol-envelope.js';
+import { onProtocolRequest, RUNTIME_CHANNEL } from './protocol-envelope.js';
+import { brokerReply } from './protocol-payloads.js';
+import { projectReply } from './protocol-version.js';
 
 export function ensureBroker(
 	events: EventBus,
@@ -53,15 +53,8 @@ export function ensureBroker(
 	};
 
 	const service = Object.freeze<BrokerServiceV1>({
-		guardVersion: 1,
 		copy: (context, source, options) =>
-			invoke((broker) => {
-				return broker.copy === undefined
-					? Promise.reject(
-							new UnsupportedSandboxCapabilityError({ operation: 'acquire' })
-						)
-					: broker.copy(context, source, options);
-			}),
+			invoke((broker) => broker.copy(context, source, options)),
 		id,
 		acquire: (context, options) =>
 			invoke((broker) => broker.acquire(context, options)),
@@ -71,20 +64,31 @@ export function ensureBroker(
 		status: (context) => invoke((broker) => broker.status(context)),
 		providers: (context) => invoke((broker) => broker.providers(context))
 	});
-	const advertisement: ServiceAdvertisementV1 = Object.freeze({
-		kind: 'pi-byos.broker',
-		discoveryVersion: 1,
-		serviceVersions: Object.freeze([1]),
-		id,
-		service
-	});
+
+	const identity = protocolAddress(events);
+	const offer = (request: ProtocolIdentity) =>
+		request.major === identity.major
+			? brokerOffers(service, identity, request)
+			: service;
 
 	try {
-		events.on(BROKER_DISCOVERY_CHANNEL, (request) => {
-			if (isDiscoveryRequest(request)) {
-				request.reply(advertisement);
-			}
-		});
+		onProtocolRequest(
+			events,
+			RUNTIME_CHANNEL,
+			identity,
+			'get-broker',
+			(request) =>
+				projectReply(
+					brokerReply,
+					{
+						type: 'broker',
+						id,
+						service: offer(request)
+					},
+					identity,
+					request
+				)
+		);
 
 		const created: unknown = create(id);
 

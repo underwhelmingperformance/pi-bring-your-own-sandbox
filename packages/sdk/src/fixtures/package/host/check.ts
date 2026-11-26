@@ -24,8 +24,7 @@ import {
 import type {
 	ProcessResult,
 	SandboxClient,
-	SandboxContext,
-	SandboxHost
+	SandboxContext
 } from 'pi-bring-your-own-sandbox/api';
 import * as sdk from 'pi-bring-your-own-sandbox/api';
 
@@ -33,8 +32,7 @@ import * as peer from '../provider/provider.js';
 
 interface Consumer {
 	readonly inspectWorkspace: (
-		client: SandboxClient,
-		pi: SandboxHost,
+		client: Pick<SandboxClient, 'get'>,
 		context: SandboxContext,
 		signal?: AbortSignal
 	) => Promise<ProcessResult>;
@@ -140,7 +138,11 @@ if (vertex !== undefined) {
 	});
 }
 
-const live: { pi?: ExtensionAPI; context?: ExtensionContext } = {};
+const live: {
+	pi?: ExtensionAPI;
+	context?: ExtensionContext;
+	clients?: [SandboxClient, SandboxClient];
+} = {};
 const errors: unknown[] = [];
 
 const create: CreateAgentSessionRuntimeFactory = async (options) => {
@@ -165,8 +167,12 @@ const create: CreateAgentSessionRuntimeFactory = async (options) => {
 				{
 					name: 'capture',
 					factory(pi) {
-						sdk.registerSandboxDiagnostics(pi);
+						sdk.registerSandboxDiagnostics(pi, import.meta.filename);
 						live.pi = pi;
+						live.clients = [
+							sdk.createSandboxClient(pi, import.meta.filename),
+							peer.sdk.createSandboxClient(pi, import.meta.filename)
+						];
 						pi.on('session_start', (_event, context) => {
 							live.context = context;
 						});
@@ -219,19 +225,18 @@ try {
 	assert.ok(live.pi);
 	assert.ok(live.context);
 
-	const routes: string[] = [];
+	assert.ok(live.clients);
 
-	live.pi.events.emit('pi-byos:review:tool-call:v2', {
-		kind: 'available',
-		reply() {
-			routes.push('available');
-		}
-	});
-	assert.deepEqual(routes, ['available', 'available']);
+	const [local, remote] = live.clients;
+
+	assert.deepEqual(
+		[local.hasShellReviewRoute(), remote.hasShellReviewRoute()],
+		[true, true]
+	);
 
 	const [first, second] = await Promise.all([
-		sdk.getSandbox(live.pi, live.context),
-		peer.sdk.getSandbox(live.pi, live.context)
+		local.get(live.context),
+		remote.get(live.context)
 	]);
 
 	assert.deepEqual(
@@ -241,10 +246,9 @@ try {
 
 	const results = [];
 
-	for (const client of [sdk, peer.sdk]) {
+	for (const client of [local, remote]) {
 		const result = await helper.inspectWorkspace(
 			client,
-			live.pi,
 			live.context,
 			new AbortController().signal
 		);

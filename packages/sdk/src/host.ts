@@ -1,9 +1,5 @@
 import type { SandboxHost, SandboxHostOptions } from './contracts.js';
-import { discoverBroker } from './discovery.js';
-import {
-	InvalidSandboxRequestError,
-	SandboxInitialisationError
-} from './errors.js';
+import { InvalidSandboxRequestError } from './errors.js';
 import { bindRuntimeSettings } from './runtime-settings.js';
 import { checker } from './schemas.js';
 import { hostOptionsSchema } from './service-schemas.js';
@@ -18,15 +14,12 @@ fails; it cannot change an existing service's configuration.
 */
 export function initialiseSandboxHost(
 	pi: SandboxHost,
+	extensionSource: string,
 	options: SandboxHostOptions
 ): void {
 	if (!isHostOptions(options)) {
 		throw new InvalidSandboxRequestError({ operation: 'configure' });
 	}
 
-	if (discoverBroker(pi.events) !== undefined) {
-		throw new SandboxInitialisationError({ operation: 'configure' });
-	}
-
-	bindRuntimeSettings(pi, options);
+	bindRuntimeSettings(pi, extensionSource, options);
 }

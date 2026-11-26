@@ -21,6 +21,7 @@ import {
 } from './approval-schemas.js';
 import { inspectContext } from './context.js';
 import type { SandboxHost, SandboxOperationOptions } from './contracts.js';
+import { bindFactory } from './default-broker.js';
 import { cleanDisplayText, joinDisplayLines } from './display-text.js';
 import { isDisplayConfirmed } from './display-ui.js';
 import {
@@ -49,6 +50,8 @@ import { isRecord } from './validation.js';
 /**
 Discovery channel for independent execution approval policy extensions.
 */
+// Milestone 5 removes this legacy service discovery.
+
 export const APPROVAL_POLICY_CHANNEL = 'pi-byos:discovery:v1:approval-policies';
 /**
 Discovery channel for the runtime's independent approval service.
@@ -122,6 +125,7 @@ Register during an extension factory. Registration does not select the policy.
 */
 export function registerApprovalPolicy<Config>(
 	pi: SandboxHost,
+	extensionSource: string,
 	policy: ApprovalPolicy<Config>
 ): void {
 	if (!isPolicyDeclaration(policy)) {
@@ -131,6 +135,7 @@ export function registerApprovalPolicy<Config>(
 	const validate = policy.validateConfig.bind(policy);
 	const decide = policy.decide.bind(policy);
 
+	bindFactory(pi, extensionSource);
 	publishService(
 		pi.events,
 		APPROVAL_POLICY_CHANNEL,

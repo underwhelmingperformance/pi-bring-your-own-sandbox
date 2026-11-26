@@ -31,7 +31,6 @@ export const state: ProviderState = {
 export const provider: SandboxProvider<undefined> = {
 	id: 'packed.fixture',
 	label: 'Packed provider fixture without OS isolation',
-	protocolVersion: 1,
 	defaultPolicy: {
 		workspaceAccess: 'read-write',
 		filesystemScope: 'provider-default',
@@ -163,10 +162,14 @@ export const provider: SandboxProvider<undefined> = {
 };
 
 export default function register(pi: SandboxHost): void {
-	sdk.registerSandboxProvider(pi, provider);
-	sdk.configureExecutionApproval(pi, () => ({ policy: 'packed.review' }));
-	sdk.configureOutsideExecution(pi, () => ({ destination: 'provider' }));
-	sdk.registerApprovalPolicy(pi, {
+	sdk.registerSandboxProvider(pi, import.meta.filename, provider);
+	sdk.configureExecutionApproval(pi, import.meta.filename, () => ({
+		policy: 'packed.review'
+	}));
+	sdk.configureOutsideExecution(pi, import.meta.filename, () => ({
+		destination: 'provider'
+	}));
+	sdk.registerApprovalPolicy(pi, import.meta.filename, {
 		id: 'packed.review',
 		label: 'Packed reviewer',
 		protocolVersion: 1,

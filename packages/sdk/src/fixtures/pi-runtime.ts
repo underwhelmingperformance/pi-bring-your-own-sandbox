@@ -23,6 +23,9 @@ import {
 	VERSION
 } from '@earendil-works/pi-coding-agent';
 
+import { bindFactory } from '../default-broker.js';
+import { hasProtocolAddress } from '../protocol-address.js';
+
 interface RuntimeOptions {
 	readonly temporaryDirectory?: string;
 	readonly prepare?: (
@@ -33,6 +36,8 @@ interface RuntimeOptions {
 	readonly projectTrusted?: boolean;
 	readonly notify?: ExtensionUIContext['notify'];
 	readonly tools?: readonly string[];
+	readonly bindFixtureSources?: boolean;
+	readonly additionalExtensionPaths?: readonly string[];
 }
 
 export async function withPiRuntime(
@@ -99,7 +104,32 @@ export async function withPiRuntime(
 					noThemes: true,
 					noPromptTemplates: true,
 					noContextFiles: true,
-					extensionFactories: [...extensions]
+					...(fixtureOptions?.additionalExtensionPaths !== undefined && {
+						additionalExtensionPaths: [
+							...fixtureOptions.additionalExtensionPaths
+						]
+					}),
+					extensionFactories: extensions.map((extension) => {
+						if (fixtureOptions?.bindFixtureSources === false) {
+							return extension;
+						}
+
+						const item =
+							typeof extension === 'function'
+								? { name: extension.name || 'fixture', factory: extension }
+								: extension;
+
+						return {
+							...item,
+							async factory(pi) {
+								await item.factory(pi);
+
+								if (!hasProtocolAddress(pi.events)) {
+									bindFactory(pi, `<inline:${item.name}>`);
+								}
+							}
+						};
+					})
 				}
 			});
 			const result = await createAgentSessionFromServices({

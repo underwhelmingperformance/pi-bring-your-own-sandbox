@@ -24,14 +24,19 @@ consumers use the compiled exports from the archive.
 
 ## Acquire and execute
 
-The example below uses the target `/consumer` entry point. Pass the live Pi
-context and the tool's signal to both acquisition and execution.
+The example below uses the target `/consumer` entry point. Create a client in
+the extension factory. The client uses the extension filename to register its
+SDK build. During tool execution, pass the live Pi context and the tool's signal
+to acquisition and execution.
 
 ```typescript
-import { getSandbox } from 'pi-bring-your-own-sandbox/consumer';
+import { createSandboxClient } from 'pi-bring-your-own-sandbox/consumer';
 
+const client = createSandboxClient(pi, import.meta.filename);
+
+// Inside the tool handler.
 const options = signal === undefined ? {} : { signal };
-const sandbox = await getSandbox(pi, context, {
+const sandbox = await client.get(context, {
   ...options,
   capabilities: ['exec'],
   processKinds: ['argv']
@@ -52,7 +57,7 @@ it. For example, an offline operation requests
 `access: { network: 'prevented' }`. A path grant requires an accessible path
 within the configured policy.
 
-Use `negotiateSandbox` with the same requirements to check an option without
+Use `client.negotiate` with the same requirements to check an option without
 allocating. Handle refusal with `isSandboxError`, which recognises typed errors
 from independent SDK copies. The [specification][spec] describes process
 outcomes and the [API appendix][api] lists the types.

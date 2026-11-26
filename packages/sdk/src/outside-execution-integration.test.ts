@@ -66,7 +66,7 @@ async function scenario({
 			{
 				name: 'host',
 				factory(pi) {
-					initialiseSandboxHost(pi, {
+					initialiseSandboxHost(pi, import.meta.filename, {
 						...(normalExecutor !== undefined && { normalExecutor })
 					});
 				}
@@ -154,7 +154,6 @@ it.each(['allow', 'deny'] as const)(
 		const provider: SandboxProvider<unknown> = {
 			id: 'remote',
 			label: 'Remote sandbox',
-			protocolVersion: 1,
 			defaultPolicy: backend.policy,
 			capabilities: backend.capabilities,
 			policies: {
@@ -183,13 +182,13 @@ it.each(['allow', 'deny'] as const)(
 				{
 					name: 'provider',
 					factory: (pi) => {
-						registerSandboxProvider(pi, provider);
+						registerSandboxProvider(pi, import.meta.filename, provider);
 					}
 				},
 				{
 					name: 'policy',
 					factory: (pi) => {
-						registerApprovalPolicy(pi, {
+						registerApprovalPolicy(pi, import.meta.filename, {
 							id: 'fixture',
 							label: 'Fixture approval',
 							protocolVersion: 1,
@@ -255,10 +254,9 @@ it('fails when the selected provider has no outside capability', async () => {
 			{
 				name: 'provider',
 				factory(pi) {
-					registerSandboxProvider(pi, {
+					registerSandboxProvider(pi, import.meta.filename, {
 						id: 'fixture',
 						label: 'Fixture',
-						protocolVersion: 1,
 						defaultPolicy: backend.policy,
 						capabilities: backend.capabilities,
 						policies: {
@@ -290,7 +288,7 @@ it('ignores a late allow after cancellation', async () => {
 			{
 				name: 'policy',
 				factory(pi) {
-					registerApprovalPolicy(pi, {
+					registerApprovalPolicy(pi, import.meta.filename, {
 						id: 'delayed',
 						label: 'Delayed',
 						protocolVersion: 1,
@@ -493,7 +491,7 @@ it.each(['normal', 'provider'] as const)(
 				{
 					name: 'policy',
 					factory(pi) {
-						registerApprovalPolicy(pi, {
+						registerApprovalPolicy(pi, import.meta.filename, {
 							id: 'review',
 							label: 'Review fixture',
 							protocolVersion: 1,
@@ -505,10 +503,9 @@ it.each(['normal', 'provider'] as const)(
 				{
 					name: 'provider',
 					factory(pi) {
-						registerSandboxProvider(pi, {
+						registerSandboxProvider(pi, import.meta.filename, {
 							id: 'fixture',
 							label: 'Fixture',
-							protocolVersion: 1,
 							defaultPolicy: backend.policy,
 							capabilities: backend.capabilities,
 							policies: {
@@ -612,7 +609,7 @@ it('reports native termination failures during Pi session shutdown', async () =>
 			{
 				name: 'cleanup',
 				factory(pi) {
-					initialiseSandboxHost(pi, {});
+					initialiseSandboxHost(pi, import.meta.filename, {});
 					pi.registerCommand('unconfirmed', {
 						description: 'Record an unconfirmed native operation.',
 						async handler(_arguments, context) {
@@ -732,7 +729,7 @@ it('cancels a pending standalone review when malformed discovery prevents policy
 			{
 				name: 'reviewer',
 				factory(pi) {
-					registerApprovalPolicy(pi, {
+					registerApprovalPolicy(pi, import.meta.filename, {
 						id: 'deferred',
 						label: 'Deferred reviewer',
 						protocolVersion: 1,
@@ -788,7 +785,7 @@ it('preserves the SDK deadline while an approval policy is still pending', async
 			{
 				name: 'reviewer',
 				factory(pi) {
-					registerApprovalPolicy(pi, {
+					registerApprovalPolicy(pi, import.meta.filename, {
 						id: 'deferred',
 						label: 'Deferred reviewer',
 						protocolVersion: 1,
@@ -845,10 +842,10 @@ it('retains configuration warnings when outside execution resolves settings firs
 				factory(pi) {
 					registerSandboxProvider(
 						pi,
+						import.meta.filename,
 						{
 							id: 'fixture',
 							label: 'Configuration fixture',
-							protocolVersion: 1,
 							capabilities: backend.capabilities,
 							defaultPolicy: backend.policy,
 							policies: {

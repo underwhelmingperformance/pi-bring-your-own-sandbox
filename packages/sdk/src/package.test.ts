@@ -508,7 +508,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
 			await writeFile(
 				path.join(consumer, 'consumer.ts'),
 				[
-					"export { getSandbox } from 'pi-bring-your-own-sandbox/api';",
+					"export { createSandboxClient } from 'pi-bring-your-own-sandbox/api';",
 					"export { default as sandboxTools } from 'pi-bring-your-own-sandbox/pi-tools';",
 					"export { defineSandboxProviderTests } from 'pi-bring-your-own-sandbox/testing';"
 				].join('\n')

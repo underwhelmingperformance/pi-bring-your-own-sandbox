@@ -105,11 +105,10 @@ export default async function approvalRpcFixture(
 		return input;
 	});
 
-	config_.bind(pi);
+	config_.bind(pi, import.meta.filename);
 	config_.activate(pi, {
 		id: 'rpc-provider',
 		label: 'RPC sandbox',
-		protocolVersion: 1,
 		capabilities,
 		policies: {
 			workspaceAccess: ['read-write'],
@@ -138,7 +137,7 @@ export default async function approvalRpcFixture(
 		}
 	});
 
-	registerApprovalPolicy(pi, {
+	registerApprovalPolicy(pi, import.meta.filename, {
 		id: 'rpc-failure',
 		label: 'Failing reviewer',
 		protocolVersion: 1,
@@ -222,8 +221,8 @@ export default async function approvalRpcFixture(
 		}
 	});
 
-	sandboxTools(pi);
-	sandboxExtension(pi);
+	sandboxTools(pi, import.meta.filename);
+	sandboxExtension(pi, import.meta.filename);
 
 	if (config.mode === 'sdk') {
 		return;

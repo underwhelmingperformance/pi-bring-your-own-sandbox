@@ -26,7 +26,7 @@ Pi invalidates the runtime.
 */
 export type SandboxHost = Pick<
 	ExtensionAPI,
-	'events' | 'on' | 'sendMessage' | 'appendEntry'
+	'events' | 'on' | 'sendMessage' | 'appendEntry' | 'getActiveTools'
 >;
 /**
 Execution defaults supplied by an embedding host. Each runtime requires its
@@ -1061,10 +1061,6 @@ export interface SandboxProvider<Config> {
 	readonly label: string;
 
 	/**
-	Service protocol implemented by this declaration.
-	*/
-	readonly protocolVersion: 1;
-	/**
 	Optional execution destination selected independently through extension settings.
 	*/
 	readonly outsideSandbox?: OutsideSandboxProvider<Config>;
@@ -1469,10 +1465,6 @@ Diagnostic causes must not be printed or serialised automatically.
 export type SandboxErrorInfo = Error &
 	SandboxErrorContext & {
 		/**
-		Structural protocol version understood before examining variant fields.
-		*/
-		readonly sandboxErrorVersion: 1;
-		/**
 		Human-readable display text. Consumers must not parse it for classification.
 		*/
 		readonly message: string;
@@ -1546,29 +1538,17 @@ permits injected clients in extensions and tests without changing provider
 selection.
 */
 export interface SandboxClient {
-	/**
-	Acquire the shared backend for the live generation. An unconfigured user
-	gets passthrough; a configured failure never changes provider.
-	Cancelling a waiter leaves shared startup running.
-	*/
-	readonly getSandbox: (
-		pi: SandboxHost,
+	readonly get: (
 		context: SandboxContext,
 		options?: SandboxAcquireOptions
 	) => Promise<Sandbox>;
-
-	/**
-	Register synchronously during an extension factory. Declaration
-	validation and discovery registration do not allocate a backend.
-	*/
-	readonly registerSandboxProvider: typeof import('./provider-registration.js').registerSandboxProvider;
-
-	/**
-	Idempotently close this generation and return its bounded cleanup
-	report. Bare SDK hosts must call this before raw Pi session disposal.
-	*/
-	readonly closeSandboxSession: (
-		pi: SandboxHost,
-		context: SandboxContext
-	) => Promise<SandboxCloseReport>;
+	readonly negotiate: (
+		context: SandboxContext,
+		options?: SandboxAcquireOptions
+	) => Promise<import('./protocol.js').SandboxNegotiation>;
+	readonly hasShellReviewRoute: () => boolean;
+	readonly findShellReviewSource: (
+		context: SandboxContext,
+		call: ReviewedToolCall
+	) => ShellReviewSource | undefined;
 }

@@ -8,8 +8,6 @@ import { expect, it, vi } from 'vitest';
 import {
 	configureExecutionApproval,
 	getOutsideSandboxExecutor,
-	getSandbox,
-	negotiateSandbox,
 	registerSandboxProvider,
 	registerSandboxRequirement
 } from './api.js';
@@ -20,6 +18,7 @@ import type {
 	SandboxProvider,
 	SandboxRequirements
 } from './contracts.js';
+import { getSandbox, negotiateSandbox } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { ScriptedModel } from './fixtures/scripted-model.js';
@@ -29,7 +28,8 @@ import sandboxTools from './pi-tools.js';
 
 async function scenario(
 	extensions: readonly InlineExtension[],
-	run: (pi: ExtensionAPI, context: ExtensionContext) => Promise<void>
+	run: (pi: ExtensionAPI, context: ExtensionContext) => Promise<void>,
+	prepare?: (pi: ExtensionAPI) => void
 ) {
 	const state: { pi?: ExtensionAPI; context?: ExtensionContext } = {};
 
@@ -40,6 +40,7 @@ async function scenario(
 				name: 'consumer',
 				factory(pi) {
 					state.pi = pi;
+					prepare?.(pi);
 					pi.on('session_start', (_event, context) => {
 						state.context = context;
 					});
@@ -74,7 +75,7 @@ function guard(requirements: SandboxRequirements = {}): InlineExtension {
 	return {
 		name: 'guard',
 		factory(pi) {
-			registerSandboxRequirement(pi, requirements);
+			registerSandboxRequirement(pi, import.meta.filename, requirements);
 		}
 	};
 }
@@ -83,7 +84,6 @@ function provider(backend = new MemoryBackend()): SandboxProvider<object> {
 	return {
 		id: 'fixture',
 		label: 'Fake sandbox',
-		protocolVersion: 1,
 		capabilities: backend.capabilities,
 		defaultPolicy: backend.policy,
 		policies: {
@@ -119,7 +119,7 @@ it.each(['guard-first', 'provider-first'] as const)(
 		const active: InlineExtension = {
 			name: 'provider',
 			factory(pi) {
-				registerSandboxProvider(pi, provider(backend));
+				registerSandboxProvider(pi, import.meta.filename, provider(backend));
 			}
 		};
 
@@ -188,6 +188,7 @@ it.each([
 					factory(pi) {
 						registerSandboxProvider(
 							pi,
+							import.meta.filename,
 							{ ...provider(backend), open },
 							{ configure }
 						);
@@ -221,7 +222,10 @@ it('combines guard policies and rejects a consumer request that loosens them', a
 			{
 				name: 'provider',
 				factory(pi) {
-					registerSandboxProvider(pi, { ...declaration, open });
+					registerSandboxProvider(pi, import.meta.filename, {
+						...declaration,
+						open
+					});
 				}
 			}
 		],
@@ -250,7 +254,7 @@ it('checks guard requirements against the opened backend', async () => {
 			{
 				name: 'provider',
 				factory(pi) {
-					registerSandboxProvider(pi, {
+					registerSandboxProvider(pi, import.meta.filename, {
 						...provider(backend),
 						capabilities: new MemoryBackend().capabilities
 					});
@@ -275,8 +279,13 @@ it('allows approved outside execution without opening an ordinary sandbox', asyn
 			{
 				name: 'provider',
 				factory(pi) {
-					registerSandboxProvider(pi, { ...provider(backend), open });
-					configureExecutionApproval(pi, () => ({ policy: 'always' }));
+					registerSandboxProvider(pi, import.meta.filename, {
+						...provider(backend),
+						open
+					});
+					configureExecutionApproval(pi, import.meta.filename, () => ({
+						policy: 'always'
+					}));
 				}
 			}
 		],
@@ -325,7 +334,7 @@ it.each([
 				{
 					name: 'provider',
 					factory(pi) {
-						registerSandboxProvider(pi, {
+						registerSandboxProvider(pi, import.meta.filename, {
 							...provider(backend),
 							capabilities: { ...backend.capabilities, ...capabilities },
 							open
@@ -346,13 +355,14 @@ it.each([
 it('applies requirements across independently loaded SDK copies', async () => {
 	const peer = await loadSdkInstance();
 	const backend = new MemoryBackend();
+	let bound: import('./contracts.js').SandboxClient | undefined;
 
 	await scenario(
 		[
 			{
 				name: 'independent-guard',
 				factory(pi) {
-					peer.registerSandboxRequirement(pi, {
+					peer.registerSandboxRequirement(pi, import.meta.filename, {
 						providerId: 'fixture',
 						capabilities: ['files.read']
 					});
@@ -361,14 +371,18 @@ it('applies requirements across independently loaded SDK copies', async () => {
 			{
 				name: 'provider',
 				factory(pi) {
-					registerSandboxProvider(pi, provider(backend));
+					registerSandboxProvider(pi, import.meta.filename, provider(backend));
 				}
 			}
 		],
 		async (pi, context) => {
+			if (bound === undefined) {
+				throw new Error('The peer client did not register.');
+			}
+
 			const [first, second] = await Promise.all([
 				getSandbox(pi, context),
-				peer.getSandbox(pi, context)
+				bound.get(context)
 			]);
 
 			expect({
@@ -378,6 +392,9 @@ it('applies requirements across independently loaded SDK copies', async () => {
 				providers: ['fixture', 'fixture'],
 				generations: true
 			});
+		},
+		(pi) => {
+			bound = peer.createSandboxClient(pi, import.meta.filename);
 		}
 	);
 });
@@ -395,10 +412,9 @@ it('accepts an explicitly activated host implementation through the same require
 						...info
 					} = passthroughProvider;
 
-					registerSandboxProvider(pi, {
+					registerSandboxProvider(pi, import.meta.filename, {
 						...info,
 						id: 'explicit.host',
-						protocolVersion: 1,
 						validateConfig: () => ({}),
 						open: (request, scope) =>
 							passthroughProvider.configure({}).open(request, scope)
@@ -431,7 +447,7 @@ it('snapshots requirements and rejects changes after acquisition', async () => {
 			{
 				name: 'guard',
 				factory(pi) {
-					registerSandboxRequirement(pi, requirements);
+					registerSandboxRequirement(pi, import.meta.filename, requirements);
 					requirements.providerId = 'changed';
 					requirements.capabilities.push('search.grep');
 				}
@@ -439,7 +455,7 @@ it('snapshots requirements and rejects changes after acquisition', async () => {
 			{
 				name: 'provider',
 				factory(pi) {
-					registerSandboxProvider(pi, provider());
+					registerSandboxProvider(pi, import.meta.filename, provider());
 				}
 			}
 		],
@@ -448,7 +464,7 @@ it('snapshots requirements and rejects changes after acquisition', async () => {
 
 			expect(sandbox.providerId).toBe('fixture');
 			expect(() => {
-				registerSandboxRequirement(pi);
+				registerSandboxRequirement(pi, import.meta.filename);
 			}).toThrow(
 				expect.objectContaining({ name: 'InvalidSandboxRequestError' })
 			);
@@ -464,7 +480,7 @@ it('rejects conflicting expected provider identities', async () => {
 			{
 				name: 'provider',
 				factory(pi) {
-					registerSandboxProvider(pi, provider());
+					registerSandboxProvider(pi, import.meta.filename, provider());
 				}
 			}
 		],

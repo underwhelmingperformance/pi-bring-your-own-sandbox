@@ -7,6 +7,7 @@ import type {
 	SandboxErrorName,
 	SandboxOperation
 } from './contracts.js';
+import { cleanDisplayText } from './display-text.js';
 import { errorSchema } from './error-schema.js';
 import { checker } from './schemas.js';
 
@@ -16,11 +17,6 @@ Use the structural guard when errors can come from another installed SDK
 copy.
 */
 export abstract class SandboxError<Name extends string = string> extends Error {
-	/**
-	Identifies the version of the structural error protocol.
-	*/
-	readonly sandboxErrorVersion = 1;
-
 	/**
 	Stable class identity, preserved across SDK copies and minification.
 	*/
@@ -120,8 +116,7 @@ export class DuplicateBrokerError extends SandboxError<'DuplicateBrokerError'> {
 }
 
 /**
-A discovered peer cannot use service version 1. Update the participating
-extensions together.
+A peer requires a protocol major or feature level that this exchange cannot use.
 */
 export class IncompatibleSandboxProtocolError extends SandboxError<'IncompatibleSandboxProtocolError'> {
 	/**
@@ -129,10 +124,14 @@ export class IncompatibleSandboxProtocolError extends SandboxError<'Incompatible
 	*/
 	static readonly errorName = 'IncompatibleSandboxProtocolError';
 
-	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
+	constructor(
+		context: SandboxErrorContext & { readonly protocolMessage?: string },
+		options?: ErrorOptions
+	) {
 		super(
 			IncompatibleSandboxProtocolError.errorName,
-			'The sandbox service does not support protocol version 1. Update the extensions together.',
+			context.protocolMessage ??
+				'The sandbox service uses an incompatible protocol. Update the extensions together.',
 			context,
 			options
 		);
@@ -187,10 +186,14 @@ export class InvalidSandboxDeclarationError extends SandboxError<'InvalidSandbox
 	*/
 	static readonly errorName = 'InvalidSandboxDeclarationError';
 
-	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
+	constructor(
+		context: SandboxErrorContext & { readonly protocolMessage?: string },
+		options?: ErrorOptions
+	) {
 		super(
 			InvalidSandboxDeclarationError.errorName,
-			'The sandbox provider or service declaration is invalid. Check the extension implementation.',
+			context.protocolMessage ??
+				'The sandbox provider or service declaration is invalid. Check the extension implementation.',
 			context,
 			options
 		);
@@ -705,11 +708,22 @@ export function rehydrateSandboxError(
 		}
 
 		case 'IncompatibleSandboxProtocolError': {
-			return new IncompatibleSandboxProtocolError(context, options);
+			return new IncompatibleSandboxProtocolError(
+				{ ...context, protocolMessage: error.message },
+				options
+			);
 		}
 
 		case 'InvalidSandboxDeclarationError': {
-			return new InvalidSandboxDeclarationError(context, options);
+			return new InvalidSandboxDeclarationError(
+				{
+					...context,
+					...(error.operation === 'discover' && {
+						protocolMessage: cleanDisplayText(error.message)
+					})
+				},
+				options
+			);
 		}
 
 		case 'InvalidSandboxConfigError': {

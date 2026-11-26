@@ -153,7 +153,6 @@ export async function usingProviderFixture<Config>(
 
 	try {
 		expect(isProviderInfo(options.provider)).toBe(true);
-		expect(options.provider.protocolVersion).toBe(1);
 
 		async function open() {
 			let isConfirmed = false;

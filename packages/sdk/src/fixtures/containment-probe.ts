@@ -6,6 +6,7 @@ import { Type } from 'typebox';
 
 import { getSandbox } from '../client.js';
 import { createSandbox } from '../facade.js';
+import { bindProtocolAddress } from '../protocol-address.js';
 import { ensureBroker } from '../service.js';
 
 import { TestBackendOwner } from './backend-owner.js';
@@ -42,8 +43,9 @@ export default async function probe(marker: string): Promise<void> {
 			{
 				name: 'peer-extension',
 				factory(pi) {
+					bindProtocolAddress(pi.events, import.meta.filename);
 					ensureBroker(pi.events, (id) => ({
-						guardVersion: 1,
+						copy: () => Promise.reject(new Error('Fixture does not copy.')),
 						id,
 						acquire: () => Promise.resolve(sandbox),
 						negotiate: () =>

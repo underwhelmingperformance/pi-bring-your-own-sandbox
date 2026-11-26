@@ -954,7 +954,6 @@ export function createDockerProvider(
 			networkAccess: 'denied'
 		},
 		label: 'Docker reference provider',
-		protocolVersion: 1,
 		capabilities,
 		policies: {
 			workspaceRelationship: ['copied', 'shared'],

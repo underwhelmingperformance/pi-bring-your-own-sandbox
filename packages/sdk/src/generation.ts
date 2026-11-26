@@ -69,14 +69,18 @@ import type {
 	SandboxNegotiation,
 	SandboxStatus
 } from './protocol.js';
+import type { ProtocolIdentity } from './protocol-envelope.js';
+import { checkDemand } from './protocol-version.js';
 import type { DiagnosticStore } from './provider-diagnostics.js';
 import { ProviderDiagnostics } from './provider-diagnostics.js';
+import { acquireOptionsSchema } from './request-schemas.js';
 import { copyOptions, copySource, rethrowCopyError } from './sandbox-copy.js';
-import { callable, checker } from './schemas.js';
+import { callable, checker, policySchema } from './schemas.js';
 import { isRecord, isRecovery, snapshotProviderInfo } from './validation.js';
 
 export interface GenerationDependencies {
 	readonly diagnostics?: DiagnosticStore;
+	readonly protocol?: ProtocolIdentity;
 	readonly providers: () => readonly ProviderServiceV1[];
 	readonly readConfig: (context: SandboxContext) => Promise<SandboxConfig>;
 	/**
@@ -254,6 +258,9 @@ export class SandboxGeneration {
 				this.#dependencies.providers().map((provider) =>
 					Object.freeze({
 						...snapshotProviderInfo(provider),
+						...(provider.protocol !== undefined && {
+							protocol: provider.protocol
+						}),
 						configure: provider.configure.bind(provider)
 					})
 				)
@@ -284,6 +291,19 @@ export class SandboxGeneration {
 			const provider = selectProvider(config, providers);
 
 			this.#configurationSource = config.providerConfigSource;
+
+			const local = this.#dependencies.protocol;
+			const peer = provider.protocol;
+
+			if (local !== undefined && peer !== undefined) {
+				checkDemand(
+					policySchema,
+					this.#selection.policy,
+					local,
+					peer,
+					'sandbox policy'
+				);
+			}
 
 			const configured = provider.configure(config.providerConfig);
 
@@ -364,6 +384,12 @@ export class SandboxGeneration {
 		slot: BackendSlot
 	): Promise<SandboxBackend> {
 		const prepared = await this.#prepare();
+		const local = this.#dependencies.protocol;
+		const peer = prepared.provider.protocol;
+
+		if (local !== undefined && peer !== undefined) {
+			checkDemand(policySchema, slot.policy, local, peer, 'sandbox opening');
+		}
 
 		scope.check();
 		scope.setCleanupBudgets(this.#cleanup);
@@ -744,7 +770,25 @@ export class SandboxGeneration {
 		}
 	}
 
-	#negotiate(provider: ProviderInfo, options: SandboxAcquireOptions) {
+	#checkDemand(
+		provider: ProviderServiceV1,
+		options: SandboxAcquireOptions
+	): void {
+		const local = this.#dependencies.protocol;
+		const peer = provider.protocol;
+
+		if (local !== undefined && peer !== undefined) {
+			checkDemand(
+				acquireOptionsSchema,
+				options,
+				local,
+				peer,
+				'sandbox acquisition'
+			);
+		}
+	}
+
+	#negotiate(provider: ProviderServiceV1, options: SandboxAcquireOptions) {
 		const selection = this.#selection;
 
 		if (selection === undefined) {
@@ -755,6 +799,8 @@ export class SandboxGeneration {
 			operation: 'acquire' as const,
 			providerId: selection.providerId
 		};
+
+		this.#checkDemand(provider, options);
 
 		checkDeclaredCapabilities(provider.capabilities, options, identity);
 
@@ -912,6 +958,8 @@ export class SandboxGeneration {
 				providerId: provider.id
 			};
 
+			this.#checkDemand(provider, options);
+
 			if (typeof copy !== 'function') {
 				throw new UnsupportedSandboxCapabilityError(identity);
 			}
@@ -938,6 +986,9 @@ export class SandboxGeneration {
 			) => copy.call(configured, request, opening);
 			const generation = new SandboxGeneration(context, {
 				diagnostics: this.#diagnostics,
+				...(this.#dependencies.protocol !== undefined && {
+					protocol: this.#dependencies.protocol
+				}),
 				copyLimit: limit,
 				providers: () => [
 					{

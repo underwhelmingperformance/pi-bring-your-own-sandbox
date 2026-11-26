@@ -17,7 +17,11 @@ import {
 type PathFlavor = SandboxWorkspace['pathFlavor'];
 
 export const fileStatSchema = Type.Object({
-	kind: Type.Enum(['file', 'directory', 'other']),
+	kind: Type.Union([
+		Type.Literal('file'),
+		Type.Literal('directory'),
+		Type.Literal('other')
+	]),
 	size: nonNegativeIntegerSchema
 });
 
@@ -52,7 +56,12 @@ export function directoryEntriesSchema(flavor: PathFlavor) {
 				value !== '..' &&
 				path[flavor].basename(value) === value
 		),
-		kind: Type.Enum(['file', 'directory', 'symlink', 'other'])
+		kind: Type.Union([
+			Type.Literal('file'),
+			Type.Literal('directory'),
+			Type.Literal('symlink'),
+			Type.Literal('other')
+		])
 	});
 
 	return Type.Refine(
@@ -134,14 +143,21 @@ export const processExitSchema = Type.Union([
 		signalNumber: positiveIntegerSchema
 	})
 ]);
+
+const processTerminationSchema = Type.Union([
+	Type.Literal('confirmed'),
+	Type.Literal('unconfirmed'),
+	Type.Literal('not-guaranteed')
+]);
+
 export const processOutcomeSchema = Type.Union([
 	Type.Object({ kind: Type.Literal('exited'), exit: processExitSchema }),
 	Type.Object({
 		kind: Type.Literal('cancelled'),
-		termination: Type.Enum(['confirmed', 'unconfirmed', 'not-guaranteed'])
+		termination: processTerminationSchema
 	})
 ]);
 export const processOutputSchema = Type.Object({
-	stream: Type.Enum(['stdout', 'stderr']),
+	stream: Type.Union([Type.Literal('stdout'), Type.Literal('stderr')]),
 	data: bytesSchema
 });

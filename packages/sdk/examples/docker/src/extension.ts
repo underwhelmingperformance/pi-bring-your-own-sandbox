@@ -13,11 +13,15 @@ import { createDockerProvider } from './provider.js';
 Registers the Docker example; allocation waits until a consumer acquires it.
 Each session uses the Docker CLI and daemon that are current when it starts.
 */
-export default function dockerExtension(pi: ExtensionAPI): void {
+export default function dockerExtension(
+	pi: ExtensionAPI,
+	extensionSource = import.meta.filename
+): void {
 	const provider = createDockerProvider();
 
 	registerSandboxProvider<DockerConfig>(
 		pi,
+		extensionSource,
 		{
 			...provider,
 			open(request, context) {

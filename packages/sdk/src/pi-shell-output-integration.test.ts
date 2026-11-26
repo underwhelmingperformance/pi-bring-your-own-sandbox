@@ -61,11 +61,10 @@ it.each([
 					name: 'fixture',
 					factory(pi) {
 						api = pi;
-						initialiseSandboxHost(pi, {});
+						initialiseSandboxHost(pi, import.meta.filename, {});
 						config.activate(pi, {
 							id: 'fixture',
 							label: 'Fixture sandbox',
-							protocolVersion: 1,
 							capabilities: backend.capabilities,
 							policies: {
 								workspaceAccess: ['read-write'],

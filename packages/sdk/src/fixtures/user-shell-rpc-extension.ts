@@ -50,7 +50,6 @@ export default function rpcFixture(pi: ExtensionAPI): void {
 	config.activate(pi, {
 		id: 'fixture',
 		label: 'RPC fixture',
-		protocolVersion: 1,
 		capabilities,
 		policies: {
 			workspaceAccess: ['read-write'],

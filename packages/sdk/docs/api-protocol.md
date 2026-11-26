@@ -9,32 +9,56 @@ implementation reaches this design.
 
 ## Public entry points
 
-| Entry point | Operations and types                                                                                            |
-| ----------- | --------------------------------------------------------------------------------------------------------------- |
-| `/consumer` | `getSandbox`, `negotiateSandbox`, `Sandbox`, `SandboxRequirements`, operation types and structural error checks |
-| `/provider` | `registerSandboxProvider`, provider declarations, backend operations and provider kit                           |
-| `/host`     | `initialiseSandboxHost`, `closeSandboxSession`, host options and diagnostic registration                        |
-| `/review`   | `findShellReviewSource`, escalation decisions and review results                                                |
-| `/pi-tools` | Pi tool integration factory                                                                                     |
-| `/guard`    | `registerSandboxRequirement` for provider presets                                                               |
-| `/testing`  | Provider conformance runner, fixtures and probe interfaces                                                      |
+| Entry point | Operations and types                                                                        |
+| ----------- | ------------------------------------------------------------------------------------------- |
+| `/consumer` | `createSandboxClient`, `SandboxClient`, `Sandbox`, requirements and structural error checks |
+| `/provider` | `registerSandboxProvider`, provider declarations, backend operations and provider kit       |
+| `/host`     | `initialiseSandboxHost`, `closeSandboxSession`, host options and diagnostic registration    |
+| `/review`   | Review and escalation types for the bound client                                            |
+| `/pi-tools` | Pi tool integration factory                                                                 |
+| `/guard`    | `registerSandboxRequirement` for provider presets                                           |
+| `/testing`  | Provider conformance runner, fixtures and probe interfaces                                  |
 
 The package prefix is `pi-bring-your-own-sandbox`. Wire schemas, channel
 constants, broker objects and identity constructors are internal.
 
+<!-- The client and factory signatures are provisional. -->
+
 ```typescript
-getSandbox(pi: SandboxHost, context: SandboxContext,
-  options?: SandboxAcquireOptions): Promise<Sandbox>;
-negotiateSandbox(pi: SandboxHost, context: SandboxContext,
-  options?: SandboxRequirements): Promise<SandboxNegotiation>;
+createSandboxClient(pi: SandboxHost, extensionSource: string): SandboxClient;
+
+interface SandboxClient {
+  get(context: SandboxContext, options?: SandboxAcquireOptions): Promise<Sandbox>;
+  negotiate(
+    context: SandboxContext,
+    options?: SandboxAcquireOptions
+  ): Promise<SandboxNegotiation>;
+  hasShellReviewRoute(): boolean;
+  findShellReviewSource(
+    context: SandboxContext,
+    call: ReviewedToolCall
+  ): ShellReviewSource | undefined;
+}
+
 registerSandboxProvider<Config, Input = Config>(
-  pi: SandboxHost, provider: SandboxProvider<Config>,
+  pi: SandboxHost, extensionSource: string, provider: SandboxProvider<Config>,
   options?: NoInfer<SandboxProviderRegistration<Input>>
 ): void;
-initialiseSandboxHost(pi: SandboxHost, options: SandboxHostOptions): void;
+initialiseSandboxHost(
+  pi: SandboxHost, extensionSource: string, options: SandboxHostOptions
+): void;
 closeSandboxSession(pi: SandboxHost, context: SandboxContext): Promise<SandboxCloseReport>;
-registerSandboxRequirement(pi: SandboxHost, requirements: SandboxRequirements): void;
+registerSandboxRequirement(
+  pi: SandboxHost, extensionSource: string, requirements: SandboxRequirements
+): void;
 ```
+
+Create the client in the extension factory. Pass `import.meta.filename` for
+`extensionSource`. The client uses that path for build election, errors and
+ledger entries. Provider registration, the Pi tools, guard presets and
+standalone settings publishers register their builds through their factory entry
+points. Standalone registration accepts the extension source as the second
+argument.
 
 `/host` is for embedding hosts. `SandboxHostOptions` has only
 `cleanup?: Partial<SandboxCleanupBudgets>` for embedding defaults. The
@@ -458,21 +482,21 @@ interface EscalationRequest {
   readonly destination: EscalationDestination;
 }
 
-recordEscalationDecision(
-  pi: SandboxHost,
-  context: SandboxContext,
-  request: EscalationRequest,
-  extension: string,
-  decision: 'allow' | 'deny'
-): void;
+interface SandboxClient {
+  recordEscalationDecision(
+    context: SandboxContext,
+    request: EscalationRequest,
+    decision: 'allow' | 'deny'
+  ): void;
+}
 ```
 
 The request is available on the broker-resolved review source for the pending
-call. The function in `/review` checks that the request matches the pending tool
-call in the live session. A missing, expired or mismatched request fails with
-`InvalidSandboxRequestError`. Conflicting decisions fail closed. Recording a
-decision does not execute the command. The [specification][escalation] defines
-negotiation and dispatch.
+call. The client checks that the request matches the pending tool call in the
+live session and records the extension path from the factory. A missing, expired
+or mismatched request fails with `InvalidSandboxRequestError`. Conflicting
+decisions fail closed. Recording a decision does not execute the command. The
+[specification][escalation] defines negotiation and dispatch.
 
 [escalation]: specification.md#escalation
 
@@ -514,18 +538,15 @@ interface ReviewSource {
   negotiateCopy(
     requirements?: SandboxRequirements
   ): Promise<SandboxNegotiation>;
-  copy(
-    extension: string,
-    options?: SandboxAcquireOptions
-  ): Promise<SandboxCopy>;
+  copy(options?: SandboxAcquireOptions): Promise<SandboxCopy>;
 }
 ```
 
 `ReviewSourceId` is opaque. Each reply correlates with one query and one pending
-tool call. `findShellReviewSource` accepts the host, live context and tool call
-ID. Its success result contains the broker-resolved source. Its failure result
-contains a `ReviewUnavailableReason`. The review source's `copy` method takes
-the requesting extension's name for the ledger.
+tool call. The client's `findShellReviewSource` accepts the live context and
+tool call. A successful reply refers to the broker-resolved source. A failed
+reply includes a `ReviewUnavailableReason`. The ledger uses the path from the
+client that requested the copy.
 `Sandbox.copy(options?: SandboxAcquireOptions): Promise<SandboxCopy>` uses the
 acquired sandbox's workspace as the source. `SandboxCopy` contains
 `sandbox: Sandbox` and `close(): Promise<SandboxCloseReport>`.
@@ -580,15 +601,16 @@ Channel names and the envelope and payload shapes are provisional in
 milestone 1.
 -->
 
-| Channel            | Operations                                        |
-| ------------------ | ------------------------------------------------- |
-| `pi-byos:runtime`  | SDK build advertisements and broker discovery     |
-| `pi-byos:provider` | Provider advertisements and registration exchange |
-| `pi-byos:review`   | Pending call queries and review source replies    |
+| Channel            | Operations                                                                    |
+| ------------------ | ----------------------------------------------------------------------------- |
+| `pi-byos:runtime`  | Build election, broker, settings, configuration, requirements and diagnostics |
+| `pi-byos:provider` | Provider advertisements and registration exchange                             |
+| `pi-byos:review`   | Pending call queries and review source replies                                |
 
 ```typescript
 interface BuildIdentity {
   readonly buildId: string;
+  readonly packageVersion: string;
   readonly extensionSource: string;
   readonly major: number;
   readonly featureLevel: number;
@@ -601,22 +623,30 @@ type Envelope<Payload> = BuildIdentity & {
 };
 ```
 
-| Channel  | Envelope kind   | Payload                                                                                        |
-| -------- | --------------- | ---------------------------------------------------------------------------------------------- |
-| Runtime  | `advertisement` | `{ type: 'build' }`                                                                            |
-| Runtime  | `request`       | `{ type: 'get-broker' }`                                                                       |
-| Runtime  | `reply`         | `{ type: 'broker', brokerId: BrokerId }`                                                       |
-| Provider | `advertisement` | `{ type: 'provider', providerId: ProviderId, profiles: { open: Profile[], copy: Profile[] } }` |
-| Review   | `request`       | `{ type: 'find-source', toolCallId: string }`                                                  |
-| Review   | `reply`         | `{ type: 'source', result: ReviewReply }`                                                      |
+| Channel  | Envelope kind   | Example payload                                            |
+| -------- | --------------- | ---------------------------------------------------------- |
+| Runtime  | `request`       | `{ type: 'get-builds' }`                                   |
+| Runtime  | `advertisement` | `{ type: 'build', activate }`                              |
+| Runtime  | `request`       | `{ type: 'get-broker' }`                                   |
+| Runtime  | `reply`         | `{ type: 'broker', id, service }`                          |
+| Provider | `request`       | `{ type: 'get-providers' }`                                |
+| Provider | `advertisement` | `{ type: 'provider', id, service }`                        |
+| Review   | `request`       | `{ type: 'find-source', toolName, toolCallId, sessionId }` |
+| Review   | `reply`         | `{ type: 'source', copy }`                                 |
 
-The envelope version fields are integers. The major is positive and the feature
-level is non-negative. Replies repeat the request ID. Broker and provider
-identities are opaque. Schemas annotate the feature level for each addition.
-Offer reduction omits fields and values above the shared level. A profile whose
-policy uses an unsupported field or value is omitted from the offer.
-`/byos status` includes the chosen build identity. See [broker
-discovery][broker] for compatibility rules.
+Settings, configuration and requirements use runtime queries. Their replies
+contain `type`, `id` and `service`. The shell integration query returns
+`{ type: 'shell-integration' }` when an extension registers the Pi tools.
+Provider profiles and review source identities arrive in later milestones.
+
+The envelope header is fixed within a protocol major. The major is a positive
+integer, and the feature level is a non-negative integer. Replies repeat the
+request ID. Senders reduce offers to the lower of the two feature levels before
+they reply. Broker and provider identities are opaque. Schemas annotate the
+feature level for each addition. Offer reduction omits fields and values above
+the shared level. A profile whose policy uses an unsupported field or value is
+omitted from the offer. `/byos status` includes the chosen build identity. See
+[broker discovery][broker] for compatibility rules.
 
 [broker]: specification.md#broker-discovery
 

@@ -2,58 +2,62 @@ import { Type } from 'typebox';
 
 import { nonEmptyStringSchema, recoverySchema } from './schemas.js';
 
-export const operationSchema = Type.Enum([
-	'acquire',
-	'discover',
-	'configure',
-	'open',
-	'exec',
-	'readFile',
-	'writeFile',
-	'mkdir',
-	'access',
-	'stat',
-	'listDirectory',
-	'updateText',
-	'find',
-	'grep',
-	'dispose'
+export const operationSchema = Type.Union([
+	Type.Literal('acquire'),
+	Type.Literal('discover'),
+	Type.Literal('configure'),
+	Type.Literal('open'),
+	Type.Literal('exec'),
+	Type.Literal('readFile'),
+	Type.Literal('writeFile'),
+	Type.Literal('mkdir'),
+	Type.Literal('access'),
+	Type.Literal('stat'),
+	Type.Literal('listDirectory'),
+	Type.Literal('updateText'),
+	Type.Literal('find'),
+	Type.Literal('grep'),
+	Type.Literal('dispose')
 ]);
 
-const completionSchema = Type.Enum([
-	'not-started',
-	'confirmed',
-	'unknown',
-	'not-guaranteed'
+const completionSchema = Type.Union([
+	Type.Literal('not-started'),
+	Type.Literal('confirmed'),
+	Type.Literal('unknown'),
+	Type.Literal('not-guaranteed')
 ]);
-const reasonSchema = Type.Enum(['caller', 'deadline', 'shutdown', 'output']);
+const reasonSchema = Type.Union([
+	Type.Literal('caller'),
+	Type.Literal('deadline'),
+	Type.Literal('shutdown'),
+	Type.Literal('output')
+]);
 
-export const ordinaryErrorNameSchema = Type.Enum([
-	'SandboxInitialisationError',
-	'DuplicateBrokerError',
-	'IncompatibleSandboxProtocolError',
-	'InvalidSandboxDeclarationError',
-	'InvalidSandboxConfigError',
-	'InvalidSandboxRequestError',
-	'ProviderNotFoundError',
-	'DuplicateProviderError',
-	'ConflictingSandboxConfigError',
-	'ConflictingSandboxProviderError',
-	'SandboxProviderRequiredError',
-	'SandboxProviderMismatchError',
-	'UnsupportedSandboxCapabilityError',
-	'UnsupportedSandboxPolicyError',
-	'SandboxStartupError',
-	'StaleSandboxHandleError',
-	'SandboxSessionClosingError',
-	'SandboxPermissionDeniedError',
-	'SandboxPathNotFoundError',
-	'SandboxOperationError',
-	'SandboxCleanupError'
+export const ordinaryErrorNameSchema = Type.Union([
+	Type.Literal('SandboxInitialisationError'),
+	Type.Literal('DuplicateBrokerError'),
+	Type.Literal('IncompatibleSandboxProtocolError'),
+	Type.Literal('InvalidSandboxDeclarationError'),
+	Type.Literal('InvalidSandboxConfigError'),
+	Type.Literal('InvalidSandboxRequestError'),
+	Type.Literal('ProviderNotFoundError'),
+	Type.Literal('DuplicateProviderError'),
+	Type.Literal('ConflictingSandboxConfigError'),
+	Type.Literal('ConflictingSandboxProviderError'),
+	Type.Literal('SandboxProviderRequiredError'),
+	Type.Literal('SandboxProviderMismatchError'),
+	Type.Literal('UnsupportedSandboxCapabilityError'),
+	Type.Literal('UnsupportedSandboxPolicyError'),
+	Type.Literal('SandboxStartupError'),
+	Type.Literal('StaleSandboxHandleError'),
+	Type.Literal('SandboxSessionClosingError'),
+	Type.Literal('SandboxPermissionDeniedError'),
+	Type.Literal('SandboxPathNotFoundError'),
+	Type.Literal('SandboxOperationError'),
+	Type.Literal('SandboxCleanupError')
 ]);
 
 const errorContextSchema = Type.Object({
-	sandboxErrorVersion: Type.Literal(1),
 	message: Type.String(),
 	operation: operationSchema,
 	configurationSource: Type.Optional(Type.Literal('extension')),
@@ -62,20 +66,26 @@ const errorContextSchema = Type.Object({
 	recovery: Type.Optional(recoverySchema)
 });
 
+const transportNames = Type.Union([
+	Type.Literal('SandboxTransportError'),
+	Type.Literal('UnconfirmedSandboxTerminationError')
+]);
+const cancellationReasons = Type.Union([
+	Type.Literal('caller'),
+	Type.Literal('shutdown')
+]);
+
 const errorVariantsSchema = Type.Union([
 	Type.Object({ name: ordinaryErrorNameSchema }),
 	Type.Object({
-		name: Type.Enum([
-			'SandboxTransportError',
-			'UnconfirmedSandboxTerminationError'
-		]),
+		name: transportNames,
 		completion: Type.Literal('unknown'),
 		reason: Type.Optional(reasonSchema)
 	}),
 	Type.Object({
 		name: Type.Literal('SandboxCancelledError'),
 		completion: completionSchema,
-		reason: Type.Enum(['caller', 'shutdown'])
+		reason: cancellationReasons
 	}),
 	Type.Object({
 		name: Type.Literal('SandboxTimeoutError'),

@@ -1,10 +1,8 @@
-import {
-	createEventBus,
-	SessionManager
-} from '@earendil-works/pi-coding-agent';
+import { SessionManager } from '@earendil-works/pi-coding-agent';
 import { expect, it } from 'vitest';
 
 import { discoverBroker } from './discovery.js';
+import { fixtureEvents } from './fixtures/protocol-peer.js';
 import { brokerReply, respond } from './fixtures/protocol-peer.js';
 import { ensureBroker } from './service.js';
 
@@ -17,7 +15,7 @@ function fixtureContext() {
 }
 
 it('publishes synchronously and constructs exactly one service on first use', () => {
-	const events = createEventBus();
+	const events = fixtureEvents(import.meta.filename);
 	let constructions = 0;
 
 	const create = (id: string) => {
@@ -37,7 +35,7 @@ it('publishes synchronously and constructs exactly one service on first use', ()
 });
 
 it('retains a failed bootstrap so a later caller cannot create a replacement', async () => {
-	const events = createEventBus();
+	const events = fixtureEvents(import.meta.filename);
 	let constructions = 0;
 
 	const create = () => {
@@ -59,7 +57,7 @@ it('retains a failed bootstrap so a later caller cannot create a replacement', a
 });
 
 it('rejects re-entrant acquisition during construction without creating another service', async () => {
-	const events = createEventBus();
+	const events = fixtureEvents(import.meta.filename);
 	let reentrant: Promise<unknown> | undefined;
 	let constructions = 0;
 	const service = ensureBroker(events, (id) => {
@@ -84,11 +82,11 @@ it('rejects re-entrant acquisition during construction without creating another 
 });
 
 it('does not construct a replacement for an incompatible advertisement', () => {
-	const events = createEventBus();
+	const events = fixtureEvents(import.meta.filename);
 
-	respond(events, 'pi-byos:discovery:v1:brokers', {
+	respond(events, 'pi-byos:runtime', {
 		...brokerReply(),
-		serviceVersions: [2]
+		major: 2
 	});
 	expect(() =>
 		ensureBroker(events, () => {
@@ -101,12 +99,12 @@ it('does not construct a replacement for an incompatible advertisement', () => {
 
 it('reports a copy against a broker without copies', async () => {
 	const service = ensureBroker(
-		createEventBus(),
+		fixtureEvents(import.meta.filename),
 		(id) => brokerReply(id).service
 	);
 
 	await expect(
-		service.copy?.(fixtureContext(), { kind: 'host' })
+		service.copy(fixtureContext(), { kind: 'host' })
 	).rejects.toMatchObject({
 		name: 'UnsupportedSandboxCapabilityError',
 		operation: 'acquire'

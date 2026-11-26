@@ -1,161 +1,167 @@
 import type { EventBus } from '@earendil-works/pi-coding-agent';
 
 import { builtinProviders } from './builtin-providers.js';
+import { DuplicateBrokerError, DuplicateProviderError } from './errors.js';
+import type { BrokerServiceV1, ProviderServiceV1 } from './protocol.js';
+import { protocolAddress } from './protocol-address.js';
+import type { ProtocolIdentity } from './protocol-envelope.js';
 import {
-	DuplicateBrokerError,
-	DuplicateProviderError,
-	IncompatibleSandboxProtocolError,
-	InvalidSandboxDeclarationError,
-	SandboxInitialisationError
-} from './errors.js';
-import type {
-	BrokerServiceV1,
-	DiscoveryRequestV1,
-	ProviderServiceV1,
-	ServiceAdvertisementV1
-} from './protocol.js';
-import {
-	BROKER_DISCOVERY_CHANNEL,
-	PROVIDER_DISCOVERY_CHANNEL
-} from './protocol.js';
-import { checker } from './schemas.js';
-import {
-	advertisementSchema,
-	brokerServiceSchema,
-	discoveryRequestSchema,
-	providerServiceSchema
-} from './service-schemas.js';
+	collectProtocolReplies,
+	invalidProtocolServiceReply,
+	PROVIDER_CHANNEL,
+	RUNTIME_CHANNEL
+} from './protocol-envelope.js';
+import { brokerReply, providerAdvertisement } from './protocol-payloads.js';
+import { projectOffer } from './protocol-schema.js';
+import { checkDemand, sharedFeatureLevel } from './protocol-version.js';
+import { acquireOptionsSchema } from './request-schemas.js';
+import { checker, providerInfoSchema } from './schemas.js';
+import { brokerServiceSchema } from './service-schemas.js';
 import { snapshotCapabilities, snapshotProviderInfo } from './validation.js';
-
-export const isDiscoveryRequest = checker(discoveryRequestSchema);
-
-const isAdvertisement = checker(advertisementSchema);
-
-const isProviderService = checker(providerServiceSchema);
 
 export const isBrokerService = checker(brokerServiceSchema);
 
-function collect(
-	events: EventBus,
-	channel: string,
-	kind: ServiceAdvertisementV1['kind']
-): readonly ServiceAdvertisementV1[] {
-	const replies: unknown[] = [];
-	let isCollecting = true;
+const isBrokerReply = checker(brokerReply);
+const isProviderAdvertisement = checker(providerAdvertisement);
+const isProviderInfo = checker(providerInfoSchema);
 
-	try {
-		events.emit(channel, {
-			kind: 'pi-byos.discover',
-			discoveryVersion: 1,
-			reply(advertisement: unknown) {
-				if (isCollecting) {
-					replies.push(advertisement);
-				}
-			}
-		} satisfies DiscoveryRequestV1);
-	} catch (error) {
-		throw new SandboxInitialisationError(
-			{ operation: 'discover' },
-			{ cause: error }
-		);
-	} finally {
-		isCollecting = false;
-	}
-
-	return replies.map((reply) => {
-		if (!isAdvertisement(reply) || reply.kind !== kind) {
-			throw new InvalidSandboxDeclarationError({
-				operation: 'discover'
-			});
-		}
-
-		if (
-			!reply.serviceVersions.includes(1) &&
-			!(kind === 'pi-byos.provider' && reply.serviceVersions.includes(2))
-		) {
-			throw new IncompatibleSandboxProtocolError({
-				operation: 'discover'
-			});
-		}
-
-		return reply;
-	});
+export function protocolIdentity({
+	buildId,
+	packageVersion,
+	extensionSource,
+	major,
+	featureLevel
+}: ProtocolIdentity): ProtocolIdentity {
+	return { buildId, packageVersion, extensionSource, major, featureLevel };
 }
 
 export function discoverProviders(
 	events: EventBus
 ): readonly ProviderServiceV1[] {
+	const local = protocolAddress(events);
 	const ids = new Set(
 		builtinProviders.providers.map((provider) => provider.id)
 	);
 
-	return collect(events, PROVIDER_DISCOVERY_CHANNEL, 'pi-byos.provider').map(
-		({ id, service }) => {
-			if (!isProviderService(service) || service.id !== id) {
-				throw new InvalidSandboxDeclarationError({
-					operation: 'discover',
-					providerId: id
-				});
-			}
+	return collectProtocolReplies(events, PROVIDER_CHANNEL, local, {
+		type: 'get-providers'
+	}).map((reply) => {
+		const level = sharedFeatureLevel(local, reply);
+		const value = projectOffer(providerAdvertisement, reply.payload, level);
 
-			if (ids.has(id)) {
-				throw new DuplicateProviderError({
-					operation: 'discover',
-					providerId: id
-				});
-			}
+		if (
+			reply.kind !== 'advertisement' ||
+			!isProviderAdvertisement(value) ||
+			value.service.id !== value.id
+		) {
+			throw invalidProtocolServiceReply(reply);
+		}
 
-			ids.add(id);
+		const { id, service } = value;
 
-			return Object.freeze({
-				...snapshotProviderInfo(service),
-				...(service.outsideSandbox !== undefined && {
-					outsideSandbox: Object.freeze({
-						label: service.outsideSandbox.label,
-						capabilities: snapshotCapabilities(
-							service.outsideSandbox.capabilities
-						),
-						policy: Object.freeze({ ...service.outsideSandbox.policy }),
-						configure: service.outsideSandbox.configure.bind(
-							service.outsideSandbox
-						)
-					})
-				}),
-				configure: service.configure.bind(service)
+		if (ids.has(id)) {
+			throw new DuplicateProviderError({
+				operation: 'discover',
+				providerId: id
 			});
 		}
-	);
+
+		ids.add(id);
+
+		return Object.freeze({
+			...snapshotProviderInfo(service),
+			protocol: protocolIdentity(reply),
+			...(service.outsideSandbox !== undefined && {
+				outsideSandbox: Object.freeze({
+					label: service.outsideSandbox.label,
+					capabilities: snapshotCapabilities(
+						service.outsideSandbox.capabilities
+					),
+					policy: Object.freeze({ ...service.outsideSandbox.policy }),
+					configure: service.outsideSandbox.configure.bind(
+						service.outsideSandbox
+					)
+				})
+			}),
+			configure: service.configure.bind(service)
+		});
+	});
+}
+
+function boundBroker(
+	service: BrokerServiceV1,
+	local: ProtocolIdentity,
+	peer: ProtocolIdentity
+): BrokerServiceV1 {
+	const level = sharedFeatureLevel(local, peer);
+
+	return Object.freeze<BrokerServiceV1>({
+		id: service.id,
+		acquire(context, options) {
+			checkDemand(acquireOptionsSchema, options ?? {}, local, peer, 'acquire');
+
+			return service.acquire(context, options);
+		},
+		negotiate(context, options) {
+			checkDemand(
+				acquireOptionsSchema,
+				options ?? {},
+				local,
+				peer,
+				'negotiate'
+			);
+
+			return service.negotiate(context, options);
+		},
+		copy(context, source, options) {
+			checkDemand(acquireOptionsSchema, options ?? {}, local, peer, 'copy');
+
+			return service.copy(context, source, options);
+		},
+		close: service.close.bind(service),
+		async status(context) {
+			const status = await service.status(context);
+
+			return { ...status, protocol: protocolIdentity(peer) };
+		},
+		async providers(context) {
+			const providers = await service.providers(context);
+
+			return providers.flatMap((provider) => {
+				const offer = projectOffer(providerInfoSchema, provider, level);
+
+				return isProviderInfo(offer) ? [offer] : [];
+			});
+		}
+	});
 }
 
 export function discoverBroker(events: EventBus): BrokerServiceV1 | undefined {
-	const services = collect(
-		events,
-		BROKER_DISCOVERY_CHANNEL,
-		'pi-byos.broker'
-	).map(({ id, service }) => {
-		if (!isBrokerService(service) || service.id !== id) {
-			throw new InvalidSandboxDeclarationError({
-				operation: 'discover'
-			});
-		}
-
-		return Object.freeze({
-			guardVersion: service.guardVersion,
-			...(service.copy !== undefined && {
-				copy: service.copy.bind(service)
-			}),
-			id,
-			acquire: service.acquire.bind(service),
-			negotiate: service.negotiate.bind(service),
-			close: service.close.bind(service),
-			status: service.status.bind(service),
-			providers: service.providers.bind(service)
-		});
+	const local = protocolAddress(events);
+	const replies = collectProtocolReplies(events, RUNTIME_CHANNEL, local, {
+		type: 'get-broker'
 	});
 
-	if (services.length > 1) {
+	if (replies.length > 1) {
 		throw new DuplicateBrokerError({ operation: 'discover' });
 	}
 
-	return services[0];
+	const [reply] = replies;
+
+	if (reply === undefined) {
+		return undefined;
+	}
+
+	const level = sharedFeatureLevel(local, reply);
+	const payload = projectOffer(brokerReply, reply.payload, level);
+
+	if (
+		reply.kind !== 'reply' ||
+		!isBrokerReply(payload) ||
+		payload.service.id !== payload.id
+	) {
+		throw invalidProtocolServiceReply(reply);
+	}
+
+	return boundBroker(payload.service, local, reply);
 }

@@ -1,3 +1,4 @@
+// Milestone 5 removes this legacy service discovery.
 import { randomUUID } from 'node:crypto';
 
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';

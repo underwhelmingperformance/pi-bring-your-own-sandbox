@@ -2,6 +2,7 @@ import type { Static, TArrayOptions, TSchema } from 'typebox';
 import { Type } from 'typebox';
 import { Compile } from 'typebox/compile';
 
+import { wholeOffer } from './protocol-schema.js';
 import { canProtectWorkspace } from './workspace-protection.js';
 
 export function checker<Schema extends TSchema>(schema: Schema) {
@@ -48,25 +49,35 @@ export const timeoutSchema = Type.Number({
 	exclusiveMinimum: 0,
 	maximum: Number.MAX_VALUE
 });
-export const shellSchema = Type.Enum(['bash', 'sh', 'powershell']);
-export const capabilitySchema = Type.Enum([
-	'exec',
-	'files.read',
-	'files.write',
-	'files.list',
-	'search.find',
-	'search.grep',
-	'workspace.protection',
-	'copy'
+export const shellSchema = Type.Union([
+	Type.Literal('bash'),
+	Type.Literal('sh'),
+	Type.Literal('powershell')
 ]);
-export const processKindSchema = Type.Enum(['argv', 'shell']);
+export const capabilitySchema = Type.Union([
+	Type.Literal('exec'),
+	Type.Literal('files.read'),
+	Type.Literal('files.write'),
+	Type.Literal('files.list'),
+	Type.Literal('search.find'),
+	Type.Literal('search.grep'),
+	Type.Literal('workspace.protection'),
+	Type.Literal('copy')
+]);
+export const processKindSchema = Type.Union([
+	Type.Literal('argv'),
+	Type.Literal('shell')
+]);
 
-const exitStatusSchema = Type.Enum(['guaranteed', 'optional']);
+const exitStatusSchema = Type.Union([
+	Type.Literal('guaranteed'),
+	Type.Literal('optional')
+]);
 
-export const terminationScopeSchema = Type.Enum([
-	'none',
-	'process-group',
-	'workload'
+export const terminationScopeSchema = Type.Union([
+	Type.Literal('none'),
+	Type.Literal('process-group'),
+	Type.Literal('workload')
 ]);
 
 const capabilitiesShape = Type.Object({
@@ -88,31 +99,37 @@ export const capabilitiesSchema = Type.Refine(
 	(value) => value.processKinds.includes('shell') === value.shells.length > 0
 );
 
-export const workspaceRelationshipSchema = Type.Enum([
-	'shared',
-	'copied',
-	'remote'
+export const workspaceRelationshipSchema = Type.Union([
+	Type.Literal('shared'),
+	Type.Literal('copied'),
+	Type.Literal('remote')
 ]);
 
-const workspaceAccessSchema = Type.Enum(['read-only', 'read-write']);
-const filesystemScopeSchema = Type.Enum([
-	'workspace-only',
-	'system-read-only',
-	'provider-default'
+const workspaceAccessSchema = Type.Union([
+	Type.Literal('read-only'),
+	Type.Literal('read-write')
 ]);
-const networkAccessSchema = Type.Enum(['denied', 'provider-default']);
+const filesystemScopeSchema = Type.Union([
+	Type.Literal('workspace-only'),
+	Type.Literal('system-read-only'),
+	Type.Literal('provider-default')
+]);
+const networkAccessSchema = Type.Union([
+	Type.Literal('denied'),
+	Type.Literal('provider-default')
+]);
 
-export const guaranteeSchema = Type.Enum([
-	'no-workspace-writes',
-	'no-network',
-	'no-host-user-data',
-	'no-host-system-files'
+export const guaranteeSchema = Type.Union([
+	Type.Literal('no-workspace-writes'),
+	Type.Literal('no-network'),
+	Type.Literal('no-host-user-data'),
+	Type.Literal('no-host-system-files')
 ]);
-export const accessSchema = Type.Enum([
-	'workspace-writes',
-	'network',
-	'host-user-data',
-	'host-system-files'
+export const accessSchema = Type.Union([
+	Type.Literal('workspace-writes'),
+	Type.Literal('network'),
+	Type.Literal('host-user-data'),
+	Type.Literal('host-system-files')
 ]);
 
 const protectedPathSchema = Type.Refine(
@@ -137,13 +154,15 @@ export const workspaceProtectionSchema = denseArray(
 	{ uniqueItems: true, maxItems: 128 }
 );
 
-export const policySchema = Type.Object({
-	workspaceRelationship: Type.Optional(workspaceRelationshipSchema),
-	workspaceProtection: Type.Optional(workspaceProtectionSchema),
-	workspaceAccess: workspaceAccessSchema,
-	filesystemScope: filesystemScopeSchema,
-	networkAccess: networkAccessSchema
-});
+export const policySchema = wholeOffer(
+	Type.Object({
+		workspaceRelationship: Type.Optional(workspaceRelationshipSchema),
+		workspaceProtection: Type.Optional(workspaceProtectionSchema),
+		workspaceAccess: workspaceAccessSchema,
+		filesystemScope: filesystemScopeSchema,
+		networkAccess: networkAccessSchema
+	})
+);
 
 const supportedPoliciesSchema = Type.Object({
 	workspaceRelationship: Type.Optional(

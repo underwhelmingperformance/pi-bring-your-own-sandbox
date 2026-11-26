@@ -3,6 +3,7 @@ import { Type } from 'typebox';
 import { cleanupSelectionSchema } from '../cleanup-budgets.js';
 import type { SandboxHost, SandboxProvider } from '../contracts.js';
 import { InvalidSandboxConfigError } from '../errors.js';
+import { hasProtocolAddress, protocolAddress } from '../protocol-address.js';
 import { registerSandboxProvider } from '../provider-registration.js';
 import {
 	approvalSelectionSchema,
@@ -33,6 +34,12 @@ const defaultPolicy = {
 	networkAccess: 'provider-default'
 } as const;
 
+function source(pi: SandboxHost): string {
+	return hasProtocolAddress(pi.events)
+		? protocolAddress(pi.events).extensionSource
+		: import.meta.filename;
+}
+
 export class FixtureConfig {
 	#value: unknown = {};
 	readonly #resolve: (() => Promise<unknown>) | undefined;
@@ -62,13 +69,13 @@ export class FixtureConfig {
 		this.#value = value;
 	}
 
-	bind(pi: SandboxHost): void {
-		configureExecutionApproval(pi, async () => {
+	bind(pi: SandboxHost, extensionSource = source(pi)): void {
+		configureExecutionApproval(pi, extensionSource, async () => {
 			const value = await this.#read();
 
 			return value.approval ?? { policy: 'user' };
 		});
-		configureOutsideExecution(pi, async () => {
+		configureOutsideExecution(pi, extensionSource, async () => {
 			const value = await this.#read();
 
 			return value.outsideSandbox ?? { destination: 'normal' };
@@ -78,9 +85,10 @@ export class FixtureConfig {
 	activate<Config>(
 		pi: SandboxHost,
 		provider: SandboxProvider<Config>,
-		register = registerSandboxProvider
+		register = registerSandboxProvider,
+		extensionSource = source(pi)
 	): void {
-		register<Config, unknown>(pi, provider, {
+		register<Config, unknown>(pi, extensionSource, provider, {
 			configure: async () => {
 				const value = await this.#read();
 

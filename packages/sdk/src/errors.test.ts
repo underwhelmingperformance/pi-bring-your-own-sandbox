@@ -71,7 +71,6 @@ it('narrows errors structurally by their concrete name', () => {
 	const metadata: unknown = JSON.parse(serialised);
 
 	expect(metadata).toStrictEqual({
-		sandboxErrorVersion: 1,
 		name: 'SandboxTimeoutError',
 		operation: 'exec',
 		reason: 'deadline',
@@ -127,7 +126,6 @@ it.each([
 ])('recognises structural errors from an independent SDK: %j', (details) => {
 	expect(
 		isSandboxError({
-			sandboxErrorVersion: 1,
 			message: 'Independent SDK failure',
 			operation: 'exec',
 			providerId: 'fixture',
@@ -156,7 +154,6 @@ it.each([
 ])('rejects malformed structural errors: %j', (details) => {
 	expect(
 		isSandboxError({
-			sandboxErrorVersion: 1,
 			message: 'Malformed error',
 			operation: 'exec',
 			...details
@@ -168,18 +165,11 @@ it.each([
 	undefined,
 	new Error('ordinary'),
 	{
-		sandboxErrorVersion: 2,
-		name: 'SandboxOperationError',
-		message: 'Future protocol',
-		operation: 'exec'
-	},
-	{
-		sandboxErrorVersion: 1,
 		name: 'SandboxOperationError',
 		message: 'Invalid operation',
 		operation: 'future'
 	}
-])('rejects values without a supported versioned error: %j', (value) => {
+])('rejects values outside the protocol error schema: %j', (value) => {
 	expect(isSandboxError(value)).toBe(false);
 });
 

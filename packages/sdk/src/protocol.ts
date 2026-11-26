@@ -18,6 +18,7 @@ import type {
 	SupportedSandboxPolicies
 } from './contracts.js';
 import type { OutsideProviderServiceV1 } from './outside-execution.js';
+import type { ProtocolIdentity } from './protocol-envelope.js';
 
 /**
 The source of a copy across SDK copies: the host workspace, or a ready backend
@@ -29,72 +30,6 @@ export type CopySourceIdentity =
 			Sandbox,
 			'providerId' | 'generationId' | 'backendId'
 	  >);
-
-/**
-Synchronous Pi event-bus channel for discovering the runtime broker,
-including its closed tombstone.
-*/
-export const BROKER_DISCOVERY_CHANNEL = 'pi-byos:discovery:v1:brokers';
-/**
-Synchronous Pi event-bus channel for collecting provider declarations after
-extension factories complete.
-*/
-export const PROVIDER_DISCOVERY_CHANNEL = 'pi-byos:discovery:v1:providers';
-
-/**
-Versioned discovery envelope. Responders must reply synchronously during
-event delivery.
-*/
-export interface DiscoveryRequestV1 {
-	/**
-	Fixed discriminator for discovery requests.
-	*/
-	readonly kind: 'pi-byos.discover';
-
-	/**
-	Discovery envelope version, independent of service versions.
-	*/
-	readonly discoveryVersion: 1;
-
-	/**
-	Accept untrusted advertisements synchronously; replies after emission
-	returns are ignored.
-	*/
-	readonly reply: (advertisement: unknown) => void;
-}
-
-/**
-Untrusted discovery reply. Validate the envelope, supported versions and
-service before use.
-*/
-export interface ServiceAdvertisementV1 {
-	/**
-	Distinguishes broker and provider responders on their respective
-	channels.
-	*/
-	readonly kind: 'pi-byos.broker' | 'pi-byos.provider';
-
-	/**
-	Discovery envelope version understood before inspecting the service.
-	*/
-	readonly discoveryVersion: 1;
-
-	/**
-	Non-empty list of supported positive integer service versions.
-	*/
-	readonly serviceVersions: readonly number[];
-
-	/**
-	Non-empty broker or provider identity, required to match the service
-	identity.
-	*/
-	readonly id: string;
-
-	/**
-	Untrusted service object validated before any method invocation.
-	*/
-	readonly service: unknown;
-}
 
 /**
 Provider configuration captured in a closure after synchronous validation.
@@ -127,6 +62,7 @@ Version 1 provider responder shared across separately installed SDK copies.
 Discovery and configuration allocate no backend.
 */
 export interface ProviderServiceV1 {
+	readonly protocol?: ProtocolIdentity;
 	/**
 	Policy used when extension settings omit a policy. Must use supported values.
 	*/
@@ -206,6 +142,7 @@ export interface ProviderSelection {
 Readonly generation snapshot. Status inspection must never open a backend.
 */
 export interface SandboxStatus {
+	readonly protocol?: ProtocolIdentity;
 	/**
 	Selected provider's declaration label, retained after failure or closure.
 	*/
@@ -259,8 +196,7 @@ export interface SandboxStatus {
 
 	/**
 	Effective base policy after backend validation, including the workspace
-	relationship. Older brokers may report the relationship only in `workspace`.
-	Before startup, only the requested policy in `selection` is available.
+	relationship. Before startup, only the requested policy in `selection` is available.
 	*/
 	readonly policy?: SandboxPolicy;
 
@@ -355,16 +291,12 @@ export interface BrokerServiceV1 {
 	Open a private copy of the host workspace or of a ready backend in this
 	generation. A sandbox handle's `copy` method uses the same operation.
 	*/
-	readonly copy?: (
+	readonly copy: (
 		context: SandboxContext,
 		source: CopySourceIdentity,
 		options?: SandboxCopyOptions
 	) => Promise<SandboxCopy>;
 
-	/**
- Required guard enforcement contract for cooperating SDK copies.
- */
-	readonly guardVersion: 1;
 	/**
 	Runtime service identity shared across independently installed SDK
 	copies.

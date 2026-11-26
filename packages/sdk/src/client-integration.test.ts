@@ -11,8 +11,6 @@ import { afterEach, expect, it, vi } from 'vitest';
 import type { SandboxContext, SandboxHost } from './api.js';
 import {
 	closeSandboxSession,
-	getSandbox,
-	negotiateSandbox,
 	registerSandboxProvider,
 	SandboxStartupError
 } from './api.js';
@@ -20,10 +18,12 @@ import { discoverBroker } from './discovery.js';
 import { createSandbox } from './facade.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
 import { FixtureConfig } from './fixtures/config.js';
+import { getSandbox, negotiateSandbox } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { ScriptedModel } from './fixtures/scripted-model.js';
 import { loadSdkInstance } from './fixtures/sdk-instance.js';
+import { bindProtocolAddress } from './protocol-address.js';
 import { ensureBroker } from './service.js';
 
 afterEach(() => {
@@ -39,7 +39,8 @@ interface ClientFixture {
 
 async function fixture(
 	execute: (fixture: ClientFixture) => Promise<void>,
-	extensions: readonly InlineExtension[] = []
+	extensions: readonly InlineExtension[] = [],
+	prepare?: (pi: SandboxHost) => void
 ): Promise<void> {
 	const current: { pi?: SandboxHost; context?: SandboxContext } = {};
 
@@ -51,6 +52,7 @@ async function fixture(
 				name: 'sdk-consumer',
 				factory(pi) {
 					current.pi = pi;
+					prepare?.(pi);
 					pi.on('session_start', (_event, context) => {
 						current.context = context;
 					});
@@ -83,11 +85,10 @@ function provider(open: () => Promise<MemoryBackend>): InlineExtension {
 	return {
 		name: 'fixture-provider',
 		factory(pi) {
-			registerSandboxProvider(pi, {
+			registerSandboxProvider(pi, import.meta.filename, {
 				id: 'fixture',
 				defaultPolicy: template.policy,
 				label: 'Fixture',
-				protocolVersion: 1,
 				capabilities: template.capabilities,
 				policies: {
 					workspaceAccess: ['read-write'],
@@ -103,7 +104,7 @@ function provider(open: () => Promise<MemoryBackend>): InlineExtension {
 
 it('provides a shared host backend with only a consumer and no configuration', async () => {
 	await fixture(async ({ pi, context, errors }) => {
-		expect(discoverBroker(pi.events)).toBeUndefined();
+		expect(discoverBroker(pi.events)?.id).toBeDefined();
 
 		const [first, second] = await Promise.all([
 			getSandbox(pi, context),
@@ -302,40 +303,55 @@ it('closes explicitly before raw disposal and keeps a closed service until inval
 });
 
 it('shares consumer-only startup across independent SDK instances', async () => {
-	await fixture(async ({ pi, context }) => {
-		const [first, second] = await Promise.all([
-			loadSdkInstance(),
-			loadSdkInstance()
-		]);
-		const [left, right] = await Promise.all([
-			first.getSandbox(pi, context),
-			second.getSandbox(pi, context)
-		]);
+	const [first, second] = await Promise.all([
+		loadSdkInstance(),
+		loadSdkInstance()
+	]);
+	let leftClient: import('./contracts.js').SandboxClient | undefined;
+	let rightClient: import('./contracts.js').SandboxClient | undefined;
 
-		await left.files.writeFile(
-			'shared',
-			new TextEncoder().encode('shared content')
-		);
-		expect({
-			separateCopies: first.getSandbox !== second.getSandbox,
-			sameGeneration: left.generationId === right.generationId,
-			sameBackend: left.backendId === right.backendId,
-			content: new TextDecoder().decode(await right.files.readFile('shared'))
-		}).toStrictEqual({
-			separateCopies: true,
-			sameGeneration: true,
-			sameBackend: true,
-			content: 'shared content'
-		});
-		expect(await second.closeSandboxSession(pi, context)).toStrictEqual({
-			confirmed: true,
-			recoveries: [],
-			failures: []
-		});
-		await expect(first.getSandbox(pi, context)).rejects.toMatchObject({
-			name: 'SandboxSessionClosingError'
-		});
-	});
+	await fixture(
+		async ({ pi, context }) => {
+			if (leftClient === undefined || rightClient === undefined) {
+				throw new Error('Both client factories must have run.');
+			}
+
+			const [left, right] = await Promise.all([
+				leftClient.get(context),
+				rightClient.get(context)
+			]);
+
+			await left.files.writeFile(
+				'shared',
+				new TextEncoder().encode('shared content')
+			);
+			expect({
+				separateCopies:
+					first.createSandboxClient !== second.createSandboxClient,
+				sameGeneration: left.generationId === right.generationId,
+				sameBackend: left.backendId === right.backendId,
+				content: new TextDecoder().decode(await right.files.readFile('shared'))
+			}).toStrictEqual({
+				separateCopies: true,
+				sameGeneration: true,
+				sameBackend: true,
+				content: 'shared content'
+			});
+			expect(await second.closeSandboxSession(pi, context)).toStrictEqual({
+				confirmed: true,
+				recoveries: [],
+				failures: []
+			});
+			await expect(leftClient.get(context)).rejects.toMatchObject({
+				name: 'SandboxSessionClosingError'
+			});
+		},
+		[],
+		(pi) => {
+			leftClient = first.createSandboxClient(pi, import.meta.filename);
+			rightClient = second.createSandboxClient(pi, import.meta.filename);
+		}
+	);
 });
 
 it('keeps concurrent Pi sessions in separate generations and workspaces', async () => {
@@ -435,7 +451,7 @@ it.each([true, false])(
 					results
 				}).toStrictEqual({
 					errors: [],
-					hasBroker: isAllowed,
+					hasBroker: true,
 					requests: 2,
 					results: [
 						{
@@ -465,23 +481,31 @@ it.each([
 		const backend = new MemoryBackend();
 		const sandbox = createSandbox(new TestBackendOwner(backend));
 
-		await fixture(async ({ pi, context }) => {
-			ensureBroker(pi.events, (id) => ({
-				id,
-				guardVersion: 1,
-				acquire: () => Promise.resolve(sandbox),
-				negotiate: () => Promise.resolve({ ok: true, policy: sandbox.policy }),
-				close: () =>
-					Promise.resolve({ confirmed: true, failures: [], recoveries: [] }),
-				status: () =>
-					Promise.resolve({ generationId: 'independent', state: 'idle' }),
-				providers: () => Promise.resolve([])
-			}));
-
-			await expect(getSandbox(pi, context, requirement)).rejects.toMatchObject({
-				name: 'UnsupportedSandboxPolicyError'
-			});
-			expect(backend.calls).toStrictEqual([]);
-		});
+		await fixture(
+			async ({ pi, context }) => {
+				await expect(
+					getSandbox(pi, context, requirement)
+				).rejects.toMatchObject({
+					name: 'UnsupportedSandboxPolicyError'
+				});
+				expect(backend.calls).toStrictEqual([]);
+			},
+			[],
+			(pi) => {
+				bindProtocolAddress(pi.events, import.meta.filename);
+				ensureBroker(pi.events, (id) => ({
+					id,
+					copy: () => Promise.reject(new Error('Fixture does not copy.')),
+					acquire: () => Promise.resolve(sandbox),
+					negotiate: () =>
+						Promise.resolve({ ok: true, policy: sandbox.policy }),
+					close: () =>
+						Promise.resolve({ confirmed: true, failures: [], recoveries: [] }),
+					status: () =>
+						Promise.resolve({ generationId: 'independent', state: 'idle' }),
+					providers: () => Promise.resolve([])
+				}));
+			}
+		);
 	}
 );

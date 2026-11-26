@@ -2,20 +2,25 @@ import { createJiti } from 'jiti';
 
 import type {
 	ApprovalDeniedError,
+	closeSandboxSession,
+	createSandboxClient,
 	getOutsideSandboxExecutor,
 	initialiseSandboxHost,
 	isApprovalError,
 	isSandboxError,
 	registerApprovalPolicy,
+	registerSandboxProvider,
 	registerSandboxRequirement,
 	requestExecutionApproval,
 	SandboxCancelledError,
-	SandboxClient,
 	SandboxOperationError
 } from '../api.js';
 import { isRecord } from '../validation.js';
 
-interface FixtureApi extends SandboxClient {
+export interface FixtureApi {
+	readonly createSandboxClient: typeof createSandboxClient;
+	readonly closeSandboxSession: typeof closeSandboxSession;
+	readonly registerSandboxProvider: typeof registerSandboxProvider;
 	readonly SandboxCancelledError: typeof SandboxCancelledError;
 	readonly registerSandboxRequirement: typeof registerSandboxRequirement;
 	readonly registerApprovalPolicy: typeof registerApprovalPolicy;
@@ -31,7 +36,7 @@ interface FixtureApi extends SandboxClient {
 function isFixtureApi(value: unknown): value is FixtureApi {
 	return (
 		isRecord(value) &&
-		typeof value['getSandbox'] === 'function' &&
+		typeof value['createSandboxClient'] === 'function' &&
 		typeof value['registerSandboxRequirement'] === 'function' &&
 		typeof value['closeSandboxSession'] === 'function' &&
 		typeof value['registerSandboxProvider'] === 'function' &&

@@ -72,9 +72,9 @@ it('rejects duplicate custom policies with the approval-specific error', async (
 						decide: () => Promise.resolve({ kind: 'allow' as const })
 					};
 
-					registerApprovalPolicy(pi, policy);
+					registerApprovalPolicy(pi, import.meta.filename, policy);
 
-					registerApprovalPolicy(pi, policy);
+					registerApprovalPolicy(pi, import.meta.filename, policy);
 
 					pi.registerCommand('duplicates', {
 						description: 'Check duplicate policy errors.',
@@ -282,11 +282,11 @@ it.each([
 				{
 					name: 'configured-approval',
 					factory(pi) {
-						configureExecutionApproval(pi, () => ({
+						configureExecutionApproval(pi, import.meta.filename, () => ({
 							policy: 'fixture.config',
 							config
 						}));
-						registerApprovalPolicy(pi, {
+						registerApprovalPolicy(pi, import.meta.filename, {
 							id: 'fixture.config',
 							label: 'Fixture policy',
 							protocolVersion: 1,

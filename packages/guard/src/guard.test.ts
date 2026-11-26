@@ -1,78 +1,63 @@
 import { fileURLToPath } from 'node:url';
 
-import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
-import {
-	DefaultResourceLoader,
-	SessionManager,
-	SettingsManager
-} from '@earendil-works/pi-coding-agent';
-import { closeSandboxSession, getSandbox } from 'pi-bring-your-own-sandbox/api';
+import { createSandboxClient } from 'pi-bring-your-own-sandbox/api';
 import { expect, it } from 'vitest';
+
+import { withPiRuntime } from '../../sdk/src/fixtures/pi-runtime.js';
 
 import { createSandboxGuard } from './guard.js';
 
 it.each(['..', '../dist/extension.js'])(
 	'loads the standalone guard through Pi: %s',
 	async (entry) => {
-		const state: { pi?: ExtensionAPI } = {};
-		const loader = new DefaultResourceLoader({
-			cwd: process.cwd(),
-			agentDir: process.cwd(),
-			settingsManager: SettingsManager.inMemory(),
-			noExtensions: true,
-			noSkills: true,
-			noThemes: true,
-			noPromptTemplates: true,
-			noContextFiles: true,
-			additionalExtensionPaths: [
-				fileURLToPath(new URL(entry, import.meta.url))
-			],
-			extensionFactories: [
+		const outcomes: string[] = [];
+
+		await withPiRuntime(
+			[
 				{
 					name: 'consumer',
 					factory(pi) {
-						state.pi = pi;
+						const client = createSandboxClient(pi, import.meta.filename);
+
+						pi.on('session_start', async (_event, context) => {
+							await expect(client.get(context)).rejects.toMatchObject({
+								name: 'SandboxProviderRequiredError'
+							});
+							outcomes.push('provider required');
+						});
 					}
 				}
-			]
-		});
+			],
+			(runtime, errors) => {
+				const runner = runtime.session.extensionRunner;
 
-		await loader.reload();
+				expect({
+					errors,
+					outcomes,
+					tools: runner.getAllRegisteredTools(),
+					commands: runner.getRegisteredCommands()
+				}).toStrictEqual({
+					errors: [],
+					outcomes: ['provider required'],
+					tools: [],
+					commands: []
+				});
 
-		const loaded = loader.getExtensions();
-
-		expect({
-			errors: loaded.errors,
-			tools: loaded.extensions.flatMap((extension) =>
-				extension.tools.keys().toArray()
-			),
-			commands: loaded.extensions.flatMap((extension) =>
-				extension.commands.keys().toArray()
-			)
-		}).toStrictEqual({ errors: [], tools: [], commands: [] });
-
-		if (state.pi === undefined) {
-			throw new Error('Pi did not load the consumer fixture.');
-		}
-
-		const context = {
-			cwd: process.cwd(),
-			sessionManager: SessionManager.inMemory(process.cwd())
-		};
-
-		try {
-			await expect(getSandbox(state.pi, context)).rejects.toMatchObject({
-				name: 'SandboxProviderRequiredError'
-			});
-		} finally {
-			await closeSandboxSession(state.pi, context);
-		}
+				return Promise.resolve();
+			},
+			{
+				additionalExtensionPaths: [
+					fileURLToPath(new URL(entry, import.meta.url))
+				],
+				bindFixtureSources: false
+			}
+		);
 	}
 );
 
 it('exports a configurable extension factory', () => {
 	expect(
-		typeof createSandboxGuard({
+		typeof createSandboxGuard(import.meta.filename, {
 			providerId: 'expected',
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed'

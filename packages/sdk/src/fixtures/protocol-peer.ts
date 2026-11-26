@@ -1,10 +1,22 @@
 import type { EventBus } from '@earendil-works/pi-coding-agent';
+import { createEventBus } from '@earendil-works/pi-coding-agent';
+
+import { UnsupportedSandboxCapabilityError } from '../errors.js';
+import { bindProtocolAddress } from '../protocol-address.js';
+import { PROVIDER_CHANNEL } from '../protocol-envelope.js';
+import { isRecord } from '../validation.js';
+
+export function fixtureEvents(extensionSource: string) {
+	const events = createEventBus();
+
+	bindProtocolAddress(events, extensionSource);
+
+	return events;
+}
 
 export function providerReply(id = 'independent') {
 	return {
-		kind: 'pi-byos.provider',
-		discoveryVersion: 1,
-		serviceVersions: [1],
+		type: 'provider',
 		id,
 		service: {
 			id,
@@ -31,7 +43,6 @@ export function providerReply(id = 'independent') {
 class IndependentBroker {
 	readonly #identity: string;
 	readonly id: string;
-	readonly guardVersion = 1;
 
 	constructor(id: string) {
 		this.id = id;
@@ -40,6 +51,12 @@ class IndependentBroker {
 
 	acquire() {
 		return Promise.reject(new Error('Fixture only.'));
+	}
+
+	copy() {
+		return Promise.reject(
+			new UnsupportedSandboxCapabilityError({ operation: 'acquire' })
+		);
 	}
 
 	negotiate() {
@@ -65,54 +82,56 @@ class IndependentBroker {
 
 export function brokerReply(id = 'independent') {
 	return {
-		kind: 'pi-byos.broker',
-		discoveryVersion: 1,
-		serviceVersions: [1],
+		type: 'broker',
 		id,
 		service: new IndependentBroker(id)
 	};
 }
 
-interface IndependentRequest {
-	readonly kind: 'pi-byos.discover';
-	readonly discoveryVersion: 1;
-	readonly reply: (value: unknown) => void;
-}
-
-function isRequest(value: unknown): value is IndependentRequest {
-	return (
-		typeof value === 'object' &&
-		value !== null &&
-		'kind' in value &&
-		value.kind === 'pi-byos.discover' &&
-		'discoveryVersion' in value &&
-		value.discoveryVersion === 1 &&
-		'reply' in value &&
-		typeof value.reply === 'function'
-	);
-}
-
 export function respond(
 	events: EventBus,
 	channel: string,
-	advertisement: unknown,
-	isLate = false
+	reply: unknown,
+	isLate = false,
+	requestType = channel === PROVIDER_CHANNEL ? 'get-providers' : 'get-broker'
 ) {
 	events.on(channel, (request) => {
-		if (!isRequest(request)) {
+		if (
+			!isRecord(request) ||
+			request['kind'] !== 'request' ||
+			!isRecord(request['payload']) ||
+			request['payload']['type'] !== requestType
+		) {
 			return;
 		}
 
-		const reply = request.reply;
+		const send = () => {
+			const fields = isRecord(reply) ? reply : {};
+			const {
+				major,
+				featureLevel = 0,
+				kind = channel === PROVIDER_CHANNEL ? 'advertisement' : 'reply',
+				...payload
+			} = fields;
+
+			events.emit(channel, {
+				kind,
+				major: Object.hasOwn(fields, 'major') ? major : 1,
+				featureLevel,
+				requestId: request['requestId'],
+				packageVersion: '1.0.0',
+				buildId: 'fixture',
+				extensionSource: '/fixture-peer.ts',
+				payload: isRecord(reply) ? payload : reply
+			});
+		};
 
 		if (isLate) {
-			queueMicrotask(() => {
-				reply(advertisement);
-			});
+			queueMicrotask(send);
 
 			return;
 		}
 
-		reply(advertisement);
+		send();
 	});
 }

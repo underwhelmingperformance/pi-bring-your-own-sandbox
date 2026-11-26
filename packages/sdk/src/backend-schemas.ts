@@ -88,7 +88,7 @@ const backendShape = Type.Object({
 	search: Type.Optional(searchSchema)
 });
 
-const backendSchema = Type.Refine(backendShape, (value) => {
+export const backendSchema = Type.Refine(backendShape, (value) => {
 	const { operations, shells } = value.capabilities;
 
 	return (

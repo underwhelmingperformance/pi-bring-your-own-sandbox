@@ -3,7 +3,6 @@ import type {
 	ProcessOutput,
 	ProcessResult,
 	Sandbox,
-	SandboxClient,
 	SandboxContext,
 	SandboxHost,
 	ShellDialect
@@ -32,9 +31,9 @@ export interface ShellInvocation {
 }
 
 export class SandboxShell {
-	readonly #client: Pick<SandboxClient, 'getSandbox'>;
+	readonly #client: { readonly getSandbox: typeof getSandbox };
 
-	constructor(client?: Pick<SandboxClient, 'getSandbox'>) {
+	constructor(client?: { readonly getSandbox: typeof getSandbox }) {
 		this.#client = client ?? { getSandbox };
 	}
 

@@ -45,7 +45,7 @@ it('requires stat to report the resolved target kind', () => {
 });
 
 it('keeps consumer acquisition independent of provider configuration', () => {
-	expectTypeOf<SandboxClient['getSandbox']>().returns.toEqualTypeOf<
+	expectTypeOf<SandboxClient['get']>().returns.toEqualTypeOf<
 		Promise<Sandbox>
 	>();
 	expectTypeOf<Sandbox['exec']>().parameter(0).toEqualTypeOf<ProcessRequest>();
@@ -60,7 +60,7 @@ it('typechecks independently implemented providers and a consumer', () => {
 	).returns.toEqualTypeOf<ConnectionConfig>();
 	expectTypeOf<typeof inspectWorkspace>()
 		.parameter(0)
-		.toEqualTypeOf<SandboxClient>();
+		.toEqualTypeOf<Pick<SandboxClient, 'get'>>();
 });
 
 it('rejects shell requests without a dialect and ambiguous termination outcomes', () => {
@@ -93,7 +93,6 @@ it('rejects shell requests without a dialect and ambiguous termination outcomes'
 		args: readonly string[];
 	}>().not.toExtend<ProcessRequest>();
 	expectTypeOf<{
-		sandboxErrorVersion: 1;
 		message: string;
 		name: 'SandboxTimeoutError';
 		operation: 'exec';
@@ -101,7 +100,6 @@ it('rejects shell requests without a dialect and ambiguous termination outcomes'
 		completion: 'confirmed';
 	}>().not.toExtend<SandboxErrorInfo>();
 	expectTypeOf<{
-		sandboxErrorVersion: 1;
 		message: string;
 		name: 'UnconfirmedSandboxTerminationError';
 		operation: 'exec';
@@ -111,7 +109,7 @@ it('rejects shell requests without a dialect and ambiguous termination outcomes'
 
 it('connects registration options to provider configuration', () => {
 	expectTypeOf<typeof registerSandboxProvider<ImageConfig>>()
-		.parameter(2)
+		.parameter(3)
 		.toEqualTypeOf<SandboxProviderRegistration<ImageConfig> | undefined>();
 	expectTypeOf<{
 		configure: () => { configuration: { image: number } };
@@ -121,14 +119,14 @@ it('connects registration options to provider configuration', () => {
 	expectTypeOf<
 		typeof registerSandboxProvider<ConnectionConfig, { endpoint: string }>
 	>()
-		.parameter(2)
+		.parameter(3)
 		.toEqualTypeOf<
 			SandboxProviderRegistration<{ endpoint: string }> | undefined
 		>();
 });
 
 function invalidRegistration(pi: SandboxHost): void {
-	registerSandboxProvider(pi, imageProvider, {
+	registerSandboxProvider(pi, import.meta.filename, imageProvider, {
 		// @ts-expect-error The provider requires a string image identifier.
 		configure: () => ({ configuration: { image: 123 } })
 	});

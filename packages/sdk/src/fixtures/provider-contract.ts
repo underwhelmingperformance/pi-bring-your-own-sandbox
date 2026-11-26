@@ -15,7 +15,6 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 	const provider: SandboxProvider<undefined> = {
 		id: 'fixture.memory',
 		label: 'Contract test double without OS isolation',
-		protocolVersion: 1,
 		capabilities: {
 			processKinds: ['argv', 'shell'],
 			terminationScope: 'workload',

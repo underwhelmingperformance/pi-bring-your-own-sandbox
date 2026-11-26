@@ -4,7 +4,7 @@ import type {
 	SandboxProviderConfig,
 	SandboxProviderRegistration
 } from './contracts.js';
-import { isDiscoveryRequest } from './discovery.js';
+import { bindFactory } from './default-broker.js';
 import {
 	InvalidSandboxConfigError,
 	InvalidSandboxDeclarationError,
@@ -12,12 +12,11 @@ import {
 	isSandboxError,
 	UnsupportedSandboxPolicyError
 } from './errors.js';
-import type {
-	ConfiguredProviderV1,
-	ProviderServiceV1,
-	ServiceAdvertisementV1
-} from './protocol.js';
-import { PROVIDER_DISCOVERY_CHANNEL } from './protocol.js';
+import type { ConfiguredProviderV1, ProviderServiceV1 } from './protocol.js';
+import { protocolAddress } from './protocol-address.js';
+import { onProtocolRequest, PROVIDER_CHANNEL } from './protocol-envelope.js';
+import { providerAdvertisement } from './protocol-payloads.js';
+import { projectReply } from './protocol-version.js';
 import { registerProviderConfig } from './runtime-settings.js';
 import { checker } from './schemas.js';
 import { providerDeclarationSchema } from './service-schemas.js';
@@ -44,6 +43,7 @@ malformed or uses a reserved ID.
 */
 export function registerSandboxProvider<Config, Input = Config>(
 	pi: SandboxHost,
+	extensionSource: string,
 	provider: SandboxProvider<Config>,
 	options?: NoInfer<SandboxProviderRegistration<Input>>
 ): void {
@@ -59,6 +59,7 @@ export function registerSandboxProvider<Config, Input = Config>(
 		throw new InvalidSandboxRequestError({ operation: 'configure' });
 	}
 
+	bindFactory(pi, extensionSource);
 	registerProviderConfig(pi, provider.id, async (context) => {
 		const configured: SandboxProviderConfig<unknown> =
 			configure === undefined
@@ -146,22 +147,20 @@ export function registerSandboxProvider<Config, Input = Config>(
 			});
 		}
 	});
-	const advertisement: ServiceAdvertisementV1 = Object.freeze({
-		kind: 'pi-byos.provider',
-		discoveryVersion: 1,
-		serviceVersions: Object.freeze([
-			service.policies.workspaceRelationship === undefined &&
-			service.outsideSandbox?.policy.workspaceRelationship === undefined
-				? 1
-				: 2
-		]),
-		id,
-		service
-	});
+	const identity = protocolAddress(pi.events);
 
-	pi.events.on(PROVIDER_DISCOVERY_CHANNEL, (request) => {
-		if (isDiscoveryRequest(request)) {
-			request.reply(advertisement);
-		}
-	});
+	onProtocolRequest(
+		pi.events,
+		PROVIDER_CHANNEL,
+		identity,
+		'get-providers',
+		(request) =>
+			projectReply(
+				providerAdvertisement,
+				{ type: 'provider', id, service },
+				identity,
+				request
+			),
+		'advertisement'
+	);
 }

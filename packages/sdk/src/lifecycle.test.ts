@@ -109,7 +109,6 @@ it('composes caller cancellation and lifetime with a stable first cause', () => 
 	lifetime.abort();
 
 	expect(scope.cancellationError('confirmed')).toMatchObject({
-		sandboxErrorVersion: 1,
 		...identity,
 		name: 'SandboxCancelledError',
 		reason: 'caller',
@@ -158,7 +157,6 @@ it('uses milliseconds and removes its timer when finished', async () => {
 	expect(scope.context.deadline).toBe(1020);
 	await vi.advanceTimersByTimeAsync(20);
 	expect(scope.cancellationError('confirmed')).toMatchObject({
-		sandboxErrorVersion: 1,
 		...identity,
 		name: 'SandboxTimeoutError',
 		reason: 'deadline',

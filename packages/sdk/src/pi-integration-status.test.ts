@@ -1,6 +1,6 @@
-import { createEventBus } from '@earendil-works/pi-coding-agent';
 import { expect, it } from 'vitest';
 
+import { fixtureEvents } from './fixtures/protocol-peer.js';
 import { respond } from './fixtures/protocol-peer.js';
 import {
 	describeShellIntegration,
@@ -8,7 +8,7 @@ import {
 } from './pi-integration-status.js';
 
 it('reports a loaded integration without allocating or verifying tool ownership', () => {
-	const events = createEventBus();
+	const events = fixtureEvents(import.meta.filename);
 	const before = describeShellIntegration(events);
 
 	registerShellIntegrationDiagnostics(events);
@@ -18,26 +18,27 @@ it('reports a loaded integration without allocating or verifying tool ownership'
 	});
 });
 
-it.each([
-	{ kind: 'pi-byos.shell-integration', discoveryVersion: 2 },
-	{ kind: 'unexpected', discoveryVersion: 1 }
-])('reports an unrecognised diagnostic reply as unavailable: %j', (reply) => {
-	const events = createEventBus();
+it.each([{ type: 'shell-integration', major: 2 }, { type: 'unexpected' }])(
+	'reports an unrecognised diagnostic reply as unavailable: %j',
+	(reply) => {
+		const events = fixtureEvents(import.meta.filename);
 
-	respond(events, 'pi-byos:diagnostics:v1:shell-integration', reply);
-	expect(describeShellIntegration(events)).toBe(
-		'Pi shell integration: request status unavailable; routing unverified.'
-	);
-});
+		respond(events, 'pi-byos:runtime', reply, false, 'get-shell-integration');
+		expect(describeShellIntegration(events)).toBe(
+			'Pi shell integration: request status unavailable; routing unverified.'
+		);
+	}
+);
 
 it('ignores a diagnostic reply after collection closes', async () => {
-	const events = createEventBus();
+	const events = fixtureEvents(import.meta.filename);
 
 	respond(
 		events,
-		'pi-byos:diagnostics:v1:shell-integration',
-		{ kind: 'pi-byos.shell-integration', discoveryVersion: 1 },
-		true
+		'pi-byos:runtime',
+		{ type: 'shell-integration' },
+		true,
+		'get-shell-integration'
 	);
 
 	const result = describeShellIntegration(events);

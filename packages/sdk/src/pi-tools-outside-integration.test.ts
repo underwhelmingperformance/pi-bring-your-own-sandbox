@@ -7,9 +7,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 import type { ExecutionApprovalRequest } from './approval-contracts.js';
 import { approvalDecisionSchema } from './approval-schemas.js';
-import type { SandboxConfig } from './config.js';
 import { registerApprovalPolicy } from './execution-approval.js';
-import { publishService } from './extension-services.js';
 import { FixtureConfig } from './fixtures/config.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { ScriptedModel } from './fixtures/scripted-model.js';
@@ -17,7 +15,6 @@ import { shellBackend } from './fixtures/shell-backend.js';
 import { initialiseSandboxHost } from './host.js';
 import { outsideShellOperations } from './outside-shell-operations.js';
 import sandboxTools from './pi-tools.js';
-import { ProviderDiagnostics } from './provider-diagnostics.js';
 import { findShellReviewSource } from './review-route.js';
 import { checker } from './schemas.js';
 
@@ -61,7 +58,7 @@ it.each([
 			{
 				name: 'host',
 				factory(pi) {
-					initialiseSandboxHost(pi, {});
+					initialiseSandboxHost(pi, import.meta.filename, {});
 				}
 			},
 			{
@@ -70,7 +67,6 @@ it.each([
 					config.activate(pi, {
 						id: 'fixture',
 						label: 'Fixture sandbox',
-						protocolVersion: 1,
 						capabilities: backend.backend.capabilities,
 						policies: {
 							workspaceAccess: ['read-write'],
@@ -102,7 +98,7 @@ it.each([
 			{
 				name: 'policy',
 				factory(pi) {
-					registerApprovalPolicy(pi, {
+					registerApprovalPolicy(pi, import.meta.filename, {
 						id: 'scripted-review',
 						label: 'Scripted reviewer',
 						protocolVersion: 1,
@@ -165,20 +161,9 @@ it.each([
 					}
 
 					pi.on('tool_call', async (event, context) => {
-						const routes: { copy: () => Promise<unknown> }[] = [];
+						const source = findShellReviewSource(pi, context, event);
 
-						pi.events.emit('pi-byos:review:tool-call:v2', {
-							sessionId: context.sessionManager.getSessionId(),
-							toolName: event.toolName,
-							toolCallId: event.toolCallId,
-							reply: (source: { copy: () => Promise<unknown> }) => {
-								routes.push(source);
-							}
-						});
-
-						const [source] = routes;
-
-						if (!source || routes.length !== 1) {
+						if (source === undefined) {
 							throw new Error('Expected one route for the pending tool call.');
 						}
 
@@ -312,7 +297,7 @@ it('preserves native outside shell output on timeout', async () => {
 			{
 				name: 'timeout',
 				factory(pi) {
-					initialiseSandboxHost(pi, {});
+					initialiseSandboxHost(pi, import.meta.filename, {});
 					pi.registerCommand('timeout', {
 						description: 'Exercise timeout output.',
 						async handler(_arguments, context) {
@@ -388,7 +373,12 @@ afterEach(() => {
 it('includes configuration loading in the outside shell deadline', async () => {
 	let workspace = '';
 	const started = Promise.withResolvers<undefined>();
-	const config = Promise.withResolvers<SandboxConfig>();
+	const config = Promise.withResolvers<unknown>();
+	const delayed = new FixtureConfig(() => {
+		started.resolve(undefined);
+
+		return config.promise;
+	});
 	const model = new ScriptedModel([
 		{
 			type: 'toolCall',
@@ -408,25 +398,7 @@ it('includes configuration loading in the outside shell deadline', async () => {
 			{
 				name: 'delayed-settings',
 				factory(pi) {
-					const lifetime = new AbortController();
-					const settings = {
-						id: 'delayed-settings',
-						diagnostics: new ProviderDiagnostics(),
-						configurationVersion: 1 as const,
-						guardVersion: 1 as const,
-						assertConfigurable: vi.fn(),
-						lifetime: lifetime.signal,
-						close() {
-							lifetime.abort();
-						},
-						read() {
-							started.resolve(undefined);
-
-							return config.promise;
-						}
-					};
-
-					publishService(pi.events, 'pi-byos:settings:v1', settings);
+					delayed.bind(pi, import.meta.filename);
 				}
 			},
 			{ name: 'shell', factory: sandboxTools },
@@ -451,19 +423,7 @@ it('includes configuration loading in the outside shell deadline', async () => {
 
 			await started.promise;
 			await vi.advanceTimersByTimeAsync(100);
-			config.resolve({
-				selection: {
-					providerId: 'passthrough',
-					source: 'default',
-					policy: {
-						workspaceAccess: 'read-write',
-						filesystemScope: 'provider-default',
-						networkAccess: 'provider-default'
-					}
-				},
-				providerConfig: {},
-				approval: { policy: 'always' }
-			});
+			config.resolve({ approval: { policy: 'always' } });
 			await running;
 			vi.useRealTimers();
 			await expect(
@@ -578,21 +538,11 @@ it.each(['sandbox', 'outside-sandbox'] as const)(
 				{
 					name: 'stalled-settings',
 					factory(pi) {
-						const lifetime = new AbortController();
-						const settings = {
-							id: 'stalled-settings',
-							diagnostics: new ProviderDiagnostics(),
-							configurationVersion: 1 as const,
-							guardVersion: 1 as const,
-							assertConfigurable: vi.fn(),
-							lifetime: lifetime.signal,
-							close() {
-								lifetime.abort();
-							},
-							read: () => Promise.withResolvers<SandboxConfig>().promise
-						};
+						const config = new FixtureConfig(
+							() => Promise.withResolvers<unknown>().promise
+						);
 
-						publishService(pi.events, 'pi-byos:settings:v1', settings);
+						config.bind(pi, import.meta.filename);
 					}
 				},
 				{
@@ -605,24 +555,13 @@ it.each(['sandbox', 'outside-sandbox'] as const)(
 					name: 'reviewer',
 					factory(pi) {
 						pi.on('tool_call', async (event, context) => {
-							const sources: {
-								copy: (options: { timeoutMs: number }) => Promise<unknown>;
-							}[] = [];
-
-							pi.events.emit('pi-byos:review:tool-call:v2', {
-								sessionId: context.sessionManager.getSessionId(),
-								toolName: event.toolName,
-								toolCallId: event.toolCallId,
-								reply: (source: (typeof sources)[number]) => {
-									sources.push(source);
-								}
-							});
+							const source = findShellReviewSource(pi, context, event);
 
 							const started = performance.now();
 							let name = 'resolved';
 
 							try {
-								await sources[0]?.copy({ timeoutMs: 50 });
+								await source?.copy({ timeoutMs: 50 });
 							} catch (error) {
 								name = error instanceof Error ? error.name : String(error);
 							}

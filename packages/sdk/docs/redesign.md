@@ -102,14 +102,16 @@ changes use red/green TDD.
    knip reports in production mode.
 3. Protocol: one envelope, the runtime, provider and review channels, major
    number and feature level, a schema snapshot test, build identity in
-   advertisements and `/byos status`, and broker creation after load by the
-   highest build.
+   advertisements and `/byos status`, factory-bound consumer clients, and broker
+   creation after load by the highest build.
 4. Policy model: access record, profiles for `open` and `copy`, one negotiation
    function, decisions before allocation, removal of workspace protection and of
    the relationship from the policy, and errors with structured detail.
 5. Escalation and model feedback: extend `bash` with an escalation request,
    including path grants. Decide once per call, record decisions in the ledger,
    and describe effective restrictions and reported violations to the model.
+   Delete the legacy approval, approval-policy and outside-execution channels.
+   Add a repository check for remaining legacy version fields and channel names.
 6. Review route: identity replies, copies through the reviewer's broker,
    negotiation without allocation, typed reasons and a destination description.
 7. Surface: audience entry points, a committed public API report, import

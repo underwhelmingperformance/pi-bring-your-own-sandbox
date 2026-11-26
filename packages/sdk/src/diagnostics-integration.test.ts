@@ -7,10 +7,11 @@ import type {
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { registerSandboxProvider } from './api.js';
-import { closeSandboxSession, getSandbox } from './api.js';
+import { closeSandboxSession } from './api.js';
 import { registerSandboxDiagnostics as sandboxExtension } from './diagnostic-registration.js';
 import { discoverBroker } from './discovery.js';
 import { FixtureConfig } from './fixtures/config.js';
+import { getSandbox } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { getOutsideSandboxExecutor } from './outside-execution.js';
@@ -60,7 +61,12 @@ async function fixture(
 
 	await withPiRuntime(
 		[
-			{ name: 'framework', factory: sandboxExtension },
+			{
+				name: 'framework',
+				factory(pi) {
+					sandboxExtension(pi, import.meta.filename);
+				}
+			},
 			{
 				name: 'provider',
 				factory(pi) {
@@ -71,7 +77,6 @@ async function fixture(
 					config.activate(pi, {
 						id: 'fixture',
 						label: 'In-memory fixture; no OS isolation.',
-						protocolVersion: 1,
 						capabilities: backend.capabilities,
 						policies: {
 							workspaceAccess: ['read-write'],
@@ -195,7 +200,9 @@ it('reports default status in a headless Pi session without opening a backend or
 				...message,
 				content:
 					typeof message.content === 'string'
-						? message.content.replaceAll(status.generationId, '<generation>')
+						? message.content
+								.replaceAll(status.generationId, '<generation>')
+								.replace(/SDK build: [^\n]+/u, 'SDK build: <build>')
 						: message.content
 			})),
 			...counts()
@@ -209,7 +216,7 @@ it('reports default status in a headless Pi session without opening a backend or
 				{
 					display: true,
 					content:
-						'Provider: passthrough (default)\nState: idle\nGeneration: <generation>\nTarget: not opened\nRequested policy: workspace read-write; filesystem provider-default; network provider-default; protected resources: none\nUser shell: provider default (not opened)\nProvider description: Host execution without isolation\nApproval policy: user\nOutside execution destination: normal\nOutside native Pi shell termination scope: none\nPi shell integration: not requested; routing unverified.'
+						'Provider: passthrough (default)\nState: idle\nGeneration: <generation>\nSDK build: <build>\nProtocol: major 1, feature level 0\nTarget: not opened\nRequested policy: workspace read-write; filesystem provider-default; network provider-default; protected resources: none\nUser shell: provider default (not opened)\nProvider description: Host execution without isolation\nApproval policy: user\nOutside execution destination: normal\nOutside native Pi shell termination scope: none\nPi shell integration: not requested; routing unverified.'
 				}
 			]
 		});
@@ -248,7 +255,9 @@ it('reports the target and effective policy after acquisition', async () => {
 				...message,
 				content:
 					typeof message.content === 'string'
-						? message.content.replaceAll(sandbox.generationId, '<generation>')
+						? message.content
+								.replaceAll(sandbox.generationId, '<generation>')
+								.replace(/SDK build: [^\n]+/u, 'SDK build: <build>')
 						: message.content
 			}));
 
@@ -260,7 +269,7 @@ it('reports the target and effective policy after acquisition', async () => {
 					{
 						display: true,
 						content:
-							'Provider: fixture (extension)\nState: ready\nGeneration: <generation>\nBackend: memory\nTarget: /remote/project (remote)\nEffective policy: workspace read-write (remote); filesystem provider-default; network provider-default; protected resources: none\nOperations: exec, files.read, files.write, files.list\nTermination scope: workload\nShells: none\nUser shell: unavailable\nProvider description: In-memory fixture; no OS isolation.\nBoundary: In-memory test fixture; no OS isolation.\nApproval policy: user\nOutside execution destination: normal\nOutside native Pi shell termination scope: none\nPi shell integration: not requested; routing unverified.'
+							'Provider: fixture (extension)\nState: ready\nGeneration: <generation>\nSDK build: <build>\nProtocol: major 1, feature level 0\nBackend: memory\nTarget: /remote/project (remote)\nEffective policy: workspace read-write (remote); filesystem provider-default; network provider-default; protected resources: none\nOperations: exec, files.read, files.write, files.list\nTermination scope: workload\nShells: none\nUser shell: unavailable\nProvider description: In-memory fixture; no OS isolation.\nBoundary: In-memory test fixture; no OS isolation.\nApproval policy: user\nOutside execution destination: normal\nOutside native Pi shell termination scope: none\nPi shell integration: not requested; routing unverified.'
 					}
 				]
 			});
@@ -532,16 +541,21 @@ it('displays resolver diagnostics after configuration fails without exposing its
 
 	await withPiRuntime(
 		[
-			{ name: 'diagnostics', factory: sandboxExtension },
+			{
+				name: 'diagnostics',
+				factory(pi) {
+					sandboxExtension(pi, import.meta.filename);
+				}
+			},
 			{
 				name: 'provider',
 				factory(pi) {
 					registerSandboxProvider(
 						pi,
+						import.meta.filename,
 						{
 							id: 'configuration-fixture',
 							label: 'Configuration fixture',
-							protocolVersion: 1,
 							capabilities: backend.capabilities,
 							defaultPolicy: backend.policy,
 							policies: {

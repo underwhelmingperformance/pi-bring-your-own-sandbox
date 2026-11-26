@@ -39,3 +39,17 @@ it('records different refinement implementations', () => {
 		protocolSnapshot(1, 0, { value: even })
 	);
 });
+
+it('omits a newly introduced message from the previous level', () => {
+	const extended = { service: first, next: introducedAt(1, first) };
+
+	expect(protocolSnapshot(1, 0, extended)).toStrictEqual(
+		protocolSnapshot(1, 0, { service: first })
+	);
+});
+
+it('includes later fields in the fixed header at every level', () => {
+	expect(protocolSnapshot(1, 0, { envelope: compatible })).not.toStrictEqual(
+		protocolSnapshot(1, 0, { envelope: first })
+	);
+});

@@ -10,10 +10,15 @@ import type {
 	ShellReviewSource
 } from './contracts.js';
 import { InvalidSandboxDeclarationError } from './errors.js';
+import { protocolAddress } from './protocol-address.js';
+import { collectProtocolReplies, REVIEW_CHANNEL } from './protocol-envelope.js';
+import { copyOptionsSchema, sourceReply } from './protocol-payloads.js';
+import { checkDemand, sharedFeatureLevel } from './protocol-version.js';
 import { copyOptions, rethrowCopyError } from './sandbox-copy.js';
+import { checker } from './schemas.js';
 import { isRecord } from './validation.js';
 
-export const SHELL_REVIEW_CHANNEL = 'pi-byos:review:tool-call:v2';
+const isSource = checker(sourceReply);
 
 function isClosable(
 	value: unknown
@@ -94,16 +99,15 @@ Whether a loaded BYOS shell extension answers review queries. A route can still
 decline a particular call.
 */
 export function hasShellReviewRoute(pi: SandboxHost): boolean {
-	let isAvailable = false;
+	const local = protocolAddress(pi.events);
 
-	pi.events.emit(SHELL_REVIEW_CHANNEL, {
-		kind: 'available',
-		reply: () => {
-			isAvailable = true;
-		}
+	return collectProtocolReplies(pi.events, REVIEW_CHANNEL, local, {
+		type: 'get-availability'
+	}).some((reply) => {
+		sharedFeatureLevel(local, reply);
+
+		return reply.kind === 'reply' && reply.payload.type === 'available';
 	});
-
-	return isAvailable;
 }
 
 /**
@@ -122,26 +126,40 @@ export function findShellReviewSource(
 ): ShellReviewSource | undefined {
 	inspectContext(context, 'acquire');
 
-	const routes: ShellReviewSource[] = [];
-
-	pi.events.emit(SHELL_REVIEW_CHANNEL, {
+	const local = protocolAddress(pi.events);
+	const routes = collectProtocolReplies(pi.events, REVIEW_CHANNEL, local, {
+		type: 'find-source',
 		sessionId: context.sessionManager.getSessionId(),
 		toolName: call.toolName,
-		toolCallId: call.toolCallId,
-		reply: (source: unknown) => {
-			if (isRecord(source) && typeof source['copy'] === 'function') {
-				routes.push(source as unknown as ShellReviewSource);
-			}
-		}
+		toolCallId: call.toolCallId
+	}).filter((reply) => {
+		sharedFeatureLevel(local, reply);
+
+		return reply.kind === 'reply' && isSource(reply.payload);
 	});
+	const [selected] = routes;
 
-	const [route] = routes;
-
-	if (route === undefined || routes.length !== 1) {
+	if (
+		selected === undefined ||
+		routes.length !== 1 ||
+		!isSource(selected.payload)
+	) {
 		return undefined;
 	}
 
-	return Object.freeze({
-		copy: (options?: SandboxCopyOptions) => checkedCopy(route, options)
+	const route = selected.payload;
+
+	return Object.freeze<ShellReviewSource>({
+		copy(options) {
+			checkDemand(
+				copyOptionsSchema,
+				options ?? {},
+				local,
+				selected,
+				'review copy'
+			);
+
+			return checkedCopy(route, options);
+		}
 	});
 }

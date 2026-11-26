@@ -9,7 +9,7 @@ export {
 	InvalidApprovalRequestError,
 	isApprovalError
 } from './approval-errors.js';
-export { closeSandboxSession, getSandbox, negotiateSandbox } from './client.js';
+export { closeSandboxSession, createSandboxClient } from './client.js';
 export type * from './contracts.js';
 export { registerSandboxDiagnostics } from './diagnostic-registration.js';
 export type { DisplayText } from './display-text.js';
@@ -63,22 +63,15 @@ export type {
 	BrokerServiceV1,
 	BrokerState,
 	ConfiguredProviderV1,
-	DiscoveryRequestV1,
 	ProviderInfo,
 	ProviderSelection,
 	ProviderServiceV1,
 	SandboxBackendStatus,
 	SandboxNegotiation,
-	SandboxStatus,
-	ServiceAdvertisementV1
-} from './protocol.js';
-export {
-	BROKER_DISCOVERY_CHANNEL,
-	PROVIDER_DISCOVERY_CHANNEL
+	SandboxStatus
 } from './protocol.js';
 export { registerSandboxProvider } from './provider-registration.js';
 export { registerSandboxRequirement } from './requirements.js';
-export { findShellReviewSource, hasShellReviewRoute } from './review-route.js';
 export {
 	configureExecutionApproval,
 	configureOutsideExecution

@@ -17,7 +17,7 @@ export function wholeOffer<Schema extends TSchema>(schema: Schema) {
 	return Type.With(schema, { [keepWhole]: true });
 }
 
-function featureLevelOf(schema: TSchema): number {
+export function featureLevelOf(schema: TSchema): number {
 	const level: unknown = Object.getOwnPropertyDescriptor(
 		schema,
 		introduced
@@ -26,11 +26,17 @@ function featureLevelOf(schema: TSchema): number {
 	return typeof level === 'number' ? level : 0;
 }
 
-function projectChildren(value: unknown, level: number): unknown {
+function projectChildren(
+	value: unknown,
+	level: number,
+	shouldRejectLaterFields: boolean
+): unknown {
 	if (Array.isArray(value)) {
 		const children: readonly unknown[] = value;
 
-		return children.map((child) => projectChildren(child, level));
+		return children.map((child) =>
+			projectChildren(child, level, shouldRejectLaterFields)
+		);
 	}
 
 	if (
@@ -39,13 +45,13 @@ function projectChildren(value: unknown, level: number): unknown {
 		Object.getPrototypeOf(value) === Object.prototype
 	) {
 		if (Type.IsSchema(value)) {
-			return atFeatureLevel(value, level);
+			return atFeatureLevel(value, level, shouldRejectLaterFields);
 		}
 
 		return Object.fromEntries(
 			Object.entries<unknown>(value).map(([key, child]) => [
 				key,
-				projectChildren(child, level)
+				projectChildren(child, level, shouldRejectLaterFields)
 			])
 		);
 	}
@@ -53,7 +59,11 @@ function projectChildren(value: unknown, level: number): unknown {
 	return value;
 }
 
-export function atFeatureLevel(schema: TSchema, level: number): TSchema {
+export function atFeatureLevel(
+	schema: TSchema,
+	level: number,
+	shouldRejectLaterFields = false
+): TSchema {
 	if (featureLevelOf(schema) > level) {
 		return Type.Never();
 	}
@@ -71,15 +81,26 @@ export function atFeatureLevel(schema: TSchema, level: number): TSchema {
 
 		const properties = Object.fromEntries(
 			fields
-				.filter(([, field]) => featureLevelOf(field) <= level)
-				.map(([key, field]) => [key, atFeatureLevel(field, level)])
+				.filter(
+					([, field]) =>
+						shouldRejectLaterFields || featureLevelOf(field) <= level
+				)
+				.map(([key, field]) => [
+					key,
+					featureLevelOf(field) > level
+						? Type.Optional(Type.Never())
+						: atFeatureLevel(field, level, shouldRejectLaterFields)
+				])
 		);
 
 		return Type.With(schema, {
 			...Object.fromEntries(
 				entries
 					.filter(([key]) => key !== 'properties')
-					.map(([key, value]) => [key, projectChildren(value, level)])
+					.map(([key, value]) => [
+						key,
+						projectChildren(value, level, shouldRejectLaterFields)
+					])
 			),
 			properties
 		});
@@ -89,14 +110,17 @@ export function atFeatureLevel(schema: TSchema, level: number): TSchema {
 		return Type.With(schema, {
 			anyOf: schema.anyOf
 				.filter((member) => featureLevelOf(member) <= level)
-				.map((member) => atFeatureLevel(member, level))
+				.map((member) => atFeatureLevel(member, level, shouldRejectLaterFields))
 		});
 	}
 
 	return Type.With(
 		schema,
 		Object.fromEntries(
-			entries.map(([key, value]) => [key, projectChildren(value, level)])
+			entries.map(([key, value]) => [
+				key,
+				projectChildren(value, level, shouldRejectLaterFields)
+			])
 		)
 	);
 }
@@ -118,7 +142,7 @@ export function isValidAtFeatureLevel(
 	let check = levels.get(level);
 
 	if (check === undefined) {
-		const compiled = Compile(atFeatureLevel(schema, level));
+		const compiled = Compile(atFeatureLevel(schema, level, true));
 
 		check = (input) => compiled.Check(input);
 		levels.set(level, check);
@@ -148,6 +172,38 @@ function reducedValue(schema: TSchema, value: unknown, level: number): unknown {
 		return member === undefined
 			? unrepresentable
 			: reducedValue(member, value, level);
+	}
+
+	if (Type.IsIntersect(schema)) {
+		const entries: [string, unknown][] = [];
+
+		for (const member of schema.allOf) {
+			const reduced = reducedValue(member, value, level);
+
+			if (
+				reduced === null ||
+				typeof reduced !== 'object' ||
+				!Type.IsObject(member)
+			) {
+				return unrepresentable;
+			}
+
+			for (const key of Object.keys(member.properties)) {
+				if (!Object.hasOwn(reduced, key)) {
+					continue;
+				}
+
+				const field: unknown = Reflect.get(reduced, key);
+
+				entries.push([key, field]);
+			}
+		}
+
+		const projected = Object.fromEntries(entries);
+
+		return isValidAtFeatureLevel(schema, level, projected)
+			? projected
+			: unrepresentable;
 	}
 
 	if (Type.IsArray(schema) && Array.isArray(value)) {

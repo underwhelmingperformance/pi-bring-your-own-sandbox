@@ -10,7 +10,6 @@ import type {
 	ProcessOutput,
 	ProcessRequest,
 	Sandbox,
-	SandboxClient,
 	SandboxContext,
 	SandboxHost
 } from './contracts.js';
@@ -26,7 +25,7 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-class FakeClient implements Pick<SandboxClient, 'getSandbox'> {
+class FakeClient {
 	readonly #sandbox: Sandbox;
 	readonly #acquire:
 		((signal: AbortSignal | undefined) => Promise<void>) | undefined;
@@ -43,7 +42,7 @@ class FakeClient implements Pick<SandboxClient, 'getSandbox'> {
 	async getSandbox(
 		_pi: SandboxHost,
 		_context: SandboxContext,
-		options?: Parameters<SandboxClient['getSandbox']>[2]
+		options?: import('./contracts.js').SandboxAcquireOptions
 	): Promise<Sandbox> {
 		this.signals.push(options?.signal);
 		await this.#acquire?.(options?.signal);
@@ -95,6 +94,7 @@ function fixture(
 	const output: ProcessOutput[] = [];
 	const pi: SandboxHost = {
 		events: createEventBus(),
+		getActiveTools: () => [],
 		sendMessage() {
 			throw new Error('Unexpected diagnostic message.');
 		},

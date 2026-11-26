@@ -8,13 +8,8 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { afterEach, expect, it, vi } from 'vitest';
 
-import {
-	closeSandboxSession,
-	getSandbox,
-	registerSandboxProvider,
-	registerSandboxRequirement
-} from './api.js';
-import { copyHostWorkspace } from './client.js';
+import { registerSandboxProvider, registerSandboxRequirement } from './api.js';
+import { createSandboxClient } from './client.js';
 import type {
 	SandboxBackend,
 	SandboxCapabilities,
@@ -27,6 +22,12 @@ import type {
 	SupportedSandboxPolicies
 } from './contracts.js';
 import { ensureSandboxService } from './default-broker.js';
+import {
+	closeSandboxSession,
+	fixtureTools
+} from './fixtures/fixture-client.js';
+import { getSandbox } from './fixtures/fixture-client.js';
+import { copyHostWorkspace } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { brokerReply, respond } from './fixtures/protocol-peer.js';
 
@@ -63,8 +64,12 @@ async function fixture(
 		events: createEventBus(),
 		on: vi.fn(() => vi.fn()),
 		sendMessage: vi.fn(),
-		appendEntry: vi.fn()
+		appendEntry: vi.fn(),
+		getActiveTools: () => fixtureTools(pi)
 	};
+
+	createSandboxClient(pi, import.meta.filename);
+
 	const context = {
 		cwd: directory,
 		sessionManager: SessionManager.inMemory(directory)
@@ -116,7 +121,6 @@ function registerCopyProvider(pi: SandboxHost, options?: CopyProviderOptions) {
 	const provider: SandboxProvider<object> = {
 		id: 'active',
 		label: 'active',
-		protocolVersion: 1,
 		defaultPolicy: options?.defaultPolicy ?? template.policy,
 		capabilities,
 		policies: options?.policies ?? ALL_POLICIES,
@@ -152,7 +156,7 @@ function registerCopyProvider(pi: SandboxHost, options?: CopyProviderOptions) {
 		}
 	};
 
-	registerSandboxProvider(pi, provider);
+	registerSandboxProvider(pi, import.meta.filename, provider);
 
 	return { copies, released, opened };
 }
@@ -301,7 +305,9 @@ it('uses the strictest scope that a provider offers when it lacks the strongest'
 it('applies session-wide requirements to copies', async () => {
 	await fixture(async (pi, context) => {
 		registerCopyProvider(pi);
-		registerSandboxRequirement(pi, { needs: ['workspace-writes'] });
+		registerSandboxRequirement(pi, import.meta.filename, {
+			needs: ['workspace-writes']
+		});
 
 		const target = await getSandbox(pi, context);
 		const copy = await target.copy();
@@ -346,7 +352,11 @@ it.each<{
 		const { copies } = registerCopyProvider(pi, scenario.provider);
 
 		if (scenario.requirement !== undefined) {
-			registerSandboxRequirement(pi, scenario.requirement);
+			registerSandboxRequirement(
+				pi,
+				import.meta.filename,
+				scenario.requirement
+			);
 		}
 
 		await expect(
@@ -382,7 +392,7 @@ it('rejects a copy of a stale sandbox identity', async () => {
 		const target = await getSandbox(pi, context);
 
 		await expect(
-			ensureSandboxService(pi).copy?.(context, {
+			ensureSandboxService(pi).copy(context, {
 				kind: 'sandbox',
 				providerId: target.providerId,
 				generationId: 'stale',
@@ -411,10 +421,9 @@ it('rejects copies from a provider without the copy capability', async () => {
 	await fixture(async (pi, context) => {
 		const backend = new MemoryBackend();
 
-		registerSandboxProvider(pi, {
+		registerSandboxProvider(pi, import.meta.filename, {
 			id: 'ordinary',
 			label: 'ordinary',
-			protocolVersion: 1,
 			defaultPolicy: backend.policy,
 			capabilities: backend.capabilities,
 			policies: {
@@ -449,10 +458,9 @@ it.each([
 		const backend = new MemoryBackend();
 
 		expect(() => {
-			registerSandboxProvider(pi, {
+			registerSandboxProvider(pi, import.meta.filename, {
 				id: 'inconsistent',
 				label: 'inconsistent',
-				protocolVersion: 1,
 				defaultPolicy: backend.policy,
 				capabilities: {
 					...backend.capabilities,
@@ -504,7 +512,7 @@ it('retains recovery information when an independent broker returns a copy that 
 						})
 				})
 		});
-		respond(pi.events, 'pi-byos:discovery:v1:brokers', reply);
+		respond(pi.events, 'pi-byos:runtime', reply);
 		await expect(
 			copyHostWorkspace(pi, context, { capabilities: ['exec'] })
 		).rejects.toMatchObject({

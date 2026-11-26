@@ -7,7 +7,6 @@ interface ImageConfig {
 export const imageProvider: SandboxProvider<ImageConfig> = {
 	id: 'fixture.image',
 	label: 'Image protocol fixture',
-	protocolVersion: 1,
 	capabilities: {
 		processKinds: ['argv'],
 		terminationScope: 'workload',

@@ -1,7 +1,5 @@
 import { randomUUID } from 'node:crypto';
 
-import { Type } from 'typebox';
-
 import {
 	acquireOptions,
 	checkCapabilityRequirements
@@ -9,28 +7,29 @@ import {
 import type { SandboxConfig } from './config.js';
 import { selectProvider } from './config.js';
 import type { SandboxHost, SandboxRequirements } from './contracts.js';
+import { bindFactory } from './default-broker.js';
 import {
 	InvalidSandboxRequestError,
 	SandboxProviderMismatchError,
 	SandboxProviderRequiredError,
 	UnsupportedSandboxPolicyError
 } from './errors.js';
-import { discoverServices, publishService } from './extension-services.js';
 import { hasRequiredGuarantees } from './guarantees.js';
 import { resolvePolicy } from './negotiation.js';
 import type { ProviderServiceV1 } from './protocol.js';
+import { protocolAddress } from './protocol-address.js';
+import { requirementsService } from './protocol-payloads.js';
+import { checkDemand } from './protocol-version.js';
 import { sandboxRequirementsSchema } from './request-schemas.js';
-import { runtimeSettings } from './runtime-settings.js';
-import { checker, nonEmptyStringSchema } from './schemas.js';
+import {
+	discoverRuntimeServices,
+	publishRuntimeService
+} from './runtime-services.js';
+import { checker } from './schemas.js';
 
-const CHANNEL = 'pi-byos:requirements:v1';
+const SERVICE = 'requirements';
 const isRequirements = checker(sandboxRequirementsSchema);
-const isService = checker(
-	Type.Object({
-		id: nonEmptyStringSchema,
-		requirements: sandboxRequirementsSchema
-	})
-);
+const isService = checker(requirementsService);
 
 function snapshotRequirements(
 	requirements: SandboxRequirements
@@ -56,9 +55,10 @@ provider declarations and do not authenticate the extension that registered them
 */
 export function registerSandboxRequirement(
 	pi: SandboxHost,
+	extensionSource: string,
 	requirements: SandboxRequirements = {}
 ): void {
-	runtimeSettings(pi).assertConfigurable();
+	bindFactory(pi, extensionSource);
 
 	if (!isRequirements(requirements)) {
 		throw new InvalidSandboxRequestError({ operation: 'configure' });
@@ -66,9 +66,10 @@ export function registerSandboxRequirement(
 
 	const snapshot = snapshotRequirements(requirements);
 
-	publishService(
+	publishRuntimeService(
 		pi.events,
-		CHANNEL,
+		SERVICE,
+		requirementsService,
 		Object.freeze({ id: randomUUID(), requirements: snapshot })
 	);
 }
@@ -77,16 +78,20 @@ export function sandboxRequirements(
 	pi: SandboxHost
 ): readonly SandboxRequirements[] {
 	return Object.freeze(
-		discoverServices(pi.events, CHANNEL, isService).map((service) =>
-			snapshotRequirements(service.requirements)
-		)
+		discoverRuntimeServices(
+			pi.events,
+			SERVICE,
+			requirementsService,
+			isService
+		).map((service) => snapshotRequirements(service.requirements))
 	);
 }
 
 export function checkRequiredProvider(
 	requirements: readonly SandboxRequirements[],
 	provider: ProviderServiceV1,
-	isActivated: boolean
+	isActivated: boolean,
+	pi: SandboxHost
 ): void {
 	if (requirements.length === 0) {
 		return;
@@ -99,6 +104,16 @@ export function checkRequiredProvider(
 	const identity = { operation: 'acquire' as const, providerId: provider.id };
 
 	for (const required of requirements) {
+		if (provider.protocol !== undefined) {
+			checkDemand(
+				sandboxRequirementsSchema,
+				required,
+				protocolAddress(pi.events),
+				provider.protocol,
+				'session requirements'
+			);
+		}
+
 		if (
 			required.providerId !== undefined &&
 			required.providerId !== provider.id

@@ -69,7 +69,7 @@ it.each(['sandbox', 'normal', 'provider'] as const)(
 				{
 					name: 'host',
 					factory(pi) {
-						initialiseSandboxHost(pi, {
+						initialiseSandboxHost(pi, import.meta.filename, {
 							cleanup: { cancellationGraceMs: 9000, disposalTimeoutMs: 9000 },
 							...(destination === 'normal' && { normalExecutor: outside })
 						});
@@ -81,7 +81,6 @@ it.each(['sandbox', 'normal', 'provider'] as const)(
 						config.activate(pi, {
 							id: 'fixture',
 							label: 'Cleanup fixture',
-							protocolVersion: 1,
 							capabilities: backend.capabilities,
 							policies: {
 								workspaceAccess: ['read-write'],

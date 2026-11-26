@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 
 import { isApprovalError } from './approval-errors.js';
-import { ensureSandboxService } from './default-broker.js';
+import { bindFactory, ensureSandboxService } from './default-broker.js';
 import {
 	formatProviderDiagnostics,
 	formatProviders,
@@ -21,8 +21,18 @@ Register optional sandbox diagnostics. Status and provider enumeration use
 the same service as SDK consumers and do not allocate a backend. Loading
 this extension preserves Pi's tools and active tool selection.
 */
-export function registerSandboxDiagnostics(pi: ExtensionAPI): void {
-	const service = ensureSandboxService(pi);
+export function registerSandboxDiagnostics(
+	pi: ExtensionAPI,
+	extensionSource: string
+): void {
+	bindFactory(pi, extensionSource);
+	pi.on('session_start', async (_event, context) => {
+		const status = await ensureSandboxService(pi).status(context);
+
+		if (status.state === 'failed' && status.failure !== undefined) {
+			throw status.failure;
+		}
+	});
 
 	pi.registerCommand('byos', {
 		description: 'Show sandbox and approval status or available services',
@@ -44,6 +54,8 @@ export function registerSandboxDiagnostics(pi: ExtensionAPI): void {
 			let lines: DisplayText[];
 
 			try {
+				const service = ensureSandboxService(pi);
+
 				if (action === 'approval-policies') {
 					lines = [
 						'Available execution approval policies:',

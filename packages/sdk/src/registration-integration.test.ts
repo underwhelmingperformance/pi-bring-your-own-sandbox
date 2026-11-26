@@ -15,16 +15,8 @@ import { FixtureConfig } from './fixtures/config.js';
 import { imageProvider } from './fixtures/image-provider.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
-import { brokerReply } from './fixtures/protocol-peer.js';
-import {
-	loadIsolatedModule,
-	loadSdkInstance
-} from './fixtures/sdk-instance.js';
-import type { ensureBroker } from './service.js';
-
-interface BootstrapModule {
-	readonly ensureBroker: typeof ensureBroker;
-}
+import { loadSdkInstance } from './fixtures/sdk-instance.js';
+import { bindProtocolAddress } from './protocol-address.js';
 
 it.each([
 	{ filesystemScope: 'provider-default', guarantees: [], protection: false },
@@ -50,6 +42,10 @@ it.each([
 					async factory(pi) {
 						const first = await loadSdkInstance();
 						const second = await loadSdkInstance();
+						const secondClient = second.createSandboxClient(
+							pi,
+							import.meta.filename
+						);
 						const template = new MemoryBackend('exec');
 						const policy = {
 							...template.policy,
@@ -62,7 +58,7 @@ it.each([
 							? (['exec', 'workspace.protection'] as const)
 							: (['exec'] as const);
 
-						first.initialiseSandboxHost(pi, {
+						first.initialiseSandboxHost(pi, import.meta.filename, {
 							cleanup: { disposalTimeoutMs: 9000 }
 						});
 						config.activate(
@@ -111,12 +107,13 @@ it.each([
 										dispose: () => Promise.resolve()
 									})
 							},
-							first.registerSandboxProvider
+							first.registerSandboxProvider,
+							import.meta.filename
 						);
 						pi.registerCommand('capabilities-test', {
 							description: 'Check independently installed execution contracts.',
 							async handler(_arguments, context) {
-								const sandbox = await second.getSandbox(pi, context, {
+								const sandbox = await secondClient.get(context, {
 									guarantees,
 									processKinds: ['shell'],
 									shells: ['sh'],
@@ -126,7 +123,7 @@ it.each([
 								expect(sandbox.policy).toStrictEqual(policy);
 
 								await expect(
-									second.getSandbox(pi, context, {
+									secondClient.get(context, {
 										terminationScope: 'workload'
 									})
 								).rejects.toMatchObject({
@@ -175,12 +172,12 @@ it.each([
 									durationMs: 0
 								});
 								await expect(
-									second.getSandbox(pi, context, { processKinds: ['argv'] })
+									secondClient.get(context, { processKinds: ['argv'] })
 								).rejects.toMatchObject({
 									name: 'UnsupportedSandboxCapabilityError'
 								});
 								await expect(
-									second.getSandbox(pi, context, { exitStatus: 'guaranteed' })
+									secondClient.get(context, { exitStatus: 'guaranteed' })
 								).rejects.toMatchObject({
 									name: 'UnsupportedSandboxCapabilityError'
 								});
@@ -211,15 +208,6 @@ it.each([
 	}
 );
 
-function isBootstrapModule(value: unknown): value is BootstrapModule {
-	return (
-		typeof value === 'object' &&
-		value !== null &&
-		'ensureBroker' in value &&
-		typeof value.ensureBroker === 'function'
-	);
-}
-
 it('interoperates across independent SDK instances and removes failed-factory responders in Pi', async () => {
 	const directory = await mkdtemp(path.join(tmpdir(), 'pi-byos-registration-'));
 
@@ -227,6 +215,9 @@ it('interoperates across independent SDK instances and removes failed-factory re
 		const first = await loadSdkInstance();
 		const second = await loadSdkInstance();
 		const events = createEventBus();
+
+		bindProtocolAddress(events, import.meta.filename);
+
 		const loader = new DefaultResourceLoader({
 			cwd: directory,
 			agentDir: path.join(directory, 'agent'),
@@ -241,7 +232,7 @@ it('interoperates across independent SDK instances and removes failed-factory re
 				{
 					name: 'first',
 					factory: (pi) => {
-						first.registerSandboxProvider(pi, {
+						first.registerSandboxProvider(pi, import.meta.filename, {
 							...imageProvider,
 							id: 'first'
 						});
@@ -250,7 +241,7 @@ it('interoperates across independent SDK instances and removes failed-factory re
 				{
 					name: 'failed',
 					factory: (pi) => {
-						second.registerSandboxProvider(pi, {
+						second.registerSandboxProvider(pi, import.meta.filename, {
 							...imageProvider,
 							id: 'failed'
 						});
@@ -261,7 +252,7 @@ it('interoperates across independent SDK instances and removes failed-factory re
 				{
 					name: 'second',
 					factory: (pi) => {
-						second.registerSandboxProvider(pi, {
+						second.registerSandboxProvider(pi, import.meta.filename, {
 							...imageProvider,
 							id: 'second'
 						});
@@ -300,40 +291,6 @@ it('interoperates across independent SDK instances and removes failed-factory re
 	}
 });
 
-it('publishes one service during concurrent bootstrap through independent SDK copies', async () => {
-	const modules = await Promise.all([
-		loadIsolatedModule('service'),
-		loadIsolatedModule('service')
-	]);
-	const events = createEventBus();
-	let constructions = 0;
-	const services = await Promise.all(
-		modules.map((module) => {
-			if (!isBootstrapModule(module)) {
-				throw new TypeError(
-					'The isolated service module has no bootstrap function.'
-				);
-			}
-
-			return Promise.try(() =>
-				module.ensureBroker(events, (id) => {
-					constructions++;
-
-					return brokerReply(id).service;
-				})
-			);
-		})
-	);
-
-	expect({
-		ids: services.map((service) => service.id),
-		constructions
-	}).toStrictEqual({
-		ids: [services[0]?.id, services[0]?.id],
-		constructions: 1
-	});
-});
-
 it.each([
 	['policy', 'provider', 'consumer'],
 	['policy', 'consumer', 'provider'],
@@ -362,7 +319,7 @@ it.each([
 			policy: {
 				name: 'approval-policy',
 				factory(pi) {
-					first.registerApprovalPolicy(pi, {
+					first.registerApprovalPolicy(pi, import.meta.filename, {
 						id: 'fixture',
 						label: 'Fixture approval',
 						protocolVersion: 1,
@@ -383,10 +340,9 @@ it.each([
 			provider: {
 				name: 'outside-provider',
 				factory(pi) {
-					first.registerSandboxProvider(pi, {
+					first.registerSandboxProvider(pi, import.meta.filename, {
 						id: 'fixture',
 						label: 'Fixture sandbox',
-						protocolVersion: 1,
 						defaultPolicy: backend.policy,
 						capabilities: backend.capabilities,
 						policies: {
@@ -413,6 +369,8 @@ it.each([
 			consumer: {
 				name: 'consumer',
 				factory(pi) {
+					first.createSandboxClient(pi, import.meta.filename);
+					second.createSandboxClient(pi, import.meta.filename);
 					pi.registerCommand('copies', {
 						description: 'Independent SDK fixture',
 						async handler(_arguments, context) {
@@ -465,7 +423,7 @@ it.each([
 				{
 					name: 'host',
 					factory(pi) {
-						first.initialiseSandboxHost(pi, {});
+						first.initialiseSandboxHost(pi, import.meta.filename, {});
 					}
 				},
 				...order.map((id) => factories[id]),

@@ -7,7 +7,6 @@ interface ConnectionConfig {
 export const connectionProvider: SandboxProvider<ConnectionConfig> = {
 	id: 'fixture.connection',
 	label: 'Connection protocol fixture',
-	protocolVersion: 1,
 	capabilities: {
 		processKinds: ['argv', 'shell'],
 		terminationScope: 'workload',

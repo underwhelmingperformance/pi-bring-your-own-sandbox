@@ -9,9 +9,7 @@ import type {
 } from 'pi-bring-your-own-sandbox/api';
 import {
 	closeSandboxSession,
-	getSandbox,
 	initialiseSandboxHost,
-	negotiateSandbox,
 	registerSandboxDiagnostics,
 	SandboxTransportError
 } from 'pi-bring-your-own-sandbox/api';
@@ -19,6 +17,10 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 import { FakeClock } from '../../../src/fixtures/clock.js';
 import { FixtureConfig } from '../../../src/fixtures/config.js';
+import {
+	getSandbox,
+	negotiateSandbox
+} from '../../../src/fixtures/fixture-client.js';
 import { withPiRuntime } from '../../../src/fixtures/pi-runtime.js';
 import { remainingBudget } from '../../../src/fixtures/remaining-budget.js';
 import { OperationScope } from '../../../src/lifecycle.js';
@@ -32,6 +34,7 @@ import dockerExtension from '../src/extension.js';
 import { DOCKER_IMAGE } from '../src/image.js';
 import { createDockerProvider } from '../src/provider.js';
 import { cleanupContext } from '../src/resources.js';
+import dockerShellProfile from '../src/shell-profile.js';
 
 import { writeFakeDockerCli } from './fixtures/fake-cli.js';
 
@@ -323,7 +326,12 @@ it('reports a missing Docker CLI through status when configuration fails', async
 	await withPiRuntime(
 		[
 			{ name: 'docker', factory: dockerExtension },
-			{ name: 'diagnostics', factory: registerSandboxDiagnostics }
+			{
+				name: 'diagnostics',
+				factory(pi) {
+					registerSandboxDiagnostics(pi, import.meta.filename);
+				}
+			}
 		],
 		async (runtime, errors) => {
 			await runtime.session.prompt('/byos status');
@@ -484,7 +492,7 @@ it('reports confirmed broker cleanup after Docker opening releases partial alloc
 			{
 				name: 'docker',
 				factory(pi) {
-					initialiseSandboxHost(pi, {});
+					initialiseSandboxHost(pi, import.meta.filename, {});
 					config.activate(
 						pi,
 						createDockerProvider(() => docker)
@@ -1351,4 +1359,29 @@ it('builds the optional toolchain on the pinned Docker job image by default', as
 	);
 
 	expect(dockerfile.split('\n')).toContain('ARG NODE_IMAGE=' + DOCKER_IMAGE);
+});
+
+it('registers the Docker provider and Bash integration from the shell profile factory', async () => {
+	let hasRegistered = false;
+
+	await withPiRuntime(
+		[
+			{
+				name: 'docker-shell-profile',
+				factory(pi) {
+					dockerShellProfile(pi);
+					hasRegistered = true;
+				}
+			}
+		],
+		(_runtime, errors) => {
+			expect({ errors, hasRegistered }).toStrictEqual({
+				errors: [],
+				hasRegistered: true
+			});
+
+			return Promise.resolve();
+		},
+		{ bindFixtureSources: false }
+	);
 });

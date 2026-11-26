@@ -125,7 +125,7 @@ provide together, with the capabilities that work under it. Copies have their
 own list, because a provider often copies under different conditions from those
 under which it opens a sandbox.
 
-BYOS chooses a profile before it starts anything. When `negotiateSandbox` says
+BYOS chooses a profile before it starts anything. When `client.negotiate` says
 that a request is supported, acquiring that sandbox can fail only for a runtime
 reason, such as a stopped daemon. After starting a [backend], BYOS checks that
 it matches the chosen profile and rejects it otherwise.
@@ -406,7 +406,7 @@ configured policy within the provider's support.
 
 ### Acquisition
 
-Asking the broker for a sandbox with `getSandbox`.
+Asking the broker for a sandbox with `client.get`.
 
 ### Backend
 

@@ -3,6 +3,8 @@ declare const displayTextBrand: unique symbol;
 export type DisplayText = string & { readonly [displayTextBrand]: true };
 
 const maxDisplayLength = 4096;
+const unsafeShellOutputCharacter =
+	/[\u{7F}-\u{9F}\u{200B}\u{2028}-\u{202E}\u{2066}-\u{2069}\u{FEFF}]/u;
 
 function limitDisplayText(parts: Iterable<string>): DisplayText {
 	let text = '';
@@ -27,14 +29,21 @@ function* escapeControls(text: string): Generator<string> {
 	for (const character of text) {
 		const code = character.codePointAt(0) ?? 0;
 
-		yield code < 32 || (code >= 127 && code <= 159)
-			? String.raw`\x${code.toString(16).padStart(2, '0')}`
-			: character;
+		if (code >= 32 && !unsafeShellOutputCharacter.test(character)) {
+			yield character;
+			continue;
+		}
+
+		const hex = code.toString(16);
+
+		yield code <= 255
+			? String.raw`\x${hex.padStart(2, '0')}`
+			: String.raw`\u{${hex}}`;
 	}
 }
 
 /**
-Escape terminal control characters and limit the length before display.
+Escape display-unsafe characters and limit the length before display.
 */
 export function cleanDisplayText(text: string): DisplayText {
 	return limitDisplayText(escapeControls(text));
@@ -46,7 +55,9 @@ function* displayParts(lines: readonly DisplayText[]): Generator<string> {
 			yield '\n';
 		}
 
-		for (const [part] of line.matchAll(/\\x[\da-f]{2}|./gsu)) {
+		for (const [part] of line.matchAll(
+			/\\(?:x[\da-f]{2}|u\{[\da-f]{1,6}\})|./gsu
+		)) {
 			yield part;
 		}
 	}

@@ -14,6 +14,27 @@ it('replaces every C0, DEL and C1 character with a visible escape', () => {
 	);
 });
 
+it('escapes bidirectional embeddings, overrides, isolates and invisible separators', () => {
+	const codes = [
+		0x20_0b, 0x20_28, 0x20_29, 0x20_2a, 0x20_2b, 0x20_2c, 0x20_2d, 0x20_2e,
+		0x20_66, 0x20_67, 0x20_68, 0x20_69, 0xfe_ff
+	];
+
+	expect(cleanDisplayText(String.fromCodePoint(...codes))).toStrictEqual(
+		codes.map((code) => String.raw`\u{${code.toString(16)}}`).join('')
+	);
+});
+
+it.each([
+	{ label: 'emoji with a zero-width joiner', value: '👩\u{200D}💻' },
+	{ label: 'text with a zero-width non-joiner', value: 'می\u{200C}روم' },
+	{ label: 'right-to-left mark', value: '\u{200F}שלום' },
+	{ label: 'left-to-right mark', value: '\u{200E}Hello' },
+	{ label: 'Arabic letter mark', value: '\u{061C}مرحبا' }
+])('preserves $label', ({ value }) => {
+	expect(cleanDisplayText(value)).toStrictEqual(value);
+});
+
 it.each([
 	{ suffix: '', remaining: 0, expected: '' },
 	{ suffix: 'x', remaining: 0, expected: '…' },
@@ -42,3 +63,16 @@ it('preserves only the line breaks added by the formatter and bounds the joined 
 		'a\\x0ab\nc'
 	);
 });
+
+it.each([0x20_2e, 0xfe_ff])(
+	'keeps the escape for %s intact when truncating joined text',
+	(code) => {
+		const prefix = 'a'.repeat(4087);
+		const lines = [
+			cleanDisplayText(prefix),
+			cleanDisplayText(String.fromCodePoint(code) + 'z')
+		];
+
+		expect(joinDisplayLines(lines)).toStrictEqual(prefix + '\n…');
+	}
+);

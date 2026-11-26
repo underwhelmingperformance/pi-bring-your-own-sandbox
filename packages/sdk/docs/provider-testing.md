@@ -35,11 +35,14 @@ backend is absent if the provider failed before returning it.
 
 ## Search engines
 
-Supply `rg` inside the target for full ripgrep semantics. The portable Linux
-helper uses RE2 and skips input files larger than 16 MiB. It reads Git metadata
-inside the target workspace and skips ambient Git excludes and linked-worktree
-Git directories outside that workspace. Test the portable helper and `rg` on the
-same corpus, using the [specification][search] for expected results.
+Supply `rg` inside the target for full ripgrep semantics. The portable helper
+uses descriptor-relative traversal on Linux. To enable portable search on
+Darwin, call `targetSearchHelper({ sameConfinementAsCommands: true })` and run
+the returned program inline through the ordinary command launcher. The helper
+must run with exactly the same authority as those commands. The program includes
+its matcher, so the launcher needs no additional mounts or file access
+exceptions. Test the portable helper and `rg` on the same corpus, using the
+[specification][search] for expected results.
 
 [search]: specification.md#grep
 

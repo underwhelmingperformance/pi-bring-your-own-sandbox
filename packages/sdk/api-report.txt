@@ -1745,7 +1745,9 @@ export declare function createTargetFileOperations(run: TargetFileTransport, ide
 export declare function targetFileHelper(): Promise<string>;
 
 // target-operations.d.ts
-export declare function targetSearchHelper(): Promise<string>;
+export declare function targetSearchHelper(options?: {
+    readonly sameConfinementAsCommands?: boolean;
+}): Promise<string>;
 
 // target-operations.d.ts
 export interface TargetFileOperations {

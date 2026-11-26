@@ -501,11 +501,17 @@ Search skips binary files and does not follow symlinks discovered during
 traversal.
 
 Providers supply `rg` inside the target for full ripgrep semantics. The portable
-helper uses descriptor-relative traversal on Linux. It reads Git metadata only
-inside the target workspace and skips ambient Git excludes and linked-worktree
-Git directories outside that workspace. It uses the RE2 regex dialect and skips
-input files larger than 16 MiB. A target without `rg` or the descriptor-relative
-helper reports `UnsupportedSandboxCapabilityError` before searching.
+helper uses descriptor-relative traversal on Linux. On Darwin it opens paths
+with `O_NOFOLLOW_ANY`, which rejects symlinks in every path component. The
+provider must declare that the helper runs inline with the same confinement as
+ordinary target commands. The target's confinement defines which files are
+readable. The search root only selects where traversal starts.
+
+The portable helper reads Git metadata only inside the target workspace and
+skips ambient Git excludes and linked-worktree Git directories outside that
+workspace. It uses the RE2 regex dialect and skips input files larger than 16
+MiB. A target without `rg` or a supported portable helper reports
+`UnsupportedSandboxCapabilityError` before searching.
 
 [ripgrep]:
   https://github.com/BurntSushi/ripgrep/blob/master/GUIDE.md#automatic-filtering

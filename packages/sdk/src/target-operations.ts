@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { gzipSync } from 'node:zlib';
 
 import type {
 	BackendFiles,
@@ -62,9 +63,12 @@ export function targetFileHelper(): Promise<string> {
 }
 
 /**
-Loads the portable Node search program for a descriptor-anchored Linux target.
+Loads the portable Node search program. Darwin support requires the provider
+to run the program with the same confinement as its commands.
 */
-export async function targetSearchHelper(): Promise<string> {
+export async function targetSearchHelper(
+	options: { readonly sameConfinementAsCommands?: boolean } = {}
+): Promise<string> {
 	const filename = import.meta.url.endsWith('.ts')
 		? 'target-search.ts'
 		: 'target-search.js';
@@ -76,11 +80,33 @@ export async function targetSearchHelper(): Promise<string> {
 		readFile(new URL('LICENSE-MIT', ignore), 'utf8')
 	]);
 
-	return `/*\n${license}\n*/\nconst createIgnore = (() => {
+	const isSameConfinementAsCommands =
+		options.sameConfinementAsCommands === true;
+	const matcher = isSameConfinementAsCommands
+		? await embeddedSearchMatcher()
+		: 'const loadEmbeddedMatcher = undefined;';
+
+	return `const hasCommandConfinement = ${String(isSameConfinementAsCommands)};
+${matcher}
+/*\n${license}\n*/\nconst createIgnore = (() => {
 const module = { exports: {} };
 ${ignoreSource}
 return module.exports;
 })();\n${helper}`;
+}
+
+async function embeddedSearchMatcher(): Promise<string> {
+	const matcher = new URL(import.meta.resolve('re2js'));
+	const [source, license] = await Promise.all([
+		readFile(matcher),
+		readFile(new URL('../LICENSE', matcher), 'utf8')
+	]);
+	const compressed = gzipSync(source).toString('base64');
+
+	return `/*\n${license}\n*/
+import { gunzipSync as unpackMatcher } from 'node:zlib';
+const loadEmbeddedMatcher = () => import('data:text/javascript;base64,' +
+	unpackMatcher(Buffer.from('${compressed}', 'base64')).toString('base64'));`;
 }
 
 /**

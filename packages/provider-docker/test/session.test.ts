@@ -49,6 +49,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { withPiRuntime } from '../../../test-support/pi-runtime.js';
 import { firstCopyProfile } from '../../../test-support/provider-profiles.js';
+import {
+	ripgrepParityCases,
+	seedRipgrepParityCorpus
+} from '../../../test-support/ripgrep-parity.js';
 import { ScriptedModel } from '../../../test-support/scripted-model.js';
 import { findHostExecutable } from '../src/host-executable.js';
 import { createDockerProvider } from '../src/provider.js';
@@ -1352,27 +1356,7 @@ socket.on('error', error => {
 		it('matches ripgrep ignore rules, explicit files and glob overrides', async () => {
 			await withDockerSession(
 				async ({ sandbox, fixture }) => {
-					const corpus = {
-						'.gitignore': 'omitted.txt\npruned/\n',
-						'.ignore': 'ignore-wins.txt\n',
-						'.rgignore': '!ignore-wins.txt\nrg-omits.txt\n',
-						'.git/info/exclude': 'git-excluded.txt\n',
-						'.hidden.txt': 'needle\n',
-						'node_modules/pkg/index.txt': 'needle\n',
-						'omitted.txt': 'needle\n',
-						'pruned/deep.txt': 'needle\n',
-						'git-excluded.txt': 'needle\n',
-						'ignore-wins.txt': 'needle\n',
-						'rg-omits.txt': 'needle\n',
-						'unmatched.txt': 'different\n'
-					};
-
-					for (const [filename, content] of Object.entries(corpus)) {
-						const target = path.join(fixture.workspace, filename);
-
-						await mkdir(path.dirname(target), { recursive: true });
-						await writeFile(target, content);
-					}
+					await seedRipgrepParityCorpus(fixture.workspace);
 
 					const reference = await findHostExecutable('rg', fixture.workspace);
 
@@ -1384,13 +1368,7 @@ socket.on('error', error => {
 
 					const results = [];
 
-					for (const [root, glob] of [
-						['.', undefined],
-						['.', 'omitted.txt'],
-						['.', '!node_modules'],
-						['omitted.txt', '*.md'],
-						['pruned', undefined]
-					] as const) {
+					for (const [root, glob] of ripgrepParityCases) {
 						const basename = root === 'omitted.txt' ? root : '.';
 						const directory = root === 'pruned' ? 'pruned' : '.';
 						const arguments_ = [

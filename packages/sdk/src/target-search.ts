@@ -3,6 +3,7 @@ import { once } from 'node:events';
 import { constants } from 'node:fs';
 import {
 	access,
+	type FileHandle,
 	lstat,
 	open,
 	readdir,
@@ -16,7 +17,15 @@ import type ignore from 'ignore';
 import type { GrepMatch } from './contracts.js';
 
 declare const createIgnore: typeof ignore;
+declare const hasCommandConfinement: boolean;
+declare const loadEmbeddedMatcher:
+	(() => Promise<typeof import('re2js')>) | undefined;
 
+const isDarwinReader = process.platform === 'darwin' && hasCommandConfinement;
+const nativeNoFollowAny: unknown = Reflect.get(constants, 'O_NOFOLLOW_ANY');
+const darwinNoFollowAny =
+	typeof nativeNoFollowAny === 'number' ? nativeNoFollowAny : 0x20_00_00_00;
+const noFollow = isDarwinReader ? darwinNoFollowAny : constants.O_NOFOLLOW;
 const [operation, encoded, maximum, workspace] = process.argv.slice(1);
 const options = new URLSearchParams(encoded);
 const workspaceRoot = await realpath(workspace ?? process.cwd());
@@ -43,6 +52,29 @@ function wasRemoved(error: unknown): boolean {
 	);
 }
 
+function directoryPath(directory: FileHandle, filename: string): string {
+	return isDarwinReader ? filename : '/proc/self/fd/' + String(directory.fd);
+}
+
+async function directoryEntries(directory: FileHandle, filename: string) {
+	const options = { withFileTypes: true, encoding: 'buffer' } as const;
+
+	if (!isDarwinReader) {
+		return readdir(filename, options);
+	}
+
+	const expected = await directory.stat({ bigint: true });
+
+	// Check the inode after chdir because a rename can redirect the path lookup.
+	process.chdir(filename);
+
+	const actual = await lstat('.', { bigint: true });
+
+	return actual.dev === expected.dev && actual.ino === expected.ino
+		? readdir('.', options)
+		: [];
+}
+
 async function* walk(
 	filename: string,
 	relative: string,
@@ -50,19 +82,16 @@ async function* walk(
 ): AsyncGenerator<Entry> {
 	const directory = await open(
 		filename,
-		constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW
+		constants.O_RDONLY | constants.O_DIRECTORY | noFollow
 	);
 
 	try {
-		const base = '/proc/self/fd/' + String(directory.fd);
+		const base = directoryPath(directory, filename);
 		const ignored =
 			parent === undefined
 				? undefined
 				: await ignoreAt(base, path.join(root, relative), parent);
-		const entries = await readdir(base, {
-			withFileTypes: true,
-			encoding: 'buffer'
-		});
+		const entries = await directoryEntries(directory, base);
 		const sorted = entries.toSorted((left, right) =>
 			left.name.compare(right.name)
 		);
@@ -114,17 +143,18 @@ async function* walk(
 }
 
 async function* candidates(): AsyncGenerator<Entry> {
-	// O_PATH pins the explicit root without opening a device. Child lookups use the parent's descriptor.
-	await using pinned = await open(root, 0o1000_0000);
+	// O_PATH pins the explicit root without opening a device.
+	await using pinned = isDarwinReader
+		? undefined
+		: await open(root, 0o1000_0000);
 
-	const filename = '/proc/self/fd/' + String(pinned.fd);
-	const stat = await pinned.stat();
+	const filename = pinned === undefined ? root : directoryPath(pinned, root);
+	const stat = pinned === undefined ? await lstat(root) : await pinned.stat();
 
 	if (stat.isDirectory()) {
-		const parent =
-			operation === 'grep' ? await inheritedIgnores(root) : undefined;
+		const parent = operation === 'grep' ? await inheritedIgnores() : undefined;
 
-		yield* walk(filename + '/.', '', parent);
+		yield* walk(pinned === undefined ? filename : filename + '/.', '', parent);
 
 		return;
 	}
@@ -133,7 +163,7 @@ async function* candidates(): AsyncGenerator<Entry> {
 		yield {
 			relative: path.basename(root),
 			filename,
-			pinnedRoot: true,
+			...(pinned !== undefined && { pinnedRoot: true }),
 			kind: 'file'
 		};
 
@@ -148,7 +178,7 @@ async function contents(entry: Entry): Promise<string> {
 		entry.filename,
 		constants.O_RDONLY |
 			constants.O_NONBLOCK |
-			(entry.pinnedRoot === true ? 0 : constants.O_NOFOLLOW)
+			(entry.pinnedRoot === true ? 0 : noFollow)
 	);
 
 	try {
@@ -225,7 +255,19 @@ async function readIgnore(
 
 async function isRepositoryRoot(descriptor: string): Promise<boolean> {
 	try {
-		const metadata = await lstat(path.join(descriptor, '.git'));
+		const filename = path.join(descriptor, '.git');
+		const metadata = await lstat(filename);
+
+		if (isDarwinReader && (metadata.isDirectory() || metadata.isFile())) {
+			await using entry = await open(
+				filename,
+				constants.O_RDONLY | constants.O_NONBLOCK | noFollow
+			);
+
+			const stat = await entry.stat();
+
+			return stat.isDirectory() || stat.isFile();
+		}
 
 		return metadata.isDirectory() || metadata.isFile();
 	} catch (error) {
@@ -244,6 +286,10 @@ function isInWorkspace(directory: string): boolean {
 }
 
 async function repositoryExclude(descriptor: string, directory: string) {
+	if (isDarwinReader) {
+		return readIgnore(path.join(descriptor, '.git/info/exclude'), directory, 3);
+	}
+
 	try {
 		await using git = await open(
 			path.join(descriptor, '.git'),
@@ -273,7 +319,8 @@ async function ignoreAt(
 	directory: string,
 	parent: IgnoreStack
 ): Promise<IgnoreStack> {
-	const isWorkspaceDirectory = isInWorkspace(await readlink(descriptor));
+	const location = isDarwinReader ? descriptor : await readlink(descriptor);
+	const isWorkspaceDirectory = isInWorkspace(location);
 	const isGitRoot =
 		isWorkspaceDirectory && (await isRepositoryRoot(descriptor));
 	const isInRepository =
@@ -317,11 +364,11 @@ async function ignoreAt(
 	};
 }
 
-async function inheritedIgnores(directory: string): Promise<IgnoreStack> {
+async function inheritedIgnores(): Promise<IgnoreStack> {
 	const ancestors: string[] = [];
-	let current = path.dirname(directory);
+	let current = path.dirname(root);
 
-	while (current !== directory && isInWorkspace(current)) {
+	while (current !== root && isInWorkspace(current)) {
 		ancestors.unshift(current);
 
 		const parent = path.dirname(current);
@@ -338,10 +385,12 @@ async function inheritedIgnores(directory: string): Promise<IgnoreStack> {
 	for (const ancestor of ancestors) {
 		await using fd = await open(
 			ancestor,
-			constants.O_RDONLY | constants.O_DIRECTORY
+			constants.O_RDONLY |
+				constants.O_DIRECTORY |
+				(isDarwinReader ? noFollow : 0)
 		);
 
-		const descriptor = '/proc/self/fd/' + String(fd.fd);
+		const descriptor = directoryPath(fd, ancestor);
 
 		ignored = await ignoreAt(descriptor, ancestor, ignored);
 	}
@@ -349,8 +398,7 @@ async function inheritedIgnores(directory: string): Promise<IgnoreStack> {
 	return {
 		...ignored,
 		rules: ignored.rules.filter(
-			(rule) =>
-				!rule.matcher.ignores(path.relative(rule.directory, directory) + '/')
+			(rule) => !rule.matcher.ignores(path.relative(rule.directory, root) + '/')
 		)
 	};
 }
@@ -482,7 +530,7 @@ async function* find(): AsyncGenerator<string> {
 }
 
 async function compilePattern(pattern: string, isIgnoreCase: boolean) {
-	const { RE2JS } = await import('re2js');
+	const { RE2JS } = await (loadEmbeddedMatcher?.() ?? import('re2js'));
 
 	return RE2JS.compile(pattern, isIgnoreCase ? RE2JS.CASE_INSENSITIVE : 0);
 }
@@ -589,7 +637,10 @@ async function hasDescriptorPaths(): Promise<boolean> {
 }
 
 try {
-	if (process.platform !== 'linux' || !(await hasDescriptorPaths())) {
+	if (
+		!isDarwinReader &&
+		(process.platform !== 'linux' || !(await hasDescriptorPaths()))
+	) {
 		process.exitCode = 43;
 	} else if (operation === 'find') {
 		await collect(find(), 'paths');

@@ -7,6 +7,7 @@ import type {
 	SandboxOperationContext
 } from 'pi-bring-your-own-sandbox/provider';
 import {
+	createSandboxCleanupContext,
 	isSandboxError,
 	SandboxCancelledError,
 	SandboxCleanupError,
@@ -38,32 +39,16 @@ signal permits termination requests after foreground execution is aborted.
 */
 export function cleanupContext(
 	context: Pick<SandboxOperationContext, 'reportDiagnostic' | 'operationId'> &
-		Partial<Pick<SandboxOperationContext, 'cleanup' | 'signal'>>,
+		Partial<
+			Pick<SandboxOperationContext, 'cleanup' | 'cleanupBudgets' | 'signal'>
+		>,
 	operationId = `${context.operationId}:cleanup`,
 	monotonicNow: () => number = () => performance.now()
 ): DockerOperationContext {
-	const fallback = Date.now() + 5000;
-	const expiresAt = monotonicNow() + 5000;
-	const remainingMs = () =>
-		context.cleanup?.remainingMs() ?? Math.max(0, expiresAt - monotonicNow());
-	const deadline = () => context.cleanup?.deadline ?? fallback;
-
-	return {
-		remainingMs,
-		reportDiagnostic: context.reportDiagnostic,
-		cleanup: Object.freeze({
-			remainingMs,
-			get deadline() {
-				return deadline();
-			}
-		}),
-		operationId,
-		signal: new AbortController().signal,
-		...(context.signal !== undefined && { deadlineChanged: context.signal }),
-		get deadline() {
-			return deadline();
-		}
-	};
+	return Object.assign(
+		createSandboxCleanupContext(context, operationId, monotonicNow),
+		context.signal === undefined ? {} : { deadlineChanged: context.signal }
+	);
 }
 
 const stateValidator = Compile(containerStateSchema);

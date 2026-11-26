@@ -223,7 +223,10 @@ export class DockerFileWorker implements BackendFileReader {
 					operation === 'dispose'
 						? {
 								operationId: context.operationId,
-								reportDiagnostic: context.reportDiagnostic
+								reportDiagnostic: context.reportDiagnostic,
+								...(context.cleanupBudgets !== undefined && {
+									cleanupBudgets: context.cleanupBudgets
+								})
 							}
 						: context
 				),

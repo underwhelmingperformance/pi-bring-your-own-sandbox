@@ -1,3 +1,4 @@
+export { resolveCleanupBudgets as resolveSandboxCleanupBudgets } from './cleanup-budgets.js';
 export type {
 	BackendFileReader,
 	BackendFiles,
@@ -18,6 +19,7 @@ export type {
 	RecoveryDescriptor,
 	SandboxBackend,
 	SandboxCapabilities,
+	SandboxCleanupBudgets,
 	SandboxCleanupContext,
 	SandboxConfigContext,
 	SandboxCopySource,
@@ -52,4 +54,5 @@ export {
 	UnsupportedSandboxCapabilityError,
 	UnsupportedSandboxPolicyError
 } from './errors.js';
+export { createSandboxCleanupContext } from './provider-cleanup.js';
 export { registerSandboxProvider } from './provider-registration.js';

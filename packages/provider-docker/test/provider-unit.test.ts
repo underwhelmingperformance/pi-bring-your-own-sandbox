@@ -988,6 +988,22 @@ it('updates an already-running removal when cancellation publishes a longer dead
 	}
 });
 
+it('uses the configured cleanup grace before a cancellation publishes its deadline', () => {
+	let elapsed = 0;
+	const parent: SandboxOperationContext = {
+		...context(),
+		cleanupBudgets: { cancellationGraceMs: 12_000, disposalTimeoutMs: 20_000 }
+	};
+	const cleanup = cleanupContext(parent, 'fixture-cleanup', () => elapsed);
+
+	elapsed = 2000;
+	expect({
+		budget: cleanup.remainingMs(),
+		reportedBudget: cleanup.cleanup.remainingMs(),
+		aborted: cleanup.signal.aborted
+	}).toStrictEqual({ budget: 10_000, reportedBudget: 10_000, aborted: false });
+});
+
 it.each([-1_000_000, 1_000_000])(
 	'keeps one cleanup budget across sequential commands at wall time %s',
 	(wallTime) => {

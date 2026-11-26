@@ -255,6 +255,11 @@ export interface SandboxOperationContext {
 	its cleanup deadline immediately.
 	*/
 	readonly cleanup: SandboxCleanupContext;
+
+	/**
+	Resolved durations for this generation. A context from an older SDK can omit them.
+	*/
+	readonly cleanupBudgets?: SandboxCleanupBudgets;
 	/**
 	Unique identity for correlating this invocation with provider
 	diagnostics.
@@ -840,6 +845,11 @@ export interface SandboxOpenRequest<Config = unknown> {
 	*/
 	readonly profile: Profile;
 	readonly paths?: PathGrants;
+
+	/**
+	Resolved durations for the new allocation. Older brokers can omit them.
+	*/
+	readonly cleanupBudgets?: SandboxCleanupBudgets;
 
 	/**
 	Provider-specific validated value; never include it in routine

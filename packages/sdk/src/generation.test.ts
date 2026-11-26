@@ -6,8 +6,10 @@ import { snapshotBackend } from './backend-snapshot.js';
 import type { SandboxConfig } from './config.js';
 import type {
 	SandboxBackend,
+	SandboxCleanupBudgets,
 	SandboxContext,
-	SandboxOpenContext
+	SandboxOpenContext,
+	SandboxOpenRequest
 } from './contracts.js';
 import { InvalidSandboxConfigError, SandboxCancelledError } from './errors.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
@@ -276,10 +278,64 @@ it('preserves the configuration source when recording a typed initialisation fai
 	await generation.close();
 });
 
+it('supplies the resolved cleanup budgets in the open request and operation contexts', async () => {
+	const budgets = { cancellationGraceMs: 1200, disposalTimeoutMs: 3400 };
+	const observed: {
+		request?: SandboxCleanupBudgets;
+		open?: SandboxCleanupBudgets;
+		exec?: SandboxCleanupBudgets;
+		dispose?: SandboxCleanupBudgets;
+	} = {};
+	const { generation, context, backend } = fixture(
+		(opening, request) => {
+			Object.assign(observed, {
+				request: request.cleanupBudgets,
+				open: opening.cleanupBudgets
+			});
+
+			return Promise.resolve(backend);
+		},
+		'/host/workspace',
+		undefined,
+		budgets
+	);
+
+	backend.exec = (_request, operation) => {
+		Object.assign(observed, { exec: operation.cleanupBudgets });
+
+		return Promise.resolve({ kind: 'exited', exit: { kind: 'code', code: 0 } });
+	};
+
+	backend.dispose = (operation) => {
+		Object.assign(observed, { dispose: operation.cleanupBudgets });
+
+		return Promise.resolve();
+	};
+
+	try {
+		const sandbox = await generation.acquire(context);
+
+		await sandbox.exec({ kind: 'argv', executable: 'fixture', args: [] });
+	} finally {
+		await generation.close();
+	}
+
+	expect(observed).toStrictEqual({
+		request: budgets,
+		open: budgets,
+		exec: budgets,
+		dispose: budgets
+	});
+});
+
 function fixture(
-	open?: (context: SandboxOpenContext) => Promise<SandboxBackend>,
+	open?: (
+		context: SandboxOpenContext,
+		request: Omit<SandboxOpenRequest, 'configuration'>
+	) => Promise<SandboxBackend>,
 	hostWorkspace = '/host/workspace',
-	configure?: () => void
+	configure?: () => void,
+	cleanup?: SandboxCleanupBudgets
 ) {
 	const backend = new MemoryBackend();
 	let opens = 0;
@@ -311,10 +367,12 @@ function fixture(
 			configure?.();
 
 			return {
-				open: (_request, opening) => {
+				open: (request, opening) => {
 					opens++;
 
-					return open === undefined ? Promise.resolve(backend) : open(opening);
+					return open === undefined
+						? Promise.resolve(backend)
+						: open(opening, request);
 				}
 			};
 		}
@@ -337,7 +395,8 @@ function fixture(
 					source: 'extension',
 					policy: backend.policy
 				},
-				providerConfig: {}
+				providerConfig: {},
+				...(cleanup !== undefined && { cleanup })
 			});
 		}
 	});

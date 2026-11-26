@@ -57,6 +57,7 @@ type Profile (policy-model.d.ts)
 type RecoveryDescriptor (contracts.d.ts)
 type SandboxBackend (contracts.d.ts)
 type SandboxCapabilities (contracts.d.ts)
+type SandboxCleanupBudgets (contracts.d.ts)
 type SandboxCleanupContext (contracts.d.ts)
 type SandboxConfigContext (contracts.d.ts)
 type SandboxCopySource (contracts.d.ts)
@@ -85,9 +86,11 @@ value StaleSandboxHandleError (errors.d.ts)
 value UnsupportedSandboxCapabilityError (errors.d.ts)
 value UnsupportedSandboxPolicyError (errors.d.ts)
 value cleanDisplayText (display-text.d.ts)
+value createSandboxCleanupContext (provider-cleanup.d.ts)
 value credentialLocations (credential-locations.d.ts)
 value isSandboxError (errors.d.ts)
 value registerSandboxProvider (provider-registration.d.ts)
+value resolveCleanupBudgets as resolveSandboxCleanupBudgets (cleanup-budgets.d.ts)
 value sendDisplayMessage (display-ui.d.ts)
 
 pi-bring-your-own-sandbox/testing
@@ -95,6 +98,9 @@ type SandboxProviderTestFixture (provider-test-contracts.d.ts)
 value defineSandboxProviderTests (provider-contract-runner.d.ts)
 
 Declarations referenced by the public entry points
+
+// cleanup-budgets.d.ts
+export declare function resolveCleanupBudgets(input?: Partial<SandboxCleanupBudgets>): SandboxCleanupBudgets;
 
 // client.d.ts
 export declare function closeSandboxSession(pi: SandboxHost, context: SandboxContext): Promise<SandboxCloseReport>;
@@ -358,6 +364,7 @@ export interface SandboxOpenRequest<Config = unknown> {
     readonly hostWorkspace: string;
     readonly profile: Profile;
     readonly paths?: PathGrants;
+    readonly cleanupBudgets?: SandboxCleanupBudgets;
     readonly configuration: Config;
 }
 
@@ -366,6 +373,7 @@ export interface SandboxOperationContext {
     readonly remainingMs: () => number;
     readonly reportDiagnostic: (diagnostic: SandboxDiagnostic) => void;
     readonly cleanup: SandboxCleanupContext;
+    readonly cleanupBudgets?: SandboxCleanupBudgets;
     readonly operationId: string;
     readonly signal: AbortSignal;
     readonly deadline: number;
@@ -1193,6 +1201,9 @@ export interface ProfileRequirements {
     readonly exitStatus?: 'guaranteed';
     readonly terminationScope?: Profile['terminationScope'];
 }
+
+// provider-cleanup.d.ts
+export declare function createSandboxCleanupContext(context: Pick<SandboxOperationContext, 'reportDiagnostic' | 'operationId'> & Partial<Pick<SandboxOperationContext, 'cleanup' | 'cleanupBudgets'>>, operationId?: string, monotonicNow?: () => number): SandboxOperationContext;
 
 // provider-contract-runner.d.ts
 export declare function defineSandboxProviderTests<Config>(options: SandboxProviderTestOptions<Config>): void;

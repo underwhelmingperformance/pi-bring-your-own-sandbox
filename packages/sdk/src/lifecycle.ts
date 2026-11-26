@@ -73,6 +73,7 @@ export class OperationScope {
 
 		const deadline = this.#clock.wallNow() + timeoutMs;
 		const cleanupDeadline = () => this.#cleanupDeadline;
+		const cleanupBudgets = () => this.#cleanupBudgets;
 
 		if (identity.operation === 'dispose') {
 			this.#cleanupDeadline = deadline;
@@ -92,6 +93,9 @@ export class OperationScope {
 						diagnostic
 					);
 				}
+			},
+			get cleanupBudgets() {
+				return cleanupBudgets();
 			},
 			cleanup: Object.freeze({
 				remainingMs: () =>

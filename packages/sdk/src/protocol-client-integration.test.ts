@@ -74,7 +74,9 @@ it('rejects acquisition during factory loading and client creation after loading
 const nonFactoryFunctions = new Set([
 	'cleanDisplayText',
 	'closeSandboxSession',
+	'createSandboxCleanupContext',
 	'isSandboxError',
+	'resolveSandboxCleanupBudgets',
 	'sendDisplayMessage'
 ]);
 

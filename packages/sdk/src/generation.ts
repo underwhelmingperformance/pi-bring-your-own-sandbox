@@ -443,6 +443,7 @@ export class SandboxGeneration {
 					sessionId: this.#session.sessionId,
 					hostWorkspace: this.#session.workspace,
 					profile: slot.profile,
+					cleanupBudgets: this.#cleanup,
 					...(paths !== undefined && { paths })
 				},
 				{

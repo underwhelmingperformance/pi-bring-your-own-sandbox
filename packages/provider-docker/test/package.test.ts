@@ -41,6 +41,7 @@ async function withPackedProvider(
 		const pack = async (cwd: string) => {
 			const result = await run(cwd, 'pnpm', [
 				'pack',
+				'--ignore-scripts',
 				'--json',
 				'--pack-destination',
 				directory

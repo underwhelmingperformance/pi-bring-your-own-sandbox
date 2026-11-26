@@ -63,6 +63,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 
 			const dryRun = await run(process.cwd(), 'pnpm', [
 				'pack',
+				'--ignore-scripts',
 				'--dry-run',
 				'--json'
 			]);
@@ -72,6 +73,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 
 			const packed = await run(process.cwd(), 'pnpm', [
 				'pack',
+				'--ignore-scripts',
 				'--json',
 				'--pack-destination',
 				artifacts
@@ -263,6 +265,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
 		try {
 			const packed = await run(process.cwd(), 'pnpm', [
 				'pack',
+				'--ignore-scripts',
 				'--json',
 				'--pack-destination',
 				directory

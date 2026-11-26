@@ -14,9 +14,9 @@ implementation reaches this design.
 | `/consumer` | `getSandbox`, `negotiateSandbox`, `Sandbox`, `SandboxRequirements`, operation types and structural error checks |
 | `/provider` | `registerSandboxProvider`, provider declarations, backend operations and provider kit                           |
 | `/host`     | `initialiseSandboxHost`, `closeSandboxSession`, host options and diagnostic registration                        |
-| `/review`   | `findShellReviewSource` and review results                                                                      |
+| `/review`   | `findShellReviewSource`, escalation decisions and review results                                                |
 | `/pi-tools` | Pi tool integration factory                                                                                     |
-| `/guard`    | `createSandboxGuard` and guard requirements                                                                     |
+| `/guard`    | `registerSandboxRequirement` for provider presets                                                               |
 | `/testing`  | Provider conformance runner, fixtures and probe interfaces                                                      |
 
 The package prefix is `pi-bring-your-own-sandbox`. Wire schemas, channel
@@ -33,7 +33,7 @@ registerSandboxProvider<Config, Input = Config>(
 ): void;
 initialiseSandboxHost(pi: SandboxHost, options: SandboxHostOptions): void;
 closeSandboxSession(pi: SandboxHost, context: SandboxContext): Promise<SandboxCloseReport>;
-createSandboxGuard(requirements?: SandboxRequirements & { providerId?: string }): ExtensionFactory;
+registerSandboxRequirement(pi: SandboxHost, requirements: SandboxRequirements): void;
 ```
 
 `/host` is for embedding hosts. `SandboxHostOptions` has only
@@ -46,18 +46,23 @@ createSandboxGuard(requirements?: SandboxRequirements & { providerId?: string })
 
 <!-- `violations` is provisional in milestone 1. -->
 <!--
-Types `AccessProperty`, `Access`, `FileAccess` and `Profile` are provisional
-in milestone 1.
+Types `AccessProperty`, `Access`, `PathGrants`, `FileAccess` and `Profile`
+are provisional.
 -->
-<!-- The policy field value types are provisional in milestone 1. -->
+<!-- The policy field value types and `pathGrantKinds` are provisional. -->
 
 ```typescript
 type AccessProperty =
   'network' | 'hostWorkspaceWrites' | 'hostUserData' | 'hostSystemFiles';
 
 type Access = Readonly<
-  Partial<Record<AccessProperty, 'needed' | 'prevented' | 'preferred'>>
->;
+  Partial<Record<AccessProperty, 'needed' | 'prevented'>>
+> & { readonly paths?: PathGrants };
+
+interface PathGrants {
+  readonly read?: readonly string[];
+  readonly write?: readonly string[];
+}
 
 type Capability =
   | 'exec'
@@ -103,6 +108,7 @@ interface Profile {
   readonly shells: readonly ShellDialect[];
   readonly exitStatus: ExitStatus;
   readonly terminationScope: TerminationScope;
+  readonly pathGrantKinds: readonly ('read' | 'write')[];
 }
 
 type SandboxNegotiation =
@@ -127,7 +133,9 @@ same identifier.
 | `hostUserData`                   | `denied`, `read-only`, `read-write`         | `denied`    | At least `read-only`           |
 | `hostSystemFiles`                | `denied`, `read-only`, `read-write`         | `denied`    | At least `read-only`           |
 
-The specification defines the [profile ranking][access].
+`pathGrantKinds` contains the unique kinds of extra access that a profile can
+grant. An empty array means neither kind is available. The specification defines
+[profile ranking and path checks][access].
 
 [access]: specification.md#configuration-and-negotiation
 
@@ -139,15 +147,14 @@ identity.
 ## Provider contract
 
 <!--
-The provider profile fields, outside declaration and request and backend
-profile fields are provisional in milestone 1.
+The provider profile fields, `grantedPaths` and its entry shape are
+provisional.
 -->
 
 ```typescript
 interface SandboxProvider<Config> {
   readonly id: string;
   readonly label: string;
-  readonly defaultPolicy?: SandboxPolicy;
   readonly profiles: {
     readonly open: readonly Profile[];
     readonly copy: readonly Profile[];
@@ -163,10 +170,6 @@ interface SandboxProvider<Config> {
     },
     context: SandboxOpenContext
   ) => Promise<SandboxBackend>;
-  readonly outside?: {
-    readonly profiles: readonly Profile[];
-    readonly open: SandboxProvider<Config>['open'];
-  };
 }
 
 interface SandboxOpenRequest<Config> {
@@ -175,6 +178,7 @@ interface SandboxOpenRequest<Config> {
   readonly hostWorkspace: string;
   readonly configuration: Config;
   readonly profile: Profile;
+  readonly paths?: PathGrants;
 }
 
 type SandboxCopySource =
@@ -191,6 +195,11 @@ interface SandboxBackend {
   readonly workspace: SandboxWorkspace;
   readonly profile: Profile;
   readonly recovery: RecoveryDescriptor;
+  readonly grantedPaths?: readonly {
+    readonly kind: 'read' | 'write';
+    readonly hostPath: string;
+    readonly targetPath: string;
+  }[];
   readonly exec: (
     request: ProcessRequest,
     context: BackendProcessContext
@@ -215,6 +224,12 @@ The provider's `copy` method is present exactly when its copy profiles are
 non-empty. A copy profile always has `hostWorkspaceWrites: false` because a copy
 cannot change the host checkout. The provider decides whether the copy's own
 files accept writes.
+
+The backend reports the location of each granted path in `grantedPaths`. Each
+entry maps the resolved host path and access kind to the path in the target. The
+broker verifies the reported grants against the request and exposes the entries
+on the sandbox facade. A provider's target may have a different home directory
+from the host. Milestone 5 will decide the mapping convention.
 
 `reportRecovery` supplies one aggregate descriptor before allocation. Updates
 describe all outstanding allocations. The final backend's `recovery` matches the
@@ -250,9 +265,8 @@ operation ends are ignored. Status exposes the retained `diagnostics` and
 
 <!--
 `SandboxSharedSettings`, the `settings` result field and the
-`sharedSettingsSchema` callback parameter are provisional. The
-`outsideDestinations` and `outsideApproval` settings and their values
-are provisional, including the new `prompt` value.
+`sharedSettingsSchema` callback parameter and `allowEscalation` setting
+are provisional.
 -->
 
 The provider owns the settings file. The SDK defines one TypeBox object schema
@@ -280,11 +294,7 @@ interface SandboxSharedSettings {
   readonly policy?: SandboxPolicy;
   readonly userShell?: ShellDialect;
   readonly cleanup?: Partial<SandboxCleanupBudgets>;
-  readonly outsideDestinations?: readonly (
-    | { readonly kind: 'provider'; readonly policy: SandboxPolicy }
-    | { readonly kind: 'passthrough' }
-  )[];
-  readonly outsideApproval?: 'prompt' | 'permission-extension';
+  readonly allowEscalation?: boolean;
 }
 ```
 
@@ -293,18 +303,28 @@ interface SandboxSharedSettings {
 `InvalidSandboxConfigError` before allocation, with the provider source and
 invalid key. It omits the raw settings from user-facing diagnostics.
 
-| Key                   | Shape and default                                                                                                                                                                                                            |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `policy`              | A complete ordinary configured policy. If omitted, use the provider's `defaultPolicy`. If neither exists, configuration fails.                                                                                               |
-| `userShell`           | A target shell dialect. If omitted, use the provider's advertised default. A user-shell command fails if neither supplies a dialect.                                                                                         |
-| `cleanup`             | Optional `cancellationGraceMs` and `disposalTimeoutMs`. Each is an integer from 1 to 300,000. Omitted values use embedding-host defaults when supplied, then 5,000 ms and 10,000 ms respectively.                            |
-| `outsideDestinations` | A list with at most one entry of each kind. A `provider` entry requires declared outside profiles and a complete configured policy. A `passthrough` entry enables the full-access destination. The default is an empty list. |
-| `outsideApproval`     | `prompt` by default, which opens a confirmation with the provider label. `permission-extension` leaves the decision to the permission extension.                                                                             |
+| Key               | Shape and default                                                                                                                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `policy`          | A complete configured policy. Omission uses the SDK default below.                                                                                                                                |
+| `userShell`       | A target shell dialect. If omitted, use the provider's advertised default. A user-shell command fails if neither supplies a dialect.                                                              |
+| `cleanup`         | Optional `cancellationGraceMs` and `disposalTimeoutMs`. Each is an integer from 1 to 300,000. Omitted values use embedding-host defaults when supplied, then 5,000 ms and 10,000 ms respectively. |
+| `allowEscalation` | A boolean. Defaults to `true`.                                                                                                                                                                    |
 
-The [specification][settings-behaviour] describes how the broker uses the
-outside settings.
+The SDK's default `policy` has these values.
 
-[settings-behaviour]: specification.md#destinations-and-permission
+```typescript
+{
+  hostWorkspaceWrites: true,
+  network: false,
+  hostUserData: 'denied',
+  hostSystemFiles: 'read-only'
+}
+```
+
+The [specification][settings-behaviour] describes how provider support can
+narrow these defaults and when passthrough applies.
+
+[settings-behaviour]: specification.md#default-configured-policy
 
 ## Process, files and search
 
@@ -350,7 +370,8 @@ Execution options add
 `onOutput(chunk: { stream: 'stdout' | 'stderr'; data: Uint8Array }): void` and
 `maxCaptureBytes`. The latter is a safe integer from 0 to 1,048,576 and defaults
 to 1,048,576. The result contains `exit`, `stdout`, `stderr`,
-`omittedBytes: { stdout: number; stderr: number }` and `durationMs`.
+`omittedBytes: { stdout: number; stderr: number }`, `durationMs` and optional
+`violations`.
 
 | Capability    | Backend operations                                    |
 | ------------- | ----------------------------------------------------- |
@@ -402,16 +423,58 @@ budgets. `SandboxCloseReport` contains `confirmed: boolean`,
 
 [cleanup-settings]: #provider-settings
 
-## Outside tool and review
+## Escalation and review
 
-<!-- `bash_outside` is provisional. -->
+<!--
+`escalate`, `EscalationRequest`, `EscalationDestination`, the
+`escalation` field and `recordEscalationDecision` are provisional.
+-->
 
-The Pi tool `bash_outside` takes `command: string`, `access: Access`,
-`justification: string` and optional `timeout: number` in seconds. The
-justification is non-empty after trimming. The [specification][destinations]
-describes outside profiles and the decision boundary.
+The `bash` tool accepts `escalate?: readonly (AccessProperty | PathGrants)[]`.
+An escalation requires a non-empty `justification: string`. The broker
+normalises listed property names into `needed` entries and combines path entries
+under `paths` in the access record. For example,
+`['network', { read: ['~/.npmrc'] }]` requests network access and one file.
 
-[destinations]: specification.md#destinations-and-permission
+```typescript
+type EscalationDestination =
+  | {
+      readonly kind: 'provider';
+      readonly providerId: string;
+      readonly policy: SandboxPolicy;
+      readonly effectiveRestrictions: string;
+    }
+  | {
+      readonly kind: 'host';
+      readonly policy: SandboxPolicy;
+      readonly effectiveRestrictions: 'none';
+    };
+
+interface EscalationRequest {
+  readonly toolCallId: string;
+  readonly command: string;
+  readonly justification: string;
+  readonly access: Access;
+  readonly destination: EscalationDestination;
+}
+
+recordEscalationDecision(
+  pi: SandboxHost,
+  context: SandboxContext,
+  request: EscalationRequest,
+  extension: string,
+  decision: 'allow' | 'deny'
+): void;
+```
+
+The request is available on the broker-resolved review source for the pending
+call. The function in `/review` checks that the request matches the pending tool
+call in the live session. A missing, expired or mismatched request fails with
+`InvalidSandboxRequestError`. Conflicting decisions fail closed. Recording a
+decision does not execute the command. The [specification][escalation] defines
+negotiation and dispatch.
+
+[escalation]: specification.md#escalation
 
 <!--
 Review source, destination and reply types and the reason literals are
@@ -447,20 +510,68 @@ interface DestinationDescription {
 
 interface ReviewSource {
   readonly destination: DestinationDescription;
+  readonly escalation?: EscalationRequest;
   negotiateCopy(
     requirements?: SandboxRequirements
   ): Promise<SandboxNegotiation>;
-  copy(options?: SandboxAcquireOptions): Promise<SandboxCopy>;
+  copy(
+    extension: string,
+    options?: SandboxAcquireOptions
+  ): Promise<SandboxCopy>;
 }
 ```
 
 `ReviewSourceId` is opaque. Each reply correlates with one query and one pending
 tool call. `findShellReviewSource` accepts the host, live context and tool call
 ID. Its success result contains the broker-resolved source. Its failure result
-contains a `ReviewUnavailableReason`.
+contains a `ReviewUnavailableReason`. The review source's `copy` method takes
+the requesting extension's name for the ledger.
 `Sandbox.copy(options?: SandboxAcquireOptions): Promise<SandboxCopy>` uses the
 acquired sandbox's workspace as the source. `SandboxCopy` contains
 `sandbox: Sandbox` and `close(): Promise<SandboxCloseReport>`.
+
+## Ledger entries
+
+<!-- `SandboxLedgerEntry`, its fields and `/byos log` syntax are provisional. -->
+
+```typescript
+type SandboxLedgerEntry =
+  | {
+      readonly kind: 'escalation';
+      readonly request: Omit<EscalationRequest, 'destination'> & {
+        readonly destination?: EscalationDestination;
+      };
+      readonly outcome: 'allowed' | 'denied' | 'cancelled' | 'expired';
+      readonly decider?:
+        | { readonly kind: 'confirmation' }
+        | { readonly kind: 'permission-extension'; readonly extension: string }
+        | { readonly kind: 'configuration' };
+    }
+  | {
+      readonly kind: 'review-copy';
+      readonly toolCallId: string;
+      readonly source: DestinationDescription;
+      readonly policy: SandboxPolicy;
+      readonly decider: {
+        readonly kind: 'permission-extension';
+        readonly extension: string;
+      };
+    }
+  | {
+      readonly kind: 'violation';
+      readonly toolCallId?: string;
+      readonly operationId: string;
+      readonly providerId: string;
+      readonly violations: NonNullable<ProcessResult['violations']>;
+    };
+```
+
+One runtime schema defines the typed Pi session entries. The escalation entry
+uses the same destination and effective restrictions as the decision function
+input. When a reviewer opens a copy, the broker records the requesting extension
+and the negotiated copy policy. Provider violation entries identify the
+reporting provider. `/byos log [tool-call-id]` lists current-session entries and
+accepts an optional tool call ID filter.
 
 ## Internal protocol
 
@@ -490,14 +601,14 @@ type Envelope<Payload> = BuildIdentity & {
 };
 ```
 
-| Channel  | Envelope kind   | Payload                                                                                                                     |
-| -------- | --------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Runtime  | `advertisement` | `{ type: 'build' }`                                                                                                         |
-| Runtime  | `request`       | `{ type: 'get-broker' }`                                                                                                    |
-| Runtime  | `reply`         | `{ type: 'broker', brokerId: BrokerId }`                                                                                    |
-| Provider | `advertisement` | `{ type: 'provider', providerId: ProviderId, profiles: { open: Profile[], copy: Profile[] }, outsideProfiles?: Profile[] }` |
-| Review   | `request`       | `{ type: 'find-source', toolCallId: string }`                                                                               |
-| Review   | `reply`         | `{ type: 'source', result: ReviewReply }`                                                                                   |
+| Channel  | Envelope kind   | Payload                                                                                        |
+| -------- | --------------- | ---------------------------------------------------------------------------------------------- |
+| Runtime  | `advertisement` | `{ type: 'build' }`                                                                            |
+| Runtime  | `request`       | `{ type: 'get-broker' }`                                                                       |
+| Runtime  | `reply`         | `{ type: 'broker', brokerId: BrokerId }`                                                       |
+| Provider | `advertisement` | `{ type: 'provider', providerId: ProviderId, profiles: { open: Profile[], copy: Profile[] } }` |
+| Review   | `request`       | `{ type: 'find-source', toolCallId: string }`                                                  |
+| Review   | `reply`         | `{ type: 'source', result: ReviewReply }`                                                      |
 
 The envelope version fields are integers. The major is positive and the feature
 level is non-negative. Replies repeat the request ID. Broker and provider
@@ -520,30 +631,28 @@ User-facing diagnostics omit raw settings.
 
 This is the complete feature level 0 error list.
 
-| Error                                | Detail                                                                                         |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| `SandboxInitialisationError`         | Runtime or host initialisation failure                                                         |
-| `DuplicateBrokerError`               | Conflicting broker identities                                                                  |
-| `IncompatibleSandboxProtocolError`   | Both build identities for a major mismatch, or the unsupported feature and extension to update |
-| `SandboxProviderMismatchError`       | Required and selected provider IDs                                                             |
-| `SandboxProviderRequiredError`       | Guard requires explicit activation                                                             |
-| `InvalidSandboxDeclarationError`     | Provider and rejected declaration detail                                                       |
-| `InvalidSandboxConfigError`          | Extension source and invalid setting or factory failure                                        |
-| `InvalidSandboxRequestError`         | Invalid field and rejected value                                                               |
-| `ProviderNotFoundError`              | Selected provider ID                                                                           |
-| `ConflictingSandboxProviderError`    | Conflicting provider selections                                                                |
-| `DuplicateProviderError`             | Duplicate provider ID                                                                          |
-| `UnsupportedSandboxCapabilityError`  | Capability, process kind, dialect, exit status or termination scope and value                  |
-| `UnsupportedSandboxPolicyError`      | Access property and requested state, including any conflicting guard state                     |
-| `SandboxStartupError`                | Startup failure and outstanding recovery, when applicable                                      |
-| `StaleSandboxHandleError`            | Expired facade or runtime identity                                                             |
-| `SandboxSessionClosingError`         | Session closure prevents new work                                                              |
-| `SandboxPermissionDeniedError`       | Rejected operation or access                                                                   |
-| `SandboxPathNotFoundError`           | Target path or executable                                                                      |
-| `SandboxOperationError`              | Target operation failure                                                                       |
-| `SandboxCleanupError`                | Unconfirmed disposal and recovery details                                                      |
-| `SandboxCancelledError`              | `caller` or `shutdown`, with completion                                                        |
-| `SandboxTimeoutError`                | `deadline`, with completion                                                                    |
-| `SandboxOutputCallbackError`         | `output`, with completion                                                                      |
-| `SandboxTransportError`              | Transport failure and unknown completion                                                       |
-| `UnconfirmedSandboxTerminationError` | Termination scope and unknown completion                                                       |
+| Error                                | Detail                                                                                                          |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `SandboxInitialisationError`         | Runtime or host initialisation failure                                                                          |
+| `DuplicateBrokerError`               | Conflicting broker identities                                                                                   |
+| `IncompatibleSandboxProtocolError`   | Both build identities for a major mismatch, or the unsupported feature and extension to update                  |
+| `InvalidSandboxDeclarationError`     | Provider and rejected declaration detail                                                                        |
+| `InvalidSandboxConfigError`          | Extension source and invalid setting or factory failure                                                         |
+| `InvalidSandboxRequestError`         | Invalid field and rejected value                                                                                |
+| `ProviderNotFoundError`              | Selected provider ID                                                                                            |
+| `ConflictingSandboxProviderError`    | Conflicting provider selections                                                                                 |
+| `DuplicateProviderError`             | Duplicate provider ID                                                                                           |
+| `UnsupportedSandboxCapabilityError`  | Capability, process kind, dialect, exit status or termination scope and value                                   |
+| `UnsupportedSandboxPolicyError`      | Failed access property and requested state, the path that cannot be granted, or the disabled escalation setting |
+| `SandboxStartupError`                | Startup failure and outstanding recovery, when applicable                                                       |
+| `StaleSandboxHandleError`            | Expired facade or runtime identity                                                                              |
+| `SandboxSessionClosingError`         | Session closure prevents new work                                                                               |
+| `SandboxPermissionDeniedError`       | Rejected operation or access                                                                                    |
+| `SandboxPathNotFoundError`           | Target path or executable                                                                                       |
+| `SandboxOperationError`              | Target operation failure                                                                                        |
+| `SandboxCleanupError`                | Unconfirmed disposal and recovery details                                                                       |
+| `SandboxCancelledError`              | `caller` or `shutdown`, with completion                                                                         |
+| `SandboxTimeoutError`                | `deadline`, with completion                                                                                     |
+| `SandboxOutputCallbackError`         | `output`, with completion                                                                                       |
+| `SandboxTransportError`              | Transport failure and unknown completion                                                                        |
+| `UnconfirmedSandboxTerminationError` | Termination scope and unknown completion                                                                        |

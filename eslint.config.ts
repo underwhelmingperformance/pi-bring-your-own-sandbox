@@ -10,6 +10,9 @@ import unicorn from 'eslint-plugin-unicorn';
 import globals from 'globals';
 import ts from 'typescript-eslint';
 
+const piDisplayMembers =
+	'/^(ui|sendMessage|sendUserMessage|appendEntry|setSessionName|registerMessageRenderer|registerEntryRenderer|registerToolRenderer)$/';
+
 export default defineConfig(
 	{ ignores: ['**/dist/**', '**/coverage/**', '**/node_modules/**'] },
 	eslint.configs.recommended,
@@ -88,5 +91,27 @@ export default defineConfig(
 	},
 	await oxlint.buildFromConfigFile(
 		path.join(import.meta.dirname, '.oxlintrc.json')
-	)
+	),
+	{
+		files: ['packages/sdk/src/**/*.ts', 'packages/sdk/examples/*/src/**/*.ts'],
+		ignores: [
+			'**/*.test.ts',
+			'packages/sdk/src/fixtures/**',
+			'packages/sdk/src/display-ui.ts'
+		],
+		rules: {
+			'no-restricted-syntax': [
+				'error',
+				{
+					selector: [
+						`MemberExpression[computed=false][property.name=${piDisplayMembers}]`,
+						`MemberExpression[computed=true][property.value=${piDisplayMembers}]`,
+						`ObjectPattern > Property[key.name=${piDisplayMembers}]`,
+						`ObjectPattern > Property[key.value=${piDisplayMembers}]`
+					].join(', '),
+					message: 'Use the typed Pi display adapter.'
+				}
+			]
+		}
+	}
 );

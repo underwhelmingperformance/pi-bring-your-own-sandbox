@@ -1,5 +1,9 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
-import { registerSandboxProvider } from 'pi-bring-your-own-sandbox/api';
+import {
+	cleanDisplayText,
+	registerSandboxProvider,
+	sendDisplayMessage
+} from 'pi-bring-your-own-sandbox/api';
 
 import { resolveDockerConfig } from './config.js';
 import type { DockerConfig } from './contracts.js';
@@ -21,12 +25,10 @@ export default function dockerExtension(pi: ExtensionAPI): void {
 					...context,
 					reportDiagnostic(warning) {
 						context.reportDiagnostic(warning);
-						pi.sendMessage(
-							{
-								customType: 'byos-docker',
-								content: warning.message,
-								display: true
-							},
+						sendDisplayMessage(
+							pi,
+							cleanDisplayText('byos-docker'),
+							cleanDisplayText(warning.message),
 							{ triggerTurn: false }
 						);
 					}

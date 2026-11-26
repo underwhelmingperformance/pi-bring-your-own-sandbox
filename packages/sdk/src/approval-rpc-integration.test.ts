@@ -900,7 +900,7 @@ it.each(['normal', 'provider'] as const)(
 						(record) => isRecord(record) && record['kind'] === 'execute'
 					)
 				}).toStrictEqual({
-					reviewed: `${prefix}\n${command}`,
+					reviewed: String.raw`${prefix}\x0a${command}`,
 					result: {
 						tool: 'bash',
 						content: [{ type: 'text', text: 'approved' }],

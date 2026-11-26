@@ -21,6 +21,8 @@ import {
 } from './approval-schemas.js';
 import { inspectContext } from './context.js';
 import type { SandboxHost, SandboxOperationOptions } from './contracts.js';
+import { cleanDisplayText, joinDisplayLines } from './display-text.js';
+import { isDisplayConfirmed } from './display-ui.js';
 import {
 	isSandboxError,
 	SandboxSessionClosingError,
@@ -244,11 +246,23 @@ class ApprovalService implements ApprovalServiceV1 {
 					: JSON.stringify([process.executable, ...process.args]);
 			const environment =
 				process.env === undefined
-					? ''
-					: `\nEnvironment overrides: ${Object.keys(process.env).join(', ')}`;
-			const message = `${request.destination.label}\n${request.destination.policyDescription}\nWorking directory: ${process.cwd ?? request.destination.workspace.root}${environment}\n\n${command}\n\n${request.justification}`;
-			const isAllowed = await context.pi.ui.confirm(
-				'Approve process execution?',
+					? []
+					: [`Environment overrides: ${Object.keys(process.env).join(', ')}`];
+			const message = joinDisplayLines(
+				[
+					request.destination.label,
+					request.destination.policyDescription,
+					`Working directory: ${process.cwd ?? request.destination.workspace.root}`,
+					...environment,
+					'',
+					command,
+					'',
+					request.justification
+				].map((line) => cleanDisplayText(line))
+			);
+			const isAllowed = await isDisplayConfirmed(
+				context.pi,
+				cleanDisplayText('Approve process execution?'),
 				message,
 				{
 					signal: context.signal,

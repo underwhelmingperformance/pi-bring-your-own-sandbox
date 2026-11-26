@@ -1,3 +1,4 @@
+import type { ExtensionUIContext } from '@earendil-works/pi-coding-agent';
 import { expect, it, vi } from 'vitest';
 
 import { configureExecutionApproval } from './api.js';
@@ -89,6 +90,82 @@ it('rejects duplicate custom policies with the approval-specific error', async (
 		async (runtime, errors) => {
 			await runtime.session.prompt('/duplicates');
 			expect(errors).toStrictEqual([]);
+		}
+	);
+});
+
+it('escapes untrusted controls before asking for execution approval', async () => {
+	const isConfirmed = vi.fn<ExtensionUIContext['confirm']>(() =>
+		Promise.resolve(false)
+	);
+	const decisions: ApprovalDecision[] = [];
+
+	await withPiRuntime(
+		[
+			{
+				name: 'untrusted-approval',
+				factory(pi) {
+					pi.registerCommand('approve', {
+						description: 'Check displayed execution approval.',
+						async handler(_arguments, context) {
+							decisions.push(
+								await requestExecutionApproval(
+									pi,
+									{
+										...context,
+										hasUI: true,
+										ui: { ...context.ui, confirm: isConfirmed }
+									},
+									{
+										process: {
+											kind: 'shell',
+											dialect: 'bash',
+											command: 'printf \u{1B}[8mhidden'
+										},
+										justification: 'First line\nsecond\tline\u{7F}\u{9B}.',
+										destination: {
+											kind: 'normal',
+											id: 'normal',
+											label: 'Normal\u{1B}[8m',
+											workspace: {
+												root: '/workspace',
+												pathFlavor: 'posix',
+												relationship: 'shared',
+												description: 'Fixture workspace.'
+											},
+											policyDescription: 'Fixture policy.'
+										}
+									}
+								)
+							);
+						}
+					});
+				}
+			}
+		],
+		async (runtime, errors) => {
+			await runtime.session.prompt('/approve');
+
+			const calls = isConfirmed.mock.calls.map(([title, message, options]) => ({
+				title,
+				message,
+				hasSignal: options?.signal instanceof AbortSignal,
+				hasBudget: (options?.timeout ?? 0) > 0
+			}));
+
+			expect({ errors, decisions, calls }).toStrictEqual({
+				errors: [],
+				decisions: [{ kind: 'deny' }],
+				calls: [
+					{
+						title: 'Approve process execution?',
+						message:
+							'Normal\\x1b[8m\nFixture policy.\nWorking directory: /workspace\n\nprintf \\x1b[8mhidden\n\nFirst line\\x0asecond\\x09line\\x7f\\x9b.',
+						hasSignal: true,
+						hasBudget: true
+					}
+				]
+			});
 		}
 	);
 });

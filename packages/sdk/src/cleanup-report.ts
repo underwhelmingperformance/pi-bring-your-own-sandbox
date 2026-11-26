@@ -1,8 +1,15 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 
 import type { SandboxCloseReport, SandboxHost } from './contracts.js';
+import type { DisplayText } from './display-text.js';
+import { cleanDisplayText, joinDisplayLines } from './display-text.js';
+import {
+	appendDisplayEntry,
+	notifyDisplay,
+	sendDisplayMessage
+} from './display-ui.js';
 
-export function formatCleanupReport(report: SandboxCloseReport): string {
+export function formatCleanupReport(report: SandboxCloseReport): DisplayText {
 	const lines = [`Cleanup: ${report.confirmed ? 'confirmed' : 'incomplete'}`];
 
 	for (const failure of report.failures) {
@@ -23,7 +30,7 @@ export function formatCleanupReport(report: SandboxCloseReport): string {
 		);
 	}
 
-	return lines.join('\n');
+	return joinDisplayLines(lines.map((line) => cleanDisplayText(line)));
 }
 
 export function reportCleanup(
@@ -38,12 +45,11 @@ export function reportCleanup(
 	const content = formatCleanupReport(report);
 
 	if (!context.isIdle()) {
-		pi.appendEntry('byos-cleanup', { content });
-		context.ui.notify(content, 'warning');
+		appendDisplayEntry(pi, cleanDisplayText('byos-cleanup'), content);
+		notifyDisplay(context, content, 'warning');
 	}
 
-	pi.sendMessage(
-		{ customType: 'byos', content, display: true },
-		{ triggerTurn: false }
-	);
+	sendDisplayMessage(pi, cleanDisplayText('byos'), content, {
+		triggerTurn: false
+	});
 }

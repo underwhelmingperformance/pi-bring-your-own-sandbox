@@ -12,6 +12,9 @@ export {
 export { closeSandboxSession, getSandbox, negotiateSandbox } from './client.js';
 export type * from './contracts.js';
 export { registerSandboxDiagnostics } from './diagnostic-registration.js';
+export type { DisplayText } from './display-text.js';
+export { cleanDisplayText } from './display-text.js';
+export { sendDisplayMessage } from './display-ui.js';
 export {
 	ConflictingSandboxConfigError,
 	ConflictingSandboxProviderError,

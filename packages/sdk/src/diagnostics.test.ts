@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 
-import { formatStatus } from './diagnostics.js';
+import { formatProviders, formatStatus } from './diagnostics.js';
 import { SandboxStartupError } from './errors.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import type { ProviderInfo } from './protocol.js';
@@ -180,7 +180,7 @@ it('shows recovery from an opening that failed before returning a backend', () =
 				kind: 'allocation',
 				id: 'orphan-volume-123',
 				lease: 'manual cleanup',
-				instructions: 'Remove orphan-volume-123.'
+				instructions: 'Remove orphan-volume-123.\nCheck leases.'
 			}
 		},
 		{ cause: new Error('PRIVATE_PROVIDER_TOKEN') }
@@ -201,7 +201,7 @@ it('shows recovery from an opening that failed before returning a backend', () =
 					operation: 'open',
 					operationId: 'first',
 					level: 'warning',
-					message: 'Base opening failed.'
+					message: 'Base opening failed.\u{1B}[8m'
 				}
 			]
 		})
@@ -216,10 +216,10 @@ it('shows recovery from an opening that failed before returning a backend', () =
 			`Failure: ${failure.name}: ${failure.message}`,
 			'Cleanup: incomplete',
 			'Recovery: orphan-volume-123 (lease manual cleanup)',
-			'Remove orphan-volume-123.',
+			String.raw`Remove orphan-volume-123.\x0aCheck leases.`,
 			'Additional backend (opening)',
 			'Requested policy: workspace read-only; filesystem provider-default; network provider-default; protected resources: none',
-			'Warning (open, first): Base opening failed.'
+			String.raw`Warning (open, first): Base opening failed.\x1b[8m`
 		].join('\n')
 	);
 });
@@ -257,6 +257,34 @@ it('describes arbitrary providers through declaration metadata', () => {
 			'Requested policy: workspace read-write; filesystem provider-default; network provider-default; protected resources: none',
 			'User shell: provider default (not opened)',
 			'Provider description: Custom execution boundary'
+		].join('\n')
+	);
+});
+
+it('escapes controls in a provider label in the provider list', () => {
+	const backend = new MemoryBackend('exec');
+
+	expect(
+		formatProviders([
+			{
+				id: 'custom',
+				label: 'Custom\tboundary',
+				capabilities: backend.capabilities,
+				policies: {
+					workspaceAccess: ['read-write'],
+					filesystemScope: ['provider-default'],
+					networkAccess: ['provider-default']
+				}
+			}
+		])
+	).toStrictEqual(
+		[
+			'Available sandbox providers (declared capabilities):',
+			String.raw`custom: Custom\x09boundary`,
+			'  Operations: exec',
+			'  Termination scope: workload',
+			'  Shells: none',
+			'  Policies: workspace read-write; filesystem provider-default; network provider-default'
 		].join('\n')
 	);
 });

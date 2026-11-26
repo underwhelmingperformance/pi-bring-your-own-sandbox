@@ -1,5 +1,7 @@
 import { formatCleanupReport } from './cleanup-report.js';
 import type { SandboxPolicy } from './contracts.js';
+import type { DisplayText } from './display-text.js';
+import { cleanDisplayText, joinDisplayLines } from './display-text.js';
 import { policyKey } from './negotiation.js';
 import type { ProviderInfo, SandboxStatus } from './protocol.js';
 
@@ -51,7 +53,7 @@ function userShell(status: SandboxStatus): string {
 		: (status.workspace.defaultShell ?? 'unavailable');
 }
 
-export function formatStatus(status: SandboxStatus): string {
+export function formatStatus(status: SandboxStatus): DisplayText {
 	const selection = status.selection;
 	const baseKey =
 		selection === undefined ? undefined : policyKey(selection.policy);
@@ -110,12 +112,14 @@ export function formatStatus(status: SandboxStatus): string {
 		lines.push(`Failure: ${status.failure.name}: ${status.failure.message}`);
 	}
 
+	const display = lines.map((line) => cleanDisplayText(line));
+
 	if (
 		status.closeReport === undefined &&
 		status.state === 'failed' &&
 		status.failure?.recovery?.kind === 'allocation'
 	) {
-		lines.push(
+		display.push(
 			formatCleanupReport({
 				confirmed: false,
 				failures: [],
@@ -132,28 +136,30 @@ export function formatStatus(status: SandboxStatus): string {
 				? 'last state: ' + backend.state
 				: backend.state;
 
-		lines.push(
-			`Additional backend${id} (${state})`,
-			backend.effectivePolicy === undefined
-				? `Requested policy: ${policy(backend.policy)}`
-				: `Effective policy: ${policy(backend.effectivePolicy)}`
+		display.push(
+			cleanDisplayText(`Additional backend${id} (${state})`),
+			cleanDisplayText(
+				backend.effectivePolicy === undefined
+					? `Requested policy: ${policy(backend.policy)}`
+					: `Effective policy: ${policy(backend.effectivePolicy)}`
+			)
 		);
 	}
 
 	const report = status.closeReport;
 
-	lines.push(...formatProviderDiagnostics(status));
+	display.push(...formatProviderDiagnostics(status));
 
 	if (report !== undefined) {
-		lines.push(formatCleanupReport(report));
+		display.push(formatCleanupReport(report));
 	}
 
-	return lines.join('\n');
+	return joinDisplayLines(display);
 }
 
 export function formatProviderDiagnostics(
 	status: Pick<SandboxStatus, 'diagnostics' | 'diagnosticsDropped'>
-): readonly string[] {
+): readonly DisplayText[] {
 	const lines = (status.diagnostics ?? []).map(
 		(diagnostic) =>
 			`Warning (${diagnostic.operation}, ${diagnostic.operationId}): ${diagnostic.message}`
@@ -163,10 +169,12 @@ export function formatProviderDiagnostics(
 		lines.push(`Diagnostics discarded: ${String(status.diagnosticsDropped)}`);
 	}
 
-	return lines;
+	return lines.map((line) => cleanDisplayText(line));
 }
 
-export function formatProviders(providers: readonly ProviderInfo[]): string {
+export function formatProviders(
+	providers: readonly ProviderInfo[]
+): DisplayText {
 	const lines = ['Available sandbox providers (declared capabilities):'];
 
 	for (const provider of providers) {
@@ -184,5 +192,5 @@ export function formatProviders(providers: readonly ProviderInfo[]): string {
 		);
 	}
 
-	return lines.join('\n');
+	return joinDisplayLines(lines.map((line) => cleanDisplayText(line)));
 }

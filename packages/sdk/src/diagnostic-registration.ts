@@ -7,6 +7,9 @@ import {
 	formatProviders,
 	formatStatus
 } from './diagnostics.js';
+import type { DisplayText } from './display-text.js';
+import { cleanDisplayText, joinDisplayLines } from './display-text.js';
+import { sendDisplayMessage } from './display-ui.js';
 import { isSandboxError, SandboxInitialisationError } from './errors.js';
 import { approvalService } from './execution-approval.js';
 import { outsideExecutionStatus } from './outside-execution.js';
@@ -27,39 +30,43 @@ export function registerSandboxDiagnostics(pi: ExtensionAPI): void {
 			const action = arguments_.trim();
 
 			if (!['', 'status', 'providers', 'approval-policies'].includes(action)) {
-				pi.sendMessage({
-					customType: 'byos',
-					content:
-						'Usage: /byos status | /byos providers | /byos approval-policies',
-					display: true
-				});
+				sendDisplayMessage(
+					pi,
+					cleanDisplayText('byos'),
+					cleanDisplayText(
+						'Usage: /byos status | /byos providers | /byos approval-policies'
+					)
+				);
 
 				return;
 			}
 
-			let content: string;
+			let lines: DisplayText[];
 
 			try {
 				if (action === 'approval-policies') {
-					content = [
+					lines = [
 						'Available execution approval policies:',
 						...approvalService(pi)
 							.policies()
 							.map((policy) => `${policy.id}: ${policy.label}`)
-					].join('\n');
+					].map((line) => cleanDisplayText(line));
 				} else if (action === 'providers') {
-					content = formatProviders(await service.providers(context));
+					lines = [formatProviders(await service.providers(context))];
 				} else {
 					const status = await service.status(context);
 
-					content = formatStatus(status);
+					lines = [formatStatus(status)];
 
 					const outside = await outsideExecutionStatus(pi, context);
 					const warnings =
 						outside === undefined ? [] : formatProviderDiagnostics(outside);
 
 					if (warnings.length > 0) {
-						content += `\nOutside execution diagnostics:\n${warnings.join('\n')}`;
+						lines.push(
+							cleanDisplayText('Outside execution diagnostics:'),
+							...warnings
+						);
 					}
 
 					try {
@@ -72,27 +79,41 @@ export function registerSandboxDiagnostics(pi: ExtensionAPI): void {
 						);
 						const destination = config.outsideSandbox?.destination ?? 'normal';
 
-						const selection = [
-							`Approval policy: ${selected}${isAvailable ? '' : ' (unavailable)'}`,
-							`Outside execution destination: ${destination}${destination === 'provider' ? ` (${config.selection.providerId})` : settings.normalExecutor === undefined ? '' : ` (${settings.normalExecutor.label})`}`
-						].join('\n');
-
-						content += `\n${selection}`;
+						lines.push(
+							cleanDisplayText(
+								`Approval policy: ${selected}${isAvailable ? '' : ' (unavailable)'}`
+							),
+							cleanDisplayText(
+								`Outside execution destination: ${destination}${destination === 'provider' ? ` (${config.selection.providerId})` : settings.normalExecutor === undefined ? '' : ` (${settings.normalExecutor.label})`}`
+							)
+						);
 
 						if (
 							destination === 'normal' &&
 							settings.normalExecutor === undefined
 						) {
-							content += '\nOutside native Pi shell termination scope: none';
+							lines.push(
+								cleanDisplayText(
+									'Outside native Pi shell termination scope: none'
+								)
+							);
 						} else if (outside?.capabilities !== undefined) {
-							content += `\nOutside shell termination scope: ${outside.capabilities.terminationScope}`;
+							lines.push(
+								cleanDisplayText(
+									`Outside shell termination scope: ${outside.capabilities.terminationScope}`
+								)
+							);
 						}
 					} catch (error) {
 						if (!isSandboxError(error) && !isApprovalError(error)) {
 							throw error;
 						}
 
-						content += `\nExecution settings: ${error.name}: ${error.message}`;
+						lines.push(
+							cleanDisplayText(
+								`Execution settings: ${error.name}: ${error.message}`
+							)
+						);
 					}
 				}
 			} catch (error) {
@@ -103,14 +124,14 @@ export function registerSandboxDiagnostics(pi: ExtensionAPI): void {
 					);
 				}
 
-				content = `${error.name}: ${error.message}`;
+				lines = [cleanDisplayText(`${error.name}: ${error.message}`)];
 			}
 
 			if (action !== 'providers' && action !== 'approval-policies') {
-				content += `\n${describeShellIntegration(pi.events)}`;
+				lines.push(cleanDisplayText(describeShellIntegration(pi.events)));
 			}
 
-			pi.sendMessage({ customType: 'byos', content, display: true });
+			sendDisplayMessage(pi, cleanDisplayText('byos'), joinDisplayLines(lines));
 		}
 	});
 }

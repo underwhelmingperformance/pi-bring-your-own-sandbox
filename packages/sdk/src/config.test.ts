@@ -26,6 +26,7 @@ it('uses the SDK default and keeps the provider configuration separate', () => {
 	expect(
 		resolveSandboxConfig(provider, { configuration: config }, 'extension')
 	).toStrictEqual({
+		allowEscalation: true,
 		selection: {
 			providerId: 'fixture',
 			source: 'extension',
@@ -46,6 +47,7 @@ it('narrows an omitted policy to the best supported profile', () => {
 	expect(
 		resolveSandboxConfig(candidate, { configuration: {} }, 'extension')
 	).toStrictEqual({
+		allowEscalation: true,
 		selection: {
 			providerId: 'fixture',
 			source: 'extension',
@@ -64,6 +66,7 @@ it('uses an explicit policy as the limit and snapshots shared settings', () => {
 			configuration: {},
 			settings: {
 				policy,
+				allowEscalation: false,
 				userShell: 'bash',
 				cleanup: { disposalTimeoutMs: 300 }
 			}
@@ -74,6 +77,7 @@ it('uses an explicit policy as the limit and snapshots shared settings', () => {
 	policy.network = false;
 
 	expect(result).toStrictEqual({
+		allowEscalation: false,
 		selection: {
 			providerId: 'fixture',
 			source: 'extension',

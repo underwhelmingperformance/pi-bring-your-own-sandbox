@@ -67,6 +67,7 @@ interface ProfileRequest {
 	readonly requirements?: ProfileRequirements;
 	readonly mode?: ProfileMode;
 	readonly paths?: readonly ResolvedPath[];
+	readonly isEscalated?: boolean;
 }
 
 const satisfiesAccess = {
@@ -91,13 +92,17 @@ function isWithinLimit(policy: Policy, limit: Policy): boolean {
 	});
 }
 
-function compareProfiles(left: Profile, right: Profile): number {
+function compareProfiles(
+	left: Profile,
+	right: Profile,
+	isEscalated: boolean
+): number {
 	for (const property of accessOrder) {
 		const rank = accessRanks[property];
-		const difference = rank(right.policy) - rank(left.policy);
+		const difference = rank(left.policy) - rank(right.policy);
 
 		if (difference !== 0) {
-			return difference;
+			return isEscalated ? difference : -difference;
 		}
 	}
 
@@ -182,10 +187,17 @@ export function selectProfile({
 	limit,
 	requirements = {},
 	mode = 'open',
-	paths = []
+	paths = [],
+	isEscalated = false
 }: ProfileRequest): ProfileSelection {
-	let eligible = profiles.filter((profile) =>
-		isWithinLimit(profile.policy, limit)
+	let eligible = profiles.filter(({ policy }) =>
+		isEscalated
+			? accessOrder.every(
+					(property) =>
+						requirements.access?.[property] !== undefined ||
+						policy[property] === limit[property]
+				)
+			: isWithinLimit(policy, limit)
 	);
 
 	if (eligible.length === 0) {
@@ -201,7 +213,7 @@ export function selectProfile({
 
 		const isSatisfiedBy = satisfiesAccess[property];
 
-		if (state === 'needed' && !isSatisfiedBy(limit, state)) {
+		if (!isEscalated && state === 'needed' && !isSatisfiedBy(limit, state)) {
 			return {
 				ok: false,
 				detail: { kind: 'access', property, value: state, reason: 'limit' }
@@ -221,7 +233,7 @@ export function selectProfile({
 	}
 
 	for (const path of paths) {
-		if (!canGrantPath(limit, path, mode)) {
+		if (!isEscalated && !canGrantPath(limit, path, mode)) {
 			return {
 				ok: false,
 				detail: {
@@ -233,8 +245,13 @@ export function selectProfile({
 			};
 		}
 
-		eligible = eligible.filter((profile) =>
-			canGrantPath(profile.policy, path, mode)
+		eligible = eligible.filter(
+			(profile) =>
+				canGrantPath(profile.policy, path, mode) ||
+				(isEscalated &&
+					mode === 'open' &&
+					path.location !== 'workspace' &&
+					profile.pathGrantKinds?.includes(path.kind) === true)
 		);
 
 		if (eligible.length === 0) {
@@ -258,7 +275,9 @@ export function selectProfile({
 		}
 	}
 
-	const [selected] = eligible.toSorted(compareProfiles);
+	const [selected] = eligible.toSorted((left, right) =>
+		compareProfiles(left, right, isEscalated)
+	);
 
 	return selected === undefined
 		? { ok: false, detail: { kind: 'policy', reason: 'profile' } }

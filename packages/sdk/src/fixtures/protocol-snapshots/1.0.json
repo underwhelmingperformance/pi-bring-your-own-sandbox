@@ -834,6 +834,37 @@
 										],
 										"~kind": "Union"
 									},
+									"pathGrantKinds": {
+										"items": {
+											"anyOf": [
+												{
+													"const": "read",
+													"type": "string",
+													"~kind": "Literal"
+												},
+												{
+													"const": "write",
+													"type": "string",
+													"~kind": "Literal"
+												}
+											],
+											"~kind": "Union"
+										},
+										"type": "array",
+										"uniqueItems": true,
+										"~kind": "Array",
+										"~optional": true,
+										"~refine": [
+											{
+												"check": {
+													"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+												},
+												"error": {
+													"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+												}
+											}
+										]
+									},
 									"policy": {
 										"additionalProperties": false,
 										"properties": {
@@ -1095,6 +1126,37 @@
 											}
 										],
 										"~kind": "Union"
+									},
+									"pathGrantKinds": {
+										"items": {
+											"anyOf": [
+												{
+													"const": "read",
+													"type": "string",
+													"~kind": "Literal"
+												},
+												{
+													"const": "write",
+													"type": "string",
+													"~kind": "Literal"
+												}
+											],
+											"~kind": "Union"
+										},
+										"type": "array",
+										"uniqueItems": true,
+										"~kind": "Array",
+										"~optional": true,
+										"~refine": [
+											{
+												"check": {
+													"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+												},
+												"error": {
+													"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+												}
+											}
+										]
 									},
 									"policy": {
 										"additionalProperties": false,
@@ -2485,6 +2547,12 @@
 				"settings": {
 					"additionalProperties": false,
 					"properties": {
+						"allowEscalation": {
+							"default": true,
+							"type": "boolean",
+							"~kind": "Boolean",
+							"~optional": true
+						},
 						"cleanup": {
 							"properties": {
 								"cancellationGraceMs": {
@@ -2741,6 +2809,37 @@
 								}
 							],
 							"~kind": "Union"
+						},
+						"pathGrantKinds": {
+							"items": {
+								"anyOf": [
+									{
+										"const": "read",
+										"type": "string",
+										"~kind": "Literal"
+									},
+									{
+										"const": "write",
+										"type": "string",
+										"~kind": "Literal"
+									}
+								],
+								"~kind": "Union"
+							},
+							"type": "array",
+							"uniqueItems": true,
+							"~kind": "Array",
+							"~optional": true,
+							"~refine": [
+								{
+									"check": {
+										"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+									},
+									"error": {
+										"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+									}
+								}
+							]
 						},
 						"policy": {
 							"additionalProperties": false,
@@ -3183,6 +3282,37 @@
 														}
 													],
 													"~kind": "Union"
+												},
+												"pathGrantKinds": {
+													"items": {
+														"anyOf": [
+															{
+																"const": "read",
+																"type": "string",
+																"~kind": "Literal"
+															},
+															{
+																"const": "write",
+																"type": "string",
+																"~kind": "Literal"
+															}
+														],
+														"~kind": "Union"
+													},
+													"type": "array",
+													"uniqueItems": true,
+													"~kind": "Array",
+													"~optional": true,
+													"~refine": [
+														{
+															"check": {
+																"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+															},
+															"error": {
+																"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+															}
+														}
+													]
 												},
 												"policy": {
 													"additionalProperties": false,
@@ -3829,6 +3959,37 @@
 							],
 							"~kind": "Union"
 						},
+						"pathGrantKinds": {
+							"items": {
+								"anyOf": [
+									{
+										"const": "read",
+										"type": "string",
+										"~kind": "Literal"
+									},
+									{
+										"const": "write",
+										"type": "string",
+										"~kind": "Literal"
+									}
+								],
+								"~kind": "Union"
+							},
+							"type": "array",
+							"uniqueItems": true,
+							"~kind": "Array",
+							"~optional": true,
+							"~refine": [
+								{
+									"check": {
+										"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+									},
+									"error": {
+										"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+									}
+								}
+							]
+						},
 						"policy": {
 							"additionalProperties": false,
 							"properties": {
@@ -4113,6 +4274,37 @@
 														],
 														"~kind": "Union"
 													},
+													"pathGrantKinds": {
+														"items": {
+															"anyOf": [
+																{
+																	"const": "read",
+																	"type": "string",
+																	"~kind": "Literal"
+																},
+																{
+																	"const": "write",
+																	"type": "string",
+																	"~kind": "Literal"
+																}
+															],
+															"~kind": "Union"
+														},
+														"type": "array",
+														"uniqueItems": true,
+														"~kind": "Array",
+														"~optional": true,
+														"~refine": [
+															{
+																"check": {
+																	"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+																},
+																"error": {
+																	"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+																}
+															}
+														]
+													},
 													"policy": {
 														"additionalProperties": false,
 														"properties": {
@@ -4374,6 +4566,37 @@
 															}
 														],
 														"~kind": "Union"
+													},
+													"pathGrantKinds": {
+														"items": {
+															"anyOf": [
+																{
+																	"const": "read",
+																	"type": "string",
+																	"~kind": "Literal"
+																},
+																{
+																	"const": "write",
+																	"type": "string",
+																	"~kind": "Literal"
+																}
+															],
+															"~kind": "Union"
+														},
+														"type": "array",
+														"uniqueItems": true,
+														"~kind": "Array",
+														"~optional": true,
+														"~refine": [
+															{
+																"check": {
+																	"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+																},
+																"error": {
+																	"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+																}
+															}
+														]
 													},
 													"policy": {
 														"additionalProperties": false,

@@ -1,7 +1,13 @@
+import { realpath } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import path from 'node:path';
 
 import { backendSchema } from './backend-schemas.js';
-import type { SandboxBackend, SandboxOperationContext } from './contracts.js';
+import type {
+	SandboxBackend,
+	SandboxOperationContext,
+	SandboxWorkspace
+} from './contracts.js';
 import {
 	InvalidSandboxDeclarationError,
 	UnsupportedSandboxPolicyError
@@ -67,11 +73,42 @@ function isWithinTarget(
 	);
 }
 
+function extraTarget(
+	hostPath: string,
+	hostHome: string,
+	workspace: SandboxWorkspace
+): string | undefined {
+	const flavor = path[workspace.pathFlavor];
+
+	if (!isWithinTarget(hostHome, hostPath, path)) {
+		return flavor.isAbsolute(hostPath) ? flavor.normalize(hostPath) : undefined;
+	}
+
+	if (workspace.home === undefined || !flavor.isAbsolute(workspace.home)) {
+		return undefined;
+	}
+
+	const relative = path.relative(hostHome, hostPath);
+
+	return flavor.resolve(workspace.home, ...relative.split(path.sep));
+}
+
+async function canonicalHostHome(): Promise<string> {
+	const home = homedir();
+
+	try {
+		return await realpath(home);
+	} catch {
+		return home;
+	}
+}
+
 export async function verifyGrantedPaths(
 	backend: SandboxBackend,
 	requested: readonly ResolvedPath[],
 	context: SandboxOperationContext,
-	provider: Pick<ProviderServiceV1, 'id' | 'protocol'>
+	provider: Pick<ProviderServiceV1, 'id' | 'protocol'>,
+	isEscalated = false
 ): Promise<void> {
 	const extensionSource = provider.protocol?.extensionSource;
 	const identity = {
@@ -82,6 +119,10 @@ export async function verifyGrantedPaths(
 	};
 	const grants = backend.grantedPaths ?? [];
 	const flavor = path[backend.workspace.pathFlavor];
+	const hostHome =
+		isEscalated && requested.some(({ location }) => location !== 'workspace')
+			? await canonicalHostHome()
+			: undefined;
 
 	for (const request of requested) {
 		const matches = grants.filter(
@@ -104,12 +145,18 @@ export async function verifyGrantedPaths(
 			);
 		}
 
+		const isWorkspace = request.location === 'workspace';
+
 		if (
 			grant === undefined ||
 			matches.length !== 1 ||
 			!flavor.isAbsolute(grant.targetPath) ||
-			(request.location === 'workspace' &&
-				!isWithinTarget(backend.workspace.root, grant.targetPath, flavor))
+			(isWorkspace &&
+				!isWithinTarget(backend.workspace.root, grant.targetPath, flavor)) ||
+			(hostHome !== undefined &&
+				!isWorkspace &&
+				flavor.normalize(grant.targetPath) !==
+					extraTarget(request.path, hostHome, backend.workspace))
 		) {
 			unreachable();
 		}

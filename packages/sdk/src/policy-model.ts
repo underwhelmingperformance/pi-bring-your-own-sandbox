@@ -68,6 +68,8 @@ const exitStatus = Type.Union([
 	Type.Literal('guaranteed'),
 	Type.Literal('optional')
 ]);
+const grantKind = Type.Union([Type.Literal('read'), Type.Literal('write')]);
+const pathGrantKinds = denseArray(grantKind, { uniqueItems: true });
 const profileShape = Type.Object(
 	{
 		policy: accessPolicySchema,
@@ -81,7 +83,8 @@ const profileShape = Type.Object(
 		}),
 		shells: denseArray(shellSchema, { uniqueItems: true }),
 		exitStatus,
-		terminationScope: terminationScopeSchema
+		terminationScope: terminationScopeSchema,
+		pathGrantKinds: Type.Optional(pathGrantKinds)
 	},
 	{ additionalProperties: false }
 );
@@ -135,7 +138,8 @@ export function profileKey(profile: Profile): string {
 		profile.processKinds.toSorted(compareCodeUnits),
 		profile.shells.toSorted(compareCodeUnits),
 		profile.exitStatus,
-		profile.terminationScope
+		profile.terminationScope,
+		(profile.pathGrantKinds ?? []).toSorted(compareCodeUnits)
 	]);
 }
 

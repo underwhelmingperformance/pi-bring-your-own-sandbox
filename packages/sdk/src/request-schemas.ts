@@ -36,6 +36,7 @@ export const outsideSelectionSchema = Type.Object(
 export const sharedSettingsSchema = Type.Object(
 	{
 		policy: Type.Optional(accessPolicySchema),
+		allowEscalation: Type.Optional(Type.Boolean({ default: true })),
 		userShell: Type.Optional(shellSchema),
 		cleanup: Type.Optional(cleanupSelectionSchema)
 	},

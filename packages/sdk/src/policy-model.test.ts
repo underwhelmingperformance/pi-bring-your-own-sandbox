@@ -121,6 +121,56 @@ it('narrows only to supported profiles within the SDK default', () => {
 	).toStrictEqual({ ok: true, profile: confined });
 });
 
+it('keeps the configured values of unlisted properties and grants the least extra access', () => {
+	const minimum = withPolicy({ ...defaultPolicy, hostUserData: 'read-only' });
+	const extra = withPolicy({ ...defaultPolicy, hostUserData: 'read-write' });
+	const correlated = withPolicy({
+		...minimum.policy,
+		network: true,
+		hostSystemFiles: 'denied'
+	});
+
+	expect(
+		selectProfile({
+			profiles: [correlated, extra, minimum],
+			limit: defaultPolicy,
+			requirements: { access: { hostUserData: 'needed' } },
+			isEscalated: true
+		})
+	).toStrictEqual({ ok: true, profile: minimum });
+});
+
+it.each(['read', 'write'] as const)(
+	'uses the declared %s grant without widening the policy for all host files',
+	(kind) => {
+		const path = '/fixture/dependency';
+		const supported: Profile = {
+			...withPolicy(defaultPolicy),
+			pathGrantKinds: [kind]
+		};
+		const unsupported = withPolicy(defaultPolicy);
+		const request = {
+			limit: defaultPolicy,
+			isEscalated: true,
+			paths: [{ kind, path, location: 'host-user-data' as const }]
+		};
+
+		expect({
+			supported: selectProfile({
+				...request,
+				profiles: [unsupported, supported]
+			}),
+			unsupported: selectProfile({ ...request, profiles: [unsupported] })
+		}).toStrictEqual({
+			supported: { ok: true, profile: supported },
+			unsupported: {
+				ok: false,
+				detail: { kind: 'path', access: kind, path, reason: 'profile' }
+			}
+		});
+	}
+);
+
 it.each([
 	{
 		kind: 'read',

@@ -16,6 +16,7 @@ import { isPolicy, snapshotPolicy } from './validation.js';
 export interface SandboxConfig {
 	readonly cleanup?: Partial<SandboxCleanupBudgets>;
 	readonly selection: ProviderSelection;
+	readonly allowEscalation?: boolean;
 	readonly approval?: ApprovalSelection;
 	readonly outsideSandbox?: { readonly destination: 'normal' | 'provider' };
 	readonly providerConfig: unknown;
@@ -59,6 +60,7 @@ export function resolveSandboxConfig(
 	const policy = explicit ?? selected.profile.policy;
 
 	return Object.freeze({
+		allowEscalation: settings?.allowEscalation ?? true,
 		selection: Object.freeze({
 			providerId: provider.id,
 			source,

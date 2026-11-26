@@ -40,7 +40,10 @@ export function snapshotProfile(profile: Profile): Profile {
 		processKinds: Object.freeze([...profile.processKinds]),
 		shells: Object.freeze([...profile.shells]),
 		exitStatus: profile.exitStatus,
-		terminationScope: profile.terminationScope
+		terminationScope: profile.terminationScope,
+		...(profile.pathGrantKinds !== undefined && {
+			pathGrantKinds: Object.freeze([...profile.pathGrantKinds])
+		})
 	});
 }
 

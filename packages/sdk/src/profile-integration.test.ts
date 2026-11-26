@@ -10,6 +10,7 @@ import {
 	registerSandboxProvider,
 	UnsupportedSandboxPolicyError
 } from './api.js';
+import { verifyGrantedPaths } from './backend-validation.js';
 import type {
 	SandboxBackend,
 	SandboxClient,
@@ -17,6 +18,7 @@ import type {
 } from './contracts.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { OperationScope } from './lifecycle.js';
 import type { Profile } from './policy-model.js';
 import { defaultPolicy } from './policy-model.js';
 
@@ -222,5 +224,66 @@ it.each(['missing', 'outside target'] as const)(
 					}
 				})
 		);
+	}
+);
+
+it.each([
+	{ source: 'home', target: 'home', reachable: true },
+	{ source: 'home', target: 'absolute', reachable: false },
+	{ source: 'absolute', target: 'absolute', reachable: true },
+	{ source: 'absolute', target: 'home', reachable: false }
+] as const)(
+	'checks an extra grant with $source source and $target target',
+	async ({ source: location, target, reachable }) => {
+		const filename = '.byos-grant-fixture';
+		const hostHome = await realpath(homedir());
+		const otherPath = '/host-data/' + filename;
+		const hostPath =
+			location === 'home' ? path.join(hostHome, filename) : otherPath;
+		const scope = new OperationScope(
+			{ operation: 'open' },
+			new AbortController().signal,
+			{},
+			60_000
+		);
+		const backend = new MemoryBackend('exec');
+		const provider = { id: 'fixture.policy' };
+
+		try {
+			const result = verifyGrantedPaths(
+				Object.assign(backend, {
+					workspace: { ...backend.workspace, home: '/target-home' },
+					grantedPaths: [
+						{
+							kind: 'read' as const,
+							hostPath,
+							targetPath:
+								target === 'home' ? '/target-home/' + filename : hostPath
+						}
+					]
+				}),
+				[{ kind: 'read', path: hostPath, location: 'host-user-data' }],
+				scope.context,
+				provider,
+				true
+			);
+
+			if (reachable) {
+				await expect(result).resolves.toBeUndefined();
+			} else {
+				await expect(result).rejects.toMatchObject({
+					name: 'UnsupportedSandboxPolicyError',
+					providerId: provider.id,
+					detail: {
+						kind: 'path',
+						access: 'read',
+						path: hostPath,
+						reason: 'unreachable'
+					}
+				});
+			}
+		} finally {
+			scope.dispose();
+		}
 	}
 );

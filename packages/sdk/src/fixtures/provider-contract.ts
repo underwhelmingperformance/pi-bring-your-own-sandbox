@@ -1,3 +1,7 @@
+import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
 import { expect } from 'vitest';
 
 import type { SandboxBackend, SandboxProvider } from '../contracts.js';
@@ -36,11 +40,25 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 		validateConfig: () => {
 			return;
 		},
-		open(request, context) {
+		async open(request, context) {
 			context.reportRecovery({ kind: 'none' });
 			memory = new MemoryBackend();
 			memory.seed('seed', new Uint8Array([0, 255, 10]));
 			isDisposed = false;
+
+			const grantedPaths = [];
+			const readGrants = request.paths?.read ?? [];
+
+			for (const hostPath of readGrants) {
+				const targetPath = path.posix.join(
+					memory.workspace.root,
+					path.basename(hostPath)
+				);
+				const bytes = await readFile(hostPath);
+
+				memory.seed(targetPath, bytes);
+				grantedPaths.push({ kind: 'read' as const, hostPath, targetPath });
+			}
 
 			const backend: SandboxBackend = {
 				id: memory.id,
@@ -48,6 +66,7 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 
 				policyDescription: memory.policyDescription,
 				recovery: memory.recovery,
+				...(grantedPaths.length > 0 && { grantedPaths }),
 				...(memory.files !== undefined && { files: memory.files }),
 				profile: request.profile,
 				exec: async (request, execution) => {
@@ -113,7 +132,7 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 				}
 			};
 
-			return Promise.resolve(backend);
+			return backend;
 		}
 	};
 	const probe = {
@@ -125,10 +144,17 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 	return {
 		label: provider.id,
 		provider,
-		createFixture: () =>
-			Promise.resolve({
+		async createFixture(selection) {
+			const directory =
+				selection === undefined
+					? undefined
+					: await mkdtemp(path.join(tmpdir(), 'byos-memory-contract-'));
+			const workspace =
+				directory === undefined ? undefined : await realpath(directory);
+
+			return {
 				configuration: undefined,
-				hostWorkspace: '/host',
+				hostWorkspace: workspace ?? '/host',
 				policy: unrestrictedPolicy,
 				processes: [
 					{
@@ -176,7 +202,11 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 
 					return Promise.resolve();
 				},
-				cleanup: () => Promise.resolve()
-			})
+				cleanup: () =>
+					workspace === undefined
+						? Promise.resolve()
+						: rm(workspace, { recursive: true, force: true })
+			};
+		}
 	};
 }

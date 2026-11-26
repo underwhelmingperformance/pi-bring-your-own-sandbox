@@ -117,24 +117,33 @@ export function defineSandboxProviderTests<Config>(
 					);
 				}
 			}
-		}
 
-		if (options.workspaceVisibility === 'shared') {
-			const hasIsolation = registered.provider.profiles.open.every(
+			if (
+				mode !== 'open' ||
+				(selection === undefined && options.workspaceVisibility !== 'shared')
+			) {
+				continue;
+			}
+
+			const profiles =
+				selection === undefined
+					? registered.provider.profiles.open
+					: [selection.profile];
+			const hasIsolation = profiles.every(
 				({ policy }) => !isWithinLimit(unrestrictedPolicy, policy)
 			);
 
 			if (hasIsolation && process.platform !== 'win32') {
 				it(
-					'refuses a workspace with a special file',
-					() => verifyWorkspaceCase(registered, 'special'),
+					label + 'refuses a workspace with a special file',
+					() => verifyWorkspaceCase(registered, 'special', selection),
 					testTimeout
 				);
 			}
 
 			it(
-				'grants a reachable read path in the workspace',
-				() => verifyWorkspaceCase(registered, 'read-grant'),
+				label + 'grants a reachable read path in the workspace',
+				() => verifyWorkspaceCase(registered, 'read-grant', selection),
 				testTimeout
 			);
 		}

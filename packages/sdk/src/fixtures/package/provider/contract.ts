@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, readdir, realpath, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
+import { UnsupportedSandboxPolicyError } from 'pi-bring-your-own-sandbox/provider';
 import { defineSandboxProviderTests } from 'pi-bring-your-own-sandbox/testing';
 
 import { provider, state } from './provider.js';
@@ -15,18 +19,47 @@ defineSandboxProviderTests({
 			open: provider.profiles.open.filter(
 				(profile) => !profile.policy.hostWorkspaceWrites
 			)
+		},
+		async open(request, context) {
+			const entries = await readdir(request.hostWorkspace, {
+				withFileTypes: true
+			});
+
+			if (entries.some((entry) => entry.isFIFO())) {
+				throw new UnsupportedSandboxPolicyError({ operation: 'open' });
+			}
+
+			const backend = await provider.open(request, context);
+			const grantedPaths = request.paths?.read?.map((hostPath) => ({
+				kind: 'read' as const,
+				hostPath,
+				targetPath: path.posix.join(
+					backend.workspace.root,
+					path.basename(hostPath)
+				)
+			}));
+
+			return {
+				...backend,
+				...(grantedPaths !== undefined && { grantedPaths })
+			};
 		}
 	},
-	createFixture() {
+	async createFixture() {
 		assert.equal(state.isRunning, false);
 		state.sample = 'original';
 		state.opens = 0;
 		state.disposals = 0;
 		state.calls.length = 0;
 
-		return Promise.resolve({
+		const directory = await mkdtemp(
+			path.join(tmpdir(), 'byos-packed-contract-')
+		);
+		const workspace = await realpath(directory);
+
+		return {
 			configuration: {},
-			hostWorkspace: process.cwd(),
+			hostWorkspace: workspace,
 			policy: {
 				hostWorkspaceWrites: false,
 				network: false,
@@ -97,7 +130,7 @@ defineSandboxProviderTests({
 
 				return Promise.resolve();
 			},
-			cleanup: () => Promise.resolve()
-		});
+			cleanup: () => rm(workspace, { recursive: true, force: true })
+		};
 	}
 });

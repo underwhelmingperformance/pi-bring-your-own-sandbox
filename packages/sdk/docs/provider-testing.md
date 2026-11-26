@@ -66,6 +66,12 @@ capability lacks cases. Run each case against an isolated fixture. Use
 independent observations of target effects, live files, processes and provider
 resources. A backend's own declaration cannot prove enforcement.
 
+The suite checks a reachable read grant for each live checkout profile. It also
+checks special-file refusal for profiles that enforce isolation on hosts with
+FIFOs. Omit `workspaceVisibility` and `capabilities` to generate the full suite
+from the declaration. Use `workspaceVisibility` to focus a suite on shared or
+copied checkout behaviour.
+
 ## Default configured policy
 
 Omit the policy and check the SDK defaults for live checkout writes, host user

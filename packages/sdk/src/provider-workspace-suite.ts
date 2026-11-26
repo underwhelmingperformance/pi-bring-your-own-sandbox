@@ -7,14 +7,18 @@ import { expect } from 'vitest';
 
 import type { FixtureAttempt } from './provider-test-broker.js';
 import { fixtureBroker } from './provider-test-broker.js';
-import type { SandboxProviderTestOptions } from './provider-test-contracts.js';
+import type {
+	SandboxProviderTestOptions,
+	SandboxProviderTestSelection
+} from './provider-test-contracts.js';
 import { bounded } from './provider-test-harness.js';
 
 export async function verifyWorkspaceCase<Config>(
 	options: SandboxProviderTestOptions<Config>,
-	scenario: 'special' | 'read-grant'
+	scenario: 'special' | 'read-grant',
+	selection?: SandboxProviderTestSelection
 ): Promise<void> {
-	const fixture = await options.createFixture();
+	const fixture = await options.createFixture(selection);
 
 	try {
 		const provider = fixture.provider ?? options.provider;
@@ -39,6 +43,13 @@ export async function verifyWorkspaceCase<Config>(
 
 		try {
 			const timeoutMs = options.timeoutMs ?? 10_000;
+
+			if (selection !== undefined) {
+				expect(await runtime.negotiate({ timeoutMs })).toStrictEqual({
+					ok: true,
+					profile: selection.profile
+				});
+			}
 
 			if (scenario === 'special') {
 				await expect(
@@ -69,6 +80,10 @@ export async function verifyWorkspaceCase<Config>(
 				sandbox.workspace.root,
 				filename
 			);
+
+			if (selection !== undefined) {
+				expect(attempt.backend?.profile).toStrictEqual(selection.profile);
+			}
 
 			expect(sandbox.grantedPaths).toStrictEqual([
 				{ kind: 'read', hostPath: canonical, targetPath: target }

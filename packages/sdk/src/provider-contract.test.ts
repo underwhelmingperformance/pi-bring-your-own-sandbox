@@ -136,9 +136,9 @@ defineSandboxProviderTests({
 			};
 		}
 	},
-	async createFixture() {
+	async createFixture(selection) {
 		const { processes: _processes, ...fixture } =
-			await shellOnly.createFixture();
+			await shellOnly.createFixture(selection);
 		const sh = fixture.shells?.sh;
 
 		if (sh === undefined) {
@@ -194,8 +194,8 @@ defineSandboxProviderTests({
 			};
 		}
 	},
-	async createFixture() {
-		const fixture = await unmanaged.createFixture();
+	async createFixture(selection) {
+		const fixture = await unmanaged.createFixture(selection);
 		const { verifyStopped: _verifyStopped, ...cancellation } =
 			fixture.cancellation;
 

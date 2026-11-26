@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { MessageChannel } from 'node:worker_threads';
 
 import type {
@@ -309,10 +312,23 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 			context.reportRecovery({ kind: 'none' });
 
 			const backend = new MessageBackend(request.profile.policy);
+			const grantedPaths = request.paths?.read?.map((hostPath) => ({
+				kind: 'read' as const,
+				hostPath,
+				targetPath: path.posix.join(
+					backend.workspace.root,
+					path.basename(hostPath)
+				)
+			}));
 
 			connections.push(backend);
 
-			return Promise.resolve(backend);
+			return Promise.resolve(
+				Object.assign(
+					backend,
+					grantedPaths === undefined ? {} : { grantedPaths }
+				)
+			);
 		}
 	};
 	const probe = {
@@ -324,10 +340,15 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 	return {
 		label: provider.id,
 		provider,
-		createFixture: () =>
-			Promise.resolve({
+		async createFixture() {
+			const directory = await mkdtemp(
+				path.join(tmpdir(), 'byos-message-contract-')
+			);
+			const workspace = await realpath(directory);
+
+			return {
 				configuration: {},
-				hostWorkspace: '/host/message-fixture',
+				hostWorkspace: workspace,
 				policy: unrestrictedPolicy,
 				processes: [
 					{
@@ -369,7 +390,9 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 					await Promise.all(
 						connections.map((connection) => connection.close())
 					);
+					await rm(workspace, { recursive: true, force: true });
 				}
-			})
+			};
+		}
 	};
 }

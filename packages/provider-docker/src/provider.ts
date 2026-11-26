@@ -723,28 +723,7 @@ class DockerBackend implements SandboxBackend {
 	}
 }
 
-/**
-Creates the optional Docker example provider. Connection validation is synchronous;
-opening allocates a workspace volume on a local Unix-socket daemon.
-Use an immutable image ID to add PowerShell, or supply a client factory for tests.
-*/
-export function createDockerProvider(
-	options: DockerProviderOptions | ((config: DockerConfig) => DockerClient) = {}
-) {
-	const { createClient, powerShellImage } =
-		typeof options === 'function'
-			? { createClient: options, powerShellImage: undefined }
-			: options;
-
-	if (
-		powerShellImage !== undefined &&
-		!/^sha256:[a-f0-9]{64}$/u.test(powerShellImage)
-	) {
-		throw new TypeError(
-			'Select the PowerShell runtime by its immutable Docker image ID.'
-		);
-	}
-
+export function dockerProviderDeclaration(powerShellImage?: string) {
 	const capabilities: SandboxCapabilities =
 		powerShellImage === undefined
 			? defaultCapabilities
@@ -752,7 +731,6 @@ export function createDockerProvider(
 					...defaultCapabilities,
 					shells: [...defaultCapabilities.shells, 'powershell']
 				};
-	const image = powerShellImage ?? DOCKER_IMAGE;
 	const restricted: Profile = {
 		policy: {
 			hostWorkspaceWrites: false,
@@ -776,6 +754,35 @@ export function createDockerProvider(
 		],
 		copy: [restricted]
 	};
+
+	return { id: 'example.docker', label: 'Docker reference provider', profiles };
+}
+
+/**
+Creates the optional Docker example provider. Connection validation is synchronous;
+opening allocates a workspace volume on a local Unix-socket daemon.
+Use an immutable image ID to add PowerShell, or supply a client factory for tests.
+*/
+export function createDockerProvider(
+	options: DockerProviderOptions | ((config: DockerConfig) => DockerClient) = {}
+) {
+	const { createClient, powerShellImage } =
+		typeof options === 'function'
+			? { createClient: options, powerShellImage: undefined }
+			: options;
+
+	if (
+		powerShellImage !== undefined &&
+		!/^sha256:[a-f0-9]{64}$/u.test(powerShellImage)
+	) {
+		throw new TypeError(
+			'Select the PowerShell runtime by its immutable Docker image ID.'
+		);
+	}
+
+	const declaration = dockerProviderDeclaration(powerShellImage);
+	const { profiles } = declaration;
+	const image = powerShellImage ?? DOCKER_IMAGE;
 
 	const provider = Symbol('Docker provider');
 
@@ -941,9 +948,7 @@ export function createDockerProvider(
 	}
 
 	return {
-		id: 'example.docker',
-		label: 'Docker reference provider',
-		profiles,
+		...declaration,
 		validateConfig: dockerConfig,
 		open: (request, context) => allocate(request, context),
 		copy: (request, context) => allocate(request, context, request.source)

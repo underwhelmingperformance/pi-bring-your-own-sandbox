@@ -24,6 +24,55 @@ import { isRecord, snapshotProviderInfo } from './validation.js';
 const isProviderDeclaration = checker(providerDeclarationSchema);
 
 /**
+Registers a provider whose construction can fail. The fallback declaration
+keeps a failed provider discoverable so selection reports its configuration
+error without switching to host execution.
+*/
+export function registerSandboxProviderFactory<Config, Input = Config>(
+	pi: SandboxHost,
+	extensionSource: string,
+	declaration: Pick<SandboxProvider<Config>, 'id' | 'label' | 'profiles'>,
+	create: () => SandboxProvider<Config>,
+	options?: NoInfer<SandboxProviderRegistration<Input>>
+): void {
+	bindFactory(pi, extensionSource);
+
+	let provider: SandboxProvider<Config>;
+
+	try {
+		provider = create();
+	} catch (error) {
+		const fail = (): never => {
+			throw new InvalidSandboxConfigError(
+				{ operation: 'configure', providerId: declaration.id, extensionSource },
+				{ cause: error }
+			);
+		};
+
+		registerSandboxProvider(
+			pi,
+			extensionSource,
+			{
+				...declaration,
+				open: fail,
+				validateConfig: fail,
+				...(declaration.profiles.copy.length > 0 && { copy: fail })
+			},
+			{ configure: fail }
+		);
+
+		return;
+	}
+
+	registerSandboxProvider<Config, Input>(
+		pi,
+		extensionSource,
+		provider,
+		options
+	);
+}
+
+/**
 Register synchronously during a Pi extension factory, before consumers
 acquire a sandbox. Registration validates the declaration and installs a
 discovery responder. Configuration validation and backend allocation occur

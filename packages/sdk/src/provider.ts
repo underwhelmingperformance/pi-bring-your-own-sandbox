@@ -68,6 +68,9 @@ export {
 } from './protected-workspace-paths.js';
 export { createSandboxCleanupContext } from './provider-cleanup.js';
 export { resolveSandboxCopySource } from './provider-copy.js';
-export { registerSandboxProvider } from './provider-registration.js';
+export {
+	registerSandboxProvider,
+	registerSandboxProviderFactory
+} from './provider-registration.js';
 export type { ShellTransportOptions } from './shell-transport.js';
 export { encodePosixArgv, ShellTransportRunner } from './shell-transport.js';

@@ -6,7 +6,9 @@ import { createSandboxClient } from './client.js';
 import * as consumer from './consumer.js';
 import * as host from './embedding-host.js';
 import {
+	InvalidSandboxConfigError,
 	InvalidSandboxRequestError,
+	isSandboxError,
 	SandboxInitialisationError
 } from './errors.js';
 import { imageProvider } from './fixtures/image-provider.js';
@@ -71,6 +73,67 @@ it('rejects acquisition during factory loading and client creation after loading
 	);
 });
 
+it('reports a provider factory failure as configuration before opening', async () => {
+	const cause = new Error('Fixture factory failure.');
+	const findings: unknown[] = [];
+	const extensionSource = '<inline:factory-failure>';
+
+	await withPiRuntime(
+		[
+			{
+				name: 'factory-failure',
+				factory(pi) {
+					provider.registerSandboxProviderFactory(
+						pi,
+						extensionSource,
+						imageProvider,
+						() => {
+							throw cause;
+						}
+					);
+
+					const client = createSandboxClient(pi, extensionSource);
+
+					pi.on('session_start', async (_event, context) => {
+						const result = await client.negotiate(context);
+
+						if (
+							result.ok ||
+							!isSandboxError(result.error, InvalidSandboxConfigError)
+						) {
+							throw new Error(
+								'The provider factory error should prevent acquisition.'
+							);
+						}
+
+						findings.push({
+							name: result.error.name,
+							operation: result.error.operation,
+							providerId: result.error.providerId,
+							extensionSource: result.error.extensionSource
+						});
+					});
+				}
+			}
+		],
+		(_runtime, errors) => {
+			expect({ errors, findings }).toStrictEqual({
+				errors: [],
+				findings: [
+					{
+						name: 'InvalidSandboxConfigError',
+						operation: 'configure',
+						providerId: imageProvider.id,
+						extensionSource
+					}
+				]
+			});
+
+			return Promise.resolve();
+		}
+	);
+});
+
 const nonFactoryFunctions = new Set([
 	'PosixProcessRunner',
 	'SandboxLaunchFrames',
@@ -98,6 +161,7 @@ const factoryArguments = new Map<string, readonly unknown[]>([
 			{ configure: () => ({ configuration: { image: 'fixture' } }) }
 		]
 	],
+	['registerSandboxProviderFactory', [imageProvider, () => imageProvider]],
 	['registerShellOnlyTools', []]
 ]);
 

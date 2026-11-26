@@ -2,13 +2,13 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import type { SandboxSharedSettings } from 'pi-bring-your-own-sandbox/provider';
 import {
 	cleanDisplayText,
-	registerSandboxProvider,
+	registerSandboxProviderFactory,
 	sendDisplayMessage
 } from 'pi-bring-your-own-sandbox/provider';
 
 import { resolveDockerConfig } from './config.js';
 import type { DockerConfig } from './contracts.js';
-import { createDockerProvider } from './provider.js';
+import { createDockerProvider, dockerProviderDeclaration } from './provider.js';
 
 /**
 Registers the Docker example; allocation waits until a consumer acquires it.
@@ -19,27 +19,30 @@ export default function dockerExtension(
 	extensionSource = import.meta.filename,
 	settings?: SandboxSharedSettings
 ): void {
-	const provider = createDockerProvider();
-
-	registerSandboxProvider<DockerConfig>(
+	registerSandboxProviderFactory<DockerConfig>(
 		pi,
 		extensionSource,
-		{
-			...provider,
-			open(request, context) {
-				return provider.open(request, {
-					...context,
-					reportDiagnostic(warning) {
-						context.reportDiagnostic(warning);
-						sendDisplayMessage(
-							pi,
-							cleanDisplayText('byos-docker'),
-							cleanDisplayText(warning.message),
-							{ triggerTurn: false }
-						);
-					}
-				});
-			}
+		dockerProviderDeclaration(),
+		() => {
+			const provider = createDockerProvider();
+
+			return {
+				...provider,
+				open(request, context) {
+					return provider.open(request, {
+						...context,
+						reportDiagnostic(warning) {
+							context.reportDiagnostic(warning);
+							sendDisplayMessage(
+								pi,
+								cleanDisplayText('byos-docker'),
+								cleanDisplayText(warning.message),
+								{ triggerTurn: false }
+							);
+						}
+					});
+				}
+			};
 		},
 		{
 			async configure({ pi: session, signal, reportDiagnostic }) {

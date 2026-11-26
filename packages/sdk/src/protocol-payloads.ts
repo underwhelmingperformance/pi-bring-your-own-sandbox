@@ -1,7 +1,7 @@
 import { Type } from 'typebox';
 
 import { backendSchema, workspaceSchema } from './backend-schemas.js';
-import { errorSchema } from './error-schema.js';
+import { closeReportSchema, errorSchema } from './error-schema.js';
 import { protocolEnvelopeSchema } from './protocol-envelope.js';
 import {
 	acquireOptionsSchema,
@@ -228,5 +228,6 @@ export const protocolSchemas = {
 	'sandbox.writeOptions': writeOptionsSchema,
 	'sandbox.findRequest': findRequestSchema,
 	'sandbox.grepRequest': grepRequestSchema,
+	'sandbox.closeReport': closeReportSchema,
 	error: errorSchema
 };

@@ -1486,6 +1486,10 @@ export type SandboxErrorInfo = Error &
 				};
 		  }['SandboxTransportError' | 'UnconfirmedSandboxTerminationError']
 		| {
+				readonly name: 'SandboxCleanupError';
+				readonly closeReport?: SandboxCloseReport;
+		  }
+		| {
 				readonly name: 'SandboxCancelledError';
 				readonly reason: 'caller' | 'shutdown';
 				readonly completion: OperationCompletion;

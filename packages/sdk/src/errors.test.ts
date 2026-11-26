@@ -430,3 +430,64 @@ it.each(cases)(
 		}
 	}
 );
+
+it('snapshots nested cleanup reports and preserves them when rehydrating errors', () => {
+	const recovery = {
+		kind: 'allocation' as const,
+		id: 'nested',
+		instructions: 'Remove the nested allocation.',
+		lease: 'manual'
+	};
+	const failures = [new SandboxOperationError({ operation: 'dispose' })];
+	const recoveries = [recovery];
+	const report = { confirmed: false, failures, recoveries };
+	const child = new SandboxCleanupError({
+		operation: 'dispose',
+		closeReport: report
+	});
+	const parent = new SandboxCleanupError({
+		operation: 'dispose',
+		closeReport: { confirmed: false, failures: [child], recoveries: [] }
+	});
+	const result = rehydrateSandboxError(parent);
+
+	failures.length = 0;
+	recoveries.length = 0;
+	recovery.id = 'changed';
+
+	const expectedChild = new SandboxCleanupError({
+		operation: 'dispose',
+		closeReport: {
+			confirmed: false,
+			failures: [new SandboxOperationError({ operation: 'dispose' })],
+			recoveries: [
+				{
+					kind: 'allocation',
+					id: 'nested',
+					instructions: 'Remove the nested allocation.',
+					lease: 'manual'
+				}
+			]
+		}
+	});
+	const expected = new SandboxCleanupError({
+		operation: 'dispose',
+		closeReport: { confirmed: false, failures: [expectedChild], recoveries: [] }
+	});
+
+	expect(result).toStrictEqual(expected);
+	expect(JSON.stringify(result)).toContain('nested');
+});
+
+it('refuses a cyclic cleanup report from another SDK copy', () => {
+	const failures: unknown[] = [];
+	const error = {
+		name: 'SandboxCleanupError',
+		operation: 'dispose',
+		message: 'Sandbox cleanup failed.',
+		closeReport: { confirmed: false, failures, recoveries: [] }
+	};
+
+	failures.push(error);
+	expect(isSandboxError(error)).toBe(false);
+});

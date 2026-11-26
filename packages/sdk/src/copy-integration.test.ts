@@ -23,6 +23,12 @@ import type {
 } from './contracts.js';
 import { ensureSandboxService } from './default-broker.js';
 import {
+	isSandboxError,
+	SandboxCleanupError,
+	SandboxOperationError,
+	UnsupportedSandboxCapabilityError
+} from './errors.js';
+import {
 	closeSandboxSession,
 	fixtureTools
 } from './fixtures/fixture-client.js';
@@ -485,15 +491,20 @@ it.each([
 	});
 });
 
-it('retains recovery information when an independent broker returns a copy that it cannot close', async () => {
+it('retains the entire close report when an independent broker returns an unusable copy', async () => {
 	await fixture(async (pi, context) => {
 		const reply = brokerReply();
-		const recovery = {
-			kind: 'allocation',
-			id: 'remaining',
+		const recoveries = ['first', 'second'].map((id) => ({
+			kind: 'allocation' as const,
+			id,
 			lease: 'manual',
-			instructions: 'Remove remaining.'
-		};
+			instructions: `Remove ${id}.`
+		}));
+		const failures = [
+			new SandboxOperationError({ operation: 'dispose', backendId: 'first' }),
+			new SandboxCleanupError({ operation: 'dispose', backendId: 'second' })
+		];
+		const report = { confirmed: false, failures, recoveries };
 
 		Object.assign(reply.service, {
 			copy: () =>
@@ -504,24 +515,36 @@ it('retains recovery information when an independent broker returns a copy that 
 						workspace: { relationship: 'remote' },
 						capabilities: { processKinds: [], operations: [], shells: [] }
 					},
-					close: () =>
-						Promise.resolve({
-							confirmed: false,
-							failures: [],
-							recoveries: [recovery]
-						})
+					close: () => Promise.resolve(report)
 				})
 		});
 		respond(pi.events, 'pi-byos:runtime', reply);
-		await expect(
+
+		const [outcome] = await Promise.allSettled([
 			copyHostWorkspace(pi, context, { capabilities: ['exec'] })
-		).rejects.toMatchObject({
-			name: 'SandboxCleanupError',
+		]);
+		const rejected: unknown =
+			outcome.status === 'rejected' ? outcome.reason : undefined;
+
+		if (!isSandboxError(rejected, SandboxCleanupError)) {
+			throw new Error('Expected copy cleanup to fail.', { cause: rejected });
+		}
+
+		expect({
+			operation: rejected.operation,
+			providerId: rejected.providerId,
+			backendId: rejected.backendId,
+			closeReport: rejected.closeReport,
+			hasOriginalCause: isSandboxError(
+				rejected.cause,
+				UnsupportedSandboxCapabilityError
+			)
+		}).toStrictEqual({
 			operation: 'dispose',
 			providerId: 'independent',
 			backendId: 'remaining',
-			recovery,
-			cause: { name: 'UnsupportedSandboxCapabilityError' }
+			closeReport: report,
+			hasOriginalCause: true
 		});
 	});
 });

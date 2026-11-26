@@ -8,6 +8,7 @@ import {
 	sharedFeatureLevel,
 	unavailableFeature
 } from './protocol-version.js';
+import { rethrowCopyError } from './sandbox-copy.js';
 import {
 	capabilitiesSchema,
 	checker,
@@ -37,9 +38,11 @@ export function brokerOffers(
 				close: copy.close.bind(copy)
 			});
 		} catch (error) {
-			await copy.close();
-
-			throw error;
+			return rethrowCopyError(error, () => copy.close(), {
+				operation: 'dispose',
+				providerId: copy.sandbox.providerId,
+				backendId: copy.sandbox.backendId
+			});
 		}
 	}
 

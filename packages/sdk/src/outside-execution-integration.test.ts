@@ -21,6 +21,7 @@ import type {
 } from './contracts.js';
 import { ensureSandboxService } from './default-broker.js';
 import {
+	SandboxCleanupError,
 	UnconfirmedSandboxTerminationError,
 	UnsupportedSandboxCapabilityError
 } from './errors.js';
@@ -36,7 +37,9 @@ import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import { initialiseSandboxHost } from './host.js';
 import { OperationScope } from './lifecycle.js';
+import type { OutsideServiceV1 } from './outside-execution.js';
 import {
+	closeOutsideExecution,
 	getOutsideSandboxExecutor,
 	trackOutsideExecution
 } from './outside-execution.js';
@@ -884,6 +887,72 @@ it('retains configuration warnings when outside execution resolves settings firs
 				resolutions: 1,
 				openings: []
 			});
+		}
+	});
+});
+
+it('retains outside cleanup reports when a sibling service rejects closing', async () => {
+	const rejected = new SandboxCleanupError({
+		operation: 'dispose',
+		backendId: 'rejected'
+	});
+	const retained = new SandboxCleanupError({
+		operation: 'dispose',
+		backendId: 'retained'
+	});
+	const report = {
+		confirmed: false,
+		failures: [retained],
+		recoveries: [
+			{
+				kind: 'allocation' as const,
+				id: 'retained',
+				lease: 'manual',
+				instructions: 'Remove retained.'
+			}
+		]
+	};
+
+	await scenario({
+		config: {},
+		async run(pi, context) {
+			const service = {
+				guardVersion: 1,
+				id: 'retained',
+				lifetime: new AbortController().signal,
+				acquire: () => Promise.reject(new Error('Fixture only.')),
+				status: () => Promise.resolve(undefined),
+				assertLive: () => {
+					throw new Error('Fixture only.');
+				},
+				track: () => Promise.reject(new Error('Fixture only.')),
+				close: () => Promise.resolve(report)
+			} satisfies OutsideServiceV1;
+
+			publishService(
+				pi.events,
+				'pi-byos:discovery:v1:outside-execution',
+				service
+			);
+
+			const rejectedService = {
+				...service,
+				id: 'rejected',
+				close: () => Promise.reject(rejected)
+			} satisfies OutsideServiceV1;
+
+			publishService(
+				pi.events,
+				'pi-byos:discovery:v1:outside-execution',
+				rejectedService
+			);
+
+			const reports = await closeOutsideExecution(pi, context);
+
+			expect(reports).toStrictEqual([
+				report,
+				{ confirmed: false, failures: [rejected], recoveries: [] }
+			]);
 		}
 	});
 });

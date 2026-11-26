@@ -2,13 +2,14 @@ import type {
 	CancellationReason,
 	OperationCompletion,
 	RecoveryDescriptor,
+	SandboxCloseReport,
 	SandboxErrorContext,
 	SandboxErrorInfo,
 	SandboxErrorName,
 	SandboxOperation
 } from './contracts.js';
 import { cleanDisplayText } from './display-text.js';
-import { errorSchema } from './error-schema.js';
+import { closeReportSchema, errorSchema } from './error-schema.js';
 import { checker } from './schemas.js';
 
 /**
@@ -489,13 +490,24 @@ export class SandboxCleanupError extends SandboxError<'SandboxCleanupError'> {
 	*/
 	static readonly errorName = 'SandboxCleanupError';
 
-	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
+	declare readonly closeReport?: SandboxCloseReport;
+
+	constructor(
+		context: SandboxErrorContext & {
+			readonly closeReport?: SandboxCloseReport;
+		},
+		options?: ErrorOptions
+	) {
 		super(
 			SandboxCleanupError.errorName,
 			'Sandbox cleanup could not be confirmed. Check the recovery descriptor.',
 			context,
 			options
 		);
+
+		if (context.closeReport !== undefined) {
+			this.closeReport = snapshotCloseReport(context.closeReport);
+		}
 	}
 }
 
@@ -783,7 +795,15 @@ export function rehydrateSandboxError(
 		}
 
 		case 'SandboxCleanupError': {
-			return new SandboxCleanupError(context, options);
+			return new SandboxCleanupError(
+				{
+					...context,
+					...(error.closeReport !== undefined && {
+						closeReport: error.closeReport
+					})
+				},
+				options
+			);
 		}
 
 		case 'SandboxCancelledError': {
@@ -830,12 +850,76 @@ export function rehydrateSandboxError(
 }
 
 const isError = checker(errorSchema);
+const isCloseReportShape = checker(closeReportSchema);
+
+function areCloseReportsAcyclic(
+	value: unknown,
+	parents = new Set<object>()
+): boolean {
+	if (typeof value !== 'object' || value === null) {
+		return true;
+	}
+
+	const failures: unknown = Reflect.get(value, 'failures');
+
+	if (!Array.isArray(failures)) {
+		return true;
+	}
+
+	if (parents.has(value)) {
+		return false;
+	}
+
+	parents.add(value);
+
+	const children: readonly unknown[] = failures;
+	const isValid = children.every(
+		(failure) =>
+			typeof failure !== 'object' ||
+			failure === null ||
+			areCloseReportsAcyclic(Reflect.get(failure, 'closeReport'), parents)
+	);
+
+	parents.delete(value);
+
+	return isValid;
+}
+
+export function isSandboxCloseReport(
+	value: unknown
+): value is SandboxCloseReport {
+	return areCloseReportsAcyclic(value) && isCloseReportShape(value);
+}
+
+function snapshotCloseReport(report: SandboxCloseReport): SandboxCloseReport {
+	if (!isSandboxCloseReport(report)) {
+		throw new InvalidSandboxDeclarationError({ operation: 'dispose' });
+	}
+
+	return Object.freeze({
+		confirmed: report.confirmed,
+		recoveries: Object.freeze(
+			report.recoveries.map((recovery) => Object.freeze({ ...recovery }))
+		),
+		failures: Object.freeze(
+			report.failures.map((failure) => {
+				const error = rehydrateSandboxError(
+					failure,
+					failure.cause === undefined ? undefined : { cause: failure.cause }
+				);
+
+				Object.defineProperty(error, 'message', { value: failure.message });
+
+				return Object.freeze(error);
+			})
+		)
+	});
+}
 
 /**
 Recognises sandbox errors without relying on constructor identity. Pass a
 concrete error class to narrow an unknown value across separate SDK copies.
-The guard checks the version marker and typed context; it never parses the
-message.
+The guard checks the typed context and the cleanup report.
 */
 export function isSandboxError(value: unknown): value is SandboxErrorInfo;
 /**
@@ -861,6 +945,9 @@ export function isSandboxError(
 	errorClass?: { readonly errorName: SandboxErrorName }
 ): value is SandboxErrorInfo {
 	return (
+		(typeof value !== 'object' ||
+			value === null ||
+			areCloseReportsAcyclic(Reflect.get(value, 'closeReport'))) &&
 		isError(value) &&
 		(errorClass === undefined || value.name === errorClass.errorName)
 	);

@@ -188,7 +188,7 @@ export class ShellReviewRoutes {
 
 			return copy;
 		} catch (error) {
-			rethrowCopyError(error, await copy.close(), {
+			return rethrowCopyError(error, () => copy.close(), {
 				operation: 'dispose',
 				providerId: copy.sandbox.providerId,
 				backendId: copy.sandbox.backendId

@@ -15,7 +15,7 @@ import {
 import { outsideProcessOptionsSchema } from './approval-schemas.js';
 import { SandboxBroker } from './broker.js';
 import { builtinProviders } from './builtin-providers.js';
-import { reportCleanup } from './cleanup-report.js';
+import { reportCleanup, settleSandboxClose } from './cleanup-report.js';
 import type { SandboxConfig } from './config.js';
 import { inspectContext } from './context.js';
 import type {
@@ -457,7 +457,7 @@ export async function closeOutsideExecution(
 			pi.events,
 			'pi-byos:discovery:v1:outside-execution',
 			isOutsideService
-		).map((service) => service.close(context))
+		).map((service) => settleSandboxClose(() => service.close(context)))
 	);
 }
 

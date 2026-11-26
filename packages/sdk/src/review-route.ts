@@ -71,9 +71,9 @@ async function checkedCopy(
 	const { sandbox } = copy;
 
 	if (!isSandbox(sandbox)) {
-		rethrowCopyError(
+		return rethrowCopyError(
 			new InvalidSandboxDeclarationError({ operation: 'acquire' }),
-			await copy.close(),
+			() => copy.close(),
 			{ operation: 'dispose' }
 		);
 	}
@@ -86,7 +86,7 @@ async function checkedCopy(
 
 		return { sandbox, close: () => copy.close() };
 	} catch (error) {
-		rethrowCopyError(error, await copy.close(), {
+		return rethrowCopyError(error, () => copy.close(), {
 			operation: 'dispose',
 			providerId: sandbox.providerId,
 			backendId: sandbox.backendId

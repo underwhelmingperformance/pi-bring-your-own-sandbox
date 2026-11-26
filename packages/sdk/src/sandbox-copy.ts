@@ -1,6 +1,7 @@
 import { Type } from 'typebox';
 
 import { acquireOptions } from './acquire-options.js';
+import { settleSandboxClose } from './cleanup-report.js';
 import type {
 	SandboxCloseReport,
 	SandboxCopyOptions,
@@ -43,16 +44,20 @@ export function copyOptions(input: unknown): SandboxCopyOptions {
 	return options;
 }
 
-export function rethrowCopyError(
+export async function rethrowCopyError(
 	error: unknown,
-	report: SandboxCloseReport,
+	close: () => Promise<SandboxCloseReport>,
 	identity: SandboxErrorContext
-): never {
-	if (!report.confirmed) {
-		const [recovery] = report.recoveries;
+): Promise<never> {
+	const closeReport = await settleSandboxClose(close, identity);
 
+	if (
+		!closeReport.confirmed ||
+		closeReport.failures.length > 0 ||
+		closeReport.recoveries.length > 0
+	) {
 		throw new SandboxCleanupError(
-			{ ...identity, ...(recovery !== undefined && { recovery }) },
+			{ ...identity, closeReport },
 			{ cause: error }
 		);
 	}

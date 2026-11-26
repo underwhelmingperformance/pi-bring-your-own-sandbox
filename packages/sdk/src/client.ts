@@ -1,4 +1,5 @@
 import { acquireOptions, checkRequirements } from './acquire-options.js';
+import { failedCloseReport } from './cleanup-report.js';
 import { inspectContext } from './context.js';
 import type {
 	Sandbox,
@@ -11,11 +12,7 @@ import type {
 	SandboxHost
 } from './contracts.js';
 import { bindFactory, ensureSandboxService } from './default-broker.js';
-import {
-	isSandboxError,
-	SandboxCleanupError,
-	SandboxInitialisationError
-} from './errors.js';
+import { SandboxInitialisationError } from './errors.js';
 import { closeApprovals } from './execution-approval.js';
 import { closeOutsideExecution } from './outside-execution.js';
 import type { SandboxNegotiation } from './protocol.js';
@@ -73,7 +70,7 @@ export async function copyHostWorkspace(
 
 		return copy;
 	} catch (error) {
-		rethrowCopyError(error, await copy.close(), {
+		return rethrowCopyError(error, () => copy.close(), {
 			operation: 'dispose',
 			providerId: copy.sandbox.providerId,
 			backendId: copy.sandbox.backendId
@@ -129,24 +126,9 @@ export async function closeSandboxSession(
 	);
 	const reports = settlements.flatMap(
 		(result): readonly SandboxCloseReport[] => {
-			if (result.status === 'fulfilled') {
-				return result.value;
-			}
-
-			return [
-				{
-					confirmed: false,
-					recoveries: [],
-					failures: [
-						isSandboxError(result.reason)
-							? result.reason
-							: new SandboxCleanupError(
-									{ operation: 'dispose' },
-									{ cause: result.reason }
-								)
-					]
-				}
-			];
+			return result.status === 'fulfilled'
+				? result.value
+				: [failedCloseReport(result.reason)];
 		}
 	);
 

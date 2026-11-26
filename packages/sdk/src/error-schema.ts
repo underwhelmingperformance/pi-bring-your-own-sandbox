@@ -1,6 +1,7 @@
 import { Type } from 'typebox';
 
-import { nonEmptyStringSchema, recoverySchema } from './schemas.js';
+import type { SandboxCloseReport, SandboxErrorInfo } from './contracts.js';
+import { denseArray, nonEmptyStringSchema, recoverySchema } from './schemas.js';
 
 export const operationSchema = Type.Union([
 	Type.Literal('acquire'),
@@ -53,8 +54,7 @@ export const ordinaryErrorNameSchema = Type.Union([
 	Type.Literal('SandboxSessionClosingError'),
 	Type.Literal('SandboxPermissionDeniedError'),
 	Type.Literal('SandboxPathNotFoundError'),
-	Type.Literal('SandboxOperationError'),
-	Type.Literal('SandboxCleanupError')
+	Type.Literal('SandboxOperationError')
 ]);
 
 const errorContextSchema = Type.Object({
@@ -75,8 +75,13 @@ const cancellationReasons = Type.Union([
 	Type.Literal('shutdown')
 ]);
 
+const closeReportReference = Type.Ref('CloseReport');
 const errorVariantsSchema = Type.Union([
 	Type.Object({ name: ordinaryErrorNameSchema }),
+	Type.Object({
+		name: Type.Literal('SandboxCleanupError'),
+		closeReport: Type.Optional(closeReportReference)
+	}),
 	Type.Object({
 		name: transportNames,
 		completion: Type.Literal('unknown'),
@@ -99,9 +104,23 @@ const errorVariantsSchema = Type.Union([
 	})
 ]);
 
-export const errorSchema = Type.Refine(
+const errorShape = Type.Refine(
 	Type.Intersect([errorContextSchema, errorVariantsSchema]),
 	(error) =>
 		!('completion' in error && error.completion === 'not-guaranteed') ||
 		error.operation === 'exec'
+);
+
+const closeReportShape = Type.Object({
+	confirmed: Type.Boolean(),
+	failures: denseArray(Type.Ref('SandboxError')),
+	recoveries: denseArray(recoverySchema)
+});
+const definitions = { SandboxError: errorShape, CloseReport: closeReportShape };
+
+export const errorSchema = Type.Unsafe<SandboxErrorInfo>(
+	Type.Cyclic(definitions, 'SandboxError')
+);
+export const closeReportSchema = Type.Unsafe<SandboxCloseReport>(
+	Type.Cyclic(definitions, 'CloseReport')
 );

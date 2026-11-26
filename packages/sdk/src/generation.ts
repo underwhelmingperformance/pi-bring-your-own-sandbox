@@ -9,6 +9,7 @@ import {
 	DEFAULT_CLEANUP_BUDGETS,
 	resolveCleanupBudgets
 } from './cleanup-budgets.js';
+import { settleSandboxClose } from './cleanup-report.js';
 import type { SandboxConfig } from './config.js';
 import { selectProvider } from './config.js';
 import type { SessionIdentity } from './context.js';
@@ -727,7 +728,7 @@ export class SandboxGeneration {
 			);
 
 			const copies = await Promise.all(
-				this.#copies.values().map((close) => close())
+				this.#copies.values().map((close) => settleSandboxClose(close))
 			);
 
 			await this.#operations.drain();
@@ -1047,7 +1048,7 @@ export class SandboxGeneration {
 
 				return Object.freeze({ sandbox, close });
 			} catch (error) {
-				rethrowCopyError(error, await close(), {
+				return await rethrowCopyError(error, close, {
 					operation: 'dispose',
 					providerId: provider.id
 				});

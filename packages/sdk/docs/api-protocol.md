@@ -680,7 +680,7 @@ This is the complete feature level 0 error list.
 | `SandboxPermissionDeniedError`       | Rejected operation or access                                                                                    |
 | `SandboxPathNotFoundError`           | Target path or executable                                                                                       |
 | `SandboxOperationError`              | Target operation failure                                                                                        |
-| `SandboxCleanupError`                | Unconfirmed disposal and recovery details                                                                       |
+| `SandboxCleanupError`                | Unconfirmed disposal and the complete close report when available                                               |
 | `SandboxCancelledError`              | `caller` or `shutdown`, with completion                                                                         |
 | `SandboxTimeoutError`                | `deadline`, with completion                                                                                     |
 | `SandboxOutputCallbackError`         | `output`, with completion                                                                                       |

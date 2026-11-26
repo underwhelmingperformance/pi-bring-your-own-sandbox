@@ -1,6 +1,10 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 
-import type { SandboxCloseReport, SandboxHost } from './contracts.js';
+import type {
+	SandboxCloseReport,
+	SandboxErrorContext,
+	SandboxHost
+} from './contracts.js';
 import type { DisplayText } from './display-text.js';
 import { cleanDisplayText, joinDisplayLines } from './display-text.js';
 import {
@@ -8,6 +12,53 @@ import {
 	notifyDisplay,
 	sendDisplayMessage
 } from './display-ui.js';
+import {
+	InvalidSandboxDeclarationError,
+	isSandboxCloseReport,
+	isSandboxError,
+	SandboxCleanupError
+} from './errors.js';
+
+const disposalIdentity: SandboxErrorContext = { operation: 'dispose' };
+
+export function failedCloseReport(
+	cause: unknown,
+	identity: SandboxErrorContext = disposalIdentity
+): SandboxCloseReport {
+	const failure = isSandboxError(cause)
+		? cause
+		: new SandboxCleanupError(identity, { cause });
+	const report = isSandboxError(failure, SandboxCleanupError)
+		? failure.closeReport
+		: undefined;
+
+	const recoveries =
+		report?.recoveries ??
+		(failure.recovery?.kind === 'allocation' ? [failure.recovery] : []);
+
+	return Object.freeze({
+		confirmed: false,
+		failures: Object.freeze([failure]),
+		recoveries: Object.freeze([...recoveries])
+	});
+}
+
+export async function settleSandboxClose(
+	close: () => Promise<SandboxCloseReport>,
+	identity?: SandboxErrorContext
+): Promise<SandboxCloseReport> {
+	try {
+		const report = await close();
+
+		if (!isSandboxCloseReport(report)) {
+			throw new InvalidSandboxDeclarationError({ operation: 'dispose' });
+		}
+
+		return report;
+	} catch (error) {
+		return failedCloseReport(error, identity);
+	}
+}
 
 export function formatCleanupReport(report: SandboxCloseReport): DisplayText {
 	const lines = [`Cleanup: ${report.confirmed ? 'confirmed' : 'incomplete'}`];

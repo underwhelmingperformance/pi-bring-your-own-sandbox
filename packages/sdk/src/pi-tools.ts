@@ -23,6 +23,7 @@ import {
 	PendingEscalation
 } from './shell-escalation.js';
 import { ShellReviewRoutes } from './shell-review-routes.js';
+import { registerShellSystemPrompt } from './shell-system-prompt.js';
 import { registerUserShell } from './user-shell.js';
 
 function shellDefinition(
@@ -78,7 +79,6 @@ function shellDefinition(
 		promptGuidelines: [
 			...(base.promptGuidelines ?? []),
 			'Shell commands execute in the selected sandbox workspace by default.',
-			'To request extra access for a single command, supply escalate and a justification. BYOS selects the destination and asks for a decision.',
 			'Pi full-output paths refer to host transcript files.'
 		],
 		async execute(id, input, signal, update, context) {
@@ -134,22 +134,19 @@ function shellDefinition(
 				}),
 				onSandbox: (sandbox) => {
 					const paths = sandbox.grantedPaths;
-					const restrictions =
-						sandbox.providerId === 'passthrough'
-							? 'none'
-							: describeRestrictions(
-									sandbox.policy,
-									paths === undefined
-										? undefined
-										: {
-												read: paths
-													.filter((grant) => grant.kind === 'read')
-													.map((grant) => grant.targetPath),
-												write: paths
-													.filter((grant) => grant.kind === 'write')
-													.map((grant) => grant.targetPath)
-											}
-								);
+					const restrictions = describeRestrictions(
+						sandbox.policy,
+						paths === undefined
+							? undefined
+							: {
+									read: paths
+										.filter((grant) => grant.kind === 'read')
+										.map((grant) => grant.targetPath),
+									write: paths
+										.filter((grant) => grant.kind === 'write')
+										.map((grant) => grant.targetPath)
+								}
+					);
 
 					feedback.push({
 						type: 'text',
@@ -220,8 +217,18 @@ export default function sandboxTools(
 	extensionPath = import.meta.filename
 ): void {
 	bindFactory(pi, extensionPath);
-	pi.registerTool(shellDefinition(pi, 'bash', extensionPath).tool);
-	pi.registerTool(shellDefinition(pi, 'powershell', extensionPath).tool);
+
+	const bash = shellDefinition(pi, 'bash', extensionPath);
+	const powershell = shellDefinition(pi, 'powershell', extensionPath);
+
+	pi.registerTool(bash.tool);
+	pi.registerTool(powershell.tool);
+	registerShellSystemPrompt(
+		pi,
+		(name) =>
+			(name === 'bash' && bash.isSelected()) ||
+			(name === 'powershell' && powershell.isSelected())
+	);
 	registerUserShell(pi);
 	registerShellIntegrationDiagnostics(pi.events);
 }
@@ -256,6 +263,7 @@ export function registerShellOnlyTools(
 
 	pi.on('session_start', select);
 	pi.on('before_agent_start', select);
+	registerShellSystemPrompt(pi, (name) => name === 'bash' && bash.isSelected());
 	pi.on('tool_call', (event) => {
 		if (
 			event.toolName === 'bash' &&

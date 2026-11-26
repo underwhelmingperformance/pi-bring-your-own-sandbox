@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import { getCurrentSystemPrompt } from '@earendil-works/pi-ai';
 import type {
 	ExtensionAPI,
 	InlineExtension,
@@ -26,6 +27,7 @@ import { ScriptedModel } from './fixtures/scripted-model.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import { createShellOperations } from './pi-shell-operations.js';
 import sandboxTools, { registerShellOnlyTools } from './pi-tools.js';
+import { unrestrictedPolicy } from './policy-model.js';
 import { profileCapabilities } from './validation.js';
 import { isRecord } from './validation.js';
 
@@ -761,6 +763,146 @@ it('preserves the current Pi Bash command prefix through sandbox execution', asy
 		}
 	);
 });
+
+it.each([
+	{
+		route: 'shells',
+		profile: 'restricted',
+		allowEscalation: true,
+		hasForcedPrompt: false
+	},
+	{
+		route: 'shell-only',
+		profile: 'restricted',
+		allowEscalation: false,
+		hasForcedPrompt: true
+	},
+	{
+		route: 'shells',
+		profile: 'host',
+		allowEscalation: true,
+		hasForcedPrompt: false
+	},
+	{
+		route: 'shells',
+		profile: 'unrestricted',
+		allowEscalation: true,
+		hasForcedPrompt: false
+	}
+] as const)(
+	'describes the negotiated $profile policy before the model runs with $route and escalation $allowEscalation',
+	async ({ route, profile, allowEscalation, hasForcedPrompt }) => {
+		const { backend } = shellBackend();
+		const policy =
+			profile === 'unrestricted' ? unrestrictedPolicy : backend.profile.policy;
+		const selectedProfile = { ...backend.profile, policy };
+		const open = vi.fn(() =>
+			Promise.resolve({ ...backend, profile: selectedProfile })
+		);
+		const model = new ScriptedModel([]);
+		const configured: InlineExtension = {
+			name: 'prompt-fixture',
+			factory(pi) {
+				if (hasForcedPrompt) {
+					pi.on('before_agent_start', () => ({
+						systemPrompt: 'Earlier extension prompt.'
+					}));
+				}
+
+				if (profile !== 'host') {
+					registerSandboxProvider(
+						pi,
+						'<inline:prompt-fixture>',
+						{
+							id: 'fixture.prompt',
+							label: 'Prompt fixture',
+							profiles: { open: [selectedProfile], copy: [] },
+							validateConfig: () => ({}),
+							open
+						},
+						{
+							configure: () => ({
+								configuration: {},
+								settings: {
+									policy: { ...policy, network: true },
+									allowEscalation
+								}
+							})
+						}
+					);
+				}
+			}
+		};
+		const shell: InlineExtension = {
+			name: 'shell',
+			factory(pi) {
+				if (route === 'shell-only') {
+					registerShellOnlyTools(pi, '<inline:shell>');
+				} else {
+					sandboxTools(pi, '<inline:shell>');
+				}
+			}
+		};
+
+		await withPiRuntime(
+			[configured, shell, model.extension],
+			async (runtime, errors) => {
+				const selected = runtime.session.modelRuntime.getModel(
+					'scripted',
+					'scripted'
+				);
+
+				if (selected === undefined) {
+					throw new Error('The scripted model was not registered.');
+				}
+
+				await runtime.session.setModel(selected);
+				runtime.session.setActiveToolsByName(['bash']);
+				await runtime.session.prompt('Respond without running a command.');
+				runtime.session.setActiveToolsByName([]);
+				await runtime.session.prompt('Respond after the shell is inactive.');
+
+				const tag =
+					/<byos_shell_restrictions>\n([\s\S]*?)\n<\/byos_shell_restrictions>/gu;
+				const prompts = model.requests.map(({ messages }) =>
+					getCurrentSystemPrompt(messages)
+				);
+				const restrictions =
+					profile === 'restricted'
+						? 'Host workspace writes allowed, network denied, host user data denied, host system files read-only'
+						: 'none';
+				const escalation = allowEscalation
+					? 'Use escalate with a justification to request extra access for one command. You can request hostWorkspaceWrites, network, hostUserData, hostSystemFiles, or specific read and write paths. BYOS selects the destination before the decision. The host has no sandbox restrictions.'
+					: 'allowEscalation is false, so BYOS will refuse escalations.';
+
+				expect({
+					errors,
+					opens: open.mock.calls,
+					sections: prompts.map((prompt) =>
+						prompt
+							.matchAll(tag)
+							.map((match) => match[1])
+							.toArray()
+					),
+					forcedPrefix: prompts.map((prompt) =>
+						prompt.startsWith('Earlier extension prompt.')
+					)
+				}).toStrictEqual({
+					errors: [],
+					opens: [],
+					sections: [
+						[
+							`Effective restrictions for ordinary BYOS shell commands: ${restrictions}\n${escalation}`
+						],
+						[]
+					],
+					forcedPrefix: [hasForcedPrompt, hasForcedPrompt]
+				});
+			},
+			{ prepare }
+		);
+	}
+);
 
 it.each(['bash', 'powershell'])(
 	'describes finite shell and decision deadlines for %s',

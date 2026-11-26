@@ -7,6 +7,7 @@ import type {
 	SandboxPolicy
 } from './contracts.js';
 import type { EscalationDestination } from './escalation-ledger.js';
+import { accessOrder, unrestrictedPolicy } from './policy-model.js';
 
 export interface EscalatedSandbox {
 	readonly sandbox: Sandbox;
@@ -28,6 +29,14 @@ export function describeRestrictions(
 	policy: SandboxPolicy,
 	paths?: PathGrants
 ): string {
+	if (
+		accessOrder.every(
+			(property) => policy[property] === unrestrictedPolicy[property]
+		)
+	) {
+		return 'none';
+	}
+
 	const read = paths?.read;
 	const write = paths?.write;
 

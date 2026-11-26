@@ -365,28 +365,42 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 						const shell = await sandbox.exec({
 							kind: 'shell',
 							dialect: 'sh',
-							command: 'cat created.txt'
+							command: `
+while contents=$(cat created.txt); do
+  if [ "$contents" = editor ]; then
+    printf '%s' "$contents"
+    exit 0
+  fi
+  sleep 0.01
+done
+exit 1`
+						});
+
+						expect({
+							exit: shell.exit,
+							shell: new TextDecoder().decode(shell.stdout),
+							worker: new TextDecoder().decode(
+								await sandbox.files.readFile('created.txt')
+							)
+						}).toStrictEqual({
+							exit: { kind: 'code', code: 0 },
+							shell: 'editor',
+							worker: 'editor'
 						});
 
 						await writeFile(replacement, 'replacement');
 						await rename(replacement, path.join(fixture.workspace, '.envrc'));
-						expect({
-							shell: new TextDecoder().decode(shell.stdout),
-							worker: new TextDecoder().decode(
-								await sandbox.files.readFile('created.txt')
-							),
-							configuration: new TextDecoder().decode(
-								await sandbox.files.readFile('.envrc')
-							),
-							review: new TextDecoder().decode(
-								await review.sandbox.files.readFile('created.txt')
+						await expect
+							.poll(
+								({ signal }) => sandbox.files.readFile('.envrc', { signal }),
+								{
+									timeout: 1000
+								}
 							)
-						}).toStrictEqual({
-							shell: 'editor',
-							worker: 'editor',
-							configuration: 'replacement',
-							review: 'agent'
-						});
+							.toStrictEqual(new TextEncoder().encode('replacement'));
+						expect(
+							await review.sandbox.files.readFile('created.txt')
+						).toStrictEqual(new TextEncoder().encode('agent'));
 					} finally {
 						await review.close();
 					}

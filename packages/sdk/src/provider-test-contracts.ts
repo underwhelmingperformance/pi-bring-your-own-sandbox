@@ -129,6 +129,17 @@ export interface SandboxProviderTestFixture {
 		*/
 		readonly readTarget: ProcessRequest;
 		/**
+		Poll for the complete replacement in a fresh process. Emit one line per
+		read with tab-separated start offset, completion offset and base64
+		contents. Both offsets are milliseconds from the start of polling.
+		Exit after a complete read or a stale read whose start offset exceeds
+		the supplied limit.
+		*/
+		readonly pollHostReplacement?: (
+			bytes: Uint8Array,
+			staleReadLimitMs: number
+		) => ProcessRequest;
+		/**
 		A successful process that replaces the target file with the supplied bytes.
 		*/
 		readonly writeTarget: (bytes: Uint8Array) => ProcessRequest;
@@ -157,10 +168,14 @@ export interface SandboxProviderTestFixture {
 			}>
 		>;
 		/**
-		Write the bytes, emit "ready" on stdout, then emit the replacement
-		bytes from the same path before exiting. Required for writable sharing.
+		Write the bytes and emit "ready" on stdout. Wait until the same path
+		contains the complete replacement, then emit it and exit. Required for
+		writable sharing.
 		*/
-		readonly waitForReplacement?: (bytes: Uint8Array) => ProcessRequest;
+		readonly waitForReplacement?: (
+			bytes: Uint8Array,
+			replacement: Uint8Array
+		) => ProcessRequest;
 	};
 
 	/**

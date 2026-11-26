@@ -82,6 +82,19 @@ the paired selection rule independently of the provider.
 For live checkouts, prepare a checkout with a socket or FIFO before opening.
 Assert that the provider refuses to open it and allocates no resources.
 
+## Workspace visibility
+
+For a shared workspace, check that the host can read sandbox writes as soon as
+the operation completes. Replace the host file by atomic rename and start a
+fresh target process. File sharing can expose stale or partial content for up to
+one second after the replacement completes. A read that starts after that window
+must return the complete replacement.
+
+For a polling process, add each read's start offset to the host dispatch time.
+The process starts at or after dispatch, so the sum gives a lower bound for the
+read's start time. For a fixture with a single-read command, retry across
+executions and use the host dispatch time for each read.
+
 ## Path grants
 
 Supply separate read and write markers and report where the granted paths appear

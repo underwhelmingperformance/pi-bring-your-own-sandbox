@@ -65,6 +65,22 @@ Milestone 5 adds `escalate` for Bash, the `allowEscalation` setting and the
 
 [editing]: workspace-editing.md
 
+## Host saves on macOS
+
+OrbStack uses VirtioFS to share the live checkout. Around the completion of an
+atomic rename, a read can return the new contents cut to the previous file
+length. The [rename race probe][rename-probe] observed one truncated read within
+about 1 ms of completion with a bind mount and again with a local volume. The
+window can last longer under load. Run the probe with `bind` or `volume` to
+measure from rename completion.
+
+Docker Desktop on macOS uses [VirtioFS by default][docker-sharing]. Its
+behaviour during a rename remains untested here.
+
+[rename-probe]: scripts/rename-race-probe.sh
+[docker-sharing]:
+  https://docs.docker.com/desktop/settings-and-maintenance/settings/#file-sharing
+
 ## Optional PowerShell image
 
 Build the image from `packages/sdk` with BuildKit on amd64 or arm64.

@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 
 import { expect } from 'vitest';
 
@@ -44,6 +45,93 @@ async function execute(
 	});
 
 	return Buffer.concat(chunks);
+}
+
+function readSample(line: string) {
+	const [start, end, contents] = line.split('\t', 3);
+	const offsetMs = Number(start);
+	const elapsedMs = Number(end);
+
+	if (
+		!start ||
+		!end ||
+		contents === undefined ||
+		!Number.isFinite(offsetMs) ||
+		!Number.isFinite(elapsedMs) ||
+		offsetMs < 0 ||
+		elapsedMs < offsetMs
+	) {
+		throw new Error(
+			'The host replacement probe reported an invalid read sample.'
+		);
+	}
+
+	return { offsetMs, elapsedMs, bytes: Buffer.from(contents, 'base64') };
+}
+
+async function checkHostReplacement(
+	backend: SandboxBackend,
+	probe: NonNullable<SandboxProviderTestFixture['visibility']>,
+	context: SandboxOperationContext,
+	replaced: Buffer,
+	replacedAt: number
+): Promise<void> {
+	const deadline = replacedAt + 1000;
+	const staleRead =
+		'A fresh target process returned a stale read after the one-second visibility window.';
+
+	if (probe.pollHostReplacement === undefined) {
+		for (;;) {
+			const dispatchedAt = performance.now();
+			const bytes = await execute(backend, probe.readTarget, context);
+
+			if (bytes.equals(replaced)) {
+				return;
+			}
+
+			if (dispatchedAt > deadline) {
+				expect(bytes, staleRead).toStrictEqual(replaced);
+			}
+
+			await delay(50, undefined, { signal: context.signal });
+		}
+	}
+
+	const encoded = replaced.toString('base64');
+	const completeLine = `\t${encoded}\n`;
+	const dispatchedAt = performance.now();
+	const request = probe.pollHostReplacement(replaced, deadline - dispatchedAt);
+	let hostElapsedMs: number | undefined;
+	const output = await execute(backend, request, context, (bytes) => {
+		if (bytes.toString().endsWith(completeLine)) {
+			hostElapsedMs ??= performance.now() - replacedAt;
+		}
+	});
+	const lines = output.toString().split('\n');
+
+	expect(lines.pop()).toBe('');
+
+	const reads = lines.map((line) => readSample(line));
+
+	for (const read of reads) {
+		if (dispatchedAt + read.offsetMs > deadline) {
+			expect(read.bytes, staleRead).toStrictEqual(replaced);
+		}
+	}
+
+	const complete = reads.at(-1);
+
+	if (complete === undefined || !complete.bytes.equals(replaced)) {
+		throw new Error(
+			'The host replacement probe stopped before reporting a complete read.'
+		);
+	}
+
+	console.info('Host replacement visibility in milliseconds', {
+		hostWorkspaceWrites: backend.profile.policy.hostWorkspaceWrites,
+		target: complete.elapsedMs,
+		host: hostElapsedMs
+	});
 }
 
 export async function checkWorkspaceVisibility(
@@ -94,6 +182,8 @@ export async function checkWorkspaceVisibility(
 
 	await probe.replaceSource(replaced);
 
+	const replacedAt = performance.now();
+
 	if (relationship === 'copied') {
 		afterDisposal(async () => {
 			expect(
@@ -105,10 +195,14 @@ export async function checkWorkspaceVisibility(
 
 	const expected = relationship === 'shared' ? replaced : initial;
 
-	expect(
-		await execute(backend, probe.readTarget, context),
-		'A target process must observe the negotiated workspace relationship.'
-	).toStrictEqual(expected);
+	if (relationship === 'shared') {
+		await checkHostReplacement(backend, probe, context, replaced, replacedAt);
+	} else {
+		expect(
+			await execute(backend, probe.readTarget, context),
+			'A target process must observe the negotiated workspace relationship.'
+		).toStrictEqual(initial);
+	}
 
 	const reader = capabilities.operations.includes('files.read')
 		? backend.files?.read
@@ -191,7 +285,7 @@ export async function checkWorkspaceVisibility(
 
 		const running = execute(
 			backend,
-			probe.waitForReplacement(written),
+			probe.waitForReplacement(written, observed),
 			execution.context,
 			(output) => {
 				if (output.includes('ready')) {

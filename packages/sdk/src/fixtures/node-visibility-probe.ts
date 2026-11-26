@@ -84,6 +84,19 @@ export function nodeVisibilityProbe(
 	});
 	const write =
 		"import {readFile,writeFile,rename,rm} from 'node:fs/promises';import {randomUUID} from 'node:crypto';const temp=process.argv[1]+'.'+randomUUID();await writeFile(temp,Buffer.from(process.argv[2],'base64'),{flag:'wx'});try{await rename(temp,process.argv[1]);}finally{await rm(temp,{force:true});}";
+	const readReplacement = `
+		async function readReplacement(expected, staleReadLimitMs = Infinity, report) {
+			const start = performance.now();
+			for (;;) {
+				const offset = performance.now() - start;
+				const current = await readFile(process.argv[1]);
+				const contents = current.toString('base64');
+				report?.(offset, performance.now() - start, contents);
+				if (contents === expected || offset > staleReadLimitMs) return current;
+				await new Promise(resolve => setTimeout(resolve, 10));
+			}
+		}
+	`;
 
 	return {
 		targetPath: basename,
@@ -119,6 +132,16 @@ export function nodeVisibilityProbe(
 		readTarget: processRequest(
 			"import { readFile } from 'node:fs/promises';process.stdout.write(await readFile(process.argv[1]));"
 		),
+		pollHostReplacement: (bytes, staleReadLimitMs) =>
+			processRequest(
+				"import { readFile } from 'node:fs/promises';" +
+					readReplacement +
+					`await readReplacement(process.argv[2], Number(process.argv[3]), (offset, elapsed, contents) => {
+						process.stdout.write([offset, elapsed, contents].join('\\t') + '\\n');
+					});`,
+				Buffer.from(bytes).toString('base64'),
+				String(staleReadLimitMs)
+			),
 		writeTarget: (bytes) =>
 			processRequest(write, Buffer.from(bytes).toString('base64')),
 		stageSave(bytes) {
@@ -136,19 +159,14 @@ export function nodeVisibilityProbe(
 				)
 			};
 		},
-		waitForReplacement: (bytes) =>
+		waitForReplacement: (bytes, replacement) =>
 			processRequest(
 				write +
+					readReplacement +
 					`process.stdout.write('ready');
-						for (;;) {
-							const current = await readFile(process.argv[1]);
-							if (current.toString('base64') !== process.argv[2]) {
-								process.stdout.write(current);
-								break;
-							}
-							await new Promise(resolve => setTimeout(resolve, 10));
-						}`,
-				Buffer.from(bytes).toString('base64')
+					process.stdout.write(await readReplacement(process.argv[3]));`,
+				Buffer.from(bytes).toString('base64'),
+				Buffer.from(replacement).toString('base64')
 			)
 	};
 }

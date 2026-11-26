@@ -1,3 +1,5 @@
+import { setTimeout as delay } from 'node:timers/promises';
+
 import { expect, it, vi } from 'vitest';
 
 import type {
@@ -556,7 +558,22 @@ it.each([
 	{
 		defect: 'a stale shared read',
 		relationship: 'shared',
-		expected: 'target process'
+		expected: 'fresh target process'
+	},
+	{
+		defect: 'a temporarily partial shared read',
+		relationship: 'shared',
+		expected: undefined
+	},
+	{
+		defect: 'a complete read after late startup',
+		relationship: 'shared',
+		expected: undefined
+	},
+	{
+		defect: 'a stale polling read after the visibility window',
+		relationship: 'shared',
+		expected: 'stale read'
 	},
 	{
 		defect: 'a copy written back on disposal',
@@ -573,19 +590,32 @@ it.each([
 		relationship: 'copied',
 		expected: 'file reader'
 	}
-] as const)('detects $defect', async ({ defect, relationship, expected }) => {
+] as const)('checks $defect', async ({ defect, relationship, expected }) => {
 	const base = contractScenario();
 	const open = base.provider.open;
-	let source = Buffer.from('seed');
+	const initialBytes = Buffer.from('seed');
+	let source = Buffer.from(initialBytes);
 	let target = Buffer.from(source);
+	let partial: Buffer | undefined;
 	let links = 2;
+	const hasLateStartup = defect === 'a complete read after late startup';
+	const hasStalePollingRead =
+		defect === 'a stale polling read after the visibility window';
+	const hasPollingProbe = hasLateStartup || hasStalePollingRead;
 	const readTarget = { kind: 'argv', executable: 'read', args: [] } as const;
 	const writeTarget = (bytes: Uint8Array): ProcessRequest => ({
 		kind: 'argv',
 		executable: 'write',
 		args: [Buffer.from(bytes).toString('base64')]
 	});
-	const baseProfile = firstOpenProfile(base.provider);
+	const originalProfile = firstOpenProfile(base.provider);
+	const baseProfile =
+		hasPollingProbe || defect === 'a temporarily partial shared read'
+			? {
+					...originalProfile,
+					policy: { ...originalProfile.policy, hostWorkspaceWrites: false }
+				}
+			: originalProfile;
 	const copyProfile = {
 		...baseProfile,
 		policy: { ...baseProfile.policy, hostWorkspaceWrites: false }
@@ -617,12 +647,22 @@ it.each([
 						)
 				}
 			},
-			exec(request: ProcessRequest, context: BackendProcessContext) {
+			async exec(request: ProcessRequest, context: BackendProcessContext) {
 				if (request.kind === 'argv' && request.executable === 'wait') {
 					return Promise.withResolvers<never>().promise;
 				}
 
-				if (request.kind === 'argv' && request.executable === 'write') {
+				if (request.kind === 'argv' && request.executable === 'poll') {
+					if (hasLateStartup) {
+						await delay(1100);
+					}
+
+					const sample = hasStalePollingRead
+						? `1100\t1101\t${initialBytes.toString('base64')}\n`
+						: `0\t1\t${target.toString('base64')}\n`;
+
+					context.onOutput({ stream: 'stdout', data: Buffer.from(sample) });
+				} else if (request.kind === 'argv' && request.executable === 'write') {
 					target = Buffer.from(request.args[0] ?? '', 'base64');
 
 					if (defect === 'an editor changing the other hard link') {
@@ -636,13 +676,14 @@ it.each([
 						source = target;
 					}
 				} else {
-					context.onOutput({ stream: 'stdout', data: target });
+					context.onOutput({ stream: 'stdout', data: partial ?? target });
+					partial = undefined;
 				}
 
-				return Promise.resolve({
+				return {
 					kind: 'exited' as const,
 					exit: { kind: 'code' as const, code: 0 }
-				});
+				};
 			}
 		};
 	};
@@ -650,7 +691,7 @@ it.each([
 	const scenario = {
 		...base,
 		workspaceVisibility: relationship,
-		timeoutMs: 500,
+		timeoutMs: hasPollingProbe || defect === 'a stale shared read' ? 2000 : 500,
 		cleanup: { cancellationGraceMs: 5, disposalTimeoutMs: 100 },
 		capabilities: {
 			...profileCapabilities(firstOpenProfile(base.provider)),
@@ -709,9 +750,20 @@ it.each([
 							target = source;
 						}
 
+						if (defect === 'a temporarily partial shared read') {
+							partial = target.subarray(0, 4);
+						}
+
 						return Promise.resolve();
 					},
 					readTarget,
+					...(hasPollingProbe && {
+						pollHostReplacement: (): ProcessRequest => ({
+							kind: 'argv',
+							executable: 'poll',
+							args: []
+						})
+					}),
 					waitForReplacement: (): ProcessRequest =>
 						defect === 'a shared writer that never reports readiness'
 							? { kind: 'argv', executable: 'wait', args: [] }
@@ -727,6 +779,22 @@ it.each([
 
 	if (!entry) {
 		throw new Error('Missing workspace visibility scenario.');
+	}
+
+	if (expected === undefined) {
+		await expect(
+			usingProviderFixture(scenario, entry)
+		).resolves.toBeUndefined();
+
+		return;
+	}
+
+	if (defect === 'a stale shared read' || hasStalePollingRead) {
+		await expect(usingProviderFixture(scenario, entry)).rejects.toThrow(
+			expected
+		);
+
+		return;
 	}
 
 	vi.useFakeTimers();

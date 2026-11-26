@@ -66,6 +66,15 @@ checkout. The only relationships at feature level 0 are `shared` for the live
 checkout and `copied` for a private copy. A remote relationship can be added at
 a later feature level.
 
+In a shared workspace, the host sees sandbox writes when the operation
+completes. Host writes become visible to the sandbox. File sharing can expose
+stale or partial content for up to one second after a host-side replacement
+completes. A read that starts after that window must see the complete
+replacement. The [conformance check][workspace-visibility] exercises this with a
+fresh target process.
+
+[workspace-visibility]: provider-testing.md#workspace-visibility
+
 Ordinary acquisitions and copies use the configured policy as both the limit and
 the default. Pi's shell, file and search tools omit the access record. They can
 use a read-only checkout without needing write access for acquisition.

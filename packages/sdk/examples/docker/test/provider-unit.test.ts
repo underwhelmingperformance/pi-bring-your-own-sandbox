@@ -518,12 +518,6 @@ it('reports confirmed broker cleanup after Docker opening releases partial alloc
 						}
 					});
 				}
-			},
-			{
-				name: 'execution-settings',
-				factory: (pi) => {
-					config.bind(pi);
-				}
 			}
 		],
 		async (runtime, errors) => {

@@ -6,14 +6,13 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 
-import { InvalidApprovalRequestError } from './approval-errors.js';
 import { reportCleanup } from './cleanup-report.js';
+import type { ProcessExit } from './contracts.js';
 import { bindFactory } from './default-broker.js';
 import { cleanDisplayText } from './display-text.js';
 import { InvalidSandboxRequestError } from './errors.js';
 import type { EscalatedSandbox } from './escalation-plan.js';
 import { describeRestrictions } from './escalation-plan.js';
-import { outsideShellOperations } from './outside-shell-operations.js';
 import { registerShellIntegrationDiagnostics } from './pi-integration-status.js';
 import { createShellOperations } from './pi-shell-operations.js';
 import {
@@ -38,19 +37,13 @@ function shellDefinition(
 	const base = create('/unused', { exposeSessionEnvironment: false });
 	const timeout = Type.With(base.parameters.properties.timeout, {
 		description:
-			'Timeout in seconds for startup and execution. Sandboxed execution allows 60 seconds for startup and 120 seconds for execution by default. Outside execution defaults to 120 seconds including approval; approval allows at most 60 seconds.'
+			'Timeout in seconds for startup and execution. BYOS allows 60 seconds for startup and 120 seconds for execution by default. An escalation decision allows at most 60 seconds.'
 	});
 
 	const parameters = Type.Object(
 		{
 			...base.parameters.properties,
 			timeout,
-			execution: Type.Optional(
-				Type.Enum(['sandbox', 'outside-sandbox'], {
-					description:
-						'Use outside-sandbox to request approved execution on the configured outside destination.'
-				})
-			),
 			escalate: Type.Optional(
 				Type.With(escalationListSchema, {
 					description:
@@ -89,7 +82,6 @@ function shellDefinition(
 			'Pi full-output paths refer to host transcript files.'
 		],
 		async execute(id, input, signal, update, context) {
-			const isOutside = input.execution === 'outside-sandbox';
 			const prefix =
 				dialect === 'bash' ? pi.getSettings().shellCommandPrefix : undefined;
 			const requested = escalationInput(
@@ -99,28 +91,20 @@ function shellDefinition(
 			);
 			let escalation = reviews.escalation(id);
 
-			if (
-				(requested === undefined && escalation !== undefined) ||
-				(requested !== undefined && isOutside)
-			) {
+			if (requested === undefined && escalation !== undefined) {
 				throw new InvalidSandboxRequestError({ operation: 'exec' });
 			}
 
 			const reviewed =
 				requested === undefined
-					? reviews.executing(id, input.command, prefix, isOutside)
+					? reviews.executing(id, input.command, prefix)
 					: undefined;
 
-			if (isOutside && input.justification === undefined) {
-				throw new InvalidApprovalRequestError();
-			}
-
-			if (
-				!isOutside &&
-				requested === undefined &&
-				input.justification !== undefined
-			) {
-				throw new InvalidApprovalRequestError();
+			if (requested === undefined && input.justification !== undefined) {
+				throw new InvalidSandboxRequestError({
+					operation: 'exec',
+					detail: { kind: 'request', field: 'justification' }
+				});
 			}
 
 			if (requested !== undefined) {
@@ -134,6 +118,7 @@ function shellDefinition(
 
 			const pending = escalation;
 			const feedback: { type: 'text'; text: string }[] = [];
+			const execution: { exit?: ProcessExit } = {};
 			let allocation: EscalatedSandbox | undefined;
 			const operations = createShellOperations(pi, context, dialect, {
 				toolCallId: id,
@@ -172,6 +157,8 @@ function shellDefinition(
 					});
 				},
 				onResult: (result) => {
+					execution.exit = result.exit;
+
 					const violations = result.violations ?? [];
 
 					for (const violation of violations) {
@@ -187,17 +174,8 @@ function shellDefinition(
 			});
 			const tool = create(context.cwd, {
 				...(prefix !== undefined && { commandPrefix: prefix }),
-				exposeSessionEnvironment: isOutside,
-				operations:
-					isOutside && input.justification !== undefined
-						? outsideShellOperations(
-								pi,
-								context,
-								dialect,
-								input.justification,
-								reviewed?.kind === 'host'
-							)
-						: operations
+				exposeSessionEnvironment: false,
+				operations
 			});
 
 			try {
@@ -206,6 +184,19 @@ function shellDefinition(
 				return feedback.length === 0
 					? result
 					: { ...result, content: [...result.content, ...feedback] };
+			} catch (error) {
+				if (
+					execution.exit?.kind !== 'unavailable' ||
+					!(error instanceof Error)
+				) {
+					throw error;
+				}
+
+				return {
+					isError: true,
+					details: undefined,
+					content: [{ type: 'text', text: error.message }, ...feedback]
+				};
 			} finally {
 				pending?.finish();
 

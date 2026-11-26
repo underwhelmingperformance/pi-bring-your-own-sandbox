@@ -38,6 +38,7 @@ import {
 	rehydrateSandboxError,
 	SandboxCleanupError,
 	SandboxInitialisationError,
+	SandboxPermissionDeniedError,
 	SandboxSessionClosingError,
 	SandboxStartupError,
 	StaleSandboxHandleError,
@@ -102,7 +103,7 @@ export interface GenerationDependencies {
 	readonly providers: (
 		context: SandboxContext
 	) => readonly ProviderServiceV1[] | Promise<readonly ProviderServiceV1[]>;
-	readonly mode?: ProfileMode | 'outside';
+	readonly mode?: ProfileMode;
 	readonly isEscalated?: boolean;
 	readonly readConfig: (context: SandboxContext) => Promise<SandboxConfig>;
 	/**
@@ -157,6 +158,7 @@ export class SandboxGeneration {
 	#state: BrokerState = 'initialising';
 	#providerInfos: readonly ProviderInfo[] = [];
 	#selection: ProviderSelection | undefined;
+	#allowsEscalation = true;
 	#configurationSource: 'extension' | undefined;
 	#prepared: Promise<Prepared> | undefined;
 	readonly #slots = new Map<string, BackendSlot>();
@@ -290,6 +292,7 @@ export class SandboxGeneration {
 
 			const config = await this.#dependencies.readConfig(this.#context);
 
+			this.#allowsEscalation = config.allowEscalation ?? true;
 			this.#cleanup = resolveCleanupBudgets(config.cleanup);
 
 			if (this.#lifetime.signal.aborted) {
@@ -1090,6 +1093,14 @@ export class SandboxGeneration {
 		assertCurrent(context);
 
 		const prepared = await this.#prepare();
+
+		if (!this.#allowsEscalation) {
+			throw new SandboxPermissionDeniedError({
+				operation: 'exec',
+				detail: { kind: 'request', field: 'allowEscalation', value: false }
+			});
+		}
+
 		const limit = this.#selection?.policy;
 
 		if (limit === undefined) {

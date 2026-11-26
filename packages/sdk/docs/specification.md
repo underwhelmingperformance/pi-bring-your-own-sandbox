@@ -235,11 +235,11 @@ output consistently across providers.
 
 <!-- `escalate` is provisional. -->
 
-A `bash` call can request extra access through `escalate` and must give a
-justification. The tool translates listed property names into needs and puts the
-requested paths in the same access record. Calls that omit `escalate` use
-ordinary negotiation. When `allowEscalation` is false, the request fails with a
-typed reason before prompting or allocating.
+A Bash or PowerShell call can request extra access through `escalate` and must
+give a justification. The tool translates listed property names into needs and
+puts the requested paths in the same access record. Calls that omit `escalate`
+use ordinary negotiation. When `allowEscalation` is false, the request fails
+with a typed reason before prompting or allocating.
 
 The broker first seeks a provider profile that supplies the requested access
 within the full-access limit. The profile must keep unlisted properties at the
@@ -249,6 +249,14 @@ request. If none can supply it, the broker selects the host before asking for a
 decision. The host enforces no restrictions. This destination is an explicit
 exception to preserving unlisted properties. A failure at a selected destination
 does not trigger another attempt.
+
+Paths inside the checkout keep the provider's workspace mapping. For an extra
+path under the host home directory, the provider uses the same relative path
+under the target home directory. An extra path outside both directories uses the
+same absolute path in the target. Profiles declare supported extra grant kinds
+in `pathGrantKinds`. The backend reports the actual mappings in `grantedPaths`.
+If the provider reports an unreachable path or a different target path, the
+broker returns a typed path error and disposes the backend.
 
 The broker presents the command, justification, requested properties and paths,
 chosen destination and effective restrictions before a decision. For the host,

@@ -2,7 +2,6 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { SessionManager } from '@earendil-works/pi-coding-agent';
 import { expect, it } from 'vitest';
 
-import type { ApprovalPolicy } from './api.js';
 import * as sdk from './api.js';
 import {
 	createSandboxClient,
@@ -73,27 +72,13 @@ it('rejects acquisition during factory loading and client creation after loading
 const nonFactoryFunctions = new Set([
 	'cleanDisplayText',
 	'closeSandboxSession',
-	'getOutsideSandboxExecutor',
-	'isApprovalError',
 	'isSandboxError',
-	'requestExecutionApproval',
 	'sendDisplayMessage'
 ]);
 
-const approvalPolicy: ApprovalPolicy<string> = {
-	id: 'fixture.approval',
-	label: 'Fixture policy',
-	protocolVersion: 1,
-	validateConfig: () => 'fixture',
-	decide: () => Promise.reject(new Error('Fixture only.'))
-};
-
 const factoryArguments = new Map<string, readonly unknown[]>([
-	['configureExecutionApproval', [() => ({ policy: 'user' })]],
-	['configureOutsideExecution', [() => ({ destination: 'normal' })]],
 	['createSandboxClient', []],
 	['initialiseSandboxHost', [{}]],
-	['registerApprovalPolicy', [approvalPolicy]],
 	['registerSandboxDiagnostics', []],
 	[
 		'registerSandboxProvider',

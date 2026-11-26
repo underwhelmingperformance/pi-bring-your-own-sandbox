@@ -67,6 +67,12 @@ export function cleanFullDisplayText(text: string): DisplayText {
 	return [...escapeControls(text)].join('') as DisplayText;
 }
 
+export function joinFullDisplayLines(
+	lines: readonly DisplayText[]
+): DisplayText {
+	return lines.join('\n') as DisplayText;
+}
+
 function* displayParts(lines: readonly DisplayText[]): Generator<string> {
 	for (const [index, line] of lines.entries()) {
 		if (index > 0) {

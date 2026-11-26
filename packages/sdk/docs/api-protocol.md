@@ -118,6 +118,7 @@ interface SandboxWorkspace {
   readonly root: string;
   readonly pathFlavor: 'posix' | 'win32';
   readonly relationship: 'shared' | 'copied';
+  readonly home?: string;
 }
 
 interface Profile {
@@ -127,6 +128,7 @@ interface Profile {
   readonly shells: readonly ShellDialect[];
   readonly exitStatus: ExitStatus;
   readonly terminationScope: TerminationScope;
+  readonly pathGrantKinds?: readonly ('read' | 'write')[];
 }
 
 type SandboxNegotiation =
@@ -151,8 +153,9 @@ same identifier.
 | `hostUserData`                   | `denied`, `read-only`, `read-write`         | `denied`    | At least `read-only`           |
 | `hostSystemFiles`                | `denied`, `read-only`, `read-write`         | `denied`    | At least `read-only`           |
 
-The specification defines [profile ranking and path checks][access]. Milestone 5
-adds `pathGrantKinds` for extra access during escalation.
+The specification defines [profile ranking and path checks][access]. Through
+`pathGrantKinds`, a profile can declare support for extra read and write paths
+during escalation. An omitted or empty list provides no extra kinds.
 
 [access]: specification.md#configuration-and-negotiation
 
@@ -241,8 +244,10 @@ files accept writes.
 The backend reports the location of each granted path in `grantedPaths`. Each
 entry maps the resolved host path and access kind to the path in the target. The
 broker verifies the reported grants against the request and exposes the entries
-on the sandbox facade. A provider's target may have a different home directory
-from the host. Milestone 5 will decide the mapping convention.
+on the sandbox facade. The [specification][placement] defines where each grant
+appears in the target.
+
+[placement]: specification.md#escalation
 
 `reportRecovery` supplies one aggregate descriptor before allocation. Updates
 describe all outstanding allocations. The final backend's `recovery` matches the
@@ -443,11 +448,12 @@ budgets. `SandboxCloseReport` contains `confirmed: boolean`,
 `escalation` field and `recordEscalationDecision` are provisional.
 -->
 
-The `bash` tool accepts `escalate?: readonly (AccessProperty | PathGrants)[]`.
-An escalation requires a non-empty `justification: string`. The broker
-normalises listed property names into `needed` entries and combines path entries
-under `paths` in the access record. For example,
-`['network', { read: ['~/.npmrc'] }]` requests network access and one file.
+Bash and PowerShell accept
+`escalate?: readonly (AccessProperty | PathGrants)[]`. An escalation requires a
+non-empty `justification: string`. The broker normalises listed property names
+into `needed` entries and combines path entries under `paths` in the access
+record. For example, `['network', { read: ['~/.npmrc'] }]` requests network
+access and one file.
 
 ```typescript
 type EscalationDestination =
@@ -480,8 +486,8 @@ interface SandboxClient {
 }
 ```
 
-The request is available on the broker-resolved review source for the pending
-call. The client checks that the request matches the pending tool call in the
+Pass the request from the review source to the same client while the call is
+pending. The client checks that the request matches the pending tool call in the
 live session and records the extension path from the factory. A missing, expired
 or mismatched request fails with `InvalidSandboxRequestError`. Conflicting
 decisions fail closed. Recording a decision does not execute the command. The

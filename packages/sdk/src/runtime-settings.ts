@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 
-import type { ApprovalSelection } from './approval-contracts.js';
 import { builtinProviders } from './builtin-providers.js';
 import { resolveCleanupBudgets } from './cleanup-budgets.js';
 import type { SandboxConfig } from './config.js';
@@ -29,12 +28,7 @@ import { bindProtocolAddress, isPiBound } from './protocol-address.js';
 import { configBindingSchema, hostBindingSchema } from './protocol-payloads.js';
 import type { DiagnosticStore } from './provider-diagnostics.js';
 import { ProviderDiagnostics } from './provider-diagnostics.js';
-import {
-	approvalSelectionSchema,
-	invalidField,
-	outsideSelectionSchema,
-	providerConfigSchema
-} from './request-schemas.js';
+import { invalidField, providerConfigSchema } from './request-schemas.js';
 import {
 	discoverRuntimeServices,
 	publishRuntimeService
@@ -49,7 +43,6 @@ export interface RuntimeSettingsV1 {
 	readonly close: () => void;
 	readonly assertConfigurable: () => void;
 	readonly read: (context: SandboxContext) => Promise<SandboxConfig>;
-	readonly normalExecutor?: SandboxHostOptions['normalExecutor'];
 }
 interface ConfigBinding {
 	readonly id: string;
@@ -59,8 +52,6 @@ interface ConfigBinding {
 const isRuntimeSettings = checker(runtimeSettingsSchema);
 const isBinding = checker(configBindingSchema);
 const isProviderConfig = checker(providerConfigSchema);
-const isApprovalSelection = checker(approvalSelectionSchema);
-const isOutsideSelection = checker(outsideSelectionSchema);
 const channel = (domain: string) => `configuration-${domain}`;
 
 function bindings(pi: SandboxHost, domain: string): readonly ConfigBinding[] {
@@ -96,34 +87,6 @@ export function registerProviderConfig(
 	resolve: SandboxConfigResolver<SandboxProviderConfig<unknown>>
 ): void {
 	registerBinding(pi, 'providers', { id, resolve });
-}
-
-/**
-Selects the execution approval policy from extension-owned configuration.
-Register during extension loading; the resolver runs once per generation.
-*/
-export function configureExecutionApproval(
-	pi: SandboxHost,
-	extensionSource: string,
-	resolve: SandboxConfigResolver<ApprovalSelection>
-): void {
-	bindFactory(pi, extensionSource);
-	registerBinding(pi, 'approval', { id: 'approval', resolve });
-}
-
-/**
-Selects the destination for explicitly approved outside execution. This binding
-is independent of provider activation and does not allocate either destination.
-*/
-export function configureOutsideExecution(
-	pi: SandboxHost,
-	extensionSource: string,
-	resolve: SandboxConfigResolver<{
-		readonly destination: 'normal' | 'provider';
-	}>
-): void {
-	bindFactory(pi, extensionSource);
-	registerBinding(pi, 'outside', { id: 'outside', resolve });
 }
 
 const isHostBinding = checker(hostBindingSchema);
@@ -200,21 +163,16 @@ export function createRuntimeSettings(pi: SandboxHost): RuntimeSettingsV1 {
 				);
 			});
 
-			const approvalBindings = bindings(pi, 'approval');
-			const outsideBindings = bindings(pi, 'outside');
 			const resolutionContext: SandboxConfigContext = Object.freeze({
 				...scope.context,
 				pi: context
 			});
 			const pending = observe(
 				Promise.try(async () => {
-					const [provided, approval, outside] = await Promise.all([
+					const provided =
 						activation === undefined
 							? { configuration: {} }
-							: activation.resolve(resolutionContext),
-						approvalBindings[0]?.resolve(resolutionContext),
-						outsideBindings[0]?.resolve(resolutionContext)
-					]);
+							: await activation.resolve(resolutionContext);
 
 					scope.check();
 
@@ -237,13 +195,6 @@ export function createRuntimeSettings(pi: SandboxHost): RuntimeSettingsV1 {
 						});
 					}
 
-					if (
-						(approval !== undefined && !isApprovalSelection(approval)) ||
-						(outside !== undefined && !isOutsideSelection(outside))
-					) {
-						throw new InvalidSandboxConfigError(identity);
-					}
-
 					const value = resolveSandboxConfig(
 						provider,
 						provided,
@@ -252,17 +203,6 @@ export function createRuntimeSettings(pi: SandboxHost): RuntimeSettingsV1 {
 
 					return Object.freeze({
 						...value,
-						...(approval !== undefined && {
-							approval: Object.freeze({
-								policy: approval.policy,
-								...(approval.config !== undefined && {
-									config: approval.config
-								})
-							})
-						}),
-						...(outside !== undefined && {
-							outsideSandbox: Object.freeze({ ...outside })
-						}),
 						cleanup: resolveCleanupBudgets({
 							...defaults,
 							...value.cleanup
@@ -312,9 +252,6 @@ export function createRuntimeSettings(pi: SandboxHost): RuntimeSettingsV1 {
 		close: () => {
 			lifetime.abort();
 		},
-		...(options?.normalExecutor !== undefined && {
-			normalExecutor: options.normalExecutor
-		}),
 		assertConfigurable() {
 			if (isSealed || lifetime.signal.aborted) {
 				throw new InvalidSandboxRequestError({ operation: 'configure' });

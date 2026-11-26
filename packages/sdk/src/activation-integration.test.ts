@@ -8,11 +8,7 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { afterEach, expect, it, vi } from 'vitest';
 
-import {
-	configureExecutionApproval,
-	configureOutsideExecution,
-	initialiseSandboxHost
-} from './api.js';
+import { initialiseSandboxHost } from './api.js';
 import { registerSandboxProvider } from './api.js';
 import { createSandboxClient } from './client.js';
 import type {
@@ -239,33 +235,6 @@ it('keeps shared configuration running when one caller cancels', async () => {
 		}).toStrictEqual({ aborted: false, providerId: 'active' });
 	});
 });
-
-it.each(['approval', 'outside'] as const)(
-	'rejects conflicting %s configuration bindings before resolution',
-	async (domain) => {
-		await fixture(async (pi, context) => {
-			const approval = vi.fn(() => ({ policy: 'always' }));
-			const outside = vi.fn(() => ({ destination: 'normal' as const }));
-
-			for (const _binding of [1, 2]) {
-				if (domain === 'approval') {
-					configureExecutionApproval(pi, import.meta.filename, approval);
-					continue;
-				}
-
-				configureOutsideExecution(pi, import.meta.filename, outside);
-			}
-
-			await expect(getSandbox(pi, context)).rejects.toMatchObject({
-				name: 'ConflictingSandboxConfigError'
-			});
-			expect({
-				approval: approval.mock.calls,
-				outside: outside.mock.calls
-			}).toStrictEqual({ approval: [], outside: [] });
-		});
-	}
-);
 
 it('applies provider cleanup overrides to host defaults', async () => {
 	await fixture(async (pi, context) => {

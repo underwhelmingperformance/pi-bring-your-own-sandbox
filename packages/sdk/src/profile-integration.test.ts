@@ -1,7 +1,8 @@
 import { realpath } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 
+import { SessionManager } from '@earendil-works/pi-coding-agent';
 import { expect, it } from 'vitest';
 
 import {
@@ -18,6 +19,8 @@ import type {
 } from './contracts.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { shellBackend } from './fixtures/shell-backend.js';
+import { SandboxGeneration } from './generation.js';
 import { OperationScope } from './lifecycle.js';
 import type { Profile } from './policy-model.js';
 import { defaultPolicy } from './policy-model.js';
@@ -284,6 +287,103 @@ it.each([
 			}
 		} finally {
 			scope.dispose();
+		}
+	}
+);
+
+it.each([true, false])(
+	'checks a declared extra path after opening and disposes the backend (correct placement: %s)',
+	async (isCorrectPlacement) => {
+		const workspace = await realpath(tmpdir());
+		const home = await realpath(homedir());
+		const context = {
+			cwd: workspace,
+			sessionManager: SessionManager.inMemory(workspace)
+		};
+		const { backend } = shellBackend();
+		const withGrant = { ...backend.profile, pathGrantKinds: ['read'] as const };
+		const opened: Profile[] = [];
+		const disposed: string[] = [];
+		const targetHome = '/fixture-home';
+		const providerId = 'fixture.path-grant';
+		const generation = new SandboxGeneration(context, {
+			providers: () => [
+				{
+					id: providerId,
+					label: 'Path grant fixture',
+					profiles: { open: [withGrant], copy: [] },
+					configure: () => ({
+						open(request) {
+							opened.push(request.profile);
+
+							return Promise.resolve({
+								...backend,
+								profile: request.profile,
+								workspace: { ...backend.workspace, home: targetHome },
+								grantedPaths: [
+									{
+										kind: 'read',
+										hostPath: request.paths?.read?.[0] ?? '',
+										targetPath: isCorrectPlacement ? targetHome : '/wrong-home'
+									}
+								],
+								dispose() {
+									disposed.push(backend.id);
+
+									return Promise.resolve();
+								}
+							});
+						}
+					})
+				}
+			],
+			readConfig: () =>
+				Promise.resolve({
+					selection: {
+						source: 'extension',
+						providerId,
+						policy: withGrant.policy
+					},
+					providerConfig: {}
+				})
+		});
+
+		try {
+			const plan = await generation.planEscalation(context, {
+				access: { paths: { read: ['~'] } }
+			});
+
+			expect({ paths: plan.paths, opened }).toStrictEqual({
+				paths: { read: [home] },
+				opened: []
+			});
+
+			if (isCorrectPlacement) {
+				const allocation = await plan.open(context);
+
+				expect(allocation.sandbox.grantedPaths).toStrictEqual([
+					{ kind: 'read', hostPath: home, targetPath: targetHome }
+				]);
+				await allocation.close();
+			} else {
+				await expect(plan.open(context)).rejects.toMatchObject({
+					name: 'UnsupportedSandboxPolicyError',
+					providerId,
+					detail: {
+						kind: 'path',
+						access: 'read',
+						path: home,
+						reason: 'unreachable'
+					}
+				});
+			}
+
+			expect({ opened, disposed }).toStrictEqual({
+				opened: [withGrant],
+				disposed: [backend.id]
+			});
+		} finally {
+			await generation.close();
 		}
 	}
 );

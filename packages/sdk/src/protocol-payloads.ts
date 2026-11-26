@@ -13,11 +13,9 @@ import {
 import { protocolEnvelopeSchema } from './protocol-envelope.js';
 import {
 	acquireOptionsSchema,
-	approvalSelectionSchema,
 	findRequestSchema,
 	grepRequestSchema,
 	operationOptionsSchema,
-	outsideSelectionSchema,
 	processOptionsSchema,
 	processRequestSchema,
 	providerConfigSchema,
@@ -106,12 +104,6 @@ export const hostBindingSchema = Type.Object(
 	{ additionalProperties: false }
 );
 
-const configResults = {
-	providers: providerConfigSchema,
-	approval: approvalSelectionSchema,
-	outside: outsideSelectionSchema
-};
-
 export const reviewAvailability = Type.Object(
 	{ type: Type.Literal('available') },
 	{ additionalProperties: false }
@@ -186,16 +178,6 @@ export const protocolSchemas = {
 		'configuration-providers',
 		configBindingSchema
 	),
-	'runtime.get-configuration-approval': message('get-configuration-approval'),
-	'runtime.configuration-approval': runtimeService(
-		'configuration-approval',
-		configBindingSchema
-	),
-	'runtime.get-configuration-outside': message('get-configuration-outside'),
-	'runtime.configuration-outside': runtimeService(
-		'configuration-outside',
-		configBindingSchema
-	),
 	'runtime.get-shell-integration': message('get-shell-integration'),
 	'runtime.shell-integration': shellIntegration,
 	'provider.get-providers': providerRequest,
@@ -205,9 +187,7 @@ export const protocolSchemas = {
 		...providerOpenRequest.properties,
 		source: providerCopySource
 	}),
-	'provider.configuration': configResults.providers,
-	'configuration.approval': configResults.approval,
-	'configuration.outside': configResults.outside,
+	'provider.configuration': providerConfigSchema,
 	'review.get-availability': message('get-availability'),
 	'review.available': reviewAvailability,
 	'review.find-source': findReviewRequest,

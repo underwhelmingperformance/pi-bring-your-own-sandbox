@@ -265,34 +265,6 @@ try {
 		}))
 	);
 
-	for (const client of [sdk, peer.sdk]) {
-		const outside = await client.getOutsideSandboxExecutor(
-			live.pi,
-			live.context
-		);
-		const result = await outside.exec(
-			{ kind: 'argv', executable: 'pwd', args: [] },
-			{
-				justification: 'Check the packed outside destination.'
-			}
-		);
-
-		assert.deepEqual(
-			{
-				kind: outside.destination.kind,
-				exit: result.exit,
-				stdout: new TextDecoder().decode(result.stdout)
-			},
-			{
-				kind: 'provider',
-				exit: { kind: 'code', code: 0 },
-				stdout: '/packed/project\n'
-			}
-		);
-	}
-
-	assert.equal(sdk.isApprovalError(new peer.sdk.ApprovalDeniedError()), true);
-
 	assert.deepEqual(await sdk.closeSandboxSession(live.pi, live.context), {
 		confirmed: true,
 		failures: [],
@@ -300,11 +272,10 @@ try {
 	});
 	assert.deepEqual(peer.state, {
 		sample: 'original',
-		opens: 2,
-		reviews: 2,
-		disposals: 2,
+		opens: 1,
+		disposals: 1,
 		isRunning: false,
-		calls: [0, 1, 2, 3].map(() => ({
+		calls: [0, 1].map(() => ({
 			kind: 'argv',
 			executable: 'pwd',
 			args: []

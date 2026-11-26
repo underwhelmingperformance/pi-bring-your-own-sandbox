@@ -24,7 +24,7 @@ export function validateBackend(
 	value: unknown,
 	provider: Pick<ProviderServiceV1, 'id' | 'protocol'>,
 	required: Profile,
-	mode: ProfileMode | 'outside' = 'open'
+	mode: ProfileMode = 'open'
 ): SandboxBackend {
 	const extensionSource = provider.protocol?.extensionSource;
 	const identity = {
@@ -42,8 +42,7 @@ export function validateBackend(
 
 	const workspace = mode === 'copy' ? 'copied' : 'shared';
 
-	const hasWrongWorkspace =
-		mode !== 'outside' && value.workspace.relationship !== workspace;
+	const hasWrongWorkspace = value.workspace.relationship !== workspace;
 
 	if (hasWrongWorkspace || profileKey(value.profile) !== profileKey(required)) {
 		throw new InvalidSandboxDeclarationError({

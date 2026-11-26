@@ -16,7 +16,6 @@ import type {
 	SandboxWorkspace,
 	ShellDialect
 } from './contracts.js';
-import type { OutsideProviderServiceV1 } from './outside-execution.js';
 import type { Profile } from './policy-model.js';
 import type { ProtocolIdentity } from './protocol-envelope.js';
 
@@ -63,7 +62,6 @@ Discovery and configuration allocate no backend.
 */
 export interface ProviderServiceV1 extends ProviderInfo {
 	readonly protocol?: ProtocolIdentity;
-	readonly outsideSandbox?: OutsideProviderServiceV1;
 	readonly configure: (
 		input: unknown
 	) => ConfiguredProviderV1 | Promise<ConfiguredProviderV1>;

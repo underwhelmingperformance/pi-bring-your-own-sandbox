@@ -763,7 +763,7 @@ it('preserves the current Pi Bash command prefix through sandbox execution', asy
 });
 
 it.each(['bash', 'powershell'])(
-	'describes finite sandbox and outside execution defaults for %s',
+	'describes finite shell and decision deadlines for %s',
 	async (name) => {
 		await withPiRuntime(
 			[{ name: 'shell', factory: sandboxTools }],
@@ -776,7 +776,7 @@ it.each(['bash', 'powershell'])(
 					properties: {
 						timeout: {
 							description:
-								'Timeout in seconds for startup and execution. Sandboxed execution allows 60 seconds for startup and 120 seconds for execution by default. Outside execution defaults to 120 seconds including approval; approval allows at most 60 seconds.'
+								'Timeout in seconds for startup and execution. BYOS allows 60 seconds for startup and 120 seconds for execution by default. An escalation decision allows at most 60 seconds.'
 						}
 					}
 				});

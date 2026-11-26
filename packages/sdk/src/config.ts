@@ -1,4 +1,3 @@
-import type { ApprovalSelection } from './approval-contracts.js';
 import type {
 	SandboxCleanupBudgets,
 	SandboxProviderConfig
@@ -17,8 +16,6 @@ export interface SandboxConfig {
 	readonly cleanup?: Partial<SandboxCleanupBudgets>;
 	readonly selection: ProviderSelection;
 	readonly allowEscalation?: boolean;
-	readonly approval?: ApprovalSelection;
-	readonly outsideSandbox?: { readonly destination: 'normal' | 'provider' };
 	readonly providerConfig: unknown;
 	readonly providerConfigSource?: 'extension';
 	readonly policySource?: 'extension';

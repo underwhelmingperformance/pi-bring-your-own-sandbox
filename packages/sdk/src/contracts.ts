@@ -4,7 +4,6 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import type { Static } from 'typebox';
 
-import type { OutsideSandboxProvider } from './approval-contracts.js';
 import type {
 	EscalationDecision,
 	EscalationRequest
@@ -56,10 +55,6 @@ export interface SandboxHostOptions {
 	Cleanup defaults used unless the activated provider supplies overrides.
 	*/
 	readonly cleanup?: Partial<SandboxCleanupBudgets>;
-	/**
-	Normal execution environment supplied by an embedded host.
-	*/
-	readonly normalExecutor?: OutsideSandboxProvider<undefined>;
 }
 /**
 Live Pi context required for generation identity and workspace paths. Pass the
@@ -910,7 +905,6 @@ export interface SandboxProvider<Config> {
 	/**
 	Optional execution destination selected independently through extension settings.
 	*/
-	readonly outsideSandbox?: OutsideSandboxProvider<Config>;
 
 	readonly profiles: {
 		readonly open: readonly Profile[];

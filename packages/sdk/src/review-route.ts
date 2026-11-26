@@ -1,5 +1,3 @@
-import { isDeepStrictEqual } from 'node:util';
-
 import { inspectContext } from './context.js';
 import type {
 	ReviewedToolCall,
@@ -18,6 +16,7 @@ import type {
 	EscalationDecision,
 	EscalationRequest
 } from './escalation-ledger.js';
+import { snapshotEscalationRequest } from './escalation-ledger.js';
 import { protocolAddress } from './protocol-address.js';
 import { collectProtocolReplies, REVIEW_CHANNEL } from './protocol-envelope.js';
 import { copyOptionsSchema, sourceReply } from './protocol-payloads.js';
@@ -38,7 +37,6 @@ const pending = new WeakMap<
 		readonly sessionId: string;
 		readonly workspace: string;
 		readonly record: (decision: EscalationDecision) => void;
-		readonly snapshot: EscalationRequest;
 	}
 >();
 
@@ -56,7 +54,6 @@ export function recordEscalationDecision(
 		proof.client !== pi ||
 		proof.sessionId !== session.sessionId ||
 		proof.workspace !== session.workspace ||
-		!isDeepStrictEqual(request, proof.snapshot) ||
 		(decision !== 'allow' && decision !== 'deny')
 	) {
 		throw new InvalidSandboxRequestError({ operation: 'exec' });
@@ -190,15 +187,17 @@ export function findShellReviewSource(
 	}
 
 	const route = selected.payload;
-	const escalation = route.escalation;
+	const escalation =
+		route.escalation === undefined
+			? undefined
+			: snapshotEscalationRequest(route.escalation);
 
 	if (escalation !== undefined && route.recordDecision !== undefined) {
 		pending.set(escalation, {
 			client: pi,
 			sessionId: session.sessionId,
 			workspace: session.workspace,
-			record: route.recordDecision,
-			snapshot: structuredClone(escalation)
+			record: route.recordDecision
 		});
 	}
 

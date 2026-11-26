@@ -15,6 +15,7 @@
 		"check:knip": "knip --include dependencies,unlisted --no-progress",
 		"check:lint": "oxlint --deny-warnings && eslint . --max-warnings 0",
 		"check:markdown": "markdownlint-cli2 '**/*.md' '#**/node_modules' '#**/dist'",
+		"check:protocol": "node scripts/check-legacy-protocol.ts",
 		"check:test": "pnpm test",
 		"check:types": "tsc --noEmit && pnpm -r --if-present check:types",
 		"fix": "pnpm fix:lint && pnpm fix:format",

@@ -1,16 +1,11 @@
 import { createJiti } from 'jiti';
 
 import type {
-	ApprovalDeniedError,
 	closeSandboxSession,
 	createSandboxClient,
-	getOutsideSandboxExecutor,
 	initialiseSandboxHost,
-	isApprovalError,
 	isSandboxError,
-	registerApprovalPolicy,
 	registerSandboxProvider,
-	requestExecutionApproval,
 	SandboxCancelledError,
 	SandboxOperationError
 } from '../api.js';
@@ -21,11 +16,6 @@ export interface FixtureApi {
 	readonly closeSandboxSession: typeof closeSandboxSession;
 	readonly registerSandboxProvider: typeof registerSandboxProvider;
 	readonly SandboxCancelledError: typeof SandboxCancelledError;
-	readonly registerApprovalPolicy: typeof registerApprovalPolicy;
-	readonly requestExecutionApproval: typeof requestExecutionApproval;
-	readonly getOutsideSandboxExecutor: typeof getOutsideSandboxExecutor;
-	readonly isApprovalError: typeof isApprovalError;
-	readonly ApprovalDeniedError: typeof ApprovalDeniedError;
 	readonly initialiseSandboxHost: typeof initialiseSandboxHost;
 	readonly isSandboxError: typeof isSandboxError;
 	readonly SandboxOperationError: typeof SandboxOperationError;
@@ -40,11 +30,6 @@ function isFixtureApi(value: unknown): value is FixtureApi {
 		typeof value['isSandboxError'] === 'function' &&
 		typeof value['SandboxOperationError'] === 'function' &&
 		typeof value['SandboxCancelledError'] === 'function' &&
-		typeof value['registerApprovalPolicy'] === 'function' &&
-		typeof value['requestExecutionApproval'] === 'function' &&
-		typeof value['getOutsideSandboxExecutor'] === 'function' &&
-		typeof value['isApprovalError'] === 'function' &&
-		typeof value['ApprovalDeniedError'] === 'function' &&
 		typeof value['initialiseSandboxHost'] === 'function'
 	);
 }

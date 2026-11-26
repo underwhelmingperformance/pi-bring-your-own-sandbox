@@ -17,7 +17,6 @@ import {
 import { discoverBroker } from './discovery.js';
 import { createSandbox } from './facade.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
-import { FixtureConfig } from './fixtures/config.js';
 import { getSandbox, negotiateSandbox } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
@@ -46,8 +45,6 @@ async function fixture(
 ): Promise<void> {
 	const current: { pi?: SandboxHost; context?: SandboxContext } = {};
 
-	const config1 = new FixtureConfig();
-
 	await withPiRuntime(
 		[
 			{
@@ -60,13 +57,7 @@ async function fixture(
 					});
 				}
 			},
-			...extensions,
-			{
-				name: 'execution-settings',
-				factory: (pi) => {
-					config1.bind(pi);
-				}
-			}
+			...extensions
 		],
 		async (runtime, errors) => {
 			const { pi, context } = current;

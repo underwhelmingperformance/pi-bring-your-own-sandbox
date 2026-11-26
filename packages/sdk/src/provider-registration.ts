@@ -19,11 +19,7 @@ import { sharedSettingsSchema } from './request-schemas.js';
 import { registerProviderConfig } from './runtime-settings.js';
 import { checker } from './schemas.js';
 import { providerDeclarationSchema } from './service-schemas.js';
-import {
-	isRecord,
-	snapshotCapabilities,
-	snapshotProviderInfo
-} from './validation.js';
+import { isRecord, snapshotProviderInfo } from './validation.js';
 
 const isProviderDeclaration = checker(providerDeclarationSchema);
 
@@ -109,26 +105,8 @@ export function registerSandboxProvider<Config, Input = Config>(
 		}
 	};
 
-	const outside = provider.outsideSandbox;
-	const outsideOpen = outside?.open.bind(outside);
 	const service: ProviderServiceV1 = Object.freeze({
 		...snapshotProviderInfo(provider),
-		...(outside !== undefined &&
-			outsideOpen !== undefined && {
-				outsideSandbox: Object.freeze({
-					label: outside.label,
-					capabilities: snapshotCapabilities(outside.capabilities),
-					policy: Object.freeze({ ...outside.policy }),
-					configure(input: unknown): ConfiguredProviderV1 {
-						const config = validateConfig(input);
-
-						return Object.freeze<ConfiguredProviderV1>({
-							open: (request, context) =>
-								outsideOpen({ ...request, configuration: config }, context)
-						});
-					}
-				})
-			}),
 		configure(input: unknown): ConfiguredProviderV1 {
 			const config = validateConfig(input);
 

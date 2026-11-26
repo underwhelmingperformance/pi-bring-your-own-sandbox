@@ -13,7 +13,6 @@ export const apiUrl = import.meta.resolve('pi-bring-your-own-sandbox/api');
 interface ProviderState {
 	sample: string;
 	opens: number;
-	reviews: number;
 	calls: ProcessRequest[];
 	disposals: number;
 	isRunning: boolean;
@@ -22,7 +21,6 @@ interface ProviderState {
 export const state: ProviderState = {
 	sample: 'original',
 	opens: 0,
-	reviews: 0,
 	calls: [],
 	disposals: 0,
 	isRunning: false
@@ -134,51 +132,9 @@ export const provider: SandboxProvider<undefined> = {
 				return Promise.resolve();
 			}
 		});
-	},
-	outsideSandbox: {
-		label: 'Packed outside destination',
-		capabilities: {
-			processKinds: ['argv'],
-			terminationScope: 'workload',
-			exitStatus: 'guaranteed',
-			operations: ['exec'],
-			shells: []
-		},
-		policy: {
-			hostWorkspaceWrites: true,
-			network: false,
-			hostUserData: 'denied',
-			hostSystemFiles: 'read-only'
-		},
-		open: (request, context) => provider.open(request, context)
 	}
 };
 
 export default function register(pi: SandboxHost): void {
 	sdk.registerSandboxProvider(pi, import.meta.filename, provider);
-	sdk.configureExecutionApproval(pi, import.meta.filename, () => ({
-		policy: 'packed.review'
-	}));
-	sdk.configureOutsideExecution(pi, import.meta.filename, () => ({
-		destination: 'provider'
-	}));
-	sdk.registerApprovalPolicy(pi, import.meta.filename, {
-		id: 'packed.review',
-		label: 'Packed reviewer',
-		protocolVersion: 1,
-		validateConfig(input) {
-			assert.deepEqual(input, {});
-		},
-		decide(request) {
-			assert.equal(request.destination.kind, 'provider');
-			assert.deepEqual(request.process, {
-				kind: 'argv',
-				executable: 'pwd',
-				args: []
-			});
-			state.reviews++;
-
-			return Promise.resolve({ kind: 'allow' });
-		}
-	});
 }

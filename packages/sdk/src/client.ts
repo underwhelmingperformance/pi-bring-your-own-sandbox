@@ -18,8 +18,6 @@ import {
 	rehydrateSandboxError,
 	SandboxInitialisationError
 } from './errors.js';
-import { closeApprovals } from './execution-approval.js';
-import { closeOutsideExecution } from './outside-execution.js';
 import type { SandboxNegotiation } from './protocol.js';
 import { isPiBound, protocolAddress } from './protocol-address.js';
 import {
@@ -174,13 +172,7 @@ export async function closeSandboxSession(
 
 				return [];
 			},
-			() => {
-				closeApprovals(pi);
-
-				return [];
-			},
-			async () => [await ensureSandboxService(pi).close(context)],
-			() => closeOutsideExecution(pi, context)
+			async () => [await ensureSandboxService(pi).close(context)]
 		];
 	const settlements = await Promise.allSettled(
 		closures.map((close) => Promise.try(close))

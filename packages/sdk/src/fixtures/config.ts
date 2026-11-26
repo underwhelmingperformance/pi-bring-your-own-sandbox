@@ -6,14 +6,6 @@ import { InvalidSandboxConfigError } from '../errors.js';
 import { accessPolicySchema } from '../policy-model.js';
 import { hasProtocolAddress, protocolAddress } from '../protocol-address.js';
 import { registerSandboxProvider } from '../provider-registration.js';
-import {
-	approvalSelectionSchema,
-	outsideSelectionSchema
-} from '../request-schemas.js';
-import {
-	configureExecutionApproval,
-	configureOutsideExecution
-} from '../runtime-settings.js';
 import { checker, shellSchema } from '../schemas.js';
 
 const schema = Type.Object(
@@ -21,8 +13,6 @@ const schema = Type.Object(
 		provider: Type.Optional(Type.String()),
 		policy: Type.Optional(accessPolicySchema),
 		providerConfig: Type.Optional(Type.Unknown()),
-		approval: Type.Optional(approvalSelectionSchema),
-		outsideSandbox: Type.Optional(outsideSelectionSchema),
 		cleanup: Type.Optional(cleanupSelectionSchema),
 		userShell: Type.Optional(shellSchema)
 	},
@@ -63,19 +53,6 @@ export class FixtureConfig {
 
 	set(value: unknown): void {
 		this.#value = value;
-	}
-
-	bind(pi: SandboxHost, extensionSource = source(pi)): void {
-		configureExecutionApproval(pi, extensionSource, async () => {
-			const value = await this.#read();
-
-			return value.approval ?? { policy: 'user' };
-		});
-		configureOutsideExecution(pi, extensionSource, async () => {
-			const value = await this.#read();
-
-			return value.outsideSandbox ?? { destination: 'normal' };
-		});
 	}
 
 	activate<Config>(

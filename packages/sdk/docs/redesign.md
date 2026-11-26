@@ -40,10 +40,9 @@ redesign is complete.
 - One protocol, with a major number and a feature level. Changes within a major
   number are additions only. Offers are reduced to the shared level and demands
   above it fail. The broker is created after all extensions have loaded, by the
-  build with the highest feature level. `serviceVersions`,
-  `configurationVersion`, `guardVersion`, the `v2` channel name and every
-  compatibility branch for older brokers are removed. The first release of the
-  redesign is major 1, level 0.
+  build with the highest feature level. BYOS removes the service-specific
+  version fields, old channels and compatibility code for older brokers. The
+  first release of the redesign is major 1, level 0.
 - A `bash` call can request [escalation][escalation]. If `allowEscalation` is
   false, the broker rejects the request with a typed reason before prompting.
   Otherwise the broker chooses the provider profile with the least extra access

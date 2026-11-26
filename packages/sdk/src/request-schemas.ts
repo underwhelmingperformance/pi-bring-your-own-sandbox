@@ -9,7 +9,6 @@ import {
 	callable,
 	capabilitySchema,
 	denseArray,
-	nonEmptyStringSchema,
 	nonNegativeIntegerSchema,
 	positiveIntegerSchema,
 	processKindSchema,
@@ -23,16 +22,6 @@ import {
 
 export const MAX_CAPTURE_BYTES = 1_048_576;
 
-export const approvalSelectionSchema = Type.Object(
-	{ policy: nonEmptyStringSchema, config: Type.Optional(Type.Unknown()) },
-	{ additionalProperties: false }
-);
-export const outsideSelectionSchema = Type.Object(
-	{
-		destination: Type.Union([Type.Literal('normal'), Type.Literal('provider')])
-	},
-	{ additionalProperties: false }
-);
 export const sharedSettingsSchema = Type.Object(
 	{
 		policy: Type.Optional(accessPolicySchema),

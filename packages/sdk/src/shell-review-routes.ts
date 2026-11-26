@@ -9,12 +9,11 @@ import { copyHostWorkspace, getSandbox } from './client.js';
 import type { Sandbox, SandboxCopy, SandboxCopyOptions } from './contracts.js';
 import {
 	InvalidSandboxRequestError,
-	StaleSandboxHandleError,
-	UnsupportedSandboxCapabilityError
+	isSandboxError,
+	StaleSandboxHandleError
 } from './errors.js';
 import type { EscalationDecision } from './escalation-ledger.js';
 import { appendLedgerEntry } from './escalation-ledger.js';
-import { boundedApproval } from './execution-approval.js';
 import { OperationScope } from './lifecycle.js';
 import { unrestrictedPolicy } from './policy-model.js';
 import { protocolAddress } from './protocol-address.js';
@@ -42,7 +41,6 @@ interface Route {
 	readonly context: ExtensionContext;
 	readonly command: string;
 	readonly prefix: string | undefined;
-	readonly isOutside: boolean;
 	readonly escalation?: PendingEscalation;
 	destination?: BoundDestination;
 }
@@ -62,6 +60,14 @@ export class ShellReviewRoutes {
 				return;
 			}
 
+			const previous = this.#routes.get(event.toolCallId);
+
+			if (previous !== undefined) {
+				previous.escalation?.finish();
+
+				return;
+			}
+
 			const input: unknown = event.args;
 
 			if (!isRecord(input) || typeof input['command'] !== 'string') {
@@ -70,11 +76,22 @@ export class ShellReviewRoutes {
 
 			const prefix =
 				toolName === 'bash' ? pi.getSettings().shellCommandPrefix : undefined;
-			const requested = escalationInput(
-				event.toolCallId,
-				effectiveCommand(input['command'], prefix),
-				{ escalate: input['escalate'], justification: input['justification'] }
-			);
+			let requested: ReturnType<typeof escalationInput>;
+
+			try {
+				requested = escalationInput(
+					event.toolCallId,
+					effectiveCommand(input['command'], prefix),
+					{ escalate: input['escalate'], justification: input['justification'] }
+				);
+			} catch (error) {
+				if (isSandboxError(error, InvalidSandboxRequestError)) {
+					return;
+				}
+
+				throw error;
+			}
+
 			const escalation =
 				requested === undefined
 					? undefined
@@ -84,7 +101,6 @@ export class ShellReviewRoutes {
 				context,
 				command: input['command'],
 				prefix,
-				isOutside: input['execution'] === 'outside-sandbox',
 				...(escalation !== undefined && { escalation })
 			});
 			await escalation?.prepare(toolName);
@@ -208,9 +224,7 @@ export class ShellReviewRoutes {
 		let copying: Promise<SandboxCopy>;
 
 		try {
-			destination = await boundedApproval(scope, () =>
-				this.#destination(pi, route, scope)
-			);
+			destination = await this.#destination(pi, route, scope);
 			check();
 			copying = this.#copyDestination(pi, route, destination, {
 				...options,
@@ -293,26 +307,12 @@ export class ShellReviewRoutes {
 			return { kind: 'host' };
 		}
 
-		if (!route.isOutside) {
-			const sandbox = await getSandbox(pi, route.context, {
-				signal: scope.context.signal,
-				timeoutMs: scope.remainingMs
-			});
+		const sandbox = await getSandbox(pi, route.context, {
+			signal: scope.context.signal,
+			timeoutMs: scope.remainingMs
+		});
 
-			return { kind: 'sandbox', sandbox };
-		}
-
-		const settings = runtimeSettings(pi);
-		const config = await settings.read(route.context);
-
-		if (
-			config.outsideSandbox?.destination === 'provider' ||
-			settings.normalExecutor !== undefined
-		) {
-			throw new UnsupportedSandboxCapabilityError({ operation: 'acquire' });
-		}
-
-		return { kind: 'host' };
+		return { kind: 'sandbox', sandbox };
 	}
 
 	#copyDestination(
@@ -329,8 +329,7 @@ export class ShellReviewRoutes {
 	executing(
 		id: string,
 		command: string,
-		prefix: string | undefined,
-		isOutside: boolean
+		prefix: string | undefined
 	): BoundDestination | undefined {
 		const route = this.#routes.get(id);
 
@@ -338,11 +337,7 @@ export class ShellReviewRoutes {
 			return;
 		}
 
-		if (
-			route.command !== command ||
-			route.prefix !== prefix ||
-			route.isOutside !== isOutside
-		) {
+		if (route.command !== command || route.prefix !== prefix) {
 			throw new StaleSandboxHandleError({ operation: 'exec' });
 		}
 

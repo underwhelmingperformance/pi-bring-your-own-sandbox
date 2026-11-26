@@ -4,7 +4,11 @@ import { Type } from 'typebox';
 import { workspaceSchema } from './backend-schemas.js';
 import type { SandboxContext, SandboxHost } from './contracts.js';
 import type { DisplayText } from './display-text.js';
-import { cleanDisplayText, joinDisplayLines } from './display-text.js';
+import {
+	cleanDisplayText,
+	cleanFullDisplayText,
+	joinFullDisplayLines
+} from './display-text.js';
 import { appendTypedEntry } from './display-ui.js';
 import { accessPolicySchema, accessSchema } from './policy-model.js';
 import { violationsSchema } from './result-schemas.js';
@@ -48,6 +52,36 @@ export type EscalationRequest = ReadonlyData<
 	Static<typeof escalationRequestSchema>
 >;
 export type EscalationDecision = 'allow' | 'deny';
+
+export function snapshotEscalationRequest(
+	request: EscalationRequest
+): EscalationRequest {
+	const { paths, ...access } = request.access;
+	const grants =
+		paths === undefined
+			? undefined
+			: Object.freeze({
+					...(paths.read !== undefined && {
+						read: Object.freeze([...paths.read])
+					}),
+					...(paths.write !== undefined && {
+						write: Object.freeze([...paths.write])
+					})
+				});
+	const destination = Object.freeze({
+		...request.destination,
+		policy: Object.freeze({ ...request.destination.policy })
+	});
+
+	return Object.freeze({
+		...request,
+		access: Object.freeze({
+			...access,
+			...(grants !== undefined && { paths: grants })
+		}),
+		destination
+	});
+}
 
 const permissionDecider = Type.Object({
 	kind: Type.Literal('permission-extension'),
@@ -129,11 +163,11 @@ export function formatLedger(
 			data.kind === 'escalation' ? data.request.toolCallId : data.toolCallId;
 
 		return filter === undefined || filter === toolCallId
-			? cleanDisplayText(JSON.stringify(data))
+			? cleanFullDisplayText(JSON.stringify(data))
 			: [];
 	});
 
 	return entries.length === 0
 		? cleanDisplayText('No matching BYOS ledger entries in this session.')
-		: joinDisplayLines(entries);
+		: joinFullDisplayLines(entries);
 }

@@ -47,7 +47,6 @@ export default function rpcFixture(pi: ExtensionAPI): void {
 		return input;
 	});
 
-	config.bind(pi);
 	config.activate(pi, {
 		id: 'fixture',
 		label: 'RPC fixture',

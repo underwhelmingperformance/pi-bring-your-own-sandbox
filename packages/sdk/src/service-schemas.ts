@@ -1,67 +1,18 @@
 import { Type } from 'typebox';
 
-import type {
-	ApprovalPolicy,
-	OutsideSandboxProvider
-} from './approval-contracts.js';
 import { builtinProviders } from './builtin-providers.js';
 import { cleanupSelectionSchema } from './cleanup-budgets.js';
 import type { SandboxProvider } from './contracts.js';
-import type {
-	ApprovalPolicyServiceV1,
-	ApprovalServiceV1,
-	ConfiguredApprovalPolicyV1
-} from './execution-approval.js';
-import type {
-	OutsideProviderServiceV1,
-	OutsideServiceV1
-} from './outside-execution.js';
-import { accessPolicySchema, providerInfoSchema } from './policy-model.js';
+import { providerInfoSchema } from './policy-model.js';
 import type { BrokerService, ProviderServiceV1 } from './protocol.js';
 import type { DiagnosticStore } from './provider-diagnostics.js';
 import type { RuntimeSettingsV1 } from './runtime-settings.js';
-import {
-	callable,
-	capabilitiesSchema,
-	denseArray,
-	nonEmptyStringSchema,
-	positiveIntegerSchema,
-	recordSchema,
-	signalSchema
-} from './schemas.js';
-
-export interface LegacyDiscoveryRequest {
-	readonly kind: 'pi-byos.discover';
-	readonly discoveryVersion: 1;
-	readonly reply: (value: unknown) => void;
-}
-
-// The approval services use this envelope until milestone 5.
-export const discoveryRequestSchema = Type.Object({
-	kind: Type.Literal('pi-byos.discover'),
-	discoveryVersion: Type.Literal(1),
-	reply: callable<LegacyDiscoveryRequest['reply']>()
-});
-
-export const outsideProviderSchema = Type.Object({
-	label: nonEmptyStringSchema,
-	capabilities: capabilitiesSchema,
-	policy: accessPolicySchema,
-	configure: callable<OutsideProviderServiceV1['configure']>()
-});
-
-const outsideDeclarationSchema = Type.Object({
-	label: nonEmptyStringSchema,
-	capabilities: capabilitiesSchema,
-	policy: accessPolicySchema,
-	open: callable<OutsideSandboxProvider<unknown>['open']>()
-});
+import { callable, nonEmptyStringSchema, signalSchema } from './schemas.js';
 
 export const providerServiceSchema = Type.Intersect([
 	providerInfoSchema,
 	Type.Object({
-		configure: callable<ProviderServiceV1['configure']>(),
-		outsideSandbox: Type.Optional(outsideProviderSchema)
+		configure: callable<ProviderServiceV1['configure']>()
 	})
 ]);
 
@@ -87,8 +38,7 @@ const providerMethodsSchema = Type.Object({
 	id: providerIdSchema,
 	validateConfig: callable<SandboxProvider<unknown>['validateConfig']>(),
 	open: callable<SandboxProvider<unknown>['open']>(),
-	copy: Type.Optional(copier),
-	outsideSandbox: Type.Optional(outsideDeclarationSchema)
+	copy: Type.Optional(copier)
 });
 
 export const providerDeclarationSchema = Type.Refine(
@@ -96,47 +46,6 @@ export const providerDeclarationSchema = Type.Refine(
 	(provider) =>
 		provider.profiles.copy.length > 0 === (provider.copy !== undefined)
 );
-
-export const approvalPolicyDeclarationSchema = Type.Object({
-	id: Type.Refine(
-		nonEmptyStringSchema,
-		(value) => !['user', 'always', 'never'].includes(value)
-	),
-	label: nonEmptyStringSchema,
-	protocolVersion: Type.Literal(1),
-	validateConfig: callable<ApprovalPolicy<unknown>['validateConfig']>(),
-	decide: callable<ApprovalPolicy<unknown>['decide']>()
-});
-
-export const extensionServiceAdvertisementSchema = Type.Object({
-	kind: Type.Literal('pi-byos.service'),
-	discoveryVersion: Type.Literal(1),
-	id: nonEmptyStringSchema,
-	serviceVersions: denseArray(positiveIntegerSchema, {
-		minItems: 1,
-		uniqueItems: true
-	}),
-	service: recordSchema
-});
-export const configuredApprovalPolicySchema = Type.Object({
-	decide: callable<ConfiguredApprovalPolicyV1['decide']>()
-});
-export const approvalPolicyServiceSchema = Type.Object({
-	id: nonEmptyStringSchema,
-	label: nonEmptyStringSchema,
-	configure: callable<ApprovalPolicyServiceV1['configure']>()
-});
-export const approvalServiceSchema = Type.Object({
-	id: nonEmptyStringSchema,
-	close: callable<ApprovalServiceV1['close']>(),
-	request: callable<ApprovalServiceV1['request']>(),
-	policies: callable<ApprovalServiceV1['policies']>()
-});
-
-const normalExecutorSchema = Type.Object({
-	...outsideDeclarationSchema.properties,
-	open: callable<OutsideSandboxProvider<undefined>['open']>()
-});
 
 export const runtimeSettingsSchema = Type.Object({
 	diagnostics: Type.Object({
@@ -147,24 +56,11 @@ export const runtimeSettingsSchema = Type.Object({
 	id: nonEmptyStringSchema,
 	lifetime: signalSchema,
 	close: callable<RuntimeSettingsV1['close']>(),
-	read: callable<RuntimeSettingsV1['read']>(),
-	normalExecutor: Type.Optional(normalExecutorSchema)
-});
-
-export const outsideServiceSchema = Type.Object({
-	guardVersion: Type.Literal(1),
-	status: callable<OutsideServiceV1['status']>(),
-	id: nonEmptyStringSchema,
-	lifetime: signalSchema,
-	close: callable<OutsideServiceV1['close']>(),
-	track: callable<OutsideServiceV1['track']>(),
-	assertLive: callable<OutsideServiceV1['assertLive']>(),
-	acquire: callable<OutsideServiceV1['acquire']>()
+	read: callable<RuntimeSettingsV1['read']>()
 });
 
 export const hostOptionsSchema = Type.Object(
 	{
-		normalExecutor: Type.Optional(normalExecutorSchema),
 		cleanup: Type.Optional(cleanupSelectionSchema)
 	},
 	{ additionalProperties: false }

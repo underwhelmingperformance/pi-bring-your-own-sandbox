@@ -18,7 +18,7 @@ import { checkDemand, sharedFeatureLevel } from './protocol-version.js';
 import { acquireOptionsSchema } from './request-schemas.js';
 import { checker } from './schemas.js';
 import { brokerServiceSchema } from './service-schemas.js';
-import { snapshotCapabilities, snapshotProviderInfo } from './validation.js';
+import { snapshotProviderInfo } from './validation.js';
 
 export const isBrokerService = checker(brokerServiceSchema);
 
@@ -72,18 +72,6 @@ export function discoverProviders(
 		return Object.freeze({
 			...snapshotProviderInfo(service),
 			protocol: protocolIdentity(reply),
-			...(service.outsideSandbox !== undefined && {
-				outsideSandbox: Object.freeze({
-					label: service.outsideSandbox.label,
-					capabilities: snapshotCapabilities(
-						service.outsideSandbox.capabilities
-					),
-					policy: Object.freeze({ ...service.outsideSandbox.policy }),
-					configure: service.outsideSandbox.configure.bind(
-						service.outsideSandbox
-					)
-				})
-			}),
 			configure: service.configure.bind(service)
 		});
 	});

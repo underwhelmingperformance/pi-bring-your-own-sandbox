@@ -9,7 +9,6 @@ import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import { initialiseSandboxHost } from './host.js';
-import { outsideShellOperations } from './outside-shell-operations.js';
 import { createShellOperations } from './pi-shell-operations.js';
 import { registerUserShell } from './user-shell.js';
 import { profileCapabilities } from './validation.js';
@@ -17,9 +16,7 @@ import { profileCapabilities } from './validation.js';
 it.each([
 	{ route: 'sandbox', dialect: 'bash' },
 	{ route: 'sandbox', dialect: 'powershell' },
-	{ route: 'user-bash', dialect: 'bash' },
-	{ route: 'outside-provider', dialect: 'bash' },
-	{ route: 'outside-host', dialect: 'bash' }
+	{ route: 'user-bash', dialect: 'bash' }
 ] as const)(
 	'escapes display controls at the Pi output callback for $route $dialect',
 	async ({ route, dialect }) => {
@@ -27,10 +24,6 @@ it.each([
 		const raw = '\u{FEFF}\u{202E}\u{85}\u{9B}8m\u{7F}' + ordinary;
 		const expected = String.raw`\u{feff}\u{202e}\x85\x9b8m\x7f` + ordinary;
 		const bytes = Buffer.from(raw);
-		const encoded = [...bytes]
-			.map((byte) => String.raw`\x${byte.toString(16).padStart(2, '0')}`)
-			.join('');
-		const nativeCommand = `printf '%b' '${encoded}'`;
 		const { backend: template } = shellBackend();
 		const backend: typeof template = {
 			...template,
@@ -51,11 +44,7 @@ it.each([
 
 		config.set({
 			provider: 'fixture',
-			policy: backend.profile.policy,
-			approval: { policy: 'always' },
-			outsideSandbox: {
-				destination: route === 'outside-provider' ? 'provider' : 'normal'
-			}
+			policy: backend.profile.policy
 		});
 		await withPiRuntime(
 			[
@@ -75,15 +64,8 @@ it.each([
 							}),
 
 							validateConfig: () => ({}),
-							open: () => Promise.resolve(backend),
-							outsideSandbox: {
-								label: 'Fixture outside destination',
-								capabilities: profileCapabilities(backend.profile),
-								policy: backend.profile.policy,
-								open: () => Promise.resolve(backend)
-							}
+							open: () => Promise.resolve(backend)
 						});
-						config.bind(pi);
 						registerUserShell(pi);
 					}
 				}
@@ -106,30 +88,19 @@ it.each([
 					});
 
 					operations = event?.operations;
-				} else if (route === 'sandbox') {
-					operations = createShellOperations(api, context, dialect);
 				} else {
-					operations = outsideShellOperations(
-						api,
-						context,
-						dialect,
-						'Check output.'
-					);
+					operations = createShellOperations(api, context, dialect);
 				}
 
 				if (operations === undefined) {
 					throw new Error('Pi did not receive shell operations.');
 				}
 
-				const result = await operations.exec(
-					route === 'outside-host' ? nativeCommand : 'output',
-					context.cwd,
-					{
-						onData(data) {
-							chunks.push(data);
-						}
+				const result = await operations.exec('output', context.cwd, {
+					onData(data) {
+						chunks.push(data);
 					}
-				);
+				});
 
 				expect({
 					errors,

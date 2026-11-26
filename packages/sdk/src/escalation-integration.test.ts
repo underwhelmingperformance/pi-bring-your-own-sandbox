@@ -70,6 +70,13 @@ it.each([
 		allowedByConfig: true,
 		runs: false,
 		outcome: 'allowed'
+	},
+	{
+		tool: 'bash',
+		decision: 'unavailable-status',
+		allowedByConfig: true,
+		runs: true,
+		outcome: 'allowed'
 	}
 ] as const)(
 	'records $outcome for $tool with permission $decision and escalation setting $allowedByConfig',
@@ -80,6 +87,7 @@ it.each([
 		const requests: ProcessRequest[] = [];
 		const operationIds: string[] = [];
 		const decisionsAtOpen: unknown[][] = [];
+		const prompts: string[] = [];
 		const violation = {
 			operation: 'open\u{1B}[31m',
 			accessProperty: 'hostUserData',
@@ -88,8 +96,12 @@ it.each([
 		let changeCommand: (() => void) | undefined;
 		let readLedger: (() => unknown[]) | undefined;
 		const ordinary = backend.profile;
+		const isExitUnavailable = decision === 'unavailable-status';
 		const elevated = {
 			...ordinary,
+			exitStatus: isExitUnavailable
+				? ('optional' as const)
+				: ordinary.exitStatus,
 			capabilities: [...ordinary.capabilities, 'violations' as const],
 			policy: { ...ordinary.policy, network: true }
 		};
@@ -122,7 +134,13 @@ it.each([
 									const result = await backend.exec(command, context);
 
 									return result.kind === 'exited'
-										? { ...result, violations: [violation] }
+										? {
+												...result,
+												exit: isExitUnavailable
+													? { kind: 'unavailable' }
+													: result.exit,
+												violations: [violation]
+											}
 										: result;
 								}
 							});
@@ -283,9 +301,11 @@ it.each([
 					requests,
 					entries,
 					results,
-					decisionsAtOpen
+					decisionsAtOpen,
+					prompts
 				}).toStrictEqual({
 					errors: [],
+					prompts: [],
 					observed: allowedByConfig ? [{ ...request, destination }] : [],
 					opens: isExpectedOpen ? [true] : [],
 					requests: runs
@@ -314,10 +334,15 @@ it.each([
 					],
 					results: [
 						{
-							isError: !runs,
+							isError: !runs || isExitUnavailable,
 							content: runs
 								? [
-										{ type: 'text', text: 'target output' },
+										{
+											type: 'text',
+											text: isExitUnavailable
+												? 'target output\n\nCommand terminated without an exit code'
+												: 'target output'
+										},
 										{
 											type: 'text',
 											text: 'Effective restrictions: Host workspace writes allowed, network allowed, host user data denied, host system files read-only'
@@ -336,6 +361,11 @@ it.each([
 			{
 				prepare(_directory, agentDirectory) {
 					vi.stubEnv('PI_CODING_AGENT_DIR', agentDirectory);
+				},
+				select(text) {
+					prompts.push(text);
+
+					return Promise.resolve(undefined);
 				}
 			}
 		);

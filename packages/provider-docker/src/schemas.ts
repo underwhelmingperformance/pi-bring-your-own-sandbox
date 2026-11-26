@@ -7,33 +7,6 @@ const nonNegativeIntegerSchema = Type.Integer({
 	minimum: 0,
 	maximum: Number.MAX_SAFE_INTEGER
 });
-const signalNumberSchema = Type.Integer({
-	minimum: 1,
-	maximum: Number.MAX_SAFE_INTEGER
-});
-const exitSchema = Type.Union([
-	Type.Object({ kind: Type.Literal('code'), code: nonNegativeIntegerSchema }),
-	Type.Object({
-		kind: Type.Literal('signal'),
-		signal: Type.String({ minLength: 1 }),
-		signalNumber: signalNumberSchema
-	})
-]);
-const outputSchema = Type.Object({
-	kind: Type.Enum(['stdout', 'stderr']),
-	data: Type.Refine(
-		Type.String(),
-		(value) => Buffer.from(value, 'base64').toString('base64') === value
-	)
-});
-
-export const launchFrameSchema = Type.Union([
-	outputSchema,
-	Type.Object({ kind: Type.Literal('exited'), exit: exitSchema }),
-	Type.Object({
-		kind: Type.Enum(['not-found', 'permission-denied', 'start-failed'])
-	})
-]);
 
 export const containerStateSchema = Type.Object({
 	Running: Type.Boolean(),

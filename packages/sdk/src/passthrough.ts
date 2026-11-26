@@ -99,7 +99,9 @@ export async function openPassthrough(
 	const operations = new HostOperations();
 
 	return operations.run('open', context, () => {
-		const processes = new PosixProcessRunner(workspace, environment, shells);
+		const processes = new PosixProcessRunner(workspace, environment, shells, {
+			providerId: 'passthrough'
+		});
 		const search = new HostSearch(
 			workspace,
 			{

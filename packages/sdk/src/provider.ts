@@ -56,6 +56,12 @@ export {
 	UnsupportedSandboxPolicyError
 } from './errors.js';
 export { mapSandboxErrno } from './host-error.js';
+export type {
+	PosixProcessInvocation,
+	PosixProcessRunnerOptions
+} from './host-process.js';
+export { PosixProcessRunner } from './host-process.js';
+export { SandboxLaunchFrames } from './launch-frames.js';
 export {
 	defaultProtectedWorkspacePaths,
 	isProtectedWorkspacePath
@@ -63,3 +69,5 @@ export {
 export { createSandboxCleanupContext } from './provider-cleanup.js';
 export { resolveSandboxCopySource } from './provider-copy.js';
 export { registerSandboxProvider } from './provider-registration.js';
+export type { ShellTransportOptions } from './shell-transport.js';
+export { encodePosixArgv, ShellTransportRunner } from './shell-transport.js';

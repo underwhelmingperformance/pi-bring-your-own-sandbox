@@ -1,17 +1,17 @@
-import type { ProcessOutput } from 'pi-bring-your-own-sandbox/provider';
 import { expect, it } from 'vitest';
 
-import { LaunchFrames } from '../src/frames.js';
+import type { ProcessOutput } from './contracts.js';
+import { SandboxLaunchFrames } from './launch-frames.js';
 
 const encode = (text: string) => new TextEncoder().encode(text);
 
 it('decodes split frames and preserves binary stdout, stderr and target signal status', () => {
 	const output: ProcessOutput[] = [];
-	const frames = new LaunchFrames(
+	const frames = new SandboxLaunchFrames(
 		(chunk) => {
 			output.push({ stream: chunk.stream, data: new Uint8Array(chunk.data) });
 		},
-		{ kind: 'none' }
+		{ operation: 'exec' }
 	);
 	const data =
 		[
@@ -50,11 +50,11 @@ it.each([
 	{ kind: 'permission-denied', error: 'SandboxPermissionDeniedError' },
 	{ kind: 'start-failed', error: 'SandboxOperationError' }
 ])('translates $kind into a typed SDK error', ({ kind, error }) => {
-	const frames = new LaunchFrames(
+	const frames = new SandboxLaunchFrames(
 		() => {
 			throw new Error('No output was expected.');
 		},
-		{ kind: 'none' }
+		{ operation: 'exec' }
 	);
 
 	frames.accept({
@@ -74,11 +74,11 @@ it.each([
 	'x'.repeat(262_145)
 ])('rejects malformed launcher output without forwarding it: %s', (data) => {
 	const output: ProcessOutput[] = [];
-	const frames = new LaunchFrames(
+	const frames = new SandboxLaunchFrames(
 		(chunk) => {
 			output.push({ stream: chunk.stream, data: new Uint8Array(chunk.data) });
 		},
-		{ kind: 'none' }
+		{ operation: 'exec' }
 	);
 
 	expect(() => {
@@ -88,11 +88,11 @@ it.each([
 });
 
 it('requires a complete final frame before accepting completion', () => {
-	const frames = new LaunchFrames(
+	const frames = new SandboxLaunchFrames(
 		() => {
 			return;
 		},
-		{ kind: 'none' }
+		{ operation: 'exec' }
 	);
 
 	frames.accept({

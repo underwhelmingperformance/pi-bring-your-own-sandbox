@@ -22,6 +22,7 @@ import {
 	resolveSandboxCopySource,
 	SandboxCancelledError,
 	SandboxCleanupError,
+	SandboxLaunchFrames,
 	SandboxOperationError,
 	SandboxPathNotFoundError,
 	SandboxPermissionDeniedError,
@@ -41,7 +42,6 @@ import type {
 import { DeadlineTimer } from './deadline.js';
 import type { DockerFileHelpers } from './file-worker.js';
 import { DockerFileWorker } from './file-worker.js';
-import { LaunchFrames } from './frames.js';
 import { DOCKER_IMAGE } from './image.js';
 import { readDockerMatcher } from './matcher.js';
 import {
@@ -301,7 +301,11 @@ class DockerBackend implements SandboxBackend {
 			operation,
 			this.#isWorkspaceReadOnly()
 		);
-		const frames = new LaunchFrames(context.onOutput, this.recovery, operation);
+		const frames = new SandboxLaunchFrames(context.onOutput, {
+			operation,
+			providerId: 'example.docker',
+			recovery: this.recovery
+		});
 		// A different launcher UID prevents the child from writing control frames through /proc.
 		const result = await this.#resources.job(
 			[

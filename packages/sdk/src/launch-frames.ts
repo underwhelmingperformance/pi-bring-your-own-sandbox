@@ -1,28 +1,56 @@
+import { Type } from 'typebox';
+
 import type {
 	BackendProcessOutcome,
 	ProcessExit,
 	ProcessOutput,
-	RecoveryDescriptor,
+	SandboxErrorContext,
 	SandboxErrorInfo
-} from 'pi-bring-your-own-sandbox/provider';
-import {
-	mapSandboxErrno,
-	SandboxOperationError,
-	SandboxTransportError
-} from 'pi-bring-your-own-sandbox/provider';
-import { Compile } from 'typebox/compile';
+} from './contracts.js';
+import { SandboxOperationError, SandboxTransportError } from './errors.js';
+import { mapSandboxErrno } from './host-error.js';
+import { checker } from './schemas.js';
 
-import { launchFrameSchema } from './schemas.js';
+const nonNegativeIntegerSchema = Type.Integer({
+	minimum: 0,
+	maximum: Number.MAX_SAFE_INTEGER
+});
+const signalNumberSchema = Type.Integer({
+	minimum: 1,
+	maximum: Number.MAX_SAFE_INTEGER
+});
+const exitSchema = Type.Union([
+	Type.Object({ kind: Type.Literal('code'), code: nonNegativeIntegerSchema }),
+	Type.Object({
+		kind: Type.Literal('signal'),
+		signal: Type.String({ minLength: 1 }),
+		signalNumber: signalNumberSchema
+	})
+]);
+const outputSchema = Type.Object({
+	kind: Type.Enum(['stdout', 'stderr']),
+	data: Type.Refine(
+		Type.String(),
+		(value) => Buffer.from(value, 'base64').toString('base64') === value
+	)
+});
 
-const frameValidator = Compile(launchFrameSchema);
+const launchFrameSchema = Type.Union([
+	outputSchema,
+	Type.Object({ kind: Type.Literal('exited'), exit: exitSchema }),
+	Type.Object({
+		kind: Type.Enum(['not-found', 'permission-denied', 'start-failed'])
+	})
+]);
+
+const isLaunchFrame = checker(launchFrameSchema);
 
 /**
 Decodes bounded launcher frames and forwards only child output to SDK consumers.
 */
-export class LaunchFrames {
-	readonly #operation: 'open' | 'exec';
+export class SandboxLaunchFrames {
 	readonly #onOutput: (output: ProcessOutput) => void;
-	readonly #recovery: RecoveryDescriptor;
+	readonly #identity: SandboxErrorContext;
 	readonly #decoder = new TextDecoder('utf-8', { fatal: true });
 	#pending = '';
 	#exit: ProcessExit | undefined;
@@ -31,31 +59,22 @@ export class LaunchFrames {
 
 	constructor(
 		onOutput: (output: ProcessOutput) => void,
-		recovery: RecoveryDescriptor,
-		operation: 'open' | 'exec' = 'exec'
+		identity: SandboxErrorContext
 	) {
-		this.#operation = operation;
 		this.#onOutput = onOutput;
-		this.#recovery = recovery;
+		this.#identity = { ...identity };
 	}
 
 	#invalid(): never {
-		throw new SandboxTransportError(
-			{
-				operation: this.#operation,
-				providerId: 'example.docker',
-				recovery: this.#recovery
-			},
-			{
-				cause: new TypeError(
-					'Docker returned an invalid or incomplete launcher frame.'
-				)
-			}
-		);
+		throw new SandboxTransportError(this.#identity, {
+			cause: new TypeError(
+				'The target returned an invalid or incomplete launcher frame.'
+			)
+		});
 	}
 
 	#frame(value: unknown): void {
-		if (this.#hasFinal || !frameValidator.Check(value)) {
+		if (this.#hasFinal || !isLaunchFrame(value)) {
 			this.#invalid();
 		}
 
@@ -67,12 +86,6 @@ export class LaunchFrames {
 			return;
 		}
 
-		const identity = {
-			operation: this.#operation,
-			providerId: 'example.docker',
-			recovery: this.#recovery
-		} as const;
-
 		this.#hasFinal = true;
 
 		switch (value.kind) {
@@ -83,19 +96,19 @@ export class LaunchFrames {
 			}
 
 			case 'not-found': {
-				this.#failure = mapSandboxErrno('ENOENT', identity);
+				this.#failure = mapSandboxErrno('ENOENT', this.#identity);
 
 				return;
 			}
 
 			case 'permission-denied': {
-				this.#failure = mapSandboxErrno('EACCES', identity);
+				this.#failure = mapSandboxErrno('EACCES', this.#identity);
 
 				return;
 			}
 
 			case 'start-failed': {
-				this.#failure = new SandboxOperationError(identity);
+				this.#failure = new SandboxOperationError(this.#identity);
 
 				return;
 			}
@@ -107,7 +120,7 @@ export class LaunchFrames {
 	}
 
 	/**
-	Accepts ordered CLI chunks; launcher diagnostics are transport failures.
+	Accepts ordered carrier output. Carrier stderr indicates a transport failure.
 	*/
 	accept(output: ProcessOutput): void {
 		if (output.stream !== 'stdout') {
@@ -148,7 +161,7 @@ export class LaunchFrames {
 	}
 
 	/**
-	Read the final child result after Docker confirms removal of the job container.
+	Read the child result after the carrier finishes.
 	*/
 	finish(): BackendProcessOutcome {
 		this.#pending += this.#decoder.decode();

@@ -72,9 +72,13 @@ it('rejects acquisition during factory loading and client creation after loading
 });
 
 const nonFactoryFunctions = new Set([
+	'PosixProcessRunner',
+	'SandboxLaunchFrames',
+	'ShellTransportRunner',
 	'cleanDisplayText',
 	'closeSandboxSession',
 	'createSandboxCleanupContext',
+	'encodePosixArgv',
 	'isSandboxError',
 	'mapSandboxErrno',
 	'isProtectedWorkspacePath',

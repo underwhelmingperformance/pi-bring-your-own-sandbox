@@ -122,18 +122,24 @@ it('waits for process-group disappearance after a denied existence probe', async
 	const { directory } = await fixture();
 	let probes = 0;
 	const output: string[] = [];
-	const runner = new PosixProcessRunner(directory, process.env, new Map(), {
-		kill(id, signal) {
-			if (signal === 0 && probes++ === 0) {
-				throw Object.assign(
-					new Error('The group cannot currently be signalled.'),
-					{ code: 'EPERM' }
-				);
-			}
+	const runner = new PosixProcessRunner(
+		directory,
+		process.env,
+		new Map(),
+		{},
+		{
+			kill(id, signal) {
+				if (signal === 0 && probes++ === 0) {
+					throw Object.assign(
+						new Error('The group cannot currently be signalled.'),
+						{ code: 'EPERM' }
+					);
+				}
 
-			process.kill(id, signal);
+				process.kill(id, signal);
+			}
 		}
-	});
+	);
 	const result = await runner.run(
 		{
 			kind: 'argv',

@@ -16,10 +16,10 @@ import { remainingBudget } from '../../../test-support/remaining-budget.js';
 
 import type { ProcessRequest } from './contracts.js';
 import { isSandboxError, SandboxPathNotFoundError } from './errors.js';
-import { ShellTransportRunner } from './fixtures/shell-transport.js';
 import type { HostProcessRunner } from './host-process.js';
 import { PosixProcessRunner } from './host-process.js';
 import { snapshotProcessRequest } from './process-input.js';
+import { encodePosixArgv, ShellTransportRunner } from './shell-transport.js';
 
 const releases: (() => Promise<void>)[] = [];
 const environment = {
@@ -75,6 +75,46 @@ afterEach(async () => {
 	for (const release of releases.splice(0)) {
 		await release();
 	}
+});
+
+it('wraps the resolved invocation before spawning the process group', async () => {
+	const runner = new PosixProcessRunner(tmpdir(), {}, new Map(), {
+		wrap(invocation) {
+			return {
+				...invocation,
+				executable: '/bin/sh',
+				args: [
+					'-c',
+					'printf "wrapper:"; exec "$@"',
+					'wrapper',
+					invocation.executable,
+					...invocation.args
+				]
+			};
+		}
+	});
+	const result = await execute(runner, {
+		kind: 'argv',
+		executable: process.execPath,
+		args: [
+			'-e',
+			'process.stdout.write(process.argv[1])',
+			'--',
+			'literal $SHELL'
+		]
+	});
+
+	expect(result).toStrictEqual({
+		outcome: { kind: 'exited', exit: { kind: 'code', code: 0 } },
+		stdout: 'wrapper:literal $SHELL',
+		stderr: ''
+	});
+});
+
+it('rejects NUL bytes before encoding argv for a shell', () => {
+	expect(() => encodePosixArgv(['a\0b'])).toThrow(
+		expect.objectContaining({ name: 'InvalidSandboxRequestError' })
+	);
 });
 
 describe.each(['direct', 'shell transport'] as const)(
@@ -234,6 +274,42 @@ describe.each(['direct', 'shell transport'] as const)(
 			});
 		});
 
+		it('streams output beyond the synchronous spawn buffer', async () => {
+			const { runner } = await fixture();
+			const size = 1_250_000;
+			const result = await execute(runner, {
+				kind: 'argv',
+				executable: process.execPath,
+				args: [
+					'-e',
+					`process.stdout.write('x'.repeat(${String(size)})); process.stderr.write('ok')`
+				]
+			});
+
+			expect(result).toStrictEqual({
+				outcome: { kind: 'exited', exit: { kind: 'code', code: 0 } },
+				stdout: 'x'.repeat(size),
+				stderr: 'ok'
+			});
+		});
+
+		it('preserves signal exit status from the target', async () => {
+			const { runner } = await fixture();
+			const result = await execute(runner, {
+				kind: 'argv',
+				executable: process.execPath,
+				args: ['-e', 'process.kill(process.pid, "SIGTERM")']
+			});
+
+			expect(result).toStrictEqual({
+				outcome: {
+					kind: 'exited',
+					exit: { kind: 'signal', signal: 'SIGTERM', signalNumber: 15 }
+				},
+				stdout: '',
+				stderr: ''
+			});
+		});
 		it.each(['executable', 'cwd'] as const)(
 			'reports a missing %s as a typed start error',
 			async (missing) => {

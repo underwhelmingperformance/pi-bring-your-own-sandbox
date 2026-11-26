@@ -14,7 +14,7 @@ import {
 	SandboxOperationError,
 	UnsupportedSandboxCapabilityError
 } from './errors.js';
-import { hostError } from './host-error.js';
+import { mapSandboxErrno } from './host-error.js';
 import { isRecord } from './validation.js';
 
 interface Completion {
@@ -62,22 +62,56 @@ export interface HostProcessRunner {
 	) => Promise<BackendProcessOutcome>;
 }
 
+export interface PosixProcessInvocation {
+	readonly executable: string;
+	readonly args: readonly string[];
+	readonly cwd: string;
+	readonly env: Readonly<NodeJS.ProcessEnv>;
+}
+
+export interface PosixProcessRunnerOptions {
+	readonly providerId?: string;
+	/**
+	Wrap the final invocation before starting it in a new process group.
+	The wrapper and its workload must stay in that group for cancellation.
+	*/
+	readonly wrap?: (
+		invocation: PosixProcessInvocation
+	) => PosixProcessInvocation;
+}
+
+/**
+Runs POSIX processes and waits for the process group to exit. A provider can
+wrap the final invocation with its sandbox command.
+*/
 export class PosixProcessRunner implements HostProcessRunner {
 	readonly #workspace: string;
 	readonly #environment: NodeJS.ProcessEnv;
 	readonly #shells: ReadonlyMap<ShellDialect, string>;
 	readonly #signals: ProcessSignals;
+	readonly #options: PosixProcessRunnerOptions;
 
 	constructor(
 		workspace: string,
 		environment: NodeJS.ProcessEnv,
 		shells: ReadonlyMap<ShellDialect, string>,
+		options: PosixProcessRunnerOptions = {},
 		signals: ProcessSignals = nativeSignals
 	) {
 		this.#workspace = workspace;
 		this.#environment = { ...environment };
 		this.#shells = new Map(shells);
 		this.#signals = signals;
+		this.#options = { ...options };
+	}
+
+	#identity() {
+		return {
+			operation: 'exec' as const,
+			...(this.#options.providerId !== undefined && {
+				providerId: this.#options.providerId
+			})
+		};
 	}
 
 	#command(request: ProcessRequest): {
@@ -91,10 +125,7 @@ export class PosixProcessRunner implements HostProcessRunner {
 		const executable = this.#shells.get(request.dialect);
 
 		if (executable === undefined) {
-			throw new UnsupportedSandboxCapabilityError({
-				operation: 'exec',
-				providerId: 'passthrough'
-			});
+			throw new UnsupportedSandboxCapabilityError(this.#identity());
 		}
 
 		return {
@@ -117,10 +148,7 @@ export class PosixProcessRunner implements HostProcessRunner {
 		context: BackendProcessContext
 	): Promise<BackendProcessOutcome> {
 		if (process.platform === 'win32') {
-			throw new UnsupportedSandboxCapabilityError({
-				operation: 'exec',
-				providerId: 'passthrough'
-			});
+			throw new UnsupportedSandboxCapabilityError(this.#identity());
 		}
 
 		const command = this.#command(request);
@@ -136,9 +164,15 @@ export class PosixProcessRunner implements HostProcessRunner {
 			environment.delete(key);
 		}
 
-		const child = spawn(command.executable, command.args, {
+		const invocation = {
+			...command,
 			cwd: path.resolve(this.#workspace, request.cwd ?? '.'),
-			env: Object.fromEntries(environment),
+			env: Object.fromEntries(environment)
+		};
+		const wrapped = this.#options.wrap?.(invocation) ?? invocation;
+		const child = spawn(wrapped.executable, wrapped.args, {
+			cwd: wrapped.cwd,
+			env: wrapped.env,
 			detached: true,
 			stdio: ['ignore', 'pipe', 'pipe']
 		});
@@ -216,14 +250,11 @@ export class PosixProcessRunner implements HostProcessRunner {
 					}
 
 					if (completion.error !== undefined) {
-						throw hostError(completion.error, 'exec');
+						throw mapSandboxErrno(completion.error, this.#identity());
 					}
 
 					if (completion.exit === undefined) {
-						throw new SandboxOperationError({
-							operation: 'exec',
-							providerId: 'passthrough'
-						});
+						throw new SandboxOperationError(this.#identity());
 					}
 
 					return { kind: 'exited', exit: completion.exit };

@@ -1,0 +1,266 @@
+import type {
+	Access,
+	AccessProperty,
+	AccessState,
+	Policy,
+	Profile
+} from './policy-model.js';
+import { accessOrder, accessRanks, profileKey } from './policy-model.js';
+import { isTerminationScopeSatisfied } from './termination-scope.js';
+
+export type ProfileMode = 'open' | 'copy';
+
+export interface ProfileRequirements {
+	readonly access?: Access;
+	readonly capabilities?: readonly Profile['capabilities'][number][];
+	readonly processKinds?: readonly Profile['processKinds'][number][];
+	readonly shells?: readonly Profile['shells'][number][];
+	readonly exitStatus?: 'guaranteed';
+	readonly terminationScope?: Profile['terminationScope'];
+}
+
+export interface ResolvedPath {
+	readonly path: string;
+	readonly kind: 'read' | 'write';
+	readonly location: 'workspace' | 'host-user-data' | 'host-system-files';
+}
+
+type CapabilityFailure =
+	| {
+			readonly field: 'capabilities';
+			readonly value: Profile['capabilities'][number];
+	  }
+	| {
+			readonly field: 'processKinds';
+			readonly value: Profile['processKinds'][number];
+	  }
+	| { readonly field: 'shells'; readonly value: Profile['shells'][number] }
+	| { readonly field: 'exitStatus'; readonly value: 'guaranteed' }
+	| {
+			readonly field: 'terminationScope';
+			readonly value: Profile['terminationScope'];
+	  };
+
+export type ProfileRefusal =
+	| { readonly kind: 'policy'; readonly reason: 'profile' }
+	| {
+			readonly kind: 'access';
+			readonly property: AccessProperty;
+			readonly value: AccessState;
+			readonly reason: 'limit' | 'profile';
+	  }
+	| {
+			readonly kind: 'path';
+			readonly access: ResolvedPath['kind'];
+			readonly path: string;
+			readonly reason: 'limit' | 'profile';
+	  }
+	| ({ readonly kind: 'capability' } & CapabilityFailure);
+
+export type ProfileSelection =
+	| { readonly ok: true; readonly profile: Profile }
+	| { readonly ok: false; readonly detail: ProfileRefusal };
+
+interface ProfileRequest {
+	readonly profiles: readonly Profile[];
+	readonly limit: Policy;
+	readonly requirements?: ProfileRequirements;
+	readonly mode?: ProfileMode;
+	readonly paths?: readonly ResolvedPath[];
+}
+
+const satisfiesAccess = {
+	hostWorkspaceWrites: (policy: Policy, state: AccessState) =>
+		policy.hostWorkspaceWrites === (state === 'needed'),
+	network: (policy: Policy, state: AccessState) =>
+		policy.network === (state === 'needed'),
+	hostUserData: (policy: Policy, state: AccessState) =>
+		(policy.hostUserData !== 'denied') === (state === 'needed'),
+	hostSystemFiles: (policy: Policy, state: AccessState) =>
+		(policy.hostSystemFiles !== 'denied') === (state === 'needed')
+} satisfies Record<
+	AccessProperty,
+	(policy: Policy, state: AccessState) => boolean
+>;
+
+function isWithinLimit(policy: Policy, limit: Policy): boolean {
+	return accessOrder.every((property) => {
+		const rank = accessRanks[property];
+
+		return rank(policy) <= rank(limit);
+	});
+}
+
+function compareProfiles(left: Profile, right: Profile): number {
+	for (const property of accessOrder) {
+		const rank = accessRanks[property];
+		const difference = rank(right.policy) - rank(left.policy);
+
+		if (difference !== 0) {
+			return difference;
+		}
+	}
+
+	const leftKey = profileKey(left);
+	const rightKey = profileKey(right);
+
+	return Number(leftKey > rightKey) - Number(leftKey < rightKey);
+}
+
+function canGrantPath(
+	policy: Policy,
+	path: ResolvedPath,
+	mode: ProfileMode
+): boolean {
+	if (path.location === 'workspace') {
+		return (
+			path.kind === 'read' || mode === 'copy' || policy.hostWorkspaceWrites
+		);
+	}
+
+	if (mode === 'copy' && path.kind === 'write') {
+		return false;
+	}
+
+	const access =
+		path.location === 'host-system-files'
+			? policy.hostSystemFiles
+			: policy.hostUserData;
+
+	return (
+		access === 'read-write' || (access === 'read-only' && path.kind === 'read')
+	);
+}
+
+function capabilityChecks(requirements: ProfileRequirements) {
+	const { capabilities = [], processKinds = [], shells = [] } = requirements;
+
+	const checks: {
+		readonly detail: CapabilityFailure;
+		readonly isSatisfiedBy: (profile: Profile) => boolean;
+	}[] = Array.from(capabilities, (value) => ({
+		detail: { field: 'capabilities', value },
+		isSatisfiedBy: (profile) => profile.capabilities.includes(value)
+	}));
+
+	for (const value of processKinds) {
+		checks.push({
+			detail: { field: 'processKinds', value },
+			isSatisfiedBy: (profile) => profile.processKinds.includes(value)
+		});
+	}
+
+	for (const value of shells) {
+		checks.push({
+			detail: { field: 'shells', value },
+			isSatisfiedBy: (profile) => profile.shells.includes(value)
+		});
+	}
+
+	if (requirements.exitStatus === 'guaranteed') {
+		checks.push({
+			detail: { field: 'exitStatus', value: 'guaranteed' },
+			isSatisfiedBy: (profile) => profile.exitStatus === 'guaranteed'
+		});
+	}
+
+	const scope = requirements.terminationScope;
+
+	if (scope !== undefined) {
+		checks.push({
+			detail: { field: 'terminationScope', value: scope },
+			isSatisfiedBy: (profile) =>
+				isTerminationScopeSatisfied(profile.terminationScope, scope)
+		});
+	}
+
+	return checks;
+}
+
+export function selectProfile({
+	profiles,
+	limit,
+	requirements = {},
+	mode = 'open',
+	paths = []
+}: ProfileRequest): ProfileSelection {
+	let eligible = profiles.filter((profile) =>
+		isWithinLimit(profile.policy, limit)
+	);
+
+	if (eligible.length === 0) {
+		return { ok: false, detail: { kind: 'policy', reason: 'profile' } };
+	}
+
+	for (const property of accessOrder) {
+		const state = requirements.access?.[property];
+
+		if (state === undefined) {
+			continue;
+		}
+
+		const isSatisfiedBy = satisfiesAccess[property];
+
+		if (state === 'needed' && !isSatisfiedBy(limit, state)) {
+			return {
+				ok: false,
+				detail: { kind: 'access', property, value: state, reason: 'limit' }
+			};
+		}
+
+		eligible = eligible.filter((profile) =>
+			isSatisfiedBy(profile.policy, state)
+		);
+
+		if (eligible.length === 0) {
+			return {
+				ok: false,
+				detail: { kind: 'access', property, value: state, reason: 'profile' }
+			};
+		}
+	}
+
+	for (const path of paths) {
+		if (!canGrantPath(limit, path, mode)) {
+			return {
+				ok: false,
+				detail: {
+					kind: 'path',
+					access: path.kind,
+					path: path.path,
+					reason: 'limit'
+				}
+			};
+		}
+
+		eligible = eligible.filter((profile) =>
+			canGrantPath(profile.policy, path, mode)
+		);
+
+		if (eligible.length === 0) {
+			return {
+				ok: false,
+				detail: {
+					kind: 'path',
+					access: path.kind,
+					path: path.path,
+					reason: 'profile'
+				}
+			};
+		}
+	}
+
+	for (const { isSatisfiedBy, detail } of capabilityChecks(requirements)) {
+		eligible = eligible.filter((profile) => isSatisfiedBy(profile));
+
+		if (eligible.length === 0) {
+			return { ok: false, detail: { kind: 'capability', ...detail } };
+		}
+	}
+
+	const [selected] = eligible.toSorted(compareProfiles);
+
+	return selected === undefined
+		? { ok: false, detail: { kind: 'policy', reason: 'profile' } }
+		: { ok: true, profile: selected };
+}

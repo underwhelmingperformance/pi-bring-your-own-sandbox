@@ -264,6 +264,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
 				path.join(consumer, 'consumer.ts'),
 				[
 					"export { createSandboxClient } from 'pi-bring-your-own-sandbox/consumer';",
+					"export type { DestinationDescription, EscalationDestination, ReviewUnavailableReason, SandboxErrorInfo, SandboxNegotiation, SandboxRequirements } from 'pi-bring-your-own-sandbox/consumer';",
 					"export { initialiseSandboxHost } from 'pi-bring-your-own-sandbox/host';",
 					"export { registerSandboxProvider } from 'pi-bring-your-own-sandbox/provider';",
 					"export { default as sandboxTools } from 'pi-bring-your-own-sandbox/pi-tools';",

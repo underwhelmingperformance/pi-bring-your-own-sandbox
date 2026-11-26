@@ -217,7 +217,7 @@ export interface SandboxWriteOptions extends SandboxOperationOptions {
 Requirements checked against the selected, shared backend. Requirements do
 not select another provider or reconfigure an existing backend.
 */
-type SandboxRequirements = ProfileRequirements;
+export type SandboxRequirements = ProfileRequirements;
 
 export interface SandboxAcquireOptions
 	extends SandboxOperationOptions, SandboxRequirements {}

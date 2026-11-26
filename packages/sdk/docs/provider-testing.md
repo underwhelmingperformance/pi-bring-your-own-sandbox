@@ -50,37 +50,56 @@ capability lacks cases. Run each case against an isolated fixture. Use
 independent observations of target effects, live files, processes and provider
 resources. A backend's own declaration cannot prove enforcement.
 
+## Default configured policy
+
+Omit the policy and check the SDK defaults for live checkout writes, host user
+data, host system files, network and escalation. Use a provider that supports
+all defaults and another that cannot supply a default setting. Check that the
+broker narrows only the unsupported access and never exceeds the SDK default.
+Verify that ordinary Pi tools and SDK consumers negotiate from the same
+configured policy.
+
 ## Paired access cases
 
-For each access property, use the same configured policy and otherwise identical
-options. Negotiate and exercise omitted, `needed`, `prevented` and `preferred`
-through the broker. Run the cases for ordinary opens and copies. Copy cases use
-a broker-resolved source. If two requests succeed, assert that only the related
-property differs. When that change is impossible, assert typed preflight failure
-and zero allocations. Deny each needed property in configured policy and check
-the same rejection. For omission, assert that the broker chooses the most
-restrictive setting that the provider supports within the configured policy. For
-a preference, supply a profile that grants access and one that denies it. When
-the configured policy allows both, assert that the broker grants access. Repeat
-with only the denying profile, and with a configured policy that denies the
-preference. Both cases must succeed with the property denied.
+For each access property, use the same configured policy and other request
+fields. Negotiate omitted, `needed` and `prevented` states through the broker,
+for ordinary opens and copies. Check that omission and a satisfied need use the
+least restrictive eligible value. A need beyond the limit and a restriction that
+the provider cannot enforce fail before allocation. Compare granted access at
+the target for requests that differ in one property.
 
 | Case family           | `prevented`                                                                                                                                                                    | `needed`                                                                                                |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
 | `hostWorkspaceWrites` | Attempt checkout writes through shell and file operations, including an alias. Inspect the checkout independently and check that contents and directory entries are unchanged. | Edit a file and verify the live checkout changed. Verify that a copy cannot satisfy the need.           |
 | `network`             | Try to connect to a reachable fixture endpoint. Assert connection failure and no received request.                                                                             | Connect and assert the endpoint receives the request.                                                   |
-| `hostUserData`        | Attempt to read and write fixture user data outside the checkout, including a credential marker and a path alias. Assert failure, no leaked bytes and no host changes.         | Read a user-data marker. Assert a write is denied if the profile permits only reads.                    |
+| `hostUserData`        | Attempt to read and write fixture user data outside the checkout, including a credential marker and a path alias. Assert failure, no leaked bytes and no host changes.         | Read a user-data marker. Verify that the result matches the configured policy and provider support.     |
 | `hostSystemFiles`     | Attempt to read and write a host system fixture and its aliases. Assert failure while provider-owned runtime files remain usable.                                              | Run an installed host tool or read a host system fixture. Check that the result originates on the host. |
 
 Fixtures that cannot expose the allowed side of a property still test the denial
 and the controlled failure case. Use a broker fixture with both profiles to test
 the paired selection rule independently of the provider.
 
+## Path grants
+
+Supply separate read and write markers and report where the granted paths appear
+in the target. For an ordinary grant, verify a reachable path under the
+configured policy. Try an unreachable path and a path beyond the limit. Assert a
+typed error with the path and no backend allocation. Include a home-relative and
+a workspace-relative path. Verify that a copy can require its own paths without
+gaining host write access.
+
+For escalation, generate cases from the declared extra path grant kinds. Check
+additional read and write grants separately and verify the reported target paths
+with independent target and host observations. Assert that unlisted paths remain
+inaccessible and that an undeclared kind cannot be granted by that provider
+profile. Include a grant of one host user file under a policy that denies the
+rest of the home directory.
+
 ## Broker and lifecycle cases
 
 | Case family              | Operation and assertion                                                                                                                                                                                                                                                                                |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Profile ordering         | Vary declaration order and check that hard requirements filter profiles first. Give one profile more preferences and another the first preference in the fixed order. Assert that the higher count wins. Use an equal count to check the property tie-break.                                           |
+| Profile ordering         | Vary declaration order. Check hard requirements first. Compare omitted and needed settings within the configured policy and exercise the fixed property order when profiles differ on multiple properties.                                                                                             |
 | Post-start profile check | Return a backend with a weaker policy, wrong workspace relationship, missing operation, weaker exit status or weaker termination scope. Assert failure before a consumer receives a handle, with disposal and recovery on failure.                                                                     |
 | Copies                   | Put different markers in the checkout and the source destination. Negotiate a copy, assert no allocation, then open it and inspect which marker was copied. If the provider allows local writes, mutate the copy. Close the copy and verify that the source and any sibling copy are unaffected.       |
 | Cancellation             | Cancel opening or a running workload by caller abort, deadline and shutdown. Observe processes independently. Assert termination within the declared scope and typed completion. Test a child that leaves its group when the scope covers the workload.                                                |

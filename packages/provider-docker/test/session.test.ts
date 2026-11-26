@@ -49,6 +49,7 @@ import { firstCopyProfile } from '../../../test-support/provider-profiles.js';
 import { ScriptedModel } from '../../../test-support/scripted-model.js';
 import { createDockerProvider } from '../src/provider.js';
 
+import { expectVisibleReplacement } from './checkout-visibility.js';
 import {
 	cancellationRequest,
 	DockerFixture,
@@ -339,14 +340,14 @@ exit 1`
 
 						await writeFile(replacement, 'replacement');
 						await rename(replacement, path.join(fixture.workspace, '.envrc'));
-						await expect
-							.poll(
-								({ signal }) => sandbox.files.readFile('.envrc', { signal }),
-								{
-									timeout: 1000
-								}
-							)
-							.toStrictEqual(new TextEncoder().encode('replacement'));
+
+						const replacedAt = performance.now();
+
+						await expectVisibleReplacement(
+							() => sandbox.files.readFile('.envrc'),
+							new TextEncoder().encode('replacement'),
+							replacedAt
+						);
 						expect(
 							await review.sandbox.files.readFile('created.txt')
 						).toStrictEqual(new TextEncoder().encode('agent'));

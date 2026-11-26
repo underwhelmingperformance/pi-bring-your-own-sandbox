@@ -9,10 +9,10 @@ Pi's shell, file and search tools through the sandbox facade.
 
 ## Tool routing
 
-Pi's `bash`, `user_bash`, file and search tools use ordinary acquisition. They
-set `network`, `hostWorkspaceWrites`, `hostUserData` and `hostSystemFiles` to
-`preferred` and use the [shared negotiation rule][negotiation]. A configured
-read-only checkout stays read-only, and acquisition succeeds.
+Pi's `bash`, `user_bash`, file and search tools omit the access record for
+ordinary acquisition. They use the [shared negotiation rule][negotiation] and
+receive the configured policy within the provider's support. A read-only
+checkout remains available for reads.
 
 The integration preserves Pi's selected tools, explicit allowlists and tool
 modifiers. Pi owns input validation, tool permission hooks, rendering and output
@@ -37,29 +37,25 @@ local MCP servers.
 [spec]: specification.md#execution-and-capabilities
 [outer]: outer-runtime.md
 
-## Model descriptions and outside execution
+## Escalation and model descriptions
 
-<!--
-`bash_outside`, `outsideApproval`, `outsideDestinations` and `violations`
-are provisional in milestone 1.
--->
+<!-- `escalate`, `allowEscalation` and `violations` are provisional. -->
 
-The integration describes the effective restrictions of each destination to the
-model, using a description generated from the negotiated policy. Providers that
-support `violations` can attach structured policy violations to results. BYOS
-renders these separately from command output.
+A `bash` call can request extra access with `escalate` and a justification. For
+example, it can request network access and permission to read one configuration
+file. The provider's `allowEscalation` setting controls whether this request is
+available. The [escalation rules][escalation] define how the broker selects a
+destination. If no provider profile grants the request, the proposed destination
+is the host, with no effective restrictions.
 
-The separate `bash_outside` tool takes an `access` record and a justification.
-Set `outsideDestinations` and `outsideApproval` in the provider's settings file.
-The provider can expose its own outside profiles or allow passthrough
-explicitly. When a permission extension decides the call, add a rule for that
-tool. A rule for `bash` does not approve it. The default confirmation identifies
-the provider by its label and shows the negotiated destination and exact command
-before dispatch. See the [destination rules][destinations] and [tool
-arguments][api].
+The confirmation identifies the provider by its label and shows the command,
+justification, requested access and paths, destination and restrictions. A
+permission extension can record its decision for that pending call. The
+integration then uses the recorded verdict. The model sees effective
+restrictions from the policy and path grants. Provider `violations` appear
+separately from command output.
 
-[destinations]: specification.md#destinations-and-permission
-[api]: api-protocol.md#outside-tool-and-review
+[escalation]: specification.md#escalation
 
 ## Permission review
 
@@ -68,7 +64,9 @@ hooks. BYOS records the pending call at the earlier event. A permission
 extension uses `/review` to request the source for that tool call ID. The review
 route supplies an identity and the reviewer's broker resolves it. The resulting
 source describes the destination and lets the reviewer negotiate or create a
-copy. The original workload remains pending.
+copy. The original workload remains pending. For an escalation, the source also
+describes the chosen destination and effective restrictions so a permission
+extension can decide the call before dispatch.
 
 The pi-permission-auto-review extension can show investigation only when copy
 negotiation succeeds. An unavailable route includes a typed reason. The
@@ -76,6 +74,16 @@ extension must inspect copy cleanup and report unconfirmed disposal. See the
 [review contract][review] for isolation and lifetime.
 
 [review]: specification.md#copies-and-review
+
+## Session ledger
+
+<!-- `/byos log` is provisional. -->
+
+Use `/byos log` to inspect escalation decisions, review copies and reported
+violations for the current Pi session. Pass a tool call ID to filter the
+[ledger][ledger].
+
+[ledger]: specification.md#ledger
 
 ## Extension load order
 

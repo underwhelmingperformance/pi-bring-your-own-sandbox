@@ -467,7 +467,11 @@ runtime, such as OS binaries in `/bin` or `/usr/bin`, machine configuration in
 ### Host user data
 
 Host files outside the checkout and outside the host system files. This includes
-user data in system-managed directories.
+user data in system-managed directories. Readable policies exclude [credential
+locations][credential-locations] unless an approved escalation specifies the
+path.
+
+[credential-locations]: specification.md#credential-locations
 
 ### Ledger
 

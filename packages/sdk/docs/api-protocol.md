@@ -161,6 +161,12 @@ same identifier.
 | `hostUserData`                   | `denied`, `read-only`, `read-write`         | `denied`    | At least `read-only`           |
 | `hostSystemFiles`                | `denied`, `read-only`, `read-write`         | `denied`    | At least `read-only`           |
 
+For host user data outside the checkout, both readable values exclude the
+[credential locations][credentials]. An escalation must specify a credential
+path to grant access to that path in the provider.
+
+[credentials]: specification.md#credential-locations
+
 The specification defines [profile ranking and path checks][access]. Through
 `pathGrantKinds`, a profile can declare support for extra read and write paths
 during escalation. An omitted or empty list provides no extra kinds.
@@ -342,7 +348,7 @@ The SDK's default `policy` has these values.
 {
   hostWorkspaceWrites: true,
   network: false,
-  hostUserData: 'denied',
+  hostUserData: 'read-only',
   hostSystemFiles: 'read-only'
 }
 ```

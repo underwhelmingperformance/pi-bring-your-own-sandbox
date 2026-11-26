@@ -59,6 +59,21 @@ broker narrows only the unsupported access and never exceeds the SDK default.
 Verify that ordinary Pi tools and SDK consumers negotiate from the same
 configured policy.
 
+## Credential exclusions
+
+For every profile that permits host user data reads, create one case per
+[credential location][credentials]. Use a disposable host home with synthetic
+markers outside the checkout. Verify that the profile permits reads of ordinary
+user data and denies reads of each credential marker. A read-write profile must
+also deny writes to each credential marker. Check for unchanged markers and for
+access through path aliases. Keep the fixture independent of real credentials.
+
+Check that an ordinary path request for each marker fails before allocation. A
+property-only escalation keeps the exclusion in the provider. Exercise a
+separate decision for an escalation that grants a credential path.
+
+[credentials]: specification.md#credential-locations
+
 ## Paired access cases
 
 For each access property, use the same configured policy and other request

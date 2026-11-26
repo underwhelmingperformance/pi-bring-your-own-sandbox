@@ -44,10 +44,14 @@ workspace nor the policy. Settings take effect on reload.
 
 <!-- `allowEscalation` is provisional. -->
 
-When the user supplies no policy, the SDK default permits live checkout writes
-and reads of host system files. It denies network access and reads and writes of
-host user data. It enables `allowEscalation` by default. Passthrough stays
-unrestricted when no provider is selected.
+When the user supplies no policy, the SDK permits live checkout writes and reads
+of host system files. It permits reads of host user data except [credential
+locations][credentials]. This allows tools installed in the user's home
+directory to run. The default denies network access and writes to host user
+data. It enables `allowEscalation`. A session with no selected provider uses
+unrestricted passthrough.
+
+[credentials]: #credential-locations
 
 A provider can narrow a default access setting only when it has no eligible
 ordinary profile that can supply the default settings together. The broker ranks
@@ -144,6 +148,50 @@ shell. The backend still must prevent reads and writes to host user data. The
 copy can expose files from the source workspace. The provider decides whether
 the copy accepts writes. Any changes stay in the copy.
 
+### Credential locations
+
+For host user data outside the checkout, `read-only` permits reads except at
+credential locations. `read-write` permits reads and writes with the same
+exclusion. `denied` prevents access to all host user data. A profile that
+permits reads or writes must enforce every applicable exclusion. Docker provides
+`denied` because its backend does not mount the home directory.
+
+Providers can import the list from `/provider`. Each exclusion applies to the
+listed path and its descendants. The broker evaluates each resolved grant path.
+The workspace contract still applies inside the checkout.
+
+| Location                                      | Reason                                                               |
+| --------------------------------------------- | -------------------------------------------------------------------- |
+| `~/.ssh`                                      | SSH private keys and connection configuration.                       |
+| `~/.aws`                                      | AWS credential files and cached sessions.                            |
+| `~/.gnupg`                                    | GnuPG private keys and trust data.                                   |
+| `~/.netrc`                                    | Credentials for network services.                                    |
+| `~/.git-credentials`                          | Credentials saved by Git.                                            |
+| `~/.config/gh`                                | GitHub CLI authentication.                                           |
+| `~/.docker/config.json`                       | Docker registry authentication settings.                             |
+| `~/.kube`                                     | Kubernetes client credentials and contexts.                          |
+| `~/.config/gcloud`                            | Google Cloud credentials and cached sessions.                        |
+| `~/.azure`                                    | Azure CLI credentials and cached sessions.                           |
+| `~/.pypirc`                                   | Authentication for Python package indexes.                           |
+| `~/.password-store`                           | Password store entries.                                              |
+| `~/Library/Keychains`                         | User keychains on macOS.                                             |
+| `~/.local/share/keyrings`                     | Desktop keyring files on Linux.                                      |
+| `~/Library/Application Support/Google/Chrome` | Chrome logins, cookies and sessions on macOS.                        |
+| `~/Library/Application Support/Firefox`       | Firefox logins, cookies and sessions on macOS.                       |
+| `~/Library/Safari`                            | Safari profile data on macOS.                                        |
+| `~/Library/Cookies`                           | Browser cookies on macOS.                                            |
+| `~/.mozilla`                                  | Mozilla profile data, including Firefox logins and cookies on Linux. |
+| `~/.config/google-chrome`                     | Chrome logins, cookies and sessions on Linux.                        |
+| `~/.config/chromium`                          | Chromium logins, cookies and sessions on Linux.                      |
+
+The [Chromium profile guide][chromium-profiles] and [Firefox profile
+guide][firefox-profiles] describe the standard locations on Linux and macOS.
+
+[chromium-profiles]:
+  https://chromium.googlesource.com/chromium/src/+/HEAD/docs/user_data_dir.md
+[firefox-profiles]:
+  https://support.mozilla.org/en-US/kb/profiles-where-firefox-stores-user-data
+
 ### Path grants
 
 The `paths` part of the access record lists paths that the consumer needs to
@@ -163,6 +211,13 @@ paths. The provider enforces the grant and reports where the path appears in the
 target. The caller uses that location to reach the granted file. For example, a
 command can read one host configuration file without access to the rest of the
 user's home directory.
+
+A grant to a credential location outside the checkout requires an escalation
+that lists the path, and a decision for that call. An escalation of the
+`hostUserData` property alone keeps the provider's credential exclusion. If no
+provider profile can satisfy the request, the confirmation describes the
+unrestricted host destination. An approval for that destination permits
+execution with no effective restrictions.
 
 ## Execution and capabilities
 

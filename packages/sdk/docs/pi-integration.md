@@ -64,6 +64,12 @@ integration then uses the recorded verdict. The model sees effective
 restrictions from the policy and path grants. Provider `violations` appear
 separately from command output.
 
+The system prompt and `/byos status` describe the effective host user-data
+policy. A readable policy excludes [credential locations][credentials]. An
+escalation must request a specific credential path to grant that access in the
+provider.
+
+[credentials]: specification.md#credential-locations
 [escalation]: specification.md#escalation
 
 ## Permission review

@@ -25,6 +25,7 @@ import type {
 	SandboxCopyOptions,
 	SandboxCopySource,
 	SandboxErrorInfo,
+	SandboxNegotiation,
 	SandboxOpenContext,
 	SandboxOperation,
 	SandboxOperationContext,
@@ -79,7 +80,6 @@ import type {
 	ProviderSelection,
 	ProviderServiceV1,
 	SandboxBackendStatus,
-	SandboxNegotiation,
 	SandboxStatus
 } from './protocol.js';
 import type { ProtocolIdentity } from './protocol-envelope.js';

@@ -1,7 +1,7 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { spawn } from 'node:child_process';
 
-import { SandboxTransportError } from 'pi-bring-your-own-sandbox/api';
+import { SandboxTransportError } from 'pi-bring-your-own-sandbox/provider';
 
 import type {
 	DockerClient,

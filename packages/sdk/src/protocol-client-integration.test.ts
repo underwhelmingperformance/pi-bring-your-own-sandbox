@@ -2,17 +2,19 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { SessionManager } from '@earendil-works/pi-coding-agent';
 import { expect, it } from 'vitest';
 
-import * as sdk from './api.js';
+import { createSandboxClient } from './client.js';
+import * as consumer from './consumer.js';
+import * as host from './embedding-host.js';
 import {
-	createSandboxClient,
-	initialiseSandboxHost,
 	InvalidSandboxRequestError,
 	SandboxInitialisationError
-} from './api.js';
+} from './errors.js';
 import { imageProvider } from './fixtures/image-provider.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { initialiseSandboxHost } from './host.js';
 import { registerShellOnlyTools } from './pi-tools.js';
 import { protocolAddress } from './protocol-address.js';
+import * as provider from './provider.js';
 
 it('rejects acquisition during factory loading and client creation after loading', async () => {
 	let api: ExtensionAPI | undefined;
@@ -91,7 +93,9 @@ const factoryArguments = new Map<string, readonly unknown[]>([
 ]);
 
 const factoryExports = Object.entries<unknown>({
-	...sdk,
+	...consumer,
+	...host,
+	...provider,
 	registerShellOnlyTools
 }).filter(
 	([name, value]) =>

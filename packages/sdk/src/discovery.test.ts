@@ -2,12 +2,11 @@ import { SessionManager } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 import { expect, it, vi } from 'vitest';
 
+import { discoverBroker, discoverProviders } from './discovery.js';
 import {
 	InvalidSandboxConfigError,
-	InvalidSandboxDeclarationError,
-	registerSandboxProvider
-} from './api.js';
-import { discoverBroker, discoverProviders } from './discovery.js';
+	InvalidSandboxDeclarationError
+} from './errors.js';
 import { rehydrateSandboxError } from './errors.js';
 import { imageProvider } from './fixtures/image-provider.js';
 import { fixtureEvents } from './fixtures/protocol-peer.js';
@@ -21,6 +20,7 @@ import {
 	PROVIDER_CHANNEL,
 	RUNTIME_CHANNEL
 } from './protocol-envelope.js';
+import { registerSandboxProvider } from './provider-registration.js';
 import { discoverRuntimeServices } from './runtime-services.js';
 import { checker, nonEmptyStringSchema } from './schemas.js';
 

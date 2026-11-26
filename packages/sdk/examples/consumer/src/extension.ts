@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
-import { createSandboxClient } from 'pi-bring-your-own-sandbox/api';
+import { createSandboxClient } from 'pi-bring-your-own-sandbox/consumer';
 
 import { inspectWorkspace } from './workspace.js';
 

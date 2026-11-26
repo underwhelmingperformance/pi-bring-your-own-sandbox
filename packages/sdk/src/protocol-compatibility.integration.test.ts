@@ -13,13 +13,14 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { InlineExtension } from '@earendil-works/pi-coding-agent';
 import { expect, it } from 'vitest';
 
-import type * as api from './api.js';
+import type * as consumer from './consumer.js';
 import type { SandboxAcquireOptions, SandboxHost } from './contracts.js';
 import type * as discovery from './discovery.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
 import type * as build from './protocol-build.js';
+import type * as provider from './provider.js';
 import { isRecord } from './validation.js';
 
 const sdk = fileURLToPath(new URL('../', import.meta.url));
@@ -93,15 +94,19 @@ async function loadBuild(
 
 	buildModule.writeProtocolBuild();
 
-	const sdkApi = (await import(
-		pathToFileURL(path.join(distribution, 'api.js')).href
-	)) as typeof api;
+	const consumers = (await import(
+		pathToFileURL(path.join(distribution, 'consumer.js')).href
+	)) as typeof consumer;
+	const providers = (await import(
+		pathToFileURL(path.join(distribution, 'provider.js')).href
+	)) as typeof provider;
 	const internals = (await import(
 		pathToFileURL(path.join(distribution, 'discovery.js')).href
 	)) as typeof discovery;
 
 	return {
-		api: sdkApi,
+		consumers,
+		providers,
 		discovery: internals,
 		name,
 		featureLevel,
@@ -134,10 +139,13 @@ it.each([
 			const extensions: InlineExtension[] = [old, current].map((sdkCopy) => ({
 				name: sdkCopy.name,
 				factory(pi: SandboxHost) {
-					const client = sdkCopy.api.createSandboxClient(pi, sdkCopy.name);
+					const client = sdkCopy.consumers.createSandboxClient(
+						pi,
+						sdkCopy.name
+					);
 
 					if (sdkCopy === provider) {
-						sdkCopy.api.registerSandboxProvider(pi, sdkCopy.name, {
+						sdkCopy.providers.registerSandboxProvider(pi, sdkCopy.name, {
 							id: 'fixture',
 
 							label: 'Fixture',
@@ -267,7 +275,7 @@ it('reports both compiled builds when their protocol majors disagree', async () 
 			identities.map((sdkCopy) => ({
 				name: sdkCopy.name,
 				factory(pi) {
-					sdkCopy.api.createSandboxClient(pi, sdkCopy.name);
+					sdkCopy.consumers.createSandboxClient(pi, sdkCopy.name);
 				}
 			})),
 			(_runtime, errors) => {
@@ -301,10 +309,13 @@ it('changes the build ID when the code changes within one schema and package rel
 
 		expect(first.buildId).toBe(second.buildId);
 
-		const apiFile = path.join(root, second.name, 'dist/api.js');
-		const source = await readFile(apiFile, 'utf8');
+		const consumerFile = path.join(root, second.name, 'dist/consumer.js');
+		const source = await readFile(consumerFile, 'utf8');
 
-		await writeFile(apiFile, source + '\nexport const fixtureChange = true;\n');
+		await writeFile(
+			consumerFile,
+			source + '\nexport const fixtureChange = true;\n'
+		);
 
 		const location = path.join(root, second.name, 'dist/protocol-build.js');
 		const writer = (await import(pathToFileURL(location).href)) as typeof build;

@@ -25,8 +25,16 @@ import type {
 	ProcessResult,
 	SandboxClient,
 	SandboxContext
-} from 'pi-bring-your-own-sandbox/api';
-import * as sdk from 'pi-bring-your-own-sandbox/api';
+} from 'pi-bring-your-own-sandbox/consumer';
+import {
+	createSandboxClient,
+	isSandboxError
+} from 'pi-bring-your-own-sandbox/consumer';
+import {
+	closeSandboxSession,
+	registerSandboxDiagnostics
+} from 'pi-bring-your-own-sandbox/host';
+import { SandboxOperationError } from 'pi-bring-your-own-sandbox/provider';
 
 import * as peer from '../provider/provider.js';
 
@@ -48,23 +56,28 @@ function isConsumer(value: unknown): value is Consumer {
 }
 
 const root = process.cwd();
-const apiUrl = import.meta.resolve('pi-bring-your-own-sandbox/api');
+const providerUrl = import.meta.resolve('pi-bring-your-own-sandbox/provider');
 const sdkRoot = path.join(root, 'node_modules/pi-bring-your-own-sandbox');
 
 assert.notEqual(
-	await realpath(fileURLToPath(apiUrl)),
-	await realpath(fileURLToPath(peer.apiUrl))
+	await realpath(fileURLToPath(providerUrl)),
+	await realpath(fileURLToPath(peer.providerUrl))
 );
-assert.notEqual(sdk.SandboxOperationError, peer.sdk.SandboxOperationError);
+assert.notEqual(SandboxOperationError, peer.SandboxOperationError);
 assert.equal(
-	sdk.isSandboxError(
-		new peer.sdk.SandboxOperationError({ operation: 'exec' }),
-		sdk.SandboxOperationError
+	isSandboxError(
+		new peer.SandboxOperationError({ operation: 'exec' }),
+		SandboxOperationError
 	),
 	true
 );
 
 const testRunner = 'vitest';
+const formerEntry = 'pi-bring-your-own-sandbox/api';
+
+await assert.rejects(import(formerEntry), {
+	code: 'ERR_PACKAGE_PATH_NOT_EXPORTED'
+});
 
 await assert.rejects(import(testRunner), { code: 'ERR_MODULE_NOT_FOUND' });
 await assert.rejects(import('pi-bring-your-own-sandbox/testing'), {
@@ -161,11 +174,11 @@ const create: CreateAgentSessionRuntimeFactory = async (options) => {
 				{
 					name: 'capture',
 					factory(pi) {
-						sdk.registerSandboxDiagnostics(pi, import.meta.filename);
+						registerSandboxDiagnostics(pi, import.meta.filename);
 						live.pi = pi;
 						live.clients = [
-							sdk.createSandboxClient(pi, import.meta.filename),
-							peer.sdk.createSandboxClient(pi, import.meta.filename)
+							createSandboxClient(pi, import.meta.filename),
+							peer.createSandboxClient(pi, import.meta.filename)
 						];
 						pi.on('session_start', (_event, context) => {
 							live.context = context;
@@ -265,7 +278,7 @@ try {
 		}))
 	);
 
-	assert.deepEqual(await sdk.closeSandboxSession(live.pi, live.context), {
+	assert.deepEqual(await closeSandboxSession(live.pi, live.context), {
 		confirmed: true,
 		failures: [],
 		recoveries: []

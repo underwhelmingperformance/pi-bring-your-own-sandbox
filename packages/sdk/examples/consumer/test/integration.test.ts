@@ -7,7 +7,7 @@ import type {
 import type {
 	ProcessRequest,
 	SandboxProvider
-} from 'pi-bring-your-own-sandbox/api';
+} from 'pi-bring-your-own-sandbox/provider';
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { FixtureConfig } from '../../../src/fixtures/config.js';

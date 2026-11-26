@@ -65,8 +65,8 @@ redesign is complete.
 - The SDK routes Pi's file tools through the facade, so file tools and `bash`
   always use the same workspace. MXC's own file tools are retired.
 - Entry points are split by audience: `/consumer`, `/provider`, `/host`,
-  `/review`, `/pi-tools` and `/testing`. The Docker provider moves to
-  `packages/provider-docker`.
+  `/pi-tools` and `/testing`. Review and escalation use the consumer client. The
+  Docker provider moves to `packages/provider-docker`.
 - Providers ship presets as extension entry points with their own defaults in
   shared settings. Remove the user-written guard and the guard package.
 - The SDK provides a provider kit: argv encoding over a POSIX shell, a process

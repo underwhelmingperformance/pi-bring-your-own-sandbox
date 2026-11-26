@@ -10,6 +10,7 @@ import type {
 	SandboxCopySource,
 	SandboxDiagnosticRecord,
 	SandboxErrorInfo,
+	SandboxNegotiation,
 	SandboxOpenContext,
 	SandboxOpenRequest,
 	SandboxPolicy,
@@ -211,15 +212,6 @@ export interface SandboxBackendStatus {
 	*/
 	readonly backendId?: string;
 }
-
-/**
-Result of negotiating acquisition requirements without provisioning: the
-policy that a matching acquisition would open, or the typed error that it
-would throw.
-*/
-export type SandboxNegotiation =
-	| { readonly ok: true; readonly profile: Profile }
-	| { readonly ok: false; readonly error: SandboxErrorInfo };
 
 /**
 Provider metadata safe to enumerate without provisioning resources or

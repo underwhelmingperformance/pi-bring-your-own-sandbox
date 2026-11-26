@@ -1,6 +1,6 @@
 import { expect, expectTypeOf, it } from 'vitest';
 
-import type { SandboxErrorInfo } from './api.js';
+import type { SandboxErrorInfo } from './contracts.js';
 import {
 	ConflictingSandboxConfigError,
 	ConflictingSandboxProviderError,
@@ -30,7 +30,7 @@ import {
 	UnconfirmedSandboxTerminationError,
 	UnsupportedSandboxCapabilityError,
 	UnsupportedSandboxPolicyError
-} from './api.js';
+} from './errors.js';
 import { rehydrateSandboxError } from './errors.js';
 
 it('requires typed context for each concrete error', () => {

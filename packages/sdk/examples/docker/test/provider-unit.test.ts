@@ -6,18 +6,20 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
+import {
+	closeSandboxSession,
+	initialiseSandboxHost,
+	registerSandboxDiagnostics
+} from 'pi-bring-your-own-sandbox/host';
 import type {
 	BackendProcessContext,
 	SandboxOpenRequest,
 	SandboxOperationContext
-} from 'pi-bring-your-own-sandbox/api';
+} from 'pi-bring-your-own-sandbox/provider';
 import {
-	closeSandboxSession,
-	initialiseSandboxHost,
-	registerSandboxDiagnostics,
 	SandboxTransportError,
 	UnsupportedSandboxPolicyError
-} from 'pi-bring-your-own-sandbox/api';
+} from 'pi-bring-your-own-sandbox/provider';
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { FakeClock } from '../../../src/fixtures/clock.js';

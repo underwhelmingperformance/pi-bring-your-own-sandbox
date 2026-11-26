@@ -3,12 +3,12 @@ import { readFile as readSettingsFile } from 'node:fs/promises';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { getAgentDir } from '@earendil-works/pi-coding-agent';
 
-import { InvalidSandboxConfigError } from '../api.js';
 import type {
 	ProcessRequest,
 	SandboxBackend,
 	SandboxCapabilities
 } from '../contracts.js';
+import { InvalidSandboxConfigError } from '../errors.js';
 import { registerUserShell } from '../user-shell.js';
 import { isRecord } from '../validation.js';
 

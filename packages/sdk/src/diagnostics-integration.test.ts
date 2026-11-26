@@ -6,8 +6,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { afterEach, expect, it, vi } from 'vitest';
 
-import { registerSandboxProvider } from './api.js';
-import { closeSandboxSession } from './api.js';
+import { closeSandboxSession } from './client.js';
 import { registerSandboxDiagnostics as sandboxExtension } from './diagnostic-registration.js';
 import { discoverBroker } from './discovery.js';
 import type { SandboxLedgerEntry } from './escalation-ledger.js';
@@ -18,6 +17,7 @@ import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
 import sandboxTools from './pi-tools.js';
+import { registerSandboxProvider } from './provider-registration.js';
 import { isRecord } from './validation.js';
 
 afterEach(() => {

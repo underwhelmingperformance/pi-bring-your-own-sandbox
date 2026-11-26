@@ -22,15 +22,15 @@ import type {
 	ExtensionContext,
 	InlineExtension
 } from '@earendil-works/pi-coding-agent';
+import type { Sandbox, SandboxCopy } from 'pi-bring-your-own-sandbox/consumer';
+import { createSandboxClient } from 'pi-bring-your-own-sandbox/consumer';
+import { closeSandboxSession } from 'pi-bring-your-own-sandbox/host';
 import type {
-	Sandbox,
 	SandboxBackend,
-	SandboxCopy,
 	SandboxHost,
 	SandboxPolicy
-} from 'pi-bring-your-own-sandbox/api';
-import * as sandboxClient from 'pi-bring-your-own-sandbox/api';
-import { closeSandboxSession } from 'pi-bring-your-own-sandbox/api';
+} from 'pi-bring-your-own-sandbox/provider';
+import { StaleSandboxHandleError } from 'pi-bring-your-own-sandbox/provider';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { copyHostWorkspace } from '../../../src/client.js';
@@ -639,8 +639,7 @@ socket.on('error', error => {
 				isEscalated: false,
 				contents: 'checkout edit',
 				prefixChanged: true,
-				text: new sandboxClient.StaleSandboxHandleError({ operation: 'exec' })
-					.message,
+				text: new StaleSandboxHandleError({ operation: 'exec' }).message,
 				blocked: false
 			},
 			{
@@ -733,10 +732,7 @@ socket.on('error', error => {
 						{
 							name: 'fake-approver',
 							factory(pi) {
-								const client = sandboxClient.createSandboxClient(
-									pi,
-									import.meta.filename
-								);
+								const client = createSandboxClient(pi, import.meta.filename);
 
 								pi.on('tool_call', async (event, context) => {
 									const result = client.findShellReviewSource(context, event);

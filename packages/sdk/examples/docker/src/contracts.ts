@@ -4,7 +4,7 @@ import type {
 	ProcessOutput,
 	RecoveryDescriptor,
 	SandboxOperationContext
-} from 'pi-bring-your-own-sandbox/api';
+} from 'pi-bring-your-own-sandbox/provider';
 
 /**
 Local Docker daemon and CLI used by the reference provider.

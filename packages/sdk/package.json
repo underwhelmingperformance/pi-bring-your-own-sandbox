@@ -8,9 +8,17 @@
 		"node": ">=24"
 	},
 	"exports": {
-		"./api": {
-			"types": "./src/api.ts",
-			"import": "./src/api.ts"
+		"./consumer": {
+			"types": "./src/consumer.ts",
+			"import": "./src/consumer.ts"
+		},
+		"./provider": {
+			"types": "./src/provider.ts",
+			"import": "./src/provider.ts"
+		},
+		"./host": {
+			"types": "./src/embedding-host.ts",
+			"import": "./src/embedding-host.ts"
 		},
 		"./pi-tools": {
 			"types": "./src/pi-tools.ts",
@@ -50,9 +58,17 @@
 	"license": "MIT",
 	"publishConfig": {
 		"exports": {
-			"./api": {
-				"types": "./dist/api.d.ts",
-				"import": "./dist/api.js"
+			"./consumer": {
+				"types": "./dist/consumer.d.ts",
+				"import": "./dist/consumer.js"
+			},
+			"./provider": {
+				"types": "./dist/provider.d.ts",
+				"import": "./dist/provider.js"
+			},
+			"./host": {
+				"types": "./dist/embedding-host.d.ts",
+				"import": "./dist/embedding-host.js"
 			},
 			"./pi-tools": {
 				"types": "./dist/pi-tools.d.ts",

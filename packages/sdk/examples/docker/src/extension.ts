@@ -1,10 +1,10 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
-import type { SandboxSharedSettings } from 'pi-bring-your-own-sandbox/api';
+import type { SandboxSharedSettings } from 'pi-bring-your-own-sandbox/provider';
 import {
 	cleanDisplayText,
 	registerSandboxProvider,
 	sendDisplayMessage
-} from 'pi-bring-your-own-sandbox/api';
+} from 'pi-bring-your-own-sandbox/provider';
 
 import { resolveDockerConfig } from './config.js';
 import type { DockerConfig } from './contracts.js';

@@ -16,7 +16,7 @@ import type {
 	SandboxOpenRequest,
 	SandboxOperationContext,
 	SandboxProvider
-} from 'pi-bring-your-own-sandbox/api';
+} from 'pi-bring-your-own-sandbox/provider';
 import {
 	isSandboxError,
 	SandboxCancelledError,
@@ -29,7 +29,7 @@ import {
 	StaleSandboxHandleError,
 	UnsupportedSandboxCapabilityError,
 	UnsupportedSandboxPolicyError
-} from 'pi-bring-your-own-sandbox/api';
+} from 'pi-bring-your-own-sandbox/provider';
 
 import { NodeDockerClient } from './client.js';
 import { dockerConfig } from './config.js';

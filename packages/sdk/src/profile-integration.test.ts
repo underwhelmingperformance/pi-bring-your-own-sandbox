@@ -5,18 +5,14 @@ import path from 'node:path';
 import { SessionManager } from '@earendil-works/pi-coding-agent';
 import { expect, it } from 'vitest';
 
-import {
-	createSandboxClient,
-	isSandboxError,
-	registerSandboxProvider,
-	UnsupportedSandboxPolicyError
-} from './api.js';
 import { verifyGrantedPaths } from './backend-validation.js';
+import { createSandboxClient } from './client.js';
 import type {
 	SandboxBackend,
 	SandboxClient,
 	SandboxContext
 } from './contracts.js';
+import { isSandboxError, UnsupportedSandboxPolicyError } from './errors.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { shellBackend } from './fixtures/shell-backend.js';
@@ -24,6 +20,7 @@ import { SandboxGeneration } from './generation.js';
 import { OperationScope } from './lifecycle.js';
 import type { Profile } from './policy-model.js';
 import { defaultPolicy } from './policy-model.js';
+import { registerSandboxProvider } from './provider-registration.js';
 
 const source = '<inline:policy-provider>';
 const consumer = '<inline:policy-consumer>';

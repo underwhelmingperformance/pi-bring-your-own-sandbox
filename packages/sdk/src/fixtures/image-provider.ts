@@ -1,4 +1,4 @@
-import type { SandboxProvider } from '../api.js';
+import type { SandboxProvider } from '../contracts.js';
 
 import { fixtureProfile, fixtureProfiles } from './profile-fixture.js';
 

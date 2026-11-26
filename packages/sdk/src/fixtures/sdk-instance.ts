@@ -1,25 +1,10 @@
 import { createJiti } from 'jiti';
 
-import type {
-	closeSandboxSession,
-	createSandboxClient,
-	initialiseSandboxHost,
-	isSandboxError,
-	registerSandboxProvider,
-	SandboxCancelledError,
-	SandboxOperationError
-} from '../api.js';
 import { isRecord } from '../validation.js';
 
-export interface FixtureApi {
-	readonly createSandboxClient: typeof createSandboxClient;
-	readonly closeSandboxSession: typeof closeSandboxSession;
-	readonly registerSandboxProvider: typeof registerSandboxProvider;
-	readonly SandboxCancelledError: typeof SandboxCancelledError;
-	readonly initialiseSandboxHost: typeof initialiseSandboxHost;
-	readonly isSandboxError: typeof isSandboxError;
-	readonly SandboxOperationError: typeof SandboxOperationError;
-}
+import type * as api from './sdk-instance-exports.js';
+
+export type FixtureApi = typeof api;
 
 function isFixtureApi(value: unknown): value is FixtureApi {
 	return (
@@ -34,17 +19,13 @@ function isFixtureApi(value: unknown): value is FixtureApi {
 	);
 }
 
-export function loadIsolatedModule(entry: 'api' | 'service'): Promise<unknown> {
+export async function loadSdkInstance(): Promise<FixtureApi> {
 	const loader = createJiti(import.meta.url, {
 		moduleCache: false,
 		tryNative: false
 	});
 
-	return loader.import(`../${entry}.ts`);
-}
-
-export async function loadSdkInstance(): Promise<FixtureApi> {
-	const module = await loadIsolatedModule('api');
+	const module = await loader.import('./sdk-instance-exports.ts');
 
 	if (!isFixtureApi(module)) {
 		throw new TypeError(

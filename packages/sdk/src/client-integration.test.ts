@@ -8,13 +8,10 @@ import type {
 import { createReadTool } from '@earendil-works/pi-coding-agent';
 import { afterEach, expect, it, vi } from 'vitest';
 
-import type { SandboxContext, SandboxHost } from './api.js';
-import {
-	closeSandboxSession,
-	registerSandboxProvider,
-	SandboxStartupError
-} from './api.js';
+import { closeSandboxSession } from './client.js';
+import type { SandboxContext, SandboxHost } from './contracts.js';
 import { discoverBroker } from './discovery.js';
+import { SandboxStartupError } from './errors.js';
 import { createSandbox } from './facade.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
 import { getSandbox, negotiateSandbox } from './fixtures/fixture-client.js';
@@ -25,6 +22,7 @@ import { ScriptedModel } from './fixtures/scripted-model.js';
 import { loadSdkInstance } from './fixtures/sdk-instance.js';
 import { probePassthrough } from './passthrough.js';
 import { bindProtocolAddress } from './protocol-address.js';
+import { registerSandboxProvider } from './provider-registration.js';
 import { ensureBroker } from './service.js';
 
 afterEach(() => {

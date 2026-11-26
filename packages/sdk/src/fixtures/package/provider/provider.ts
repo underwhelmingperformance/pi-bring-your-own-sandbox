@@ -4,12 +4,14 @@ import type {
 	ProcessRequest,
 	SandboxHost,
 	SandboxProvider
-} from 'pi-bring-your-own-sandbox/api';
-import * as sdk from 'pi-bring-your-own-sandbox/api';
+} from 'pi-bring-your-own-sandbox/provider';
+import { registerSandboxProvider } from 'pi-bring-your-own-sandbox/provider';
 
-export * as sdk from 'pi-bring-your-own-sandbox/api';
+export { createSandboxClient } from 'pi-bring-your-own-sandbox/consumer';
+export { SandboxOperationError } from 'pi-bring-your-own-sandbox/provider';
 
-export const apiUrl = import.meta.resolve('pi-bring-your-own-sandbox/api');
+export const providerUrl = import.meta
+	.resolve('pi-bring-your-own-sandbox/provider');
 interface ProviderState {
 	sample: string;
 	opens: number;
@@ -136,5 +138,5 @@ export const provider: SandboxProvider<undefined> = {
 };
 
 export default function register(pi: SandboxHost): void {
-	sdk.registerSandboxProvider(pi, import.meta.filename, provider);
+	registerSandboxProvider(pi, import.meta.filename, provider);
 }

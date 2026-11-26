@@ -4,7 +4,7 @@ import { constants } from 'node:fs';
 import { open, readdir } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { GrepMatch } from 'pi-bring-your-own-sandbox/api';
+import type { GrepMatch } from 'pi-bring-your-own-sandbox/provider';
 
 const [operation, encoded, maximum] = process.argv.slice(1);
 const options = new URLSearchParams(encoded);

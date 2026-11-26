@@ -3,8 +3,8 @@ import { realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
-import type { SandboxConfigContext } from 'pi-bring-your-own-sandbox/api';
-import { InvalidSandboxConfigError } from 'pi-bring-your-own-sandbox/api';
+import type { SandboxConfigContext } from 'pi-bring-your-own-sandbox/provider';
+import { InvalidSandboxConfigError } from 'pi-bring-your-own-sandbox/provider';
 import { Compile } from 'typebox/compile';
 
 import type { DockerConfig } from './contracts.js';

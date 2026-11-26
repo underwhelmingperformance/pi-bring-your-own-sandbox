@@ -5,7 +5,7 @@ import type {
 	FindRequest,
 	GrepRequest,
 	SandboxOperationContext
-} from 'pi-bring-your-own-sandbox/api';
+} from 'pi-bring-your-own-sandbox/provider';
 import {
 	SandboxCancelledError,
 	SandboxCleanupError,
@@ -14,7 +14,7 @@ import {
 	SandboxPermissionDeniedError,
 	SandboxSessionClosingError,
 	SandboxTransportError
-} from 'pi-bring-your-own-sandbox/api';
+} from 'pi-bring-your-own-sandbox/provider';
 import { Type } from 'typebox';
 import { Compile } from 'typebox/compile';
 

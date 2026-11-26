@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { findPackageJSON } from 'node:module';
 import path from 'node:path';
 
-import { SandboxTransportError } from 'pi-bring-your-own-sandbox/api';
+import { SandboxTransportError } from 'pi-bring-your-own-sandbox/provider';
 
 export async function readDockerMatcher() {
 	try {

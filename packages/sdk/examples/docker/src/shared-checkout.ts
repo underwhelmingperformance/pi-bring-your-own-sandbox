@@ -7,8 +7,8 @@ import { promisify } from 'node:util';
 import type {
 	SandboxOperation,
 	SandboxOperationContext
-} from 'pi-bring-your-own-sandbox/api';
-import { UnsupportedSandboxPolicyError } from 'pi-bring-your-own-sandbox/api';
+} from 'pi-bring-your-own-sandbox/provider';
+import { UnsupportedSandboxPolicyError } from 'pi-bring-your-own-sandbox/provider';
 
 import type { DockerClient } from './contracts.js';
 import { findHostExecutable } from './host-executable.js';

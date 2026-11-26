@@ -10,11 +10,11 @@ import type {
 	SandboxHost,
 	SandboxProvider,
 	SandboxProviderRegistration
-} from './api.js';
-import { registerSandboxProvider } from './api.js';
+} from './contracts.js';
 import { connectionProvider } from './fixtures/connection-provider.js';
 import { inspectWorkspace } from './fixtures/consumer.js';
 import { imageProvider } from './fixtures/image-provider.js';
+import { registerSandboxProvider } from './provider-registration.js';
 
 interface ImageConfig {
 	readonly image: string;

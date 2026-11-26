@@ -4,13 +4,13 @@ import type {
 	ProcessOutput,
 	RecoveryDescriptor,
 	SandboxErrorInfo
-} from 'pi-bring-your-own-sandbox/api';
+} from 'pi-bring-your-own-sandbox/provider';
 import {
 	SandboxOperationError,
 	SandboxPathNotFoundError,
 	SandboxPermissionDeniedError,
 	SandboxTransportError
-} from 'pi-bring-your-own-sandbox/api';
+} from 'pi-bring-your-own-sandbox/provider';
 import { Compile } from 'typebox/compile';
 
 import { launchFrameSchema } from './schemas.js';

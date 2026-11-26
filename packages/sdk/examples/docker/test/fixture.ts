@@ -18,7 +18,7 @@ import type {
 	SandboxBackend,
 	SandboxOperationContext,
 	SandboxPolicy
-} from 'pi-bring-your-own-sandbox/api';
+} from 'pi-bring-your-own-sandbox/provider';
 import type { SandboxProviderTestFixture } from 'pi-bring-your-own-sandbox/testing';
 import { expect } from 'vitest';
 

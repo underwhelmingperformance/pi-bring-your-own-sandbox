@@ -5,14 +5,14 @@ import type {
 	BackendProcessOutcome,
 	RecoveryDescriptor,
 	SandboxOperationContext
-} from 'pi-bring-your-own-sandbox/api';
+} from 'pi-bring-your-own-sandbox/provider';
 import {
 	isSandboxError,
 	SandboxCancelledError,
 	SandboxCleanupError,
 	SandboxOperationError,
 	SandboxTransportError
-} from 'pi-bring-your-own-sandbox/api';
+} from 'pi-bring-your-own-sandbox/provider';
 import { Compile } from 'typebox/compile';
 
 import type {

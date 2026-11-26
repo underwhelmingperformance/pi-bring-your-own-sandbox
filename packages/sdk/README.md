@@ -23,14 +23,14 @@ example][consumer] shows how to pass Pi's live context and cancellation signal
 and run an argv request.
 
 The provider extension calls `/pi-tools` from its factory to route Pi's Bash,
-user shell, file and search tools to the same workspace. The [Pi integration
-guide][pi] describes how provider authors enable the integration.
+PowerShell and user-shell operations to the selected workspace. The [Pi
+integration guide][pi] describes how provider authors enable the integration.
 
 Provider authors use `/provider` and run the [conformance suite][testing] from
 `/testing`. The [Docker example][docker] shows provider setup. Embedding hosts
-use `/host` to manage the session. Permission extensions use `/review` for
-pending calls and escalation decisions. Providers can ship separate entry points
-with stricter default policies.
+use `/host` to manage the session. Permission extensions use the consumer client
+to review pending calls and record escalation decisions. Providers can ship
+separate entry points with stricter default policies.
 
 [consumer]: examples/consumer/README.md
 [pi]: docs/pi-integration.md

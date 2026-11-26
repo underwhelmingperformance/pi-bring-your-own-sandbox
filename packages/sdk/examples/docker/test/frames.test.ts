@@ -1,4 +1,4 @@
-import type { ProcessOutput } from 'pi-bring-your-own-sandbox/api';
+import type { ProcessOutput } from 'pi-bring-your-own-sandbox/provider';
 import { expect, it } from 'vitest';
 
 import { LaunchFrames } from '../src/frames.js';

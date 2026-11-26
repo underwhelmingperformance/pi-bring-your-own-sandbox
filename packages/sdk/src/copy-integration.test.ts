@@ -8,7 +8,6 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { afterEach, expect, it, vi } from 'vitest';
 
-import { registerSandboxProvider } from './api.js';
 import { createSandboxClient } from './client.js';
 import type {
 	SandboxBackend,
@@ -36,6 +35,7 @@ import { MemoryBackend } from './fixtures/memory-backend.js';
 import type { FixturePolicyChoices } from './fixtures/profile-fixture.js';
 import { fixtureProfile, fixtureProfiles } from './fixtures/profile-fixture.js';
 import { brokerReply, respond } from './fixtures/protocol-peer.js';
+import { registerSandboxProvider } from './provider-registration.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();

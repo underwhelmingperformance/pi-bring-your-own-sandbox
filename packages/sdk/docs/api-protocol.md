@@ -9,19 +9,16 @@ implementation reaches this design.
 
 ## Public entry points
 
-| Entry point | Operations and types                                                                        |
-| ----------- | ------------------------------------------------------------------------------------------- |
-| `/consumer` | `createSandboxClient`, `SandboxClient`, `Sandbox`, requirements and structural error checks |
-| `/provider` | `registerSandboxProvider`, provider declarations, backend operations and provider kit       |
-| `/host`     | `initialiseSandboxHost`, `closeSandboxSession`, host options and diagnostic registration    |
-| `/review`   | Review and escalation types for the bound client                                            |
-| `/pi-tools` | Pi tool integration factory                                                                 |
-| `/testing`  | Provider conformance runner, fixtures and probe interfaces                                  |
+| Entry point | Operations and types                                                                          |
+| ----------- | --------------------------------------------------------------------------------------------- |
+| `/consumer` | `createSandboxClient`, sandbox handles, requirements, error checks, review and escalation     |
+| `/provider` | `registerSandboxProvider`, provider and backend contracts, errors and display helpers         |
+| `/host`     | `initialiseSandboxHost`, `closeSandboxSession`, host options and `registerSandboxDiagnostics` |
+| `/pi-tools` | Pi shell integration factory and `registerShellOnlyTools`                                     |
+| `/testing`  | `defineSandboxProviderTests` and `SandboxProviderTestFixture`                                 |
 
 The package prefix is `pi-bring-your-own-sandbox`. Wire schemas, channel
 constants, broker objects and identity constructors are internal.
-
-<!-- The client and factory signatures are provisional. -->
 
 ```typescript
 createSandboxClient(pi: SandboxHost, extensionSource: string): SandboxClient;
@@ -37,6 +34,11 @@ interface SandboxClient {
     context: SandboxContext,
     call: ReviewedToolCall
   ): ShellReviewLookup;
+  recordEscalationDecision(
+    context: SandboxContext,
+    request: EscalationRequest,
+    decision: EscalationDecision
+  ): void;
 }
 
 registerSandboxProvider<Config, Input = Config>(

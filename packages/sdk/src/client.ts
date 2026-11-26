@@ -10,7 +10,8 @@ import type {
 	SandboxCopy,
 	SandboxCopyOptions,
 	SandboxErrorInfo,
-	SandboxHost
+	SandboxHost,
+	SandboxNegotiation
 } from './contracts.js';
 import { bindFactory, ensureSandboxService } from './default-broker.js';
 import {
@@ -18,7 +19,6 @@ import {
 	rehydrateSandboxError,
 	SandboxInitialisationError
 } from './errors.js';
-import type { SandboxNegotiation } from './protocol.js';
 import { isPiBound, protocolAddress } from './protocol-address.js';
 import {
 	findShellReviewSource,

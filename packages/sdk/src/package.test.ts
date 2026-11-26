@@ -274,7 +274,13 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 					.toSorted((left, right) => left.localeCompare(right))
 			).toStrictEqual(paths);
 
-			for (const subpath of ['api', 'pi-tools', 'testing']) {
+			for (const subpath of [
+				'consumer',
+				'host',
+				'pi-tools',
+				'provider',
+				'testing'
+			]) {
 				expect(paths).toContain(`dist/${subpath}.js`);
 				expect(paths).toContain(`dist/${subpath}.d.ts`);
 				expect(paths).toContain(`src/${subpath}.ts`);
@@ -347,10 +353,15 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 				optional: { vitest: { optional: true } },
 				pi: undefined,
 				exports: Object.fromEntries(
-					['api', 'pi-tools', 'testing'].map((entry) => [
-						`./${entry}`,
-						{ types: `./dist/${entry}.d.ts`, import: `./dist/${entry}.js` }
-					])
+					['consumer', 'host', 'pi-tools', 'provider', 'testing'].map(
+						(entry) => [
+							`./${entry}`,
+							{
+								types: `./dist/${entry === 'host' ? 'embedding-host' : entry}.d.ts`,
+								import: `./dist/${entry === 'host' ? 'embedding-host' : entry}.js`
+							}
+						]
+					)
 				)
 			});
 
@@ -469,15 +480,29 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
 			await writeFile(
 				path.join(consumer, 'consumer.ts'),
 				[
-					"export { createSandboxClient } from 'pi-bring-your-own-sandbox/api';",
+					"export { createSandboxClient } from 'pi-bring-your-own-sandbox/consumer';",
+					"export { initialiseSandboxHost } from 'pi-bring-your-own-sandbox/host';",
+					"export { registerSandboxProvider } from 'pi-bring-your-own-sandbox/provider';",
 					"export { default as sandboxTools } from 'pi-bring-your-own-sandbox/pi-tools';",
 					"export { defineSandboxProviderTests } from 'pi-bring-your-own-sandbox/testing';"
 				].join('\n')
 			);
 
 			const source = await realpath(installed);
-			const entrypoints = ['api', 'pi-tools', 'testing']
-				.map((entry) => path.join(source, 'src', `${entry}.ts`))
+			const entrypoints = [
+				'consumer',
+				'host',
+				'pi-tools',
+				'provider',
+				'testing'
+			]
+				.map((entry) =>
+					path.join(
+						source,
+						'src',
+						`${entry === 'host' ? 'embedding-host' : entry}.ts`
+					)
+				)
 				.toSorted((left, right) => left.localeCompare(right));
 			const checked = await run(consumer, 'pnpm', [
 				'exec',

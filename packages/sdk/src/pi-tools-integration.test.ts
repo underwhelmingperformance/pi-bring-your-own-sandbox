@@ -15,12 +15,8 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { afterEach, expect, it, vi } from 'vitest';
 
-import {
-	registerSandboxProvider,
-	SandboxCancelledError,
-	SandboxTransportError
-} from './api.js';
 import type { SandboxBackend } from './contracts.js';
+import { SandboxCancelledError, SandboxTransportError } from './errors.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfile, fixtureProfiles } from './fixtures/profile-fixture.js';
 import { ScriptedModel } from './fixtures/scripted-model.js';
@@ -28,6 +24,7 @@ import { shellBackend } from './fixtures/shell-backend.js';
 import { createShellOperations } from './pi-shell-operations.js';
 import sandboxTools, { registerShellOnlyTools } from './pi-tools.js';
 import { unrestrictedPolicy } from './policy-model.js';
+import { registerSandboxProvider } from './provider-registration.js';
 import { profileCapabilities } from './validation.js';
 import { isRecord } from './validation.js';
 

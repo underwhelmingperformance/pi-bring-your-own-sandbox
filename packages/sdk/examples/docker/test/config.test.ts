@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import type { SandboxDiagnostic } from 'pi-bring-your-own-sandbox/api';
+import type { SandboxDiagnostic } from 'pi-bring-your-own-sandbox/host';
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { dockerConfig, resolveDockerConfig } from '../src/config.js';

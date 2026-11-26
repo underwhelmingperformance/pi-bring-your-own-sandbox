@@ -8,8 +8,6 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { afterEach, expect, it, vi } from 'vitest';
 
-import { initialiseSandboxHost } from './api.js';
-import { registerSandboxProvider } from './api.js';
 import { createSandboxClient } from './client.js';
 import type {
 	SandboxConfigContext,
@@ -26,6 +24,8 @@ import {
 import { getSandbox } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
+import { initialiseSandboxHost } from './host.js';
+import { registerSandboxProvider } from './provider-registration.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();

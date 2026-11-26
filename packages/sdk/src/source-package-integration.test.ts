@@ -26,9 +26,12 @@ it('loads the workspace source package and consumer through Pi', async () => {
 
 		expect(manifest['exports']).toStrictEqual(
 			Object.fromEntries(
-				['api', 'pi-tools', 'testing'].map((entry) => [
+				['consumer', 'host', 'pi-tools', 'provider', 'testing'].map((entry) => [
 					`./${entry}`,
-					{ types: `./src/${entry}.ts`, import: `./src/${entry}.ts` }
+					{
+						types: `./src/${entry === 'host' ? 'embedding-host' : entry}.ts`,
+						import: `./src/${entry === 'host' ? 'embedding-host' : entry}.ts`
+					}
 				])
 			)
 		);

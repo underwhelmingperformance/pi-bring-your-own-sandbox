@@ -2,7 +2,7 @@ import type {
 	ProcessResult,
 	SandboxClient,
 	SandboxContext
-} from 'pi-bring-your-own-sandbox/api';
+} from 'pi-bring-your-own-sandbox/consumer';
 
 /**
 Runs the selected target's `pwd` executable to inspect its working directory.

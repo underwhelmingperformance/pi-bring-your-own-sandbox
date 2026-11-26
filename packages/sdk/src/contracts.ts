@@ -230,6 +230,15 @@ export interface SandboxAcquireOptions
 	extends SandboxOperationOptions, SandboxRequirements {}
 
 /**
+Result of negotiating acquisition requirements without provisioning: the
+policy that a matching acquisition would open, or the typed error that it
+would throw.
+*/
+export type SandboxNegotiation =
+	| { readonly ok: true; readonly profile: Profile }
+	| { readonly ok: false; readonly error: SandboxErrorInfo };
+
+/**
 Broker-supplied operation identity, composed cancellation and remaining
 monotonic budget. Unix-epoch deadlines are diagnostic metadata.
 */
@@ -981,7 +990,7 @@ export interface ShellReviewSource {
 	readonly escalation?: EscalationRequest;
 	readonly negotiateCopy: (
 		requirements?: SandboxRequirements
-	) => Promise<import('./protocol.js').SandboxNegotiation>;
+	) => Promise<SandboxNegotiation>;
 	/**
 	Open a private copy of the destination. The copy is checked against the
 	options in the caller's SDK, and a copy that fails the check is closed.
@@ -1385,7 +1394,7 @@ export interface SandboxClient {
 	readonly negotiate: (
 		context: SandboxContext,
 		options?: SandboxAcquireOptions
-	) => Promise<import('./protocol.js').SandboxNegotiation>;
+	) => Promise<SandboxNegotiation>;
 	readonly hasShellReviewRoute: () => boolean;
 	readonly findShellReviewSource: (
 		context: SandboxContext,

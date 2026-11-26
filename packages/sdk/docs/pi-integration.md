@@ -5,7 +5,7 @@ provider activates the sandbox and loads the Pi tool integration.
 
 In the provider extension factory, call the default export from `/pi-tools` with
 the Pi extension API and the provider's module filename. The integration routes
-Pi's shell, file and search tools through the sandbox facade.
+Pi's Bash, PowerShell and user-shell operations through the sandbox facade.
 
 ## Tool routing
 
@@ -70,12 +70,13 @@ separately from command output.
 
 Pi awaits `tool_execution_start` before running the `tool_call` permission
 hooks. BYOS records the pending call at the earlier event. A permission
-extension uses `/review` to request the source for that tool call ID. The review
-route supplies an identity and the reviewer's broker resolves it. The resulting
-source describes the destination and lets the reviewer negotiate or create a
-copy. The original workload remains pending. For an escalation, the source also
-describes the chosen destination and effective restrictions so a permission
-extension can decide the call before dispatch.
+extension calls `findShellReviewSource` on a `/consumer` client with the tool
+call ID. The review route supplies an identity and the reviewer's broker
+resolves it. The resulting source describes the destination and lets the
+reviewer negotiate or create a copy. The original workload remains pending. For
+an escalation, the source also describes the chosen destination and effective
+restrictions. A permission extension calls `recordEscalationDecision` on the
+same client to decide the call before dispatch.
 
 The pi-permission-auto-review extension can show investigation only when copy
 negotiation succeeds. An unavailable route includes a typed reason. The

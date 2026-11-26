@@ -60,7 +60,9 @@ export const capabilitySchema = Type.Enum([
 	'copy'
 ]);
 export const processKindSchema = Type.Enum(['argv', 'shell']);
-export const exitStatusSchema = Type.Enum(['guaranteed', 'optional']);
+
+const exitStatusSchema = Type.Enum(['guaranteed', 'optional']);
+
 export const terminationScopeSchema = Type.Enum([
 	'none',
 	'process-group',
@@ -113,7 +115,7 @@ export const accessSchema = Type.Enum([
 	'host-system-files'
 ]);
 
-export const protectedPathSchema = Type.Refine(
+const protectedPathSchema = Type.Refine(
 	targetPathSchema,
 	(value) =>
 		!value.includes('\\') &&

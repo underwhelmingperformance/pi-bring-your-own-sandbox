@@ -1,8 +1,9 @@
 import { Type } from 'typebox';
 import { expect, it } from 'vitest';
 
-import { checker, denseArray } from './schemas.js';
-import { isCapabilities } from './validation.js';
+import { capabilitiesSchema, checker, denseArray } from './schemas.js';
+
+const isCapabilities = checker(capabilitiesSchema);
 
 it.each(['operations', 'shells'] as const)(
 	'rejects holes in capability %s arrays',

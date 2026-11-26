@@ -65,7 +65,7 @@ function concatenate(chunks: readonly Uint8Array[]): Uint8Array {
 	return result;
 }
 
-export function unknownCompletion(
+function unknownCompletion(
 	owner: BackendOwner,
 	scope: OperationScope,
 	cause?: unknown,

@@ -17,7 +17,7 @@ export const approvalDecisionSchema = Type.Object(
 	{ additionalProperties: false }
 );
 
-export const executionDestinationSchema = Type.Object(
+const executionDestinationSchema = Type.Object(
 	{
 		kind: Type.Enum(['normal', 'provider']),
 		id: nonEmptyStringSchema,

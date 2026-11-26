@@ -9,14 +9,23 @@
 			"entry": [
 				"src/**/*.test.ts",
 				"examples/**/*.test.ts",
-				"examples/docker/src/extension.ts",
-				"examples/consumer/src/extension.ts"
+				"src/fixtures/diagnostics-extension.ts",
+				"examples/consumer/src/index.ts!",
+				"examples/docker/src/index.ts!",
+				"examples/docker/src/shell-profile.ts!"
 			],
-			"project": ["src/**/*.ts", "examples/**/*.ts", "*.config.ts"]
+			"project": [
+				"src/**/*.ts!",
+				"examples/**/*.ts!",
+				"*.config.ts",
+				"!src/fixtures/**!",
+				"!examples/docker/build-matcher.ts!",
+				"!examples/**/test/**!"
+			]
 		},
 		"packages/guard": {
-			"entry": ["src/**/*.test.ts", "src/extension.ts"],
-			"project": ["src/**/*.ts"]
+			"entry": ["src/**/*.test.ts", "src/extension.ts!"],
+			"project": ["src/**/*.ts!"]
 		}
 	}
 }

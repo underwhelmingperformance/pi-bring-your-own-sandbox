@@ -43,7 +43,7 @@ export function policyGuarantees(
 /**
 The guarantees that the given needs rule out.
 */
-export function excludedGuarantees(
+function excludedGuarantees(
 	needs: readonly SandboxAccess[]
 ): ReadonlySet<SandboxGuarantee> {
 	return new Set(needs.map((need) => opposites[need]));

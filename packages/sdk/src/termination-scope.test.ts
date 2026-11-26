@@ -11,7 +11,9 @@ import { createSandbox } from './facade.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { observe } from './lifecycle.js';
-import { isCapabilities } from './validation.js';
+import { capabilitiesSchema, checker } from './schemas.js';
+
+const isCapabilities = checker(capabilitiesSchema);
 
 afterEach(() => {
 	vi.useRealTimers();

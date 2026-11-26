@@ -31,7 +31,8 @@ export const isDiscoveryRequest = checker(discoveryRequestSchema);
 
 const isAdvertisement = checker(advertisementSchema);
 
-export const isProviderService = checker(providerServiceSchema);
+const isProviderService = checker(providerServiceSchema);
+
 export const isBrokerService = checker(brokerServiceSchema);
 
 function collect(

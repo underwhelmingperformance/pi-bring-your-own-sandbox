@@ -1,6 +1,8 @@
+import { Value } from 'typebox/value';
 import { expect, it } from 'vitest';
 
-import { isPolicySatisfied, validateBackend } from './backend-validation.js';
+import { requiredPolicySchema } from './backend-schemas.js';
+import { validateBackend } from './backend-validation.js';
 import type { SandboxBackend, SandboxPolicy } from './contracts.js';
 import type { ProviderInfo } from './protocol.js';
 
@@ -235,10 +237,9 @@ it('accepts restrictive effective policy for a delegated dimension', () => {
 	};
 
 	expect(validateBackend(value, provider, policy)).toBe(value);
-	expect(isPolicySatisfied(value.policy, { networkAccess: 'denied' })).toBe(
-		true
-	);
-	expect(isPolicySatisfied(policy, { networkAccess: 'denied' })).toBe(false);
+	expect(
+		validateBackend(value, provider, { ...policy, networkAccess: 'denied' })
+	).toStrictEqual(value);
 });
 
 it('rejects effective policy that the provider did not advertise', () => {
@@ -308,11 +309,11 @@ it.each([
 	'checks filesystem scope %s against %s',
 	(effective, required, expected) => {
 		expect(
-			isPolicySatisfied(
-				{ ...policy, filesystemScope: effective },
-				{ filesystemScope: required }
-			)
-		).toBe(expected);
+			Value.Check(requiredPolicySchema({ filesystemScope: required }), {
+				...policy,
+				filesystemScope: effective
+			})
+		).toStrictEqual(expected);
 	}
 );
 

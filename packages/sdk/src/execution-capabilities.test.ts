@@ -8,7 +8,9 @@ import {
 import { createSandbox } from './facade.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
 import { shellBackend } from './fixtures/shell-backend.js';
-import { isCapabilities } from './validation.js';
+import { capabilitiesSchema, checker } from './schemas.js';
+
+const isCapabilities = checker(capabilitiesSchema);
 
 function fixture(exitStatus: 'guaranteed' | 'optional' = 'optional') {
 	const { backend } = shellBackend();

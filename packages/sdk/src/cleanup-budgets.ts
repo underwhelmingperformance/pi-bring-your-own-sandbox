@@ -6,13 +6,14 @@ import { checker } from './schemas.js';
 
 const budgetSchema = Type.Integer({ minimum: 1, maximum: 300_000 });
 
-export const cleanupBudgetsSchema = Type.Object(
+const cleanupBudgetsSchema = Type.Object(
 	{
 		cancellationGraceMs: budgetSchema,
 		disposalTimeoutMs: budgetSchema
 	},
 	{ additionalProperties: false }
 );
+
 export const cleanupSelectionSchema = Type.Partial(cleanupBudgetsSchema);
 export const DEFAULT_CLEANUP_BUDGETS: SandboxCleanupBudgets = Object.freeze({
 	cancellationGraceMs: 5000,

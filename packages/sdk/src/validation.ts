@@ -5,7 +5,6 @@ import type {
 } from './contracts.js';
 import type { ProviderInfo } from './protocol.js';
 import {
-	capabilitiesSchema,
 	checker,
 	nonEmptyStringSchema,
 	policySchema,
@@ -19,7 +18,6 @@ import { snapshotWorkspaceProtection } from './workspace-protection.js';
 export const isRecord = checker(recordSchema);
 export const isNonEmptyString = checker(nonEmptyStringSchema);
 export const isShell = checker(shellSchema);
-export const isCapabilities = checker(capabilitiesSchema);
 export const isPolicy = checker(policySchema);
 export const isProviderInfo = checker(providerInfoSchema);
 export const isRecovery = checker(recoverySchema);
@@ -64,7 +62,7 @@ export function snapshotProviderInfo(provider: ProviderInfo): ProviderInfo {
 	});
 }
 
-export function snapshotPolicies(
+function snapshotPolicies(
 	value: SupportedSandboxPolicies
 ): SupportedSandboxPolicies {
 	return Object.freeze({

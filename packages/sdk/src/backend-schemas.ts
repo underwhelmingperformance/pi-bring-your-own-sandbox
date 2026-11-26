@@ -29,7 +29,7 @@ import {
 	isWorkspaceProtectionSatisfied
 } from './workspace-protection.js';
 
-export function absolutePathSchema(flavor: 'posix' | 'win32') {
+function absolutePathSchema(flavor: 'posix' | 'win32') {
 	return Type.Refine(targetPathSchema, (value) =>
 		path[flavor].isAbsolute(value)
 	);
@@ -88,7 +88,7 @@ const backendShape = Type.Object({
 	search: Type.Optional(searchSchema)
 });
 
-export const backendSchema = Type.Refine(backendShape, (value) => {
+const backendSchema = Type.Refine(backendShape, (value) => {
 	const { operations, shells } = value.capabilities;
 
 	return (

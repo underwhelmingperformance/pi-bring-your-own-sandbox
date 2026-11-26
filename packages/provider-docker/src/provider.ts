@@ -295,7 +295,12 @@ class DockerBackend implements SandboxBackend {
 				identity: { uid: this.#shared.uid, gid: this.#shared.gid }
 			})
 		};
-		const guards = await this.#shared?.mounts(this.id, context, operation);
+		const guards = await this.#shared?.mounts(
+			this.id,
+			context,
+			operation,
+			this.#isWorkspaceReadOnly()
+		);
 		const frames = new LaunchFrames(context.onOutput, this.recovery, operation);
 		// A different launcher UID prevents the child from writing control frames through /proc.
 		const result = await this.#resources.job(
@@ -569,7 +574,12 @@ class DockerBackend implements SandboxBackend {
 			);
 
 			if (this.#shared) {
-				const guards = await this.#shared.mounts(this.id, context, 'open');
+				const guards = await this.#shared.mounts(
+					this.id,
+					context,
+					'open',
+					this.#isWorkspaceReadOnly()
+				);
 				const probe = await this.#resources.job(
 					[
 						'--pull=never',

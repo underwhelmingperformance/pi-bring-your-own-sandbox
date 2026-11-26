@@ -55,9 +55,15 @@ explicit copies for permission review.
 
 The example supplies shared settings through provider registration. The default
 permits live checkout writes and denies network access, host user data and host
-system files. Docker mounts the checkout's `.pi` directory read-only to protect
-Pi's project settings. Create an empty `.pi` directory if the checkout lacks
+system files. Docker mounts existing protected paths read-only. This includes
+the provider kit defaults, the checkout's `.git` directory, and Git metadata and
+hooks inside the checkout. Create an empty `.pi` directory if the checkout lacks
 one. Opening fails if Docker cannot mount the checkout with the selected policy.
+
+For a nested protected path, Docker also mounts each ancestor below the checkout
+root. An ancestor mount blocks renaming that directory. The ancestor uses the
+checkout's access mode, so a writable checkout still permits edits to
+unprotected siblings.
 
 Milestone 5 adds `escalate` for Bash, the `allowEscalation` setting and the
 `/byos log` command for inspecting decisions.

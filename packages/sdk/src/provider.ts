@@ -56,6 +56,10 @@ export {
 	UnsupportedSandboxPolicyError
 } from './errors.js';
 export { mapSandboxErrno } from './host-error.js';
+export {
+	defaultProtectedWorkspacePaths,
+	isProtectedWorkspacePath
+} from './protected-workspace-paths.js';
 export { createSandboxCleanupContext } from './provider-cleanup.js';
 export { resolveSandboxCopySource } from './provider-copy.js';
 export { registerSandboxProvider } from './provider-registration.js';

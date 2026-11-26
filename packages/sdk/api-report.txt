@@ -89,6 +89,8 @@ value UnsupportedSandboxPolicyError (errors.d.ts)
 value cleanDisplayText (display-text.d.ts)
 value createSandboxCleanupContext (provider-cleanup.d.ts)
 value credentialLocations (credential-locations.d.ts)
+value defaultProtectedWorkspacePaths (protected-workspace-paths.d.ts)
+value isProtectedWorkspacePath (protected-workspace-paths.d.ts)
 value isSandboxError (errors.d.ts)
 value mapSandboxErrno (host-error.d.ts)
 value registerSandboxProvider (provider-registration.d.ts)
@@ -1333,6 +1335,16 @@ export interface ProfileRequirements {
     readonly exitStatus?: 'guaranteed';
     readonly terminationScope?: Profile['terminationScope'];
 }
+
+// protected-workspace-paths.d.ts
+declare const defaultProtectedWorkspacePaths: readonly string[];
+
+// protected-workspace-paths.d.ts
+export declare function isProtectedWorkspacePath(filename: string, options?: {
+    readonly paths?: readonly string[];
+    readonly pathFlavor?: 'posix' | 'win32';
+    readonly includesParents?: boolean;
+}): boolean;
 
 // provider-cleanup.d.ts
 export declare function createSandboxCleanupContext(context: Pick<SandboxOperationContext, 'reportDiagnostic' | 'operationId'> & Partial<Pick<SandboxOperationContext, 'cleanup' | 'cleanupBudgets'>>, operationId?: string, monotonicNow?: () => number): SandboxOperationContext;

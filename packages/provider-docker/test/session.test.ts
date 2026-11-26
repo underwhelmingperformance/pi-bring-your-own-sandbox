@@ -76,12 +76,14 @@ async function withDockerSession(
 	run: (session: DockerSession) => Promise<void>,
 	extensions: readonly InlineExtension[] = [],
 	options: {
+		readonly hostWorkspaceWrites?: boolean;
 		readonly hostSystemFiles?: SandboxPolicy['hostSystemFiles'];
 		readonly hasGitMetadata?: boolean;
 		readonly prepareWorkspace?: (fixture: DockerFixture) => Promise<void>;
 	} = {}
 ): Promise<void> {
 	const {
+		hostWorkspaceWrites = true,
 		hostSystemFiles = 'denied',
 		hasGitMetadata,
 		prepareWorkspace
@@ -168,7 +170,7 @@ async function withDockerSession(
 					vi.stubEnv('PI_CODING_AGENT_DIR', agentDirectory);
 					settings = {
 						policy: {
-							hostWorkspaceWrites: true,
+							hostWorkspaceWrites,
 							hostUserData: 'denied',
 							hostSystemFiles,
 							network: false
@@ -379,6 +381,122 @@ exit 1`
 				{ hasGitMetadata: true }
 			);
 		});
+
+		it.each([true, false])(
+			'pins nested protected paths with workspace writes set to %s',
+			async (hostWorkspaceWrites) => {
+				await withDockerSession(
+					async ({ sandbox, fixture }) => {
+						const result = await sandbox.exec({
+							kind: 'argv',
+							executable: '/usr/local/bin/node',
+							args: [
+								'-e',
+								`
+const { renameSync, writeFileSync, unlinkSync } = require('node:fs');
+function check(action) {
+	try { action(); return 'ok'; } catch (error) { return error.code; }
+}
+process.stdout.write(JSON.stringify([
+	check(() => writeFileSync('tools/hooks/sibling.txt', 'edited')),
+	check(() => writeFileSync('tools/hooks/created.txt', 'created')),
+	check(() => unlinkSync('tools/hooks/delete.txt')),
+	check(() => writeFileSync('tools/hooks/nested/pre-commit', 'changed')),
+	check(() => renameSync('tools/hooks/nested', 'tools/hooks/moved')),
+	check(() => renameSync('tools/hooks', 'tools/moved')),
+	check(() => renameSync('tools', 'moved'))
+]));
+`
+							]
+						});
+						const siblingResult = hostWorkspaceWrites ? 'ok' : 'EROFS';
+						const renameResult = hostWorkspaceWrites ? 'EBUSY' : 'EROFS';
+
+						expect({
+							exit: result.exit,
+							stdout: new TextDecoder().decode(result.stdout),
+							stderr: new TextDecoder().decode(result.stderr)
+						}).toStrictEqual({
+							exit: { kind: 'code', code: 0 },
+							stdout: JSON.stringify([
+								siblingResult,
+								siblingResult,
+								siblingResult,
+								'EROFS',
+								renameResult,
+								renameResult,
+								renameResult
+							]),
+							stderr: ''
+						});
+
+						expect(
+							await readFile(
+								path.join(fixture.workspace, 'tools/hooks/nested/pre-commit'),
+								'utf8'
+							)
+						).toBe('fixture');
+						await expect(
+							sandbox.files.writeFile(
+								'tools/hooks/nested/pre-commit',
+								Buffer.from('worker')
+							)
+						).rejects.toMatchObject({ name: 'SandboxPermissionDeniedError' });
+
+						const workerWrite = sandbox.files.writeFile(
+							'tools/worker.txt',
+							Buffer.from('worker')
+						);
+
+						if (!hostWorkspaceWrites) {
+							await expect(workerWrite).rejects.toMatchObject({
+								name: 'SandboxPermissionDeniedError'
+							});
+
+							return;
+						}
+
+						await workerWrite;
+						expect(
+							await readFile(
+								path.join(fixture.workspace, 'tools/worker.txt'),
+								'utf8'
+							)
+						).toBe('worker');
+					},
+					[],
+					{
+						hostWorkspaceWrites,
+						hasGitMetadata: true,
+						async prepareWorkspace({ workspace }) {
+							await mkdir(path.join(workspace, 'tools/hooks/nested'), {
+								recursive: true
+							});
+							await writeFile(
+								path.join(workspace, 'tools/hooks/nested/pre-commit'),
+								'fixture'
+							);
+							await writeFile(
+								path.join(workspace, 'tools/hooks/sibling.txt'),
+								'initial'
+							);
+							await writeFile(
+								path.join(workspace, 'tools/hooks/delete.txt'),
+								'initial'
+							);
+							await promisify(execFile)('git', [
+								'-C',
+								workspace,
+								'config',
+								'core.hooksPath',
+								'tools/hooks/nested'
+							]);
+						}
+					}
+				);
+			},
+			30_000
+		);
 
 		it('takes fresh independent copies of a sandbox and the host checkout', async () => {
 			await withDockerSession(async ({ fixture, sandbox }) => {

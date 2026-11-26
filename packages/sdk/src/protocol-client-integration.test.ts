@@ -77,6 +77,7 @@ const nonFactoryFunctions = new Set([
 	'createSandboxCleanupContext',
 	'isSandboxError',
 	'mapSandboxErrno',
+	'isProtectedWorkspacePath',
 	'resolveSandboxCleanupBudgets',
 	'resolveSandboxCopySource',
 	'sendDisplayMessage'

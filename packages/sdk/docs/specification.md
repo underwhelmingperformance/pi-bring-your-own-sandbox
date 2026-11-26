@@ -148,6 +148,24 @@ shell. The backend still must prevent reads and writes to host user data. The
 copy can expose files from the source workspace. The provider decides whether
 the copy accepts writes. Any changes stay in the copy.
 
+### Protected workspace paths
+
+The provider kit exports `defaultProtectedWorkspacePaths` for providers that
+protect host configuration inside a live checkout. The list includes Git hooks
+and configuration, shell startup files, and configuration for editors, Pi and
+other host tools. Providers choose how to enforce the list and may add paths
+that host tools discover at runtime.
+
+Use `isProtectedWorkspacePath` to check workspace-relative paths. For a rename,
+check both endpoints with parent matching enabled. A rename of a parent
+directory can replace a protected path even if the parent itself has no entry in
+the list. Use the same parent check for recursive removal. Providers must
+account for filesystem aliases to protected paths.
+
+On systems that block renaming mount points, providers can mount each ancestor
+below the checkout root onto itself. An ancestor mount uses the checkout's
+access mode, and the protected path stays read-only.
+
 ### Credential locations
 
 For host user data outside the checkout, `read-only` permits reads except at

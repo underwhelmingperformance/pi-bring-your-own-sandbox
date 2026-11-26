@@ -8,7 +8,11 @@ import type {
 	SandboxOperation,
 	SandboxOperationContext
 } from 'pi-bring-your-own-sandbox/provider';
-import { UnsupportedSandboxPolicyError } from 'pi-bring-your-own-sandbox/provider';
+import {
+	defaultProtectedWorkspacePaths,
+	isProtectedWorkspacePath,
+	UnsupportedSandboxPolicyError
+} from 'pi-bring-your-own-sandbox/provider';
 
 import type { DockerClient } from './contracts.js';
 import { findHostExecutable } from './host-executable.js';
@@ -31,15 +35,13 @@ async function entry(filename: string) {
 
 const runGit = promisify(execFile);
 
-const guardPaths = [
-	'.git',
-	'.pi',
-	'.envrc',
-	'.direnv',
-	'.vscode',
-	'.idea',
-	'.devcontainer'
-];
+const guardPaths = ['.git', ...defaultProtectedWorkspacePaths];
+
+interface WorkspaceGuard {
+	readonly name: string;
+	readonly identity: readonly [string, string];
+	readonly isProtected: boolean;
+}
 
 async function hasSpecialFiles(
 	root: string,
@@ -249,7 +251,7 @@ export class SharedCheckout {
 					if (
 						relative !== '..' &&
 						!relative.startsWith('../') &&
-						!relative.startsWith('.git/')
+						!isProtectedWorkspacePath(relative, { paths: ['.git'] })
 					) {
 						paths.add(relative);
 					}
@@ -263,9 +265,17 @@ export class SharedCheckout {
 			}
 		}
 
-		const guards = [];
+		const guards: WorkspaceGuard[] = [];
 
 		for (const name of paths) {
+			if (
+				isProtectedWorkspacePath(name, {
+					paths: guards.map((guard) => guard.name)
+				})
+			) {
+				continue;
+			}
+
 			const metadata = await entry(path.join(this.root, name));
 
 			if (!metadata) {
@@ -289,8 +299,40 @@ export class SharedCheckout {
 
 			guards.push({
 				name,
-				identity: [String(metadata.dev), String(metadata.ino)]
+				identity: [String(metadata.dev), String(metadata.ino)],
+				isProtected: true
 			});
+		}
+
+		const protectedPaths = guards.map(({ name }) => name);
+		const pinned = new Set<string>();
+
+		for (const name of protectedPaths) {
+			for (
+				let parent = path.dirname(name);
+				parent !== '.';
+				parent = path.dirname(parent)
+			) {
+				if (
+					pinned.has(parent) ||
+					isProtectedWorkspacePath(parent, { paths: protectedPaths })
+				) {
+					continue;
+				}
+
+				const metadata = await entry(path.join(this.root, parent));
+
+				if (!metadata?.isDirectory() || parent.trim() !== parent) {
+					return 'An ancestor of a protected path is missing, linked or cannot be mounted by Docker.';
+				}
+
+				pinned.add(parent);
+				guards.push({
+					name: parent,
+					identity: [String(metadata.dev), String(metadata.ino)],
+					isProtected: false
+				});
+			}
 		}
 
 		const settings = await entry(path.join(this.root, '.pi', 'settings.json'));
@@ -299,13 +341,14 @@ export class SharedCheckout {
 		return (settings && (!settings.isFile() || settings.nlink !== 1n)) ||
 			(extensions && !extensions.isDirectory())
 			? 'Pi project extension registration uses a linked or nonstandard path.'
-			: guards;
+			: guards.toSorted((left, right) => left.name.length - right.name.length);
 	}
 
 	async mounts(
 		volume: string,
 		context: SandboxOperationContext,
-		operation: SandboxOperation
+		operation: SandboxOperation,
+		isWorkspaceReadOnly: boolean
 	) {
 		const guards = await this.#guards(context);
 
@@ -323,14 +366,14 @@ export class SharedCheckout {
 
 		return {
 			key: JSON.stringify(guards),
-			args: guards.flatMap(({ name }) => [
+			args: guards.flatMap(({ name, isProtected }) => [
 				'--mount',
 				mount([
 					'type=volume',
 					`source=${volume}`,
 					`target=/workspace/${name}`,
 					`volume-subpath=${name}`,
-					'readonly',
+					...(isProtected || isWorkspaceReadOnly ? ['readonly'] : []),
 					'volume-nocopy'
 				])
 			])

@@ -130,7 +130,8 @@ export class DockerFileWorker implements BackendFileReader {
 		const guards = await this.#workspace.shared?.mounts(
 			this.#resources.volume,
 			context,
-			operation
+			operation,
+			this.#workspace.readOnly
 		);
 
 		if (

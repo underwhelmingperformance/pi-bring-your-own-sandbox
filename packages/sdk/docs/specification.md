@@ -486,10 +486,12 @@ override an ignore rule. An explicit file path bypasses ignore rules and globs.
 Search skips binary files and does not follow symlinks discovered during
 traversal.
 
-Providers should supply `rg` inside the target. The portable helper uses
-descriptor-relative traversal on Linux. A target without `rg` or the
-descriptor-relative helper reports `UnsupportedSandboxCapabilityError` before
-searching.
+Providers supply `rg` inside the target for full ripgrep semantics. The portable
+helper uses descriptor-relative traversal on Linux. It reads Git metadata only
+inside the target workspace and skips ambient Git excludes and linked-worktree
+Git directories outside that workspace. It uses the RE2 regex dialect and skips
+input files larger than 16 MiB. A target without `rg` or the descriptor-relative
+helper reports `UnsupportedSandboxCapabilityError` before searching.
 
 [ripgrep]:
   https://github.com/BurntSushi/ripgrep/blob/master/GUIDE.md#automatic-filtering

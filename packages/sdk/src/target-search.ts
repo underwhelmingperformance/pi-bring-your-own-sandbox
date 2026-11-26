@@ -1,7 +1,14 @@
 import { isUtf8 } from 'node:buffer';
 import { once } from 'node:events';
 import { constants } from 'node:fs';
-import { access, lstat, open, readdir } from 'node:fs/promises';
+import {
+	access,
+	lstat,
+	open,
+	readdir,
+	readlink,
+	realpath
+} from 'node:fs/promises';
 import path from 'node:path';
 
 import type ignore from 'ignore';
@@ -12,10 +19,8 @@ declare const createIgnore: typeof ignore;
 
 const [operation, encoded, maximum, workspace] = process.argv.slice(1);
 const options = new URLSearchParams(encoded);
-const root = path.resolve(
-	workspace ?? process.cwd(),
-	options.get('path') ?? '.'
-);
+const workspaceRoot = await realpath(workspace ?? process.cwd());
+const root = path.resolve(workspaceRoot, options.get('path') ?? '.');
 const limit = Number(
 	options.get('limit') ?? (operation === 'find' ? 1000 : 100)
 );
@@ -232,6 +237,12 @@ async function isRepositoryRoot(descriptor: string): Promise<boolean> {
 	}
 }
 
+function isInWorkspace(directory: string): boolean {
+	const relative = path.relative(workspaceRoot, directory);
+
+	return relative !== '..' && !relative.startsWith('../');
+}
+
 async function repositoryExclude(descriptor: string, directory: string) {
 	try {
 		await using git = await open(
@@ -262,8 +273,11 @@ async function ignoreAt(
 	directory: string,
 	parent: IgnoreStack
 ): Promise<IgnoreStack> {
-	const isGitRoot = await isRepositoryRoot(descriptor);
-	const isInRepository = isGitRoot || parent.inRepository;
+	const isWorkspaceDirectory = isInWorkspace(await readlink(descriptor));
+	const isGitRoot =
+		isWorkspaceDirectory && (await isRepositoryRoot(descriptor));
+	const isInRepository =
+		isWorkspaceDirectory && (isGitRoot || parent.inRepository);
 	const local: IgnoreRule[] = [];
 
 	for (const { filename, priority } of ignoreNames) {
@@ -290,9 +304,10 @@ async function ignoreAt(
 		}
 	}
 
-	const inherited = isGitRoot
-		? parent.rules.filter((rule) => rule.priority < 2)
-		: parent.rules;
+	const inherited =
+		isGitRoot || !isInRepository
+			? parent.rules.filter((rule) => rule.priority < 2)
+			: parent.rules;
 
 	return {
 		inRepository: isInRepository,
@@ -306,7 +321,7 @@ async function inheritedIgnores(directory: string): Promise<IgnoreStack> {
 	const ancestors: string[] = [];
 	let current = path.dirname(directory);
 
-	while (current !== directory) {
+	while (current !== directory && isInWorkspace(current)) {
 		ancestors.unshift(current);
 
 		const parent = path.dirname(current);

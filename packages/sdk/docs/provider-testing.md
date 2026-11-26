@@ -27,6 +27,16 @@ the declared profiles:
 The suite supplies the broker and Pi session. If a probe cannot observe an
 advertised property, setup fails for the corresponding case family.
 
+## Search engines
+
+Supply `rg` inside the target for full ripgrep semantics. The portable Linux
+helper uses RE2 and skips input files larger than 16 MiB. It reads Git metadata
+inside the target workspace and skips ambient Git excludes and linked-worktree
+Git directories outside that workspace. Test the portable helper and `rg` on the
+same corpus, using the [specification][search] for expected results.
+
+[search]: specification.md#grep
+
 ## Shared settings conformance
 
 Run the provider's settings parser through its registration path. Supply a valid

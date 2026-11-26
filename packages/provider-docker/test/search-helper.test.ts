@@ -45,7 +45,8 @@ it.skipIf(process.platform !== 'linux')(
 					context: '1',
 					limit: '1'
 				}).toString(),
-				String(16 * 1024 * 1024)
+				String(16 * 1024 * 1024),
+				root
 			]);
 
 			expect(JSON.parse(stdout)).toStrictEqual({
@@ -89,7 +90,8 @@ it.skipIf(process.platform !== 'linux')(
 				'--',
 				'grep',
 				arguments_.toString(),
-				String(16 * 1024 * 1024)
+				String(16 * 1024 * 1024),
+				root
 			]);
 
 			expect(JSON.parse(stdout)).toStrictEqual({

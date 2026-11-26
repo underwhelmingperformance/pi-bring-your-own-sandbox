@@ -63,28 +63,21 @@ Enforced by:
 
 [destination]: #destination
 
-## 3. Consumers specify access requirements
+## 3. Consumers state what they require, not how to configure the sandbox
 
 A [consumer] uses an [access record] to state [needs][need],
 [restrictions][restriction] and [path grants][path grant]. It never sets
-[policy] values. An omitted property gets as much access as the [configured
-policy] and the provider allow.
-
-<!-- `allowEscalation` is provisional. -->
+[policy] values. A property that the consumer leaves out gets as much access as
+the [configured policy] and the provider allow, so a consumer without special
+requirements passes nothing.
 
 [Acquisitions][acquisition], [copies][copy] and [escalations][escalation] use
-the same access record and negotiation rule. Keep profiles that satisfy the
-request within its access limit. For ordinary requests, the limit is the
-configured policy. Choose the least restrictive settings for omitted and needed
-properties, and compare settings in the fixed property order. When
-`allowEscalation` is true, escalation uses full access as the limit and asks
-only for the listed extra access. The [specification][negotiation] defines
-profile ranking for each case.
+the same access record and the same [negotiation rule][negotiation].
 
-The configured policy records what the user allows by default. A consumer can
-require particular access or isolation without reproducing the provider's
-policy. It can also require a particular path within that policy without
-requesting access to every file in the same category.
+A consumer knows what it requires but not what each provider can do. If
+consumers set policy values, each consumer would have to understand every
+provider, and could easily receive more access than it intended to request. With
+one record and one rule, a request gets the same answer on every path.
 
 Enforced by:
 
@@ -218,7 +211,7 @@ Enforced by:
 - the build identity, major number and feature level in every advertisement and
   in `/byos status`.
 
-## 8. Fail closed and say what to fix
+## 8. Never lower isolation without a decision, and say what to fix
 
 When something cannot work, BYOS stops and reports why. An API that cannot do
 what was asked returns a reason. An ordinary operation never moves to the host

@@ -58,6 +58,9 @@ export function snapshotBackend(backend: SandboxBackend): SandboxBackend {
 			relationship: workspace.relationship,
 			description: workspace.description,
 			...(workspace.home !== undefined && { home: workspace.home }),
+			...(workspace.hostUserDataRoot !== undefined && {
+				hostUserDataRoot: workspace.hostUserDataRoot
+			}),
 			...(workspace.defaultShell !== undefined && {
 				defaultShell: workspace.defaultShell
 			})

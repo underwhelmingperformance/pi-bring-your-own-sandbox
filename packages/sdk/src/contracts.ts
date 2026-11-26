@@ -114,8 +114,7 @@ export interface SandboxCapabilities {
 export type SandboxPolicy = Policy;
 
 /**
-Target filesystem metadata. Paths use the target flavour and are not host
-paths.
+Target filesystem metadata. Paths use the target flavour.
 */
 export interface SandboxWorkspace {
 	/**
@@ -144,6 +143,12 @@ export interface SandboxWorkspace {
 	Absolute target home directory, when the provider exposes it.
 	*/
 	readonly home?: string;
+
+	/**
+	Absolute target root for ordinary files from the host home directory.
+	Required when the selected profile permits host user data reads.
+	*/
+	readonly hostUserDataRoot?: string;
 
 	/**
 	Preferred target dialect, when it is also advertised in capabilities.

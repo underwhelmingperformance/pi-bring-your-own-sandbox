@@ -454,6 +454,7 @@ export interface SandboxWorkspace {
     readonly relationship: 'shared' | 'copied';
     readonly description: string;
     readonly home?: string;
+    readonly hostUserDataRoot?: string;
     readonly defaultShell?: ShellDialect;
 }
 
@@ -917,6 +918,7 @@ declare const destinationDescriptionSchema: Type.TObject<{
             pathFlavor: Type.TLiteral<"posix" | "win32">;
             root: Type.TRefine<Type.TString>;
             home: Type.TOptional<Type.TRefine<Type.TString>>;
+            hostUserDataRoot: Type.TOptional<Type.TRefine<Type.TString>>;
             description: Type.TString;
             relationship: Type.TUnion<[
                 Type.TLiteral<"shared">,
@@ -932,6 +934,7 @@ declare const destinationDescriptionSchema: Type.TObject<{
             pathFlavor: Type.TLiteral<"posix" | "win32">;
             root: Type.TRefine<Type.TString>;
             home: Type.TOptional<Type.TRefine<Type.TString>>;
+            hostUserDataRoot: Type.TOptional<Type.TRefine<Type.TString>>;
             description: Type.TString;
             relationship: Type.TUnion<[
                 Type.TLiteral<"shared">,

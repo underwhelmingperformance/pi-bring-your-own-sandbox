@@ -89,7 +89,11 @@ it.each([
 									return Promise.resolve({
 										...backend,
 										profile: request.profile,
-										workspace: { ...backend.workspace, home: targetHome },
+										workspace: {
+											...backend.workspace,
+											home: targetHome,
+											hostUserDataRoot: home
+										},
 										grantedPaths: (request.paths?.read ?? []).map((grant) => ({
 											kind: 'read' as const,
 											hostPath: grant,

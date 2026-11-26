@@ -89,6 +89,7 @@ markers outside the checkout. Verify that the profile permits reads of ordinary
 user data and denies reads of each credential marker. A read-write profile must
 also deny writes to each credential marker. Check for unchanged markers and for
 access through path aliases. Keep the fixture independent of real credentials.
+The suite locates the markers under `workspace.hostUserDataRoot`.
 
 Check that an ordinary path request for each marker fails before allocation. A
 property-only escalation keeps the exclusion in the provider. Exercise a

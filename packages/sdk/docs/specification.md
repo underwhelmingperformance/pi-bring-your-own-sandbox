@@ -338,6 +338,13 @@ in `pathGrantKinds`. The backend reports the actual mappings in `grantedPaths`.
 If the provider reports an unreachable path or a different target path, the
 broker returns a typed path error and disposes the backend.
 
+When a profile permits host user data reads, the backend reports an absolute
+target path in `workspace.hostUserDataRoot`. Ordinary files from the host home
+directory keep their home-relative paths under this root. Credential exclusions
+still apply. A native provider can report the original host home path while
+using scratch space for the target home. A provider that denies host user data
+omits the field. Docker omits it because its profiles deny host user data.
+
 The broker presents the command, justification, requested properties and paths,
 chosen destination and effective restrictions before a decision. For the host,
 the effective restrictions are `none`. A permission extension receives the same

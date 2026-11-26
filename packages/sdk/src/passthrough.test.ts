@@ -266,6 +266,7 @@ it('shares host files, preserves byte ownership and follows filesystem links', a
 			pathFlavor: 'posix',
 			relationship: 'shared',
 			home: process.env['HOME'],
+			hostUserDataRoot: process.env['HOME'],
 			defaultShell: 'bash',
 			description:
 				'The host workspace is shared. No sandbox isolation is applied.'

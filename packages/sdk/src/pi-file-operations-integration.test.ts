@@ -297,7 +297,11 @@ async function withCredentialFixture(
 
 		const backend: SandboxBackend = {
 			id: memory.id,
-			workspace: { ...memory.workspace, home: '/remote/home' },
+			workspace: {
+				...memory.workspace,
+				home: '/remote/home',
+				hostUserDataRoot: home
+			},
 			profile: { ...memory.profile, policy: defaultPolicy },
 			policyDescription: memory.policyDescription,
 			recovery: memory.recovery,

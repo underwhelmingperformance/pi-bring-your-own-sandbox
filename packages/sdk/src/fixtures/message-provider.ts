@@ -11,7 +11,8 @@ import type {
 	ProcessRequest,
 	SandboxBackend,
 	SandboxPolicy,
-	SandboxProvider
+	SandboxProvider,
+	SandboxWorkspace
 } from '../contracts.js';
 import { SandboxOperationError, SandboxTransportError } from '../errors.js';
 import { unrestrictedPolicy } from '../policy-model.js';
@@ -37,12 +38,7 @@ class MessageBackend implements SandboxBackend {
 	#closing: Promise<void> | undefined;
 	#isClosed = false;
 	readonly id = 'message-backend';
-	readonly workspace = {
-		root: '/message/project',
-		pathFlavor: 'posix',
-		relationship: 'shared',
-		description: 'Message-channel test double without OS isolation.'
-	} as const;
+	readonly workspace: SandboxWorkspace;
 	readonly capabilities = {
 		processKinds: ['argv', 'shell'],
 		terminationScope: 'workload',
@@ -56,6 +52,15 @@ class MessageBackend implements SandboxBackend {
 
 	constructor(policy: SandboxPolicy) {
 		this.policy = policy;
+		this.workspace = {
+			root: '/message/project',
+			pathFlavor: 'posix',
+			relationship: 'shared',
+			description: 'Message-channel test double without OS isolation.',
+			...(policy.hostUserData !== 'denied' && {
+				hostUserDataRoot: '/message/host-user-data'
+			})
+		};
 		this.#channel.port1.on('message', (message: unknown) => {
 			this.#receive(message);
 		});

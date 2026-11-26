@@ -91,22 +91,22 @@ export async function verifyCredentialExclusion<Config>(
 				expect(attempt).toStrictEqual({});
 
 				const sandbox = await runtime.acquire({ timeoutMs }, selection.mode);
-				const targetHome = sandbox.workspace.home;
+				const hostUserDataRoot = sandbox.workspace.hostUserDataRoot;
 
-				if (targetHome === undefined) {
+				if (hostUserDataRoot === undefined) {
 					throw new Error(
-						'The provider must specify its target home for host-data conformance.'
+						'The provider must specify where host user data appears in the target.'
 					);
 				}
 
 				const flavor = path[sandbox.workspace.pathFlavor];
-				const allowed = flavor.join(targetHome, 'ordinary.txt');
+				const allowed = flavor.join(hostUserDataRoot, 'ordinary.txt');
 				const read = await sandbox.files.readFile(allowed);
 
 				expect(Buffer.from(read).toString('utf8')).toBe('ordinary');
 
 				for (const entry of [relative, 'alias.txt']) {
-					const target = flavor.join(targetHome, entry);
+					const target = flavor.join(hostUserDataRoot, entry);
 
 					await expect(sandbox.files.readFile(target)).rejects.toSatisfy(
 						isAccessDenied

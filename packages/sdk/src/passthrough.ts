@@ -112,6 +112,7 @@ export async function openPassthrough(
 			operations
 		).methods();
 		const defaultShell = shells.keys().next().value;
+		const home = homedir();
 		const grantedPaths = (['read', 'write'] as const).flatMap((kind) =>
 			(paths?.[kind] ?? []).map((hostPath) => ({
 				kind,
@@ -126,7 +127,8 @@ export async function openPassthrough(
 				root: workspace,
 				pathFlavor: process.platform === 'win32' ? 'win32' : 'posix',
 				relationship: 'shared',
-				home: homedir(),
+				home,
+				hostUserDataRoot: home,
 				description:
 					'The host workspace is shared. No sandbox isolation is applied.',
 				...(defaultShell !== undefined && { defaultShell })

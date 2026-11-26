@@ -2,7 +2,7 @@ import { realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
-import { backendSchema } from './backend-schemas.js';
+import { backendSchema, isAbsoluteWorkspacePath } from './backend-schemas.js';
 import type {
 	SandboxBackend,
 	SandboxOperationContext,
@@ -17,8 +17,29 @@ import { profileKey } from './policy-model.js';
 import type { ProfileMode, ResolvedPath } from './profile-negotiation.js';
 import type { ProviderServiceV1 } from './protocol.js';
 import { checker } from './schemas.js';
+import { isRecord } from './validation.js';
 
 const isBackend = checker(backendSchema);
+
+function hasInvalidHostUserDataRoot(
+	workspace: Record<string, unknown>,
+	profile: Profile
+): boolean {
+	const root = workspace['hostUserDataRoot'];
+	const isMustReportRoot = profile.policy.hostUserData !== 'denied';
+
+	if (root === undefined) {
+		return isMustReportRoot;
+	}
+
+	const flavor = workspace['pathFlavor'];
+
+	return (
+		!isMustReportRoot ||
+		((flavor === 'posix' || flavor === 'win32') &&
+			!isAbsoluteWorkspacePath(root, flavor))
+	);
+}
 
 export function validateBackend(
 	value: unknown,
@@ -32,6 +53,18 @@ export function validateBackend(
 		providerId: provider.id,
 		...(extensionSource !== undefined && { extensionSource })
 	};
+
+	if (
+		isRecord(value) &&
+		isRecord(value['workspace']) &&
+		hasInvalidHostUserDataRoot(value['workspace'], required)
+	) {
+		throw new InvalidSandboxDeclarationError({
+			...identity,
+			...(typeof value['id'] === 'string' && { backendId: value['id'] }),
+			detail: { kind: 'declaration', field: 'workspace.hostUserDataRoot' }
+		});
+	}
 
 	if (!isBackend(value)) {
 		throw new InvalidSandboxDeclarationError({

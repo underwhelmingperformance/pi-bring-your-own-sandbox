@@ -62,7 +62,12 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 
 			const backend: SandboxBackend = {
 				id: memory.id,
-				workspace: memory.workspace,
+				workspace: {
+					...memory.workspace,
+					...(request.profile.policy.hostUserData !== 'denied' && {
+						hostUserDataRoot: '/remote/host-user-data'
+					})
+				},
 
 				policyDescription: memory.policyDescription,
 				recovery: memory.recovery,

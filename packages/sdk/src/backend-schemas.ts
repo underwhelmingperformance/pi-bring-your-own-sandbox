@@ -18,6 +18,7 @@ import {
 	targetPathSchema,
 	workspaceRelationshipSchema
 } from './schemas.js';
+import { checker } from './schemas.js';
 
 function absolutePathSchema(flavor: 'posix' | 'win32') {
 	return Type.Refine(targetPathSchema, (value) =>
@@ -25,11 +26,28 @@ function absolutePathSchema(flavor: 'posix' | 'win32') {
 	);
 }
 
+const absolutePaths = {
+	posix: absolutePathSchema('posix'),
+	win32: absolutePathSchema('win32')
+};
+const absolutePathChecks = {
+	posix: checker(absolutePaths.posix),
+	win32: checker(absolutePaths.win32)
+};
+
+export function isAbsoluteWorkspacePath(
+	value: unknown,
+	flavor: 'posix' | 'win32'
+): boolean {
+	return absolutePathChecks[flavor](value);
+}
+
 function workspaceShape(flavor: 'posix' | 'win32') {
 	return Type.Object({
 		pathFlavor: Type.Literal(flavor),
-		root: absolutePathSchema(flavor),
-		home: Type.Optional(absolutePathSchema(flavor)),
+		root: absolutePaths[flavor],
+		home: Type.Optional(absolutePaths[flavor]),
+		hostUserDataRoot: Type.Optional(absolutePaths[flavor]),
 		description: nonEmptyStringSchema,
 		relationship: workspaceRelationshipSchema,
 		defaultShell: Type.Optional(shellSchema)

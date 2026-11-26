@@ -3612,6 +3612,23 @@
 																}
 															]
 														},
+														"hostUserDataRoot": {
+															"minLength": 1,
+															"pattern": "^[^\\u0000]*$",
+															"type": "string",
+															"~kind": "String",
+															"~optional": true,
+															"~refine": [
+																{
+																	"check": {
+																		"implementation": "6a8106ad2b70fa65d4c212eb5812052a5e172f2ef552fdee5adea81d02864ed6"
+																	},
+																	"error": {
+																		"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+																	}
+																}
+															]
+														},
 														"pathFlavor": {
 															"const": "posix",
 															"type": "string",
@@ -3687,6 +3704,23 @@
 															"~kind": "String"
 														},
 														"home": {
+															"minLength": 1,
+															"pattern": "^[^\\u0000]*$",
+															"type": "string",
+															"~kind": "String",
+															"~optional": true,
+															"~refine": [
+																{
+																	"check": {
+																		"implementation": "6a8106ad2b70fa65d4c212eb5812052a5e172f2ef552fdee5adea81d02864ed6"
+																	},
+																	"error": {
+																		"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+																	}
+																}
+															]
+														},
+														"hostUserDataRoot": {
 															"minLength": 1,
 															"pattern": "^[^\\u0000]*$",
 															"type": "string",
@@ -7493,6 +7527,23 @@
 								}
 							]
 						},
+						"hostUserDataRoot": {
+							"minLength": 1,
+							"pattern": "^[^\\u0000]*$",
+							"type": "string",
+							"~kind": "String",
+							"~optional": true,
+							"~refine": [
+								{
+									"check": {
+										"implementation": "6a8106ad2b70fa65d4c212eb5812052a5e172f2ef552fdee5adea81d02864ed6"
+									},
+									"error": {
+										"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+									}
+								}
+							]
+						},
 						"pathFlavor": {
 							"const": "posix",
 							"type": "string",
@@ -7563,6 +7614,23 @@
 							"~kind": "String"
 						},
 						"home": {
+							"minLength": 1,
+							"pattern": "^[^\\u0000]*$",
+							"type": "string",
+							"~kind": "String",
+							"~optional": true,
+							"~refine": [
+								{
+									"check": {
+										"implementation": "6a8106ad2b70fa65d4c212eb5812052a5e172f2ef552fdee5adea81d02864ed6"
+									},
+									"error": {
+										"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+									}
+								}
+							]
+						},
+						"hostUserDataRoot": {
 							"minLength": 1,
 							"pattern": "^[^\\u0000]*$",
 							"type": "string",

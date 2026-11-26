@@ -127,6 +127,7 @@ interface SandboxWorkspace {
   readonly pathFlavor: 'posix' | 'win32';
   readonly relationship: 'shared' | 'copied';
   readonly home?: string;
+  readonly hostUserDataRoot?: string;
 }
 
 interface Profile {
@@ -150,6 +151,13 @@ operation fields `signal` and `timeoutMs`. `ShellDialect` at level 0 is
 `workload`. Profile lists contain unique entries. Capability, process-kind and
 shell arrays contain unique literals. The `shells` array is non-empty exactly
 when `processKinds` includes `shell`.
+
+The selected profile requires `workspace.hostUserDataRoot` when `hostUserData`
+is `read-only` or `read-write`. The root uses the target path flavour and must
+be absolute. A profile with denied host user data omits the field. The broker
+rejects an invalid descriptor with `InvalidSandboxDeclarationError` and
+identifies `workspace.hostUserDataRoot` in `detail.field`. Docker omits this
+field.
 
 This table is the level 0 access mapping. The property and policy field use the
 same identifier.

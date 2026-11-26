@@ -15,11 +15,13 @@ import type {
 import { isSandboxError, UnsupportedSandboxPolicyError } from './errors.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { contractScenario } from './fixtures/provider-contract.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import { SandboxGeneration } from './generation.js';
 import { OperationScope } from './lifecycle.js';
 import type { Profile } from './policy-model.js';
 import { defaultPolicy } from './policy-model.js';
+import { verifyCredentialExclusion } from './provider-credential-suite.js';
 import { registerSandboxProvider } from './provider-registration.js';
 
 const source = '<inline:policy-provider>';
@@ -39,7 +41,8 @@ async function fixture(
 		context: SandboxContext,
 		opens: readonly Profile[]
 	) => Promise<void>,
-	openBackend?: (chosen: Profile) => SandboxBackend
+	openBackend?: (chosen: Profile) => SandboxBackend,
+	selected: Profile = profile
 ): Promise<void> {
 	const opens: Profile[] = [];
 	const outcomes: string[] = [];
@@ -52,7 +55,7 @@ async function fixture(
 					registerSandboxProvider(pi, source, {
 						id: 'fixture.policy',
 						label: 'Profile fixture',
-						profiles: { open: [profile], copy: [] },
+						profiles: { open: [selected], copy: [] },
 						validateConfig: () => ({}),
 						open(request) {
 							opens.push(request.profile);
@@ -65,6 +68,7 @@ async function fixture(
 										root: '/fixture/workspace',
 										pathFlavor: 'posix' as const,
 										relationship: 'shared' as const,
+										hostUserDataRoot: '/fixture/host-user-data',
 										description: 'In-memory fixture.'
 									}
 								});
@@ -172,6 +176,7 @@ it.each(['profile', 'workspace.relationship'] as const)(
 							: chosen.policy,
 					workspace: {
 						...backend.workspace,
+						hostUserDataRoot: '/fixture/host-user-data',
 						relationship:
 							field === 'workspace.relationship' ? 'copied' : 'shared'
 					},
@@ -185,6 +190,123 @@ it.each(['profile', 'workspace.relationship'] as const)(
 		);
 	}
 );
+
+it.each([
+	{ access: 'read-only', root: undefined },
+	{ access: 'read-only', root: 'relative-to-workspace' },
+	{ access: 'read-only', root: '/mount/invalid\0path' },
+	{ access: 'denied', root: '/mount/host-user-data' }
+] as const)(
+	'disposes a backend when host user data is $access and the root is $root',
+	async ({ access, root }) => {
+		const disposals: string[] = [];
+		const selected = {
+			...profile,
+			policy: { ...profile.policy, hostUserData: access }
+		};
+
+		await fixture(
+			async (client, context) => {
+				await expect(client.get(context)).rejects.toMatchObject({
+					name: 'InvalidSandboxDeclarationError',
+					extensionSource: source,
+					detail: { kind: 'declaration', field: 'workspace.hostUserDataRoot' }
+				});
+				expect(disposals).toStrictEqual(['disposed']);
+			},
+			(chosen) => {
+				const backend = new MemoryBackend('exec');
+
+				return Object.assign(backend, {
+					policy: chosen.policy,
+					workspace: {
+						...backend.workspace,
+						home: '/private-home',
+						...(root !== undefined && { hostUserDataRoot: root })
+					},
+					dispose() {
+						disposals.push('disposed');
+
+						return Promise.resolve();
+					}
+				});
+			},
+			selected
+		);
+	}
+);
+
+it('publishes separate target home and host user data roots', async () => {
+	const workspace = {
+		root: '/fixture/workspace',
+		pathFlavor: 'posix',
+		relationship: 'shared',
+		description: 'In-memory fixture',
+		home: '/private-home',
+		hostUserDataRoot: '/mount/host-user-data'
+	} as const;
+
+	await fixture(
+		async (client, context) => {
+			const sandbox = await client.get(context);
+
+			expect(sandbox.workspace).toStrictEqual(workspace);
+		},
+		(chosen) =>
+			Object.assign(new MemoryBackend('exec'), {
+				policy: chosen.policy,
+				workspace
+			})
+	);
+});
+
+it('uses the declared host data root for credential conformance', async () => {
+	const backend = new MemoryBackend();
+	const hostUserDataRoot = '/mounted/home';
+	const original = contractScenario();
+	const policy = { ...defaultPolicy, hostSystemFiles: 'denied' } as const;
+
+	Object.assign(backend, {
+		policy,
+		workspace: { ...backend.workspace, home: '/private-home', hostUserDataRoot }
+	});
+	backend.seed(hostUserDataRoot + '/ordinary.txt', Buffer.from('ordinary'));
+
+	await verifyCredentialExclusion(
+		{
+			...original,
+			provider: {
+				...original.provider,
+				profiles: { open: [backend.profile], copy: [] },
+				open: () => Promise.resolve(backend)
+			},
+			async createFixture(selection) {
+				const selected = await original.createFixture(selection);
+
+				return {
+					...selected,
+					policy,
+					verifyDisposed(opened, recovery) {
+						expect({ opened, recovery }).toStrictEqual({
+							opened: backend,
+							recovery: { kind: 'none' }
+						});
+
+						return Promise.resolve();
+					}
+				};
+			}
+		},
+		{ mode: 'open', profile: backend.profile },
+		'~/.ssh'
+	);
+
+	expect(backend.calls).toStrictEqual([
+		{ operation: 'readFile', path: hostUserDataRoot + '/ordinary.txt' },
+		{ operation: 'readFile', path: hostUserDataRoot + '/.ssh' },
+		{ operation: 'readFile', path: hostUserDataRoot + '/alias.txt' }
+	]);
+});
 
 it.each(['missing', 'outside target'] as const)(
 	'disposes a backend with a %s workspace grant',
@@ -213,6 +335,13 @@ it.each(['missing', 'outside target'] as const)(
 			(chosen) =>
 				Object.assign(new MemoryBackend('exec'), {
 					policy: chosen.policy,
+					workspace: {
+						root: '/fixture/workspace',
+						pathFlavor: 'posix' as const,
+						relationship: 'shared' as const,
+						description: 'In-memory fixture',
+						hostUserDataRoot: '/fixture/host-user-data'
+					},
 					grantedPaths:
 						defect === 'missing'
 							? []

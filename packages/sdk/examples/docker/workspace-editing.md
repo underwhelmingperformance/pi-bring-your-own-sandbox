@@ -7,9 +7,9 @@ permission reviewers can explicitly request a separate copy.
 
 ## Edit the live checkout
 
-Pi's tools set `hostWorkspaceWrites` to `preferred`. If live writes are allowed
-by the configured policy and available in the selected profile, Pi can edit the
-checkout. Otherwise the tools use a read-only checkout and acquisition succeeds.
+Pi's ordinary tools omit the access record. They can edit the checkout when the
+configured policy permits live writes and Docker supports them. With a read-only
+policy, Pi can still acquire the sandbox and read the checkout.
 
 The provider's protected-path settings cover files that host tools may later
 interpret as configuration. The provider kit supplies defaults and a matcher.

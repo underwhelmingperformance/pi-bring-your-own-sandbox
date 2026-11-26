@@ -38,15 +38,15 @@ workload. In the target design the provider loads the [Pi integration][pi] when
 its extension factory runs.
 
 For the checkout's offline shell preset, load `src/shell-profile.ts` in place of
-`src/index.ts` with Pi's `--tools bash` option. The preset uses a guard to
-require Docker, network denial and isolation from host user data and system
-files.
+`src/index.ts` with Pi's `--tools bash` option. The provider ships this preset
+with requirements for Docker, network denial and isolation from host user data
+and system files.
 
 [pi]: ../../docs/pi-integration.md
 
 ## Workspace configuration
 
-<!-- `outsideDestinations` and `outsideApproval` are provisional. -->
+<!-- `allowEscalation`, `escalate` and `/byos log` are provisional. -->
 
 Ordinary opening uses the live checkout. Pi's tools share it, with write access
 only when the configured policy allows it. The provider declares separate
@@ -54,13 +54,18 @@ profiles for explicit copies. The project's trust setting selects neither the
 workspace nor the policy. The [workspace guide][editing] describes live work and
 explicit copies for permission review.
 
-Put the configured policy, shell and cleanup settings in the provider's settings
-file. Configure protection for particular paths in the same file. For commands
-that need more access, set `outsideDestinations` and `outsideApproval` there as
-well. The [shared settings reference][outside] lists the accepted values.
+Put policy, shell, cleanup and path protection settings in the provider's
+settings file. With no policy setting, the SDK default applies within Docker's
+supported profiles. It permits live writes and host system reads when supported,
+and denies network access and host user data.
+
+A `bash` call can request extra access with `escalate`. Set `allowEscalation` to
+false in the provider's settings to refuse such requests. If Docker cannot grant
+the request, the proposed destination is the host, with no restrictions from the
+provider. The decision is required before execution. Use `/byos log` to inspect
+the session's decision record.
 
 [editing]: workspace-editing.md
-[outside]: ../../docs/api-protocol.md#provider-settings
 
 ## Optional PowerShell image
 

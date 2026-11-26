@@ -46,13 +46,16 @@ The argv request preserves argument boundaries. Working directories and
 environment overrides refer to the destination. Use the facade to access target
 files. The broker owns the backend lifetime.
 
-Ask for a restriction or a need when the tool's behaviour depends on it. For
-example, an operation that must be offline requests
-`access: { network: 'prevented' }`. Use `negotiateSandbox` with the same
-requirements to check an option without allocating. Handle refusal with
-`isSandboxError`, which recognises typed errors from independent SDK copies. The
-[specification][spec] describes process outcomes and the [API appendix][api]
-lists the types.
+Omit the access record to use the configured policy within the provider's
+support. Ask for a restriction, a need or a path grant when the tool depends on
+it. For example, an offline operation requests
+`access: { network: 'prevented' }`. A path grant requires an accessible path
+within the configured policy.
+
+Use `negotiateSandbox` with the same requirements to check an option without
+allocating. Handle refusal with `isSandboxError`, which recognises typed errors
+from independent SDK copies. The [specification][spec] describes process
+outcomes and the [API appendix][api] lists the types.
 
 [spec]: ../../docs/specification.md
 [api]: ../../docs/api-protocol.md

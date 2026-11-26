@@ -2,7 +2,7 @@
 
 This SDK connects Pi extensions to a shared sandbox broker. Users install their
 chosen provider in Pi and configure it in the provider's settings file.
-Consumers state restrictions, needs and preferences without depending on the
+Consumers state restrictions, needs and path grants without depending on the
 provider's implementation. With no selected provider, the SDK uses passthrough.
 Failure of a selected provider stops execution.
 
@@ -29,8 +29,8 @@ guide][pi] describes how provider authors enable the integration.
 Provider authors use `/provider` and run the [conformance suite][testing] from
 `/testing`. The [Docker example][docker] shows provider setup. Embedding hosts
 use `/host` to manage the session. Permission extensions use `/review` for
-pending calls. Use `/guard` to require an activated provider or minimum
-restrictions and capabilities.
+pending calls and escalation decisions. Providers use `/guard` to ship presets
+with stricter requirements.
 
 [consumer]: examples/consumer/README.md
 [pi]: docs/pi-integration.md

@@ -64,41 +64,46 @@ Enforced by:
 [destination]: #destination
 [sandbox]: #sandbox
 
-## 3. Consumers state access requirements and preferences
+## 3. Consumers specify access requirements
 
-A [consumer] uses an [access record] to state [restrictions][restriction],
-[needs][need] and [preferences][preference]. It leaves other properties
-unspecified. It never sets [policy] values.
+A [consumer] uses an [access record] to state [needs][need],
+[restrictions][restriction] and [path grants][path grant]. It never sets
+[policy] values. An omitted property gets as much access as the [configured
+policy] and the provider allow.
 
-Every [acquisition], [copy], guard and [outside destination] uses the same
-[negotiation rule][negotiation]. Stay within each destination's [configured
-policy], satisfy every need and restriction, and grant as many preferences as
-possible. An omitted property gets the most restrictive setting that the
-provider supports.
+<!-- `allowEscalation` is provisional. -->
 
-A consumer knows what it requires but not what each provider can do. If
-consumers set policy values, each consumer would have to understand every
-provider, and could easily receive more access than it intended to request. With
-one rule, a request gets the same answer on every path.
+[Acquisitions][acquisition], [copies][copy] and [escalations][escalation] use
+the same access record and negotiation rule. Keep profiles that satisfy the
+request within its access limit. For ordinary requests, the limit is the
+configured policy. Choose the least restrictive settings for omitted and needed
+properties, and compare settings in the fixed property order. When
+`allowEscalation` is true, escalation uses full access as the limit and asks
+only for the listed extra access. The [specification][negotiation] defines
+profile ranking for each case.
+
+The configured policy records what the user allows by default. A consumer can
+require particular access or isolation without reproducing the provider's
+policy. It can also require a particular path within that policy without
+requesting access to every file in the same category.
 
 Enforced by:
 
 - option types that have no policy fields;
-- one negotiation function, used everywhere;
-- conformance cases that check that the chosen profile follows the same ordering
-  regardless of declaration order.
+- one access record for ordinary requests and escalation;
+- conformance cases for every property state, path grants and profile ranking.
 
 [consumer]: #consumer
 [access record]: #access-record
-[preference]: #preference
 [restriction]: #restriction
 [need]: #need
+[path grant]: #path-grant
 [policy]: #policy
 [acquisition]: #acquisition
 [copy]: #copy
-[outside destination]: #outside-destination
 [configured policy]: #configured-policy
 [negotiation]: specification.md#configuration-and-negotiation
+[escalation]: #escalation
 
 ## 4. A requirement changes only what it is about
 
@@ -214,11 +219,13 @@ Enforced by:
 - the build identity, major number and feature level in every advertisement and
   in `/byos status`.
 
-## 8. Never fall back to less isolation, and say what to fix
+## 8. Fail closed and say what to fix
 
-When something cannot work, BYOS stops and reports why. It never falls back to
-running on the host, retries on the host, or quietly continues with less. An API
-that cannot do what was asked returns a reason, not `undefined`.
+When something cannot work, BYOS stops and reports why. An API that cannot do
+what was asked returns a reason. An ordinary operation never moves to the host
+after failure. An [escalation] may choose the host before the command starts.
+The decision describes the host's lack of restrictions before either a
+permission extension or the user can allow it.
 
 Errors say which requirement failed, with which value, and which extension or
 provider to look at, without revealing configuration values. Text from a model,
@@ -255,33 +262,30 @@ Enforced by:
 - tests that vary the load order and the order of SDK copies and expect the same
   results.
 
-## 10. Each tool call is decided once
+## 10. Each escalation is decided once
 
-When a [permission extension] has allowed a tool call, BYOS treats that as
-permission to run it and does not ask again. BYOS asks the user itself only
-about calls that no permission extension decides, for example running a command
-at an [outside destination] when no permission extension is installed. The
-user's configuration states which of the two decides, so BYOS never asks about a
-call that a permission extension has already decided.
+BYOS asks the user to confirm an escalation unless a [permission extension] has
+recorded a decision for the pending call. Either decision applies to one tool
+call ID and to the negotiated destination and restrictions for that call. The
+configuration can prohibit escalation before any prompt.
 
-When BYOS and a permission extension both ask, the user approves the same call
-twice, and the two answers can disagree. A user who installs a permission
-extension has already chosen how strict to be, and BYOS should not overrule that
-choice.
+A permission extension can review the same command and destination that the user
+would see. Reusing the recorded verdict avoids a second prompt or a
+contradictory decision.
 
 Enforced by:
 
-- a configuration setting that states who decides calls that leave the sandbox;
-- integration tests, with and without a permission extension, that count the
-  prompts.
+- an operation that records one escalation decision for a pending tool call;
+- integration tests that verify the requested and executed destinations and
+  count the prompts with and without a recorded decision.
 
 [permission extension]: #permission-extension
 
 ## 11. A small surface, split by audience
 
 Each audience has its own entry point: consumers, providers, the embedding host,
-reviewers, the Pi tool integration, the guard and the test kit. Nothing is
-exported unless someone in that audience uses it. Message formats and channel
+reviewers, the Pi tool integration, provider presets and the test kit. Nothing
+is exported unless someone in that audience uses it. Message formats and channel
 names stay internal.
 
 Every capability in the contract has a consumer that uses it. A capability
@@ -385,13 +389,28 @@ Enforced by:
 
 [shared settings]: #shared-settings-keys
 
+## 17. Record every decision that changes isolation
+
+Record each decision that changes isolation in the session's [ledger]. The
+record identifies who made the decision and what happened. If the call ends
+before anyone decides, record the outcome.
+
+Users need to see why a command ran with more access. Reviewers need to relate
+review copies and reported violations to the tool call that produced them.
+
+Enforced by:
+
+- typed Pi session entries from one ledger schema;
+- an integration test that verifies an entry for every escalation path.
+
+[ledger]: #ledger
+
 ## Glossary
 
 ### Access record
 
-The consumer's access requirements and preferences, with one entry per requested
-property. Each entry is a need, a restriction or a preference. An omitted
-property gets the most restrictive setting that the provider supports.
+The consumer's needs, restrictions and path grants. Omitted properties use the
+configured policy within the provider's support.
 
 ### Acquisition
 
@@ -408,9 +427,9 @@ backends for a Pi session.
 
 ### Configured policy
 
-The most access that the user's configuration allows. No negotiated policy goes
-beyond it. The ordinary sandbox and each allowed outside destination have their
-own configured policy.
+The user's access limit and the default for ordinary requests. An escalation may
+exceed it when the configuration permits escalation and a decision allows the
+request.
 
 ### Consumer
 
@@ -424,8 +443,13 @@ or of the user's files. Changes stay in the copy.
 
 ### Destination
 
-Where a shell tool call runs: in the selected sandbox, or at an outside
-destination.
+Where a shell tool call runs. It can run in the provider's sandbox, with or
+without extra access, or on the host.
+
+### Escalation
+
+An explicit request for extra access on one shell tool call. It needs a decision
+for that call before execution.
 
 ### Feature level
 
@@ -446,19 +470,20 @@ runtime, such as OS binaries in `/bin` or `/usr/bin`, machine configuration in
 Host files outside the checkout and outside the host system files. This includes
 user data in system-managed directories.
 
+### Ledger
+
+The typed decision records in a Pi session. Entries describe escalations, review
+copies and provider-reported violations.
+
 ### Need
 
 Access without which a consumer cannot work. The consumer marks the property
 `needed` in the access record.
 
-### Outside destination
+### Path grant
 
-A place to run a command outside the selected sandbox, such as directly on the
-host.
-
-### Outside tool
-
-The Pi tool that requests command execution at an outside destination.
+A request for read or write access to a particular path. An ordinary request can
+require only access within the configured policy.
 
 ### Permission extension
 
@@ -469,12 +494,6 @@ user or by having a model review the call.
 
 The settings that control what a sandbox can reach: the workspace, the rest of
 the filesystem, and the network.
-
-### Preference
-
-Access that benefits a consumer without being necessary. The consumer marks the
-property `preferred`. The broker grants access when the configured policy and
-the provider allow it, and continues without that access when they do not.
 
 ### Profile
 

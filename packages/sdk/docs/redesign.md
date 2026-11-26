@@ -10,32 +10,29 @@ redesign is complete.
 
 ## Decisions
 
+<!-- `allowEscalation` is provisional. -->
+
 - Users install and configure their sandbox provider. The provider loads
   `/pi-tools` as part of its extension factory. All user settings, including the
-  configured policy and outside settings, live in the provider's settings file.
+  configured policy and `allowEscalation`, live in the provider's settings file.
   The SDK exposes the [shared settings schema][settings] through
   `registerSandboxProvider`. Provider conformance verifies that the parser
   accepts and validates those keys. The user sees BYOS only in diagnostics.
-- Consumers pass one `access` record. Its properties are `network`,
-  `hostWorkspaceWrites`, `hostUserData` and `hostSystemFiles`. A property marked
-  `prevented` is a restriction. A property marked `needed` is a need.
-  `preferred` requests access when available. An omitted property gets the most
-  restrictive setting that the provider supports. Passthrough supports only full
-  access, so omission prevents nothing there and a restriction fails before
-  allocation.
-- One [negotiation rule][negotiation] applies to acquisition, copy, guard and
-  outside destination selection.
-- Set `hostWorkspaceWrites` to `needed` to work on the user's live files. Set it
-  to `prevented` to prevent changes to the host checkout. Private workspaces
-  exist only through `copy`. The provider decides whether writes to a copy are
-  allowed. The workspace relationship is part of the workspace.
-- Pi's shell, file and search tools mark all access properties `preferred`. The
-  tools use the live checkout, which may be read-only. Project trust selects
-  neither the workspace nor the policy.
+- Consumers use one access record for needs, restrictions and path grants. The
+  configured policy is the default and the limit for ordinary requests. The
+  [negotiation rule][negotiation] specifies profile ranking. Pi's ordinary tools
+  omit the access record.
+- The SDK defines the default configured policy. A provider may narrow it only
+  where its profiles cannot support a setting. Passthrough stays unrestricted.
+- The workspace relationship is part of the workspace. Ordinary opening uses the
+  live checkout. Private workspaces exist only through `copy`. Providers decide
+  whether writes to a copy are allowed. Project trust selects neither the
+  workspace nor the policy.
 - Providers declare profiles separately for `open` and `copy`. A profile is a
   combination of policy settings with the capabilities, exit status and
-  termination scope that hold under it. Negotiation chooses a profile before
-  anything is allocated.
+  termination scope that the provider supports together. The profile also
+  declares support for extra read and write paths. Negotiation chooses a profile
+  before allocation.
 - Workspace protection leaves the contract. `workspaceProtection`, the
   `workspace.protection` capability and the related validation are removed. The
   provider kit contains a default list of protected paths and a matcher, and
@@ -47,16 +44,17 @@ redesign is complete.
   `configurationVersion`, `guardVersion`, the `v2` channel name and every
   compatibility branch for older brokers are removed. The first release of the
   redesign is major 1, level 0.
-- BYOS does not run its own approval system. The approval-policy registry, its
-  channels and the built-in `user`, `always` and `never` policies are removed.
-- Running outside the selected sandbox uses a separate Pi tool, registered next
-  to the sandboxed `bash`, so a permission extension can give it its own rules.
-  The tool takes an `access` record and a justification. BYOS negotiates the
-  destination using the shared rule. Access can exceed the ordinary configured
-  policy only at a destination that the user's configuration allows. A setting
-  in the provider's file decides who approves these calls. By default Pi asks
-  the user and identifies the provider by its label. When a permission extension
-  decides, the tool runs once Pi dispatches it.
+- A `bash` call can request [escalation][escalation]. If `allowEscalation` is
+  false, the broker rejects the request with a typed reason before prompting.
+  Otherwise the broker chooses the provider profile with the least extra access
+  that satisfies the request. If no provider profile can provide that access,
+  the host is an unrestricted destination.
+- BYOS confirms escalations unless a permission extension has recorded a
+  decision for the pending call. BYOS has no approval-policy registry, approval
+  channels or built-in approval policies.
+- The ledger records escalations, outcomes, review copies and reported
+  violations as typed Pi session entries. The diagnostics command can filter
+  entries by tool call ID.
 - The Pi integration describes the effective restrictions of each destination to
   the model. It generates the description from the negotiated policy. Providers
   can report sandbox violations as structured data through an optional
@@ -68,8 +66,10 @@ redesign is complete.
 - The SDK routes Pi's file tools through the facade, so file tools and `bash`
   always use the same workspace. MXC's own file tools are retired.
 - Entry points are split by audience: `/consumer`, `/provider`, `/host`,
-  `/review`, `/pi-tools`, `/guard` and `/testing`. The guard package folds into
-  the SDK. The Docker provider moves to `packages/provider-docker`.
+  `/review`, `/pi-tools`, `/guard` and `/testing`. The Docker provider moves to
+  `packages/provider-docker`.
+- Remove user-written guard extensions. The guard package folds into the SDK.
+  Providers register the presets that they ship through `/guard`.
 - The SDK provides a provider kit: argv encoding over a POSIX shell, a process
   runner with process-group termination and a hook for wrappers, file and search
   helpers that run inside the sandbox, errno mapping, cleanup budgets in the
@@ -81,6 +81,7 @@ redesign is complete.
 
 [negotiation]: specification.md#configuration-and-negotiation
 [settings]: api-protocol.md#provider-settings
+[escalation]: specification.md#escalation
 
 ## Work
 
@@ -106,9 +107,9 @@ changes use red/green TDD.
 4. Policy model: access record, profiles for `open` and `copy`, one negotiation
    function, decisions before allocation, removal of workspace protection and of
    the relationship from the policy, and errors with structured detail.
-5. Outside execution and model feedback: removal of the approval system, the
-   separate outside tool, escalation through the access record, the approval
-   setting, the policy description for the model, and the violation capability.
+5. Escalation and model feedback: extend `bash` with an escalation request,
+   including path grants. Decide once per call, record decisions in the ledger,
+   and describe effective restrictions and reported violations to the model.
 6. Review route: identity replies, copies through the reviewer's broker,
    negotiation without allocation, typed reasons and a destination description.
 7. Surface: audience entry points, a committed public API report, import
@@ -131,7 +132,11 @@ changes use red/green TDD.
 1. Corrections that do not depend on the SDK: the stale SDK pin note in
    `docs/codex-parity.md`, a footer that reports what the last review actually
    did, logging of unconfirmed copy closes, and the documented install order.
-2. After SDK milestones 4 to 6: access record, the review route's identities and
-   typed reasons, offering investigation only when a copy can be negotiated, the
-   destination description in the review prompt, and reviewing the outside tool
-   as its own tool.
+2. After SDK milestones 4 to 6: adopt the access record and review route
+   identities, report typed unavailability, and offer investigation only when
+   copy negotiation succeeds. Decide escalations, including path grants, and
+   record the verdict through the SDK's decision function. Log each verdict and
+   its reasoning under the tool call ID and add a command to list the decisions.
+   Fix `targetPath` misclassification of paths such as `..notes`, keep
+   `truncate()` within 32 KiB for multibyte text, and guard `setStatus` in
+   `session_shutdown`.

@@ -15,6 +15,7 @@ it.skipIf(process.platform !== 'linux')(
 		try {
 			await mkdir(path.join(root, 'sub'));
 			await mkdir(path.join(root, '.git'));
+			await writeFile(path.join(root, '.gitignore'), '.git/\n');
 			await writeFile(
 				path.join(root, 'sub', 'a.txt'),
 				'before\r\nNeed.le\r\nafter\nneed.le\n'

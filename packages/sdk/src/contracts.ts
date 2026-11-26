@@ -709,12 +709,12 @@ export interface FindResult {
 }
 
 /**
-Line search using provider-documented regex and glob rules. Defaults are
-case-sensitive regex matching.
+Line search using ripgrep regex and glob rules. Defaults to case-sensitive
+regex matching.
 */
 export interface GrepRequest {
 	/**
-	Regex text, or literal text when `literal` is true.
+Regex text, or literal text when `literal` is true.
 	*/
 	readonly pattern: string;
 
@@ -724,7 +724,7 @@ export interface GrepRequest {
 	readonly path?: string;
 
 	/**
-	Optional file glob interpreted by the provider.
+	Optional ripgrep file glob. The glob can override an ignore rule.
 	*/
 	readonly glob?: string;
 
@@ -1166,7 +1166,7 @@ export interface SandboxSearch {
 	) => Promise<FindResult>;
 
 	/**
-	Return matching lines using provider-documented search rules.
+	Return matching lines using the SDK's ripgrep search rules.
 	*/
 	readonly grep: (
 		request: GrepRequest,

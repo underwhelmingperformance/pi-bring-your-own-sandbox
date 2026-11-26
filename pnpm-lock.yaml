@@ -262,6 +262,9 @@ importers:
 
   packages/sdk:
     dependencies:
+      ignore:
+        specifier: 7.0.14
+        version: 7.0.14
       re2js:
         specifier: 2.10.0
         version: 2.10.0

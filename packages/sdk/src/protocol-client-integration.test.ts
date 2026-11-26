@@ -135,6 +135,7 @@ it('reports a provider factory failure as configuration before opening', async (
 });
 
 const nonFactoryFunctions = new Set([
+	'GrepOutput',
 	'PosixProcessRunner',
 	'SandboxLaunchFrames',
 	'ShellTransportRunner',
@@ -149,6 +150,7 @@ const nonFactoryFunctions = new Set([
 	'isProtectedWorkspacePath',
 	'resolveSandboxCleanupBudgets',
 	'resolveSandboxCopySource',
+	'sandboxRipgrepArguments',
 	'sendDisplayMessage',
 	'targetFileHelper',
 	'targetSearchHelper'

@@ -27,7 +27,10 @@ import type {
 	SandboxClient,
 	SandboxCopy
 } from 'pi-bring-your-own-sandbox/consumer';
-import { createSandboxClient } from 'pi-bring-your-own-sandbox/consumer';
+import {
+	createSandboxClient,
+	GrepOutput
+} from 'pi-bring-your-own-sandbox/consumer';
 import { closeSandboxSession } from 'pi-bring-your-own-sandbox/host';
 import sandboxTools from 'pi-bring-your-own-sandbox/pi-tools';
 import type {
@@ -47,6 +50,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { withPiRuntime } from '../../../test-support/pi-runtime.js';
 import { firstCopyProfile } from '../../../test-support/provider-profiles.js';
 import { ScriptedModel } from '../../../test-support/scripted-model.js';
+import { findHostExecutable } from '../src/host-executable.js';
 import { createDockerProvider } from '../src/provider.js';
 
 import { expectVisibleReplacement } from './checkout-visibility.js';
@@ -1216,6 +1220,94 @@ socket.on('error', error => {
 					truncated: false
 				});
 			});
+		}, 30_000);
+
+		it('matches ripgrep ignore rules, explicit files and glob overrides', async () => {
+			await withDockerSession(
+				async ({ sandbox, fixture }) => {
+					const corpus = {
+						'.gitignore': 'omitted.txt\npruned/\n',
+						'.ignore': 'ignore-wins.txt\n',
+						'.rgignore': '!ignore-wins.txt\nrg-omits.txt\n',
+						'.git/info/exclude': 'git-excluded.txt\n',
+						'.hidden.txt': 'needle\n',
+						'node_modules/pkg/index.txt': 'needle\n',
+						'omitted.txt': 'needle\n',
+						'pruned/deep.txt': 'needle\n',
+						'git-excluded.txt': 'needle\n',
+						'ignore-wins.txt': 'needle\n',
+						'rg-omits.txt': 'needle\n',
+						'unmatched.txt': 'different\n'
+					};
+
+					for (const [filename, content] of Object.entries(corpus)) {
+						const target = path.join(fixture.workspace, filename);
+
+						await mkdir(path.dirname(target), { recursive: true });
+						await writeFile(target, content);
+					}
+
+					const reference = await findHostExecutable('rg', fixture.workspace);
+
+					if (reference === undefined) {
+						throw new Error(
+							'Install ripgrep on the host to run the provider parity test.'
+						);
+					}
+
+					const results = [];
+
+					for (const [root, glob] of [
+						['.', undefined],
+						['.', 'omitted.txt'],
+						['.', '!node_modules'],
+						['omitted.txt', '*.md'],
+						['pruned', undefined]
+					] as const) {
+						const basename = root === 'omitted.txt' ? root : '.';
+						const directory = root === 'pruned' ? 'pruned' : '.';
+						const arguments_ = [
+							'--no-config',
+							'--json',
+							'--line-number',
+							'--color=never',
+							'--hidden',
+							...(glob === undefined ? [] : ['--glob', glob]),
+							'--',
+							'needle',
+							basename
+						];
+						const { stdout } = await promisify(execFile)(
+							reference,
+							arguments_,
+							{
+								cwd: path.join(fixture.workspace, directory),
+								env: { HOME: fixture.workspace, GIT_CONFIG_GLOBAL: '/dev/null' }
+							}
+						);
+						const output = new GrepOutput(0, 100);
+
+						output.write(Buffer.from(stdout));
+
+						const expected = output.finish();
+						const actual = await sandbox.search.grep({
+							pattern: 'needle',
+							path: root,
+							...(glob !== undefined && { glob })
+						});
+
+						results.push({ actual, expected, root, glob });
+					}
+
+					for (const { actual, expected, root, glob } of results) {
+						expect(actual, JSON.stringify({ root, glob })).toStrictEqual(
+							expected
+						);
+					}
+				},
+				[],
+				{ hasGitMetadata: true }
+			);
 		}, 30_000);
 
 		it('searches representable filenames in a copy and truncates before reading omitted context', async () => {

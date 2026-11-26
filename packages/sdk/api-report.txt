@@ -21,9 +21,11 @@ type SandboxNegotiation (contracts.d.ts)
 type SandboxRequirements (contracts.d.ts)
 type ShellReviewLookup (contracts.d.ts)
 type ShellReviewSource (contracts.d.ts)
+value GrepOutput (grep-output.d.ts)
 value SandboxCleanupError (errors.d.ts)
 value createSandboxClient (client.d.ts)
 value isSandboxError (errors.d.ts)
+value sandboxRipgrepArguments (ripgrep-arguments.d.ts)
 
 pi-bring-your-own-sandbox/host
 type SandboxDiagnostic (contracts.d.ts)
@@ -1087,6 +1089,14 @@ type ReadonlyData<Value> = Value extends object ? {
     readonly [Key in keyof Value]: ReadonlyData<Value[Key]>;
 } : Value;
 
+// grep-output.d.ts
+export declare class GrepOutput implements SearchOutput<GrepResult> {
+    #private;
+    constructor(context: number, limit: number);
+    write(data: Uint8Array): void;
+    finish(): GrepResult;
+}
+
 // host-error.d.ts
 export declare function mapSandboxErrno(cause: unknown, context: SandboxErrorContext): SandboxOperationError | SandboxPathNotFoundError | SandboxPermissionDeniedError | (Error & SandboxErrorContext & {
     readonly message: string;
@@ -1621,6 +1631,9 @@ declare const reasonSchema: Type.TUnion<[
 // review-identities.d.ts
 export type ReviewUnavailableReason = Static<typeof reasonSchema>;
 
+// ripgrep-arguments.d.ts
+export declare function sandboxRipgrepArguments(request: GrepRequest, target: string, extra?: readonly string[]): string[];
+
 // schemas.d.ts
 declare const capabilitySchema: Type.TUnion<[
     Type.TLiteral<"exec">,
@@ -1646,6 +1659,12 @@ declare const terminationScopeSchema: Type.TUnion<[
     Type.TLiteral<"process-group">,
     Type.TLiteral<"workload">
 ]>;
+
+// search-output.d.ts
+export interface SearchOutput<Result> {
+    readonly write: (data: Uint8Array) => void;
+    readonly finish: () => Result;
+}
 
 // shell-transport.d.ts
 export declare class ShellTransportRunner implements HostProcessRunner {

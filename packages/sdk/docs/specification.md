@@ -470,8 +470,26 @@ Protection of particular paths belongs to provider configuration. The provider
 kit supplies a default list and matcher for Git hooks and configuration, shell
 startup files, `.envrc`, `.direnv`, `.vscode`, `.idea`, `.devcontainer`, `.aws`,
 `.mcp.json` and `.pi`. Providers expose protection in their own settings. The
-provider kit matcher covers aliases and renames of parent directories.
+matcher can check renames of parent directories. Providers resolve aliases
+before applying the matcher.
 
 Providers run the [conformance suite][testing] in CI. The suite generates cases
 from both profile lists, checks actual workload effects and uses the same broker
 as Pi consumers.
+
+### Grep
+
+The facade and Pi's grep use [ripgrep's search rules][ripgrep]. Search includes
+hidden files and does not treat `node_modules` differently from other
+directories. Directory searches honour ignore files. A command-line glob can
+override an ignore rule. An explicit file path bypasses ignore rules and globs.
+Search skips binary files and does not follow symlinks discovered during
+traversal.
+
+Providers should supply `rg` inside the target. The portable helper uses
+descriptor-relative traversal on Linux. A target without `rg` or the
+descriptor-relative helper reports `UnsupportedSandboxCapabilityError` before
+searching.
+
+[ripgrep]:
+  https://github.com/BurntSushi/ripgrep/blob/master/GUIDE.md#automatic-filtering

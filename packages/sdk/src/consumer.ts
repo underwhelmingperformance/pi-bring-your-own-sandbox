@@ -23,4 +23,6 @@ export type {
 	EscalationDestination,
 	EscalationRequest
 } from './escalation-ledger.js';
+export { GrepOutput } from './grep-output.js';
 export type { ReviewUnavailableReason } from './review-identities.js';
+export { sandboxRipgrepArguments } from './ripgrep-arguments.js';

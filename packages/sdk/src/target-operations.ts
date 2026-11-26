@@ -64,12 +64,23 @@ export function targetFileHelper(): Promise<string> {
 /**
 Loads the portable Node search program for a descriptor-anchored Linux target.
 */
-export function targetSearchHelper(): Promise<string> {
+export async function targetSearchHelper(): Promise<string> {
 	const filename = import.meta.url.endsWith('.ts')
 		? 'target-search.ts'
 		: 'target-search.js';
 
-	return readFile(new URL(filename, import.meta.url), 'utf8');
+	const ignore = new URL(import.meta.resolve('ignore'));
+	const [helper, ignoreSource, license] = await Promise.all([
+		readFile(new URL(filename, import.meta.url), 'utf8'),
+		readFile(ignore, 'utf8'),
+		readFile(new URL('LICENSE-MIT', ignore), 'utf8')
+	]);
+
+	return `/*\n${license}\n*/\nconst createIgnore = (() => {
+const module = { exports: {} };
+${ignoreSource}
+return module.exports;
+})();\n${helper}`;
 }
 
 /**

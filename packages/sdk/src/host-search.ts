@@ -20,6 +20,7 @@ import {
 import { GrepOutput } from './grep-output.js';
 import type { HostOperations } from './host-operations.js';
 import type { HostProcessRunner } from './host-process.js';
+import { sandboxRipgrepArguments } from './ripgrep-arguments.js';
 import type { SearchOutput } from './search-output.js';
 import { FindOutput } from './search-output.js';
 import { isRecord } from './validation.js';
@@ -238,37 +239,14 @@ export class HostSearch {
 			}
 
 			const root = await this.#root(request.path, 'grep');
-			const arguments_ = [
-				'--no-config',
-				'--json',
-				'--line-number',
-				'--color=never',
-				'--hidden',
+			const arguments_ = sandboxRipgrepArguments(request, root.target, [
 				'--no-mmap',
 				'--no-follow',
 				'--threads',
 				'1',
 				'--context',
 				String(request.context ?? 0)
-			];
-
-			if (!(await isInsideRepository(root.directory))) {
-				arguments_.push('--no-require-git');
-			}
-
-			if (request.ignoreCase === true) {
-				arguments_.push('--ignore-case');
-			}
-
-			if (request.literal === true) {
-				arguments_.push('--fixed-strings');
-			}
-
-			if (request.glob !== undefined) {
-				arguments_.push(`--glob=${request.glob}`);
-			}
-
-			arguments_.push('--', request.pattern, root.target);
+			]);
 
 			return this.#run(
 				{

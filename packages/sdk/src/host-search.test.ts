@@ -332,7 +332,7 @@ it('returns empty results and preserves backend usability after missing roots an
 	);
 });
 
-it('honours ignore files outside a repository and preserves nested repository boundaries', async () => {
+it('applies ripgrep ignore rules outside Git and preserves nested repository boundaries', async () => {
 	const { directory, sandbox } = await fixture();
 
 	await seed(directory, {
@@ -344,6 +344,13 @@ it('honours ignore files outside a repository and preserves nested repository bo
 	});
 	expect(await sandbox.search.grep({ pattern: 'needle' })).toStrictEqual({
 		matches: [
+			{
+				path: 'ignored.txt',
+				line: 1,
+				text: 'needle ignored',
+				before: [],
+				after: []
+			},
 			{ path: 'kept.txt', line: 1, text: 'needle kept', before: [], after: [] }
 		],
 		truncated: false

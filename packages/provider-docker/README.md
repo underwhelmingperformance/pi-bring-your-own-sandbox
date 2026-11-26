@@ -109,7 +109,8 @@ the volume from the descriptor. A disconnected client cannot establish that the
 daemon stopped the workload. Inspect the reported allocation before removing
 resources.
 
-Run `pnpm test:provider` with a local daemon and the pinned image available. Set
+Run `pnpm test:provider` with a local daemon, the pinned image and host `rg`
+available. The search test compares Docker with the host `rg` output. Set
 `BYOS_DOCKER_EXECUTABLE` and `BYOS_DOCKER_SOCKET` to override discovery. The
 [provider testing guide][testing] describes the target conformance suite. The
 [Docker session tests][session] exercise the real Pi and Docker runtime from

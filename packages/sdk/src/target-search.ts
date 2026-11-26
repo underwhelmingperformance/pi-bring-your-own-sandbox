@@ -1,10 +1,14 @@
 import { isUtf8 } from 'node:buffer';
 import { once } from 'node:events';
 import { constants } from 'node:fs';
-import { access, open, readdir } from 'node:fs/promises';
+import { access, lstat, open, readdir } from 'node:fs/promises';
 import path from 'node:path';
 
+import type ignore from 'ignore';
+
 import type { GrepMatch } from './contracts.js';
+
+declare const createIgnore: typeof ignore;
 
 const [operation, encoded, maximum, workspace] = process.argv.slice(1);
 const options = new URLSearchParams(encoded);
@@ -36,7 +40,8 @@ function wasRemoved(error: unknown): boolean {
 
 async function* walk(
 	filename: string,
-	relative: string
+	relative: string,
+	parent?: IgnoreStack
 ): AsyncGenerator<Entry> {
 	const directory = await open(
 		filename,
@@ -45,6 +50,10 @@ async function* walk(
 
 	try {
 		const base = '/proc/self/fd/' + String(directory.fd);
+		const ignored =
+			parent === undefined
+				? undefined
+				: await ignoreAt(base, path.join(root, relative), parent);
 		const entries = await readdir(base, {
 			withFileTypes: true,
 			encoding: 'buffer'
@@ -60,11 +69,18 @@ async function* walk(
 
 			const name = entry.name.toString('utf8');
 
-			if (name === '.git' || name === 'node_modules') {
+			const child = path.join(relative, name);
+
+			if (ignored === undefined) {
+				if (name === '.git' || name === 'node_modules') {
+					continue;
+				}
+			} else if (
+				!isGrepEntryIncluded(child, entry.isDirectory(), ignored.rules)
+			) {
 				continue;
 			}
 
-			const child = path.join(relative, name);
 			const pinnedChild = path.join(base, name);
 
 			yield {
@@ -79,7 +95,7 @@ async function* walk(
 
 			if (entry.isDirectory()) {
 				try {
-					yield* walk(pinnedChild, child);
+					yield* walk(pinnedChild, child, ignored);
 				} catch (error) {
 					if (!wasRemoved(error)) {
 						throw error;
@@ -100,7 +116,10 @@ async function* candidates(): AsyncGenerator<Entry> {
 	const stat = await pinned.stat();
 
 	if (stat.isDirectory()) {
-		yield* walk(filename + '/.', '');
+		const parent =
+			operation === 'grep' ? await inheritedIgnores(root) : undefined;
+
+		yield* walk(filename + '/.', '', parent);
 
 		return;
 	}
@@ -156,6 +175,211 @@ async function contents(entry: Entry): Promise<string> {
 	} finally {
 		await file.close();
 	}
+}
+
+type IgnoreKind = 0 | 1 | 2 | 3;
+interface IgnoreRule {
+	readonly directory: string;
+	readonly priority: IgnoreKind;
+	readonly matcher: ReturnType<typeof createIgnore>;
+}
+interface IgnoreStack {
+	readonly inRepository: boolean;
+	readonly rules: readonly IgnoreRule[];
+}
+
+const ignoreNames = [
+	{ filename: '.rgignore', priority: 0 },
+	{ filename: '.ignore', priority: 1 },
+	{ filename: '.gitignore', priority: 2 }
+] as const;
+
+async function readIgnore(
+	filename: string,
+	directory: string,
+	priority: IgnoreKind
+): Promise<IgnoreRule | undefined> {
+	try {
+		const text = await contents({ filename, relative: '', kind: 'file' });
+
+		if (text.length > 0) {
+			return {
+				directory,
+				priority,
+				matcher: createIgnore({ ignorecase: false }).add(text)
+			};
+		}
+	} catch (error) {
+		if (!wasRemoved(error)) {
+			throw error;
+		}
+	}
+
+	return undefined;
+}
+
+async function isRepositoryRoot(descriptor: string): Promise<boolean> {
+	try {
+		const metadata = await lstat(path.join(descriptor, '.git'));
+
+		return metadata.isDirectory() || metadata.isFile();
+	} catch (error) {
+		if (!wasRemoved(error)) {
+			throw error;
+		}
+
+		return false;
+	}
+}
+
+async function repositoryExclude(descriptor: string, directory: string) {
+	try {
+		await using git = await open(
+			path.join(descriptor, '.git'),
+			constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW
+		);
+		await using info = await open(
+			'/proc/self/fd/' + String(git.fd) + '/info',
+			constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW
+		);
+
+		return await readIgnore(
+			'/proc/self/fd/' + String(info.fd) + '/exclude',
+			directory,
+			3
+		);
+	} catch (error) {
+		if (!wasRemoved(error)) {
+			throw error;
+		}
+
+		return;
+	}
+}
+
+async function ignoreAt(
+	descriptor: string,
+	directory: string,
+	parent: IgnoreStack
+): Promise<IgnoreStack> {
+	const isGitRoot = await isRepositoryRoot(descriptor);
+	const isInRepository = isGitRoot || parent.inRepository;
+	const local: IgnoreRule[] = [];
+
+	for (const { filename, priority } of ignoreNames) {
+		if (priority === 2 && !isInRepository) {
+			continue;
+		}
+
+		const rule = await readIgnore(
+			path.join(descriptor, filename),
+			directory,
+			priority
+		);
+
+		if (rule !== undefined) {
+			local.push(rule);
+		}
+	}
+
+	if (isGitRoot) {
+		const excluded = await repositoryExclude(descriptor, directory);
+
+		if (excluded !== undefined) {
+			local.push(excluded);
+		}
+	}
+
+	const inherited = isGitRoot
+		? parent.rules.filter((rule) => rule.priority < 2)
+		: parent.rules;
+
+	return {
+		inRepository: isInRepository,
+		rules: [...local, ...inherited].toSorted(
+			(left, right) => left.priority - right.priority
+		)
+	};
+}
+
+async function inheritedIgnores(directory: string): Promise<IgnoreStack> {
+	const ancestors: string[] = [];
+	let current = path.dirname(directory);
+
+	while (current !== directory) {
+		ancestors.unshift(current);
+
+		const parent = path.dirname(current);
+
+		if (parent === current) {
+			break;
+		}
+
+		current = parent;
+	}
+
+	let ignored: IgnoreStack = { inRepository: false, rules: [] };
+
+	for (const ancestor of ancestors) {
+		await using fd = await open(
+			ancestor,
+			constants.O_RDONLY | constants.O_DIRECTORY
+		);
+
+		const descriptor = '/proc/self/fd/' + String(fd.fd);
+
+		ignored = await ignoreAt(descriptor, ancestor, ignored);
+	}
+
+	return {
+		...ignored,
+		rules: ignored.rules.filter(
+			(rule) =>
+				!rule.matcher.ignores(path.relative(rule.directory, directory) + '/')
+		)
+	};
+}
+
+function globOverride(relative: string): boolean | undefined {
+	if (glob === null) {
+		return undefined;
+	}
+
+	const isNegative = glob.startsWith('!');
+	const pattern = (isNegative ? glob.slice(1) : glob).replace(/^\//u, '');
+	const filename = glob.includes('/') ? relative : path.basename(relative);
+
+	return path.matchesGlob(filename, pattern) ? !isNegative : undefined;
+}
+
+function isGrepEntryIncluded(
+	relative: string,
+	isDirectory: boolean,
+	rules: readonly IgnoreRule[]
+): boolean {
+	const override = globOverride(relative);
+
+	if (override !== undefined) {
+		return override;
+	}
+
+	if (!isDirectory && glob !== null && !glob.startsWith('!')) {
+		return false;
+	}
+
+	const filename = path.join(root, relative);
+
+	for (const rule of rules) {
+		const candidate =
+			path.relative(rule.directory, filename) + (isDirectory ? '/' : '');
+		const match = rule.matcher.test(candidate);
+
+		if (match.ignored || match.unignored) {
+			return !match.ignored;
+		}
+	}
+
+	return true;
 }
 
 function* textLines(input: string, start = 0) {
@@ -259,7 +483,7 @@ async function* grep(): AsyncGenerator<() => GrepMatch> {
 	const context = Number(options.get('context') ?? 0);
 
 	for await (const entry of candidates()) {
-		if (entry.kind !== 'file' || !isPathIncluded(entry.relative)) {
+		if (entry.kind !== 'file') {
 			continue;
 		}
 

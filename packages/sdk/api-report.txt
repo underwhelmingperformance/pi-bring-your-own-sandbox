@@ -117,7 +117,14 @@ value targetFileHelper (target-operations.d.ts)
 value targetSearchHelper (target-operations.d.ts)
 
 pi-bring-your-own-sandbox/testing
+type SandboxProviderFixtureOptions (provider-test-contracts.d.ts)
 type SandboxProviderTestFixture (provider-test-contracts.d.ts)
+type SandboxProviderTestOptions (provider-test-contracts.d.ts)
+type SandboxProviderTestSelection (provider-test-contracts.d.ts)
+type SandboxTestContextOptions (provider-test-contexts.d.ts)
+value createBackendProcessContext (provider-test-contexts.d.ts)
+value createSandboxOpenContext (provider-test-contexts.d.ts)
+value createSandboxOperationContext (provider-test-contexts.d.ts)
 value defineSandboxProviderTests (provider-contract-runner.d.ts)
 
 Declarations referenced by the public entry points
@@ -1415,7 +1422,7 @@ export declare function isProtectedWorkspacePath(filename: string, options?: {
 export declare function createSandboxCleanupContext(context: Pick<SandboxOperationContext, 'reportDiagnostic' | 'operationId'> & Partial<Pick<SandboxOperationContext, 'cleanup' | 'cleanupBudgets'>>, operationId?: string, monotonicNow?: () => number): SandboxOperationContext;
 
 // provider-contract-runner.d.ts
-export declare function defineSandboxProviderTests<Config>(options: SandboxProviderTestOptions<Config>): void;
+export declare function defineSandboxProviderTests<Config>(options: SandboxProviderTestOptions<Config> | SandboxProviderFixtureOptions<Config>): void;
 
 // provider-copy.d.ts
 export declare function resolveSandboxCopySource<Backend extends SandboxBackend>(source: SandboxCopySource, isValidSource: (backend: SandboxBackend) => backend is Backend): Backend | undefined;
@@ -1426,12 +1433,42 @@ export declare function registerSandboxProvider<Config, Input = Config>(pi: Sand
 // provider-registration.d.ts
 export declare function registerSandboxProviderFactory<Config, Input = Config>(pi: SandboxHost, extensionSource: string, declaration: Pick<SandboxProvider<Config>, 'id' | 'label' | 'profiles'>, create: () => SandboxProvider<Config>, options?: NoInfer<SandboxProviderRegistration<Input>>): void;
 
+// provider-test-contexts.d.ts
+export declare function createBackendProcessContext(options?: SandboxTestContextOptions & {
+    readonly onOutput?: BackendProcessContext['onOutput'];
+}): BackendProcessContext;
+
+// provider-test-contexts.d.ts
+export declare function createSandboxOpenContext(options?: SandboxTestContextOptions & {
+    readonly reportRecovery?: SandboxOpenContext['reportRecovery'];
+    readonly confirmCleanup?: SandboxOpenContext['confirmCleanup'];
+}): SandboxOpenContext;
+
+// provider-test-contexts.d.ts
+export declare function createSandboxOperationContext(options?: SandboxTestContextOptions): SandboxOperationContext;
+
+// provider-test-contexts.d.ts
+export interface SandboxTestContextOptions {
+    readonly operationId?: string;
+    readonly signal?: AbortSignal;
+    readonly timeoutMs?: number;
+    readonly cleanup?: Partial<SandboxCleanupBudgets>;
+    readonly reportDiagnostic?: SandboxOperationContext['reportDiagnostic'];
+}
+
 // provider-test-contracts.d.ts
 export interface SandboxProcessProbe {
     readonly request: ProcessRequest;
     readonly exit: ProcessExit;
     readonly stdout: Uint8Array;
     readonly stderr: Uint8Array;
+}
+
+// provider-test-contracts.d.ts
+export interface SandboxProviderFixtureOptions<Config> extends Omit<SandboxProviderTestOptions<Config>, 'provider' | 'createFixture'> {
+    readonly createFixture: (selection?: SandboxProviderTestSelection) => Promise<SandboxProviderTestFixture & {
+        readonly provider: SandboxProvider<Config>;
+    }>;
 }
 
 // provider-test-contracts.d.ts
@@ -1501,7 +1538,7 @@ export interface SandboxProviderTestFixture {
         readonly after?: SandboxProcessProbe;
     };
     readonly verifyPolicy?: (backend: SandboxBackend, context: SandboxOperationContext) => Promise<void>;
-    readonly verifyDisposed: () => Promise<void>;
+    readonly verifyDisposed: (backend?: SandboxBackend, recovery?: RecoveryDescriptor) => Promise<void>;
     readonly verifyAllocationDisposed?: (backend: SandboxBackend) => Promise<void>;
     readonly cleanup: () => Promise<void>;
 }
@@ -1516,9 +1553,17 @@ export interface SandboxProviderTestOptions<Config> {
     readonly label: string;
     readonly provider: SandboxProvider<Config>;
     readonly capabilities?: SandboxCapabilities;
-    readonly createFixture: () => Promise<SandboxProviderTestFixture>;
+    readonly createFixture: (selection?: SandboxProviderTestSelection) => Promise<SandboxProviderTestFixture & {
+        readonly provider?: SandboxProvider<Config>;
+    }>;
     readonly timeoutMs?: number;
     readonly cleanup?: Partial<SandboxCleanupBudgets>;
+}
+
+// provider-test-contracts.d.ts
+export interface SandboxProviderTestSelection {
+    readonly mode: 'open' | 'copy';
+    readonly profile: Profile;
 }
 
 // provider-test-contracts.d.ts

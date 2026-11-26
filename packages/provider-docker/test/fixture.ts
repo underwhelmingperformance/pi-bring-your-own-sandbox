@@ -20,10 +20,10 @@ import type {
 	SandboxPolicy
 } from 'pi-bring-your-own-sandbox/provider';
 import type { SandboxProviderTestFixture } from 'pi-bring-your-own-sandbox/testing';
+import { createSandboxOperationContext } from 'pi-bring-your-own-sandbox/testing';
 import { expect } from 'vitest';
 
 import { nodeVisibilityProbe } from '../../../test-support/node-visibility-probe.js';
-import { remainingBudget } from '../../../test-support/remaining-budget.js';
 import { NodeDockerClient } from '../src/client.js';
 import { resolveDockerConfig } from '../src/config.js';
 import type { DockerClient, DockerConfig } from '../src/contracts.js';
@@ -56,21 +56,7 @@ const sourceRead = {
 } as const;
 
 export function operationContext(): SandboxOperationContext {
-	return {
-		reportDiagnostic() {
-			return;
-		},
-		cleanup: {
-			deadline: undefined,
-			remainingMs: (): undefined => {
-				return;
-			}
-		},
-		operationId: randomUUID(),
-		signal: new AbortController().signal,
-		deadline: Date.now() + 30_000,
-		remainingMs: remainingBudget(30_000)
-	};
+	return createSandboxOperationContext({ timeoutMs: 30_000 });
 }
 
 export const cancellationRequest: ProcessRequest = {

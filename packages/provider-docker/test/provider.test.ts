@@ -13,8 +13,6 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 			['shared', false],
 			['copied', false]
 		] as const) {
-			let fixture: DockerFixture | undefined;
-
 			defineSandboxProviderTests({
 				workspaceVisibility: relationship,
 				policyEffects: [
@@ -30,23 +28,21 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				verifyIndependentAllocations: true,
 				verifyConcurrentCancellation: true,
 				label: `Docker ${relationship} with host writes ${String(hostWorkspaceWrites)}`,
-				provider: createDockerProvider(() => {
-					if (fixture === undefined) {
-						throw new Error('The Docker fixture has not been prepared.');
-					}
-
-					return fixture.providerClient();
-				}),
+				provider: createDockerProvider(),
 				timeoutMs: 30_000,
 				createFixture: async () => {
-					fixture = await DockerFixture.create();
-
-					return fixture.contract({
+					const fixture = await DockerFixture.create();
+					const contract = fixture.contract({
 						hostWorkspaceWrites,
 						hostUserData: 'denied',
 						hostSystemFiles: 'denied',
 						network: false
 					});
+
+					return {
+						...contract,
+						provider: createDockerProvider(() => fixture.providerClient())
+					};
 				}
 			});
 		}
@@ -57,17 +53,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 			return;
 		}
 
-		let prepared: DockerFixture | undefined;
-		const provider = createDockerProvider({
-			powerShellImage,
-			createClient() {
-				if (!prepared) {
-					throw new Error('The PowerShell fixture has not been prepared.');
-				}
-
-				return prepared.providerClient();
-			}
-		});
+		const provider = createDockerProvider({ powerShellImage });
 		const [profile] = provider.profiles.open;
 
 		if (profile === undefined) {
@@ -88,8 +74,6 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 			async createFixture() {
 				const fixture = await DockerFixture.create();
 
-				prepared = fixture;
-
 				const base = fixture.contract({
 					hostWorkspaceWrites: false,
 					hostUserData: 'denied',
@@ -99,6 +83,10 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 
 				return {
 					...base,
+					provider: createDockerProvider({
+						powerShellImage,
+						createClient: () => fixture.providerClient()
+					}),
 					shells: {
 						powershell: {
 							request: {

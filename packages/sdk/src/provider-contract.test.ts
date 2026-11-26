@@ -9,20 +9,89 @@ import type {
 	SandboxOperationContext,
 	SandboxPolicy
 } from './contracts.js';
+import type { RecoveryDescriptor } from './contracts.js';
 import { SandboxCleanupError, SandboxOperationError } from './errors.js';
 import { firstOpenProfile } from './fixtures/profile-fixture.js';
 import { contractScenario } from './fixtures/provider-contract.js';
+import { usingRawProviderFixture as usingProviderFixture } from './fixtures/raw-provider-contract.js';
 import { observe } from './lifecycle.js';
 import type { AccessProperty } from './policy-model.js';
 import {
 	providerContractCases,
-	usingProviderFixture
+	usingProviderFixture as usingBrokerProviderFixture
 } from './provider-contract-suite.js';
 import type { SandboxProviderTestOptions } from './provider-test-contracts.js';
 import { defineSandboxProviderTests } from './testing.js';
 import { profileCapabilities } from './validation.js';
 
 defineSandboxProviderTests(contractScenario());
+
+it('opens the fixture provider through the broker and verifies the backend allocation', async () => {
+	const scenario = contractScenario();
+	const selected: {
+		id: string | undefined;
+		recovery: RecoveryDescriptor | undefined;
+	}[] = [];
+	const opened: SandboxBackend[] = [];
+	const original = scenario.provider;
+	const provider = {
+		...original,
+		async open(
+			request: Parameters<typeof original.open>[0],
+			context: Parameters<typeof original.open>[1]
+		) {
+			const backend = await original.open(request, context);
+
+			opened.push(backend);
+
+			return backend;
+		}
+	};
+	const unused = {
+		...original,
+		open() {
+			throw new Error('The declaration must not open a backend for a fixture.');
+		}
+	};
+
+	await usingBrokerProviderFixture(
+		{
+			...scenario,
+			provider: unused,
+			async createFixture() {
+				const fixture = await scenario.createFixture();
+
+				return {
+					...fixture,
+					provider,
+					async verifyDisposed(
+						backend?: SandboxBackend,
+						recovery?: RecoveryDescriptor
+					) {
+						await fixture.verifyDisposed();
+						selected.push({ id: backend?.id, recovery });
+					}
+				};
+			}
+		},
+		async (_fixture, backend, context) => {
+			const raw = opened[0];
+
+			expect({ isWrapped: backend !== raw, id: backend.id }).toStrictEqual({
+				isWrapped: true,
+				id: raw?.id
+			});
+			await backend.files?.read?.stat('seed', context);
+		}
+	);
+
+	expect(selected).toStrictEqual(
+		opened.map((backend) => ({
+			id: backend.id,
+			recovery: backend.recovery
+		}))
+	);
+});
 
 const shellOnly = contractScenario();
 const openShellOnly = shellOnly.provider.open;

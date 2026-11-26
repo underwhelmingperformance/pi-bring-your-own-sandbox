@@ -5,7 +5,11 @@ import {
 	providerContractCases,
 	usingProviderFixture
 } from './provider-contract-suite.js';
-import type { SandboxProviderTestOptions } from './provider-test-contracts.js';
+import type {
+	SandboxProviderFixtureOptions,
+	SandboxProviderTestOptions,
+	SandboxProviderTestSelection
+} from './provider-test-contracts.js';
 
 /**
 Registers Vitest cases for a provider's selected operations and policies. Call
@@ -18,7 +22,8 @@ resource release independently.
 @typeParam Config - Validated configuration accepted by the provider.
 */
 export function defineSandboxProviderTests<Config>(
-	options: SandboxProviderTestOptions<Config>
+	options:
+		SandboxProviderTestOptions<Config> | SandboxProviderFixtureOptions<Config>
 ): void {
 	const cleanup = resolveCleanupBudgets(options.cleanup);
 	const testTimeout =
@@ -26,11 +31,43 @@ export function defineSandboxProviderTests<Config>(
 		3 * cleanup.disposalTimeoutMs +
 		2 * cleanup.cancellationGraceMs;
 
-	describe(options.label, () => {
-		for (const entry of providerContractCases(options)) {
+	describe(options.label, async () => {
+		let registered: SandboxProviderTestOptions<Config>;
+
+		if ('provider' in options) {
+			registered = options;
+		} else {
+			const fixture = await options.createFixture();
+
+			try {
+				registered = { ...options, provider: fixture.provider };
+			} finally {
+				await fixture.cleanup();
+			}
+		}
+
+		const isFocused =
+			options.workspaceVisibility !== undefined ||
+			options.capabilities !== undefined;
+		const cases = isFocused
+			? providerContractCases(registered)
+			: (['open', 'copy'] as const).flatMap((mode) =>
+					registered.provider.profiles[mode].flatMap((profile, index) => {
+						const selection: SandboxProviderTestSelection = { mode, profile };
+
+						return providerContractCases(registered, selection).map(
+							(entry) => ({
+								...entry,
+								label: `${mode} profile ${String(index + 1)}: ${entry.label}`
+							})
+						);
+					})
+				);
+
+		for (const entry of cases) {
 			it(
 				entry.label,
-				() => usingProviderFixture(options, entry),
+				() => usingProviderFixture(registered, entry),
 				testTimeout +
 					(entry.operation === 'independent-disposal'
 						? (options.timeoutMs ?? 10_000) + cleanup.disposalTimeoutMs

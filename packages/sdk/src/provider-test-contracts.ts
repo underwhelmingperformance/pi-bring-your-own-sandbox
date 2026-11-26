@@ -7,6 +7,8 @@ import type {
 	GrepResult,
 	ProcessExit,
 	ProcessRequest,
+	Profile,
+	RecoveryDescriptor,
 	SandboxBackend,
 	SandboxCapabilities,
 	SandboxCleanupBudgets,
@@ -331,9 +333,13 @@ export interface SandboxProviderTestFixture {
 		context: SandboxOperationContext
 	) => Promise<void>;
 	/**
-	Independently verify resource release after backend disposal resolves.
+	Independently verify resource release after disposal or a failed open.
+	The backend is undefined if opening failed before returning a backend.
 	*/
-	readonly verifyDisposed: () => Promise<void>;
+	readonly verifyDisposed: (
+		backend?: SandboxBackend,
+		recovery?: RecoveryDescriptor
+	) => Promise<void>;
 	/**
 	Check that the first allocation has released its resources while its peer
 	remains open. Required for the independent allocation scenario.
@@ -387,7 +393,8 @@ export interface SandboxProviderTestOptions<Config> {
 	*/
 	readonly label: string;
 	/**
-	Provider declaration under test; Pi registration is not required.
+	Provider declaration used to collect cases. A fixture can supply the
+	instance used for allocation.
 	*/
 	readonly provider: SandboxProvider<Config>;
 	/**
@@ -398,7 +405,11 @@ export interface SandboxProviderTestOptions<Config> {
 	Prepare fresh resources and target probes for each case. Clean up partial
 	setup within this callback if setup fails before returning a fixture.
 	*/
-	readonly createFixture: () => Promise<SandboxProviderTestFixture>;
+	readonly createFixture: (
+		selection?: SandboxProviderTestSelection
+	) => Promise<
+		SandboxProviderTestFixture & { readonly provider?: SandboxProvider<Config> }
+	>;
 	/**
 	Deadline for opening, each test case and fixture cleanup, in milliseconds.
 	Each stage receives a separate deadline. Defaults to 10,000.
@@ -409,4 +420,26 @@ export interface SandboxProviderTestOptions<Config> {
 	deadlines. Defaults to 5,000 and 10,000; each must be an integer from 1 to 300,000.
 	*/
 	readonly cleanup?: Partial<SandboxCleanupBudgets>;
+}
+
+/**
+Options for suites that supply the provider through each fixture.
+*/
+export interface SandboxProviderFixtureOptions<Config> extends Omit<
+	SandboxProviderTestOptions<Config>,
+	'provider' | 'createFixture'
+> {
+	readonly createFixture: (
+		selection?: SandboxProviderTestSelection
+	) => Promise<
+		SandboxProviderTestFixture & { readonly provider: SandboxProvider<Config> }
+	>;
+}
+
+/**
+A declared profile and acquisition mode selected for one conformance case.
+*/
+export interface SandboxProviderTestSelection {
+	readonly mode: 'open' | 'copy';
+	readonly profile: Profile;
 }

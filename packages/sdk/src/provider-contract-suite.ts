@@ -1,20 +1,21 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 
 import { expect } from 'vitest';
 
-import { validateBackend } from './backend-validation.js';
+import { snapshotBackend } from './backend-snapshot.js';
 import { resolveCleanupBudgets } from './cleanup-budgets.js';
 import type {
 	BackendProcessOutcome,
 	DirectoryEntry,
+	Sandbox,
 	SandboxBackend,
 	SandboxCleanupBudgets,
-	SandboxOperation,
 	SandboxOperationContext
 } from './contracts.js';
 import {
 	isSandboxError,
 	SandboxCancelledError,
+	SandboxCleanupError,
 	SandboxOperationError,
 	SandboxPathNotFoundError,
 	SandboxPermissionDeniedError
@@ -24,146 +25,126 @@ import {
 	isFindResult,
 	isGrepResult
 } from './file-result.js';
-import { observe, OperationScope, settleOperation } from './lifecycle.js';
-import type { AccessProperty, Policy, Profile } from './policy-model.js';
+import { OperationScope, settleOperation } from './lifecycle.js';
+import type { AccessProperty, Policy } from './policy-model.js';
 import { accessOrder } from './policy-model.js';
-import { selectProfile } from './profile-negotiation.js';
+import type { FixtureAttempt } from './provider-test-broker.js';
+import { fixtureBroker } from './provider-test-broker.js';
 import type {
 	SandboxPolicyScenario,
 	SandboxProcessProbe,
 	SandboxProviderTestFixture,
-	SandboxProviderTestOptions
+	SandboxProviderTestOptions,
+	SandboxProviderTestSelection
 } from './provider-test-contracts.js';
+import { bounded, fixtureProfile } from './provider-test-harness.js';
 import {
 	isTerminationScopeSatisfied,
 	settleProcess
 } from './termination-scope.js';
-import {
-	isProviderInfo,
-	isRecord,
-	isRecovery,
-	profileCapabilities
-} from './validation.js';
+import { isProviderInfo, profileCapabilities } from './validation.js';
 import { checkWorkspaceVisibility } from './workspace-visibility-suite.js';
 
 function compareEntries(left: DirectoryEntry, right: DirectoryEntry): number {
 	return left.name.localeCompare(right.name);
 }
 
-type ContractRun = (
+export type ContractRun = (
 	fixture: SandboxProviderTestFixture,
 	backend: SandboxBackend,
 	context: SandboxOperationContext,
-	afterDisposal: (verify: () => Promise<void>) => void
+	afterDisposal: (verify: () => Promise<void>) => void,
+	subject?: { readonly backend: SandboxBackend; readonly sandbox: Sandbox }
 ) => Promise<void>;
 
-interface ContractCase {
+export interface ContractCase {
 	readonly label: string;
 	readonly operation?: 'dispose' | 'independent-disposal';
+	readonly selection?: SandboxProviderTestSelection;
 	readonly run: ContractRun;
 }
 
-async function bounded<Value>(
-	options: Pick<
-		SandboxProviderTestOptions<unknown>,
-		'timeoutMs' | 'cleanup'
-	> & { readonly drainOnTimeout?: boolean },
-	run: (context: SandboxOperationContext) => Promise<Value>,
-	operation: SandboxOperation = 'exec'
-): Promise<Value> {
-	const cleanup = resolveCleanupBudgets(options.cleanup);
-	const timeoutMs =
-		operation === 'dispose'
-			? cleanup.disposalTimeoutMs
-			: (options.timeoutMs ?? 10_000);
-	const scope = new OperationScope(
-		{ operation },
-		new AbortController().signal,
-		{ timeoutMs },
-		timeoutMs,
-		cleanup
-	);
+function facadeBackend(
+	backend: SandboxBackend,
+	sandbox: Sandbox,
+	close: () => Promise<void>
+): SandboxBackend {
+	const stat = (filename: string, context: SandboxOperationContext) =>
+		sandbox.files.stat(filename, { signal: context.signal });
 
-	const running = Promise.try(() => run(scope.context));
+	return {
+		...snapshotBackend(backend),
+		async exec(request, context) {
+			try {
+				const result = await sandbox.exec(request, {
+					signal: context.signal,
+					onOutput: context.onOutput,
+					maxCaptureBytes: 0
+				});
 
-	try {
-		const result = await Promise.race([
-			observe(running),
-			scope.whenCancelled()
-		]);
+				return {
+					kind: 'exited',
+					exit: result.exit,
+					...(result.violations !== undefined && {
+						violations: result.violations
+					})
+				};
+			} catch (error) {
+				if (isSandboxError(error, SandboxCancelledError)) {
+					return {
+						kind: 'cancelled',
+						termination:
+							error.completion === 'confirmed' ? 'confirmed' : 'not-guaranteed'
+					};
+				}
 
-		if (result.kind === 'cancelled' || scope.reason !== undefined) {
-			const stopped = options.drainOnTimeout
-				? await settleOperation(scope, running)
-				: result;
-
-			throw new Error(
-				'The provider contract operation exceeded its deadline.',
-				stopped.kind === 'rejected' ? { cause: stopped.error } : undefined
-			);
-		}
-
-		if (result.kind === 'rejected') {
-			throw result.error;
-		}
-
-		return result.value;
-	} finally {
-		scope.dispose();
-	}
-}
-
-function fixtureProfile<Config>(
-	options: SandboxProviderTestOptions<Config>,
-	fixture: SandboxProviderTestFixture
-): Profile {
-	const mode = options.workspaceVisibility === 'copied' ? 'copy' : 'open';
-	const selected = selectProfile({
-		profiles: options.provider.profiles[mode],
-		limit: fixture.policy,
-		mode
-	});
-
-	if (!selected.ok) {
-		throw new Error('The fixture policy does not select a provider profile.');
-	}
-
-	return selected.profile;
-}
-
-function openFixture<Config>(
-	options: SandboxProviderTestOptions<Config>,
-	fixture: SandboxProviderTestFixture,
-	context: SandboxOperationContext,
-	confirmCleanup: () => void
-): Promise<SandboxBackend> {
-	const request = {
-		generationId: randomUUID(),
-		sessionId: randomUUID(),
-		hostWorkspace: fixture.hostWorkspace,
-		profile: fixtureProfile(options, fixture),
-		configuration: options.provider.validateConfig(fixture.configuration)
+				throw error;
+			}
+		},
+		dispose: close,
+		...(backend.files !== undefined && {
+			files: {
+				...(backend.files.read !== undefined && {
+					read: {
+						stat,
+						access: (file, context) =>
+							sandbox.files.access(file, 'read', { signal: context.signal }),
+						readFile: (file, context) =>
+							sandbox.files.readFile(file, { signal: context.signal })
+					}
+				}),
+				...(backend.files.write !== undefined && {
+					write: {
+						access: (file, context) =>
+							sandbox.files.access(file, 'write', { signal: context.signal }),
+						mkdir: (file, context) =>
+							sandbox.files.mkdir(file, { signal: context.signal }),
+						writeFile: (file, content, context) =>
+							sandbox.files.writeFile(file, content, { signal: context.signal })
+					}
+				}),
+				...(backend.files.list !== undefined && {
+					list: {
+						stat,
+						listDirectory: (file, context) =>
+							sandbox.files.listDirectory(file, { signal: context.signal })
+					}
+				})
+			}
+		}),
+		...(backend.search !== undefined && {
+			search: {
+				...(backend.search.find !== undefined && {
+					find: (request, context) =>
+						sandbox.search.find(request, { signal: context.signal })
+				}),
+				...(backend.search.grep !== undefined && {
+					grep: (request, context) =>
+						sandbox.search.grep(request, { signal: context.signal })
+				})
+			}
+		})
 	};
-	const opening = {
-		...context,
-		confirmCleanup,
-		reportRecovery: (recovery: unknown) => {
-			expect(isRecovery(recovery)).toBe(true);
-		}
-	};
-
-	if (options.workspaceVisibility !== 'copied') {
-		return options.provider.open(request, opening);
-	}
-
-	if (options.provider.copy === undefined) {
-		throw new Error('The fixture provider cannot copy the workspace.');
-	}
-
-	return options.provider.copy(
-		{ ...request, source: { kind: 'host' } },
-		opening
-	);
 }
 
 export async function usingProviderFixture<Config>(
@@ -181,43 +162,84 @@ export async function usingProviderFixture<Config>(
 		timeoutMs,
 		cleanup: resolveCleanupBudgets(options.cleanup)
 	};
-	const fixture = await options.createFixture();
-	const backends: SandboxBackend[] = [];
+	const selection =
+		typeof scenario === 'function' ? undefined : scenario.selection;
+	const fixture = await options.createFixture(selection);
+	const provider = fixture.provider ?? options.provider;
+	const actual = { ...options, provider };
+	const runtimes: {
+		readonly close: () => Promise<void>;
+		readonly attempt: FixtureAttempt;
+	}[] = [];
+	const subjects = new WeakMap<
+		SandboxBackend,
+		{ backend: SandboxBackend; sandbox: Sandbox }
+	>();
 	const afterDisposal: (() => Promise<void>)[] = [];
 	const failures: unknown[] = [];
 
 	try {
-		expect(isProviderInfo(options.provider)).toBe(true);
+		expect(isProviderInfo(provider)).toBe(true);
+
+		const declared = selection?.profile ?? fixtureProfile(actual, fixture);
+		const mode =
+			selection?.mode ??
+			(options.workspaceVisibility === 'copied' ? 'copy' : 'open');
 
 		async function open() {
-			let isConfirmed = false;
-			const backend = await bounded(deadlines, (context) =>
-				openFixture(options, fixture, context, () => {
-					isConfirmed = true;
-				})
+			const attempt: FixtureAttempt = {};
+			const runtime = fixtureBroker(
+				provider,
+				fixture.hostWorkspace,
+				fixture.configuration,
+				{ policy: fixture.policy, cleanup: deadlines.cleanup },
+				attempt
 			);
+			const close = async () => {
+				const report = await runtime.close();
 
-			backends.push(backend);
-			expect(isConfirmed).toBe(false);
-			validateBackend(
-				backend,
-				options.provider,
-				fixtureProfile(options, fixture),
-				options.workspaceVisibility === 'copied' ? 'copy' : 'open'
+				if (!report.confirmed) {
+					throw new SandboxCleanupError({
+						operation: 'dispose',
+						providerId: provider.id,
+						closeReport: report
+					});
+				}
+			};
+
+			runtimes.push({ attempt, close });
+
+			if (mode === 'open') {
+				const selected = await runtime.negotiate({});
+
+				expect(selected).toStrictEqual({ ok: true, profile: declared });
+			}
+
+			const sandbox = await bounded(deadlines, (context) =>
+				runtime.acquire({ signal: context.signal, timeoutMs }, mode)
 			);
+			const raw = attempt.backend;
+
+			if (raw === undefined) {
+				throw new Error('The broker did not open the fixture provider.');
+			}
+
+			expect({
+				providerId: sandbox.providerId,
+				profile: raw.profile
+			}).toStrictEqual({
+				providerId: provider.id,
+				profile: declared
+			});
+
+			const backend = facadeBackend(raw, sandbox, close);
+
+			subjects.set(backend, { backend: raw, sandbox });
 
 			return backend;
 		}
 
 		const backend = await open();
-		const declared =
-			options.provider.profiles[
-				options.workspaceVisibility === 'copied' ? 'copy' : 'open'
-			][0];
-
-		if (declared === undefined) {
-			throw new Error('The fixture provider declares no open profile.');
-		}
 
 		const capabilities = options.capabilities ?? profileCapabilities(declared);
 
@@ -248,9 +270,15 @@ export async function usingProviderFixture<Config>(
 			bounded(
 				{ ...deadlines, drainOnTimeout: true },
 				(context) =>
-					run(fixture, target, context, (verify) => {
-						afterDisposal.push(verify);
-					}),
+					run(
+						fixture,
+						target,
+						context,
+						(verify) => {
+							afterDisposal.push(verify);
+						},
+						subjects.get(target)
+					),
 				operation === 'dispose' ? 'dispose' : 'exec'
 			);
 
@@ -274,7 +302,6 @@ export async function usingProviderFixture<Config>(
 				},
 				'dispose'
 			);
-			backends.shift();
 			await check(peer);
 		} else {
 			await check(backend);
@@ -284,20 +311,11 @@ export async function usingProviderFixture<Config>(
 		failures.push(error);
 	}
 
-	let isDisposed = backends.length > 0;
+	let isDisposed = runtimes.length > 0;
 
-	for (const backend of backends.toReversed()) {
-		if (!isRecord(backend) || typeof backend.dispose !== 'function') {
-			isDisposed = false;
-			continue;
-		}
-
+	for (const runtime of runtimes.toReversed()) {
 		try {
-			await bounded(
-				deadlines,
-				(context) => backend.dispose(context),
-				'dispose'
-			);
+			await bounded(deadlines, runtime.close, 'dispose');
 		} catch (error) {
 			isDisposed = false;
 			failures.push(error);
@@ -309,7 +327,17 @@ export async function usingProviderFixture<Config>(
 			await bounded(
 				deadlines,
 				async () => {
-					await fixture.verifyDisposed();
+					for (const { attempt } of runtimes) {
+						if (
+							attempt.recovery !== undefined ||
+							attempt.backend !== undefined
+						) {
+							await fixture.verifyDisposed(
+								attempt.backend,
+								attempt.recovery ?? attempt.backend?.recovery
+							);
+						}
+					}
 
 					for (const verify of afterDisposal) {
 						await verify();
@@ -679,9 +707,11 @@ const restrictionChecks = {
 } satisfies Record<AccessProperty, (policy: Policy) => boolean>;
 
 export function providerContractCases<Config>(
-	options: SandboxProviderTestOptions<Config>
+	options: SandboxProviderTestOptions<Config>,
+	selection?: SandboxProviderTestSelection
 ): readonly ContractCase[] {
 	const declared =
+		selection?.profile ??
 		options.provider.profiles[
 			options.workspaceVisibility === 'copied' ? 'copy' : 'open'
 		][0];
@@ -762,9 +792,16 @@ export function providerContractCases<Config>(
 		{
 			label: 'idempotent disposal',
 			operation: 'dispose',
-			run: async (fixture, backend, context) => {
+			run: async (fixture, backend, context, _afterDisposal, subject) => {
 				await Promise.all([backend.dispose(context), backend.dispose(context)]);
-				await fixture.verifyDisposed();
+
+				if (subject === undefined) {
+					await fixture.verifyDisposed();
+
+					return;
+				}
+
+				await subject.backend.dispose(context);
 			}
 		}
 	];
@@ -1019,5 +1056,7 @@ export function providerContractCases<Config>(
 		});
 	}
 
-	return cases;
+	return selection === undefined
+		? cases
+		: cases.map((entry) => ({ ...entry, selection }));
 }

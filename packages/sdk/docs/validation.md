@@ -49,6 +49,11 @@ to verify isolation and cleanup on each provider's platform. POSIX process-group
 tests do not establish Windows process-tree cancellation, and a scripted
 PowerShell backend does not establish native PowerShell support.
 
+Exercise escalation through real Pi dispatch. Check both a provider destination
+and the unrestricted host, and verify the ledger before execution starts. Use
+the provider conformance suite for configured defaults, path grants and the
+provider settings parser.
+
 [flows]: user-flow-coverage.md
 [testing]: provider-testing.md
 [docker]: ../examples/docker/README.md

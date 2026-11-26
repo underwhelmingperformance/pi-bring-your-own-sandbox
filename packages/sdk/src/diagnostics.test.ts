@@ -4,7 +4,31 @@ import { formatProviders, formatStatus } from './diagnostics.js';
 import { SandboxStartupError } from './errors.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
+import { defaultPolicy } from './policy-model.js';
 import type { ProviderInfo } from './protocol.js';
+
+it('reports the credential exclusion for a configured readable policy', () => {
+	expect(
+		formatStatus({
+			generationId: 'generation',
+			state: 'idle',
+			selection: {
+				providerId: 'fixture',
+				source: 'extension',
+				policy: defaultPolicy
+			}
+		})
+	).toBe(
+		[
+			'Provider: fixture (extension)',
+			'State: idle',
+			'Generation: generation',
+			'Target: not opened',
+			'Requested policy: workspace read-write, network denied, host user data read-only (credential locations excluded), host system files read-only',
+			'User shell: provider default (not opened)'
+		].join('\n')
+	);
+});
 
 it('shows a configured shell that the ready backend does not support', () => {
 	const backend = new MemoryBackend();

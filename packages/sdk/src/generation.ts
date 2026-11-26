@@ -897,7 +897,8 @@ export class SandboxGeneration {
 			limit,
 			requirements: options,
 			mode,
-			paths
+			paths,
+			isUnrestrictedHost: provider.id === passthroughProvider.id
 		});
 
 		if (!result.ok) {
@@ -953,6 +954,7 @@ export class SandboxGeneration {
 		const choice = selectProfile({
 			profiles: provider.profiles.open,
 			limit: unrestrictedPolicy,
+			isUnrestrictedHost: true,
 			requirements,
 			paths
 		});

@@ -119,7 +119,7 @@ it('uses the same profile to negotiate and open, with no allocation during negot
 it('rejects a path beyond the configured policy with its resolved value and source before opening', async () => {
 	await fixture(async (client, context, opens) => {
 		const result = await client.negotiate(context, {
-			access: { paths: { read: ['~/.byos-profile-fixture'] } }
+			access: { paths: { write: ['~/.byos-profile-fixture'] } }
 		});
 
 		if (
@@ -138,7 +138,7 @@ it('rejects a path beyond the configured policy with its resolved value and sour
 			name: 'UnsupportedSandboxPolicyError',
 			detail: {
 				kind: 'path',
-				access: 'read',
+				access: 'write',
 				path: path.join(homedir(), '.byos-profile-fixture'),
 				reason: 'limit'
 			},

@@ -865,10 +865,13 @@ it.each([
 				const prompts = model.requests.map(({ messages }) =>
 					getCurrentSystemPrompt(messages)
 				);
-				const restrictions =
-					profile === 'restricted'
-						? 'Host workspace writes allowed, network denied, host user data denied, host system files read-only'
-						: 'none';
+				const restrictions = {
+					restricted:
+						'Host workspace writes allowed, network denied, host user data denied, host system files read-only',
+					host: 'none',
+					unrestricted:
+						'Host workspace writes allowed, network allowed, host user data read-write (credential locations excluded), host system files read-write'
+				}[profile];
 				const escalation = allowEscalation
 					? 'Use escalate with a justification to request extra access for one command. You can request hostWorkspaceWrites, network, hostUserData, hostSystemFiles, or specific read and write paths. BYOS selects the destination before the decision. The host has no sandbox restrictions.'
 					: 'allowEscalation is false, so BYOS will refuse escalations.';

@@ -105,6 +105,70 @@ it('narrows an omitted property when a restriction excludes correlated profiles'
 	});
 });
 
+it('defaults to reading ordinary host user data', () => {
+	expect(defaultPolicy).toStrictEqual({
+		hostWorkspaceWrites: true,
+		network: false,
+		hostUserData: 'read-only',
+		hostSystemFiles: 'read-only'
+	});
+});
+
+it.each(['read-only', 'read-write'] as const)(
+	'requires a credential path grant even with %s host user data',
+	(hostUserData) => {
+		const policy = { ...unrestrictedPolicy, hostUserData };
+		const ordinary = withPolicy(policy);
+		const granting: Profile = { ...ordinary, pathGrantKinds: ['read'] };
+		const path = '/fixture/home/.ssh/key';
+		const requested = {
+			kind: 'read',
+			location: 'host-user-data',
+			path,
+			isCredential: true
+		} as const;
+		const detail = { kind: 'path', access: 'read', path } as const;
+
+		expect({
+			ordinary: selectProfile({
+				profiles: [granting],
+				limit: policy,
+				paths: [requested]
+			}),
+			propertyOnly: selectProfile({
+				profiles: [ordinary],
+				limit: policy,
+				requirements: { access: { hostUserData: 'needed' } },
+				isEscalated: true
+			}),
+			unsupportedGrant: selectProfile({
+				profiles: [ordinary],
+				limit: policy,
+				paths: [requested],
+				isEscalated: true
+			}),
+			explicitGrant: selectProfile({
+				profiles: [ordinary, granting],
+				limit: policy,
+				paths: [requested],
+				isEscalated: true
+			}),
+			host: selectProfile({
+				profiles: [ordinary],
+				limit: policy,
+				paths: [requested],
+				isUnrestrictedHost: true
+			})
+		}).toStrictEqual({
+			ordinary: { ok: false, detail: { ...detail, reason: 'limit' } },
+			propertyOnly: { ok: true, profile: ordinary },
+			unsupportedGrant: { ok: false, detail: { ...detail, reason: 'profile' } },
+			explicitGrant: { ok: true, profile: granting },
+			host: { ok: true, profile: ordinary }
+		});
+	}
+);
+
 it('narrows only to supported profiles within the SDK default', () => {
 	const widest = withPolicy(unrestrictedPolicy);
 	const confined = withPolicy({ ...defaultPolicy, hostSystemFiles: 'denied' });
@@ -144,13 +208,14 @@ it.each(['read', 'write'] as const)(
 	'uses the declared %s grant without widening the policy for all host files',
 	(kind) => {
 		const path = '/fixture/dependency';
+		const denied: Policy = { ...defaultPolicy, hostUserData: 'denied' };
 		const supported: Profile = {
-			...withPolicy(defaultPolicy),
+			...withPolicy(denied),
 			pathGrantKinds: [kind]
 		};
-		const unsupported = withPolicy(defaultPolicy);
+		const unsupported = withPolicy(denied);
 		const request = {
-			limit: defaultPolicy,
+			limit: denied,
 			isEscalated: true,
 			paths: [{ kind, path, location: 'host-user-data' as const }]
 		};
@@ -176,7 +241,7 @@ it.each([
 		kind: 'read',
 		location: 'host-user-data',
 		operation: 'open',
-		allowed: false
+		allowed: true
 	},
 	{
 		kind: 'read',

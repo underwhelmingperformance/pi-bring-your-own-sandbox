@@ -8,6 +8,7 @@ import type { DisplayText } from './display-text.js';
 import { cleanDisplayText, joinDisplayLines } from './display-text.js';
 import { isSandboxError } from './errors.js';
 import { describeRestrictions } from './escalation-plan.js';
+import { passthroughProvider } from './passthrough-provider.js';
 import { accessOrder } from './policy-model.js';
 import { runtimeSettings } from './runtime-settings.js';
 
@@ -31,7 +32,11 @@ async function describeShellPolicy(
 		}
 
 		const config = await runtimeSettings(pi).read(context);
-		const restrictions = describeRestrictions(result.profile.policy);
+		const restrictions = describeRestrictions(
+			result.profile.policy,
+			undefined,
+			config.selection.providerId === passthroughProvider.id
+		);
 		const escalation =
 			config.allowEscalation === false
 				? 'allowEscalation is false, so BYOS will refuse escalations.'

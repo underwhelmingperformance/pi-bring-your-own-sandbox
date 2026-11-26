@@ -2,6 +2,7 @@ import { realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
+import { credentialLocations } from './credential-locations.js';
 import { UnsupportedSandboxPolicyError } from './errors.js';
 import type { PathGrants } from './policy-model.js';
 import type { ResolvedPath } from './profile-negotiation.js';
@@ -72,17 +73,37 @@ export async function resolvePathGrants(
 	}
 
 	const root = await canonicalPath(workspace);
+	const home = homedir();
+	const excluded = credentialLocations.map((location) =>
+		path.join(home, location.slice(2))
+	);
+	const excludedResolved = await Promise.all(
+		excluded.map(async (location) => {
+			try {
+				return await canonicalPath(location);
+			} catch {
+				return location;
+			}
+		})
+	);
 	const resolved: ResolvedPath[] = [];
 
 	for (const kind of ['read', 'write'] as const) {
 		const inputs = grants[kind] ?? [];
-		const paths = new Set<string>();
+		const paths = new Map<string, boolean>();
 
 		for (const input of inputs) {
 			const absolute = hostPath(workspace, input);
 
 			try {
-				paths.add(await canonicalPath(absolute));
+				const candidate = await canonicalPath(absolute);
+
+				paths.set(
+					candidate,
+					paths.get(candidate) === true ||
+						excluded.some((location) => isWithin(location, absolute)) ||
+						excludedResolved.some((location) => isWithin(location, candidate))
+				);
 			} catch (error) {
 				throw new UnsupportedSandboxPolicyError(
 					{
@@ -99,18 +120,27 @@ export async function resolvePathGrants(
 			}
 		}
 
-		const ordered = [...paths].toSorted(
-			(left, right) => Number(left > right) - Number(left < right)
-		);
+		const ordered = paths
+			.keys()
+			.toArray()
+			.toSorted((left, right) => Number(left > right) - Number(left < right));
 
 		for (const candidate of ordered) {
+			const isCredential = paths.get(candidate) === true;
 			const location = isWithin(root, candidate)
 				? 'workspace'
-				: systemRoots.some((directory) => isWithin(directory, candidate))
+				: !isCredential &&
+					  systemRoots.some((directory) => isWithin(directory, candidate))
 					? 'host-system-files'
 					: 'host-user-data';
 
-			resolved.push({ kind, path: candidate, location });
+			resolved.push({
+				kind,
+				path: candidate,
+				location,
+				...(isCredential &&
+					location === 'host-user-data' && { isCredential: true })
+			});
 		}
 	}
 

@@ -23,6 +23,7 @@ export interface ResolvedPath {
 	readonly path: string;
 	readonly kind: 'read' | 'write';
 	readonly location: 'workspace' | 'host-user-data' | 'host-system-files';
+	readonly isCredential?: true;
 }
 
 type CapabilityFailure =
@@ -68,6 +69,7 @@ interface ProfileRequest {
 	readonly mode?: ProfileMode;
 	readonly paths?: readonly ResolvedPath[];
 	readonly isEscalated?: boolean;
+	readonly isUnrestrictedHost?: boolean;
 }
 
 const satisfiesAccess = {
@@ -115,7 +117,8 @@ function compareProfiles(
 function canGrantPath(
 	policy: Policy,
 	path: ResolvedPath,
-	mode: ProfileMode
+	mode: ProfileMode,
+	isUnrestrictedHost: boolean
 ): boolean {
 	if (path.location === 'workspace') {
 		return (
@@ -123,7 +126,10 @@ function canGrantPath(
 		);
 	}
 
-	if (mode === 'copy' && path.kind === 'write') {
+	if (
+		(!isUnrestrictedHost && path.isCredential === true) ||
+		(mode === 'copy' && path.kind === 'write')
+	) {
 		return false;
 	}
 
@@ -188,7 +194,8 @@ export function selectProfile({
 	requirements = {},
 	mode = 'open',
 	paths = [],
-	isEscalated = false
+	isEscalated = false,
+	isUnrestrictedHost = false
 }: ProfileRequest): ProfileSelection {
 	let eligible = profiles.filter(({ policy }) =>
 		isEscalated
@@ -233,7 +240,7 @@ export function selectProfile({
 	}
 
 	for (const path of paths) {
-		if (!isEscalated && !canGrantPath(limit, path, mode)) {
+		if (!isEscalated && !canGrantPath(limit, path, mode, isUnrestrictedHost)) {
 			return {
 				ok: false,
 				detail: {
@@ -247,7 +254,7 @@ export function selectProfile({
 
 		eligible = eligible.filter(
 			(profile) =>
-				canGrantPath(profile.policy, path, mode) ||
+				canGrantPath(profile.policy, path, mode, isUnrestrictedHost) ||
 				(isEscalated &&
 					mode === 'open' &&
 					path.location !== 'workspace' &&

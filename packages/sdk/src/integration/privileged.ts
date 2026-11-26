@@ -13,6 +13,7 @@ import { cleanDisplayText } from '../display-text.js';
 import { InvalidSandboxRequestError } from '../errors.js';
 import type { EscalatedSandbox } from '../escalation-plan.js';
 import { describeRestrictions } from '../escalation-plan.js';
+import { passthroughProvider } from '../passthrough-provider.js';
 import { registerShellIntegrationDiagnostics } from '../pi-integration-status.js';
 import { createShellOperations } from '../pi-shell-operations.js';
 import {
@@ -122,7 +123,8 @@ async function verifyPendingCall(
 							write: paths
 								.filter((grant) => grant.kind === 'write')
 								.map((grant) => grant.targetPath)
-						}
+						},
+				sandbox.providerId === passthroughProvider.id
 			);
 
 			feedback.push({

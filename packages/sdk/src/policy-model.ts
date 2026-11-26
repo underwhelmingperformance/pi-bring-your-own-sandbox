@@ -94,12 +94,17 @@ export const profileSchema = Type.Refine(
 	(profile) =>
 		profile.processKinds.includes('shell') === profile.shells.length > 0
 );
+/**
+Effective restrictions for an allocation. Read-only and read-write host user
+data exclude credential locations outside the checkout. A provider can grant
+an excluded path for an approved escalation that requests it explicitly.
+*/
 export type Profile = Frozen<Static<typeof profileSchema>>;
 
 export const defaultPolicy: Policy = Object.freeze({
 	hostWorkspaceWrites: true,
 	network: false,
-	hostUserData: 'denied',
+	hostUserData: 'read-only',
 	hostSystemFiles: 'read-only'
 });
 

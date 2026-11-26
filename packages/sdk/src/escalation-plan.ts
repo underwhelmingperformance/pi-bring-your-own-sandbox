@@ -6,8 +6,8 @@ import type {
 	SandboxOperationOptions,
 	SandboxPolicy
 } from './contracts.js';
+import { describeHostUserData } from './credential-locations.js';
 import type { EscalationDestination } from './escalation-ledger.js';
-import { accessOrder, unrestrictedPolicy } from './policy-model.js';
 
 export interface EscalatedSandbox {
 	readonly sandbox: Sandbox;
@@ -27,13 +27,10 @@ export interface EscalationPlan {
 
 export function describeRestrictions(
 	policy: SandboxPolicy,
-	paths?: PathGrants
+	paths?: PathGrants,
+	isUnrestrictedHost = false
 ): string {
-	if (
-		accessOrder.every(
-			(property) => policy[property] === unrestrictedPolicy[property]
-		)
-	) {
+	if (isUnrestrictedHost) {
 		return 'none';
 	}
 
@@ -43,7 +40,7 @@ export function describeRestrictions(
 	return [
 		`Host workspace writes ${policy.hostWorkspaceWrites ? 'allowed' : 'denied'}`,
 		`network ${policy.network ? 'allowed' : 'denied'}`,
-		`host user data ${policy.hostUserData}`,
+		`host user data ${describeHostUserData(policy.hostUserData, false)}`,
 		`host system files ${policy.hostSystemFiles}`,
 		...(read === undefined || read.length === 0
 			? []

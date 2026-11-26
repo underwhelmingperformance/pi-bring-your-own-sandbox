@@ -85,6 +85,7 @@ value StaleSandboxHandleError (errors.d.ts)
 value UnsupportedSandboxCapabilityError (errors.d.ts)
 value UnsupportedSandboxPolicyError (errors.d.ts)
 value cleanDisplayText (display-text.d.ts)
+value credentialLocations (credential-locations.d.ts)
 value isSandboxError (errors.d.ts)
 value registerSandboxProvider (provider-registration.d.ts)
 value sendDisplayMessage (display-ui.d.ts)
@@ -592,6 +593,9 @@ type SandboxCapability = Static<typeof capabilitySchema>;
 
 // contracts.d.ts
 type SandboxViolation = Readonly<Static<typeof violationsSchema>[number]>;
+
+// credential-locations.d.ts
+declare const credentialLocations: readonly string[];
 
 // diagnostic-registration.d.ts
 export declare function registerSandboxDiagnostics(pi: ExtensionAPI, extensionSource: string): void;

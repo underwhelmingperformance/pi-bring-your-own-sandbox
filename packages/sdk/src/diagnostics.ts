@@ -1,7 +1,9 @@
 import { formatCleanupReport } from './cleanup-report.js';
 import type { SandboxErrorInfo, SandboxPolicy } from './contracts.js';
+import { describeHostUserData } from './credential-locations.js';
 import type { DisplayText } from './display-text.js';
 import { cleanDisplayText, joinDisplayLines } from './display-text.js';
+import { passthroughProvider } from './passthrough-provider.js';
 import { accessOrder } from './policy-model.js';
 import type { ProviderInfo, SandboxStatus } from './protocol.js';
 
@@ -27,12 +29,16 @@ function policyKey(value: SandboxPolicy): string {
 	return JSON.stringify(accessOrder.map((property) => value[property]));
 }
 
-function policy(value: SandboxPolicy, relationship?: string): string {
+function policy(
+	value: SandboxPolicy,
+	providerId?: string,
+	relationship?: string
+): string {
 	const checkout = relationship === undefined ? '' : ` (${relationship})`;
 	const access = value.hostWorkspaceWrites ? 'read-write' : 'read-only';
 	const network = value.network ? 'allowed' : 'denied';
 
-	return `workspace ${access}${checkout}, network ${network}, host user data ${value.hostUserData}, host system files ${value.hostSystemFiles}`;
+	return `workspace ${access}${checkout}, network ${network}, host user data ${describeHostUserData(value.hostUserData, providerId === passthroughProvider.id)}, host system files ${value.hostSystemFiles}`;
 }
 
 function userShell(status: SandboxStatus): string {
@@ -136,12 +142,14 @@ export function formatStatus(status: SandboxStatus): DisplayText {
 
 	if (status.policy !== undefined) {
 		lines.push(
-			`Effective policy: ${policy(status.policy, status.workspace?.relationship)}`
+			`Effective policy: ${policy(status.policy, selection?.providerId, status.workspace?.relationship)}`
 		);
 	}
 
 	if (selection !== undefined && status.policy === undefined) {
-		lines.push(`Requested policy: ${policy(selection.policy)}`);
+		lines.push(
+			`Requested policy: ${policy(selection.policy, selection.providerId)}`
+		);
 	}
 
 	if (status.capabilities !== undefined) {
@@ -197,8 +205,8 @@ export function formatStatus(status: SandboxStatus): DisplayText {
 			cleanDisplayText(`Additional backend${id} (${state})`),
 			cleanDisplayText(
 				backend.effectivePolicy === undefined
-					? `Requested policy: ${policy(backend.policy)}`
-					: `Effective policy: ${policy(backend.effectivePolicy)}`
+					? `Requested policy: ${policy(backend.policy, selection?.providerId)}`
+					: `Effective policy: ${policy(backend.effectivePolicy, selection?.providerId)}`
 			)
 		);
 	}
@@ -244,7 +252,7 @@ export function formatProviders(
 
 			for (const profile of profiles) {
 				lines.push(
-					`  ${mode}: ${policy(profile.policy, mode === 'copy' ? 'copied' : 'shared')}`,
+					`  ${mode}: ${policy(profile.policy, provider.id, mode === 'copy' ? 'copied' : 'shared')}`,
 					`    Operations: ${list(profile.capabilities)}`,
 					`    Termination scope: ${profile.terminationScope}`,
 					`    Shells: ${list(profile.shells)}`

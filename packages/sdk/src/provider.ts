@@ -33,6 +33,7 @@ export type {
 	SandboxWorkspace,
 	ShellDialect
 } from './contracts.js';
+export { credentialLocations } from './credential-locations.js';
 export { cleanDisplayText } from './display-text.js';
 export { sendDisplayMessage } from './display-ui.js';
 export {

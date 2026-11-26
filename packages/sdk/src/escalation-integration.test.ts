@@ -1,5 +1,6 @@
-import { realpath } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
+import path from 'node:path';
 
 import type { InlineExtension } from '@earendil-works/pi-coding-agent';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -7,8 +8,13 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { ScriptedModel } from '../../../test-support/scripted-model.js';
 
 import { createSandboxClient } from './client.js';
-import type { ProcessRequest } from './contracts.js';
-import { InvalidSandboxRequestError, SandboxStartupError } from './errors.js';
+import type { PathGrants, ProcessRequest } from './contracts.js';
+import {
+	InvalidSandboxRequestError,
+	isSandboxError,
+	SandboxStartupError,
+	UnsupportedSandboxPolicyError
+} from './errors.js';
 import type { EscalationRequest } from './escalation-ledger.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { shellBackend } from './fixtures/shell-backend.js';
@@ -18,6 +24,233 @@ import { registerSandboxProvider } from './provider-registration.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();
+});
+
+it.each([
+	{
+		route: 'ordinary',
+		behaviour: 'rejects an ordinary credential grant before allocation'
+	},
+	{
+		route: 'reviewed',
+		behaviour: 'grants a credential path after recording explicit approval'
+	}
+] as const)('$behaviour', async ({ route }) => {
+	const temporaryHome = await mkdtemp(path.join(tmpdir(), 'byos-home-'));
+	const home = await realpath(temporaryHome);
+	const filename = '~/.ssh/id_ed25519';
+	const hostPath = path.join(home, '.ssh/id_ed25519');
+	const targetHome = '/fixture-home';
+	const providerId = 'fixture.credentials';
+	const { backend, requests } = shellBackend();
+	const profile = {
+		...backend.profile,
+		policy: { ...backend.profile.policy, hostUserData: 'read-only' as const },
+		pathGrantKinds: ['read'] as const
+	};
+	const opened: { paths: PathGrants | undefined; ledger: unknown[] }[] = [];
+	const refusals: unknown[] = [];
+	const command = 'printf fixture';
+	const model = new ScriptedModel([
+		{
+			type: 'toolCall',
+			id: 'credential-call',
+			name: 'bash',
+			arguments: {
+				command,
+				escalate: [{ read: [filename] }],
+				justification: 'Read synthetic credential data.'
+			}
+		}
+	]);
+	let readLedger: (() => unknown[]) | undefined;
+
+	try {
+		vi.stubEnv('HOME', home);
+		await withPiRuntime(
+			[
+				{
+					name: 'credential-provider',
+					factory(pi) {
+						registerSandboxProvider(
+							pi,
+							'<inline:credential-provider>',
+							{
+								id: providerId,
+								label: 'Credential fixture',
+								profiles: { open: [profile], copy: [] },
+								validateConfig: () => ({}),
+								open(request) {
+									opened.push({
+										paths: request.paths,
+										ledger: readLedger?.() ?? []
+									});
+
+									return Promise.resolve({
+										...backend,
+										profile: request.profile,
+										workspace: { ...backend.workspace, home: targetHome },
+										grantedPaths: (request.paths?.read ?? []).map((grant) => ({
+											kind: 'read' as const,
+											hostPath: grant,
+											targetPath: path.posix.join(
+												targetHome,
+												path.relative(home, grant)
+											)
+										}))
+									});
+								}
+							},
+							{
+								configure: () => ({
+									configuration: {},
+									settings: { policy: profile.policy, allowEscalation: true }
+								})
+							}
+						);
+					}
+				},
+				{
+					name: 'sandbox-tools',
+					factory(pi) {
+						sandboxTools(pi, '<inline:sandbox-tools>');
+					}
+				},
+				{
+					name: 'credential-review',
+					factory(pi) {
+						const client = createSandboxClient(
+							pi,
+							'<inline:credential-review>'
+						);
+
+						if (route === 'ordinary') {
+							pi.on('session_start', async (_event, context) => {
+								try {
+									await client.get(context, {
+										access: { paths: { read: [filename] } }
+									});
+								} catch (error) {
+									if (!isSandboxError(error, UnsupportedSandboxPolicyError)) {
+										throw error;
+									}
+
+									refusals.push({ name: error.name, detail: error.detail });
+								}
+							});
+
+							return;
+						}
+
+						pi.on('tool_call', (event, context) => {
+							const review = client.findShellReviewSource(context, event);
+							const escalation = review.ok
+								? review.source.escalation
+								: undefined;
+
+							if (escalation === undefined) {
+								return;
+							}
+
+							expect({ opened, ledger: readLedger?.() }).toStrictEqual({
+								opened: [],
+								ledger: []
+							});
+							client.recordEscalationDecision(context, escalation, 'allow');
+						});
+					}
+				},
+				model.extension
+			],
+			async (runtime, errors) => {
+				if (route === 'ordinary') {
+					expect({ errors, opened, refusals }).toStrictEqual({
+						errors: [],
+						opened: [],
+						refusals: [
+							{
+								name: 'UnsupportedSandboxPolicyError',
+								detail: {
+									kind: 'path',
+									access: 'read',
+									path: hostPath,
+									reason: 'limit'
+								}
+							}
+						]
+					});
+
+					return;
+				}
+
+				readLedger = () =>
+					runtime.session.sessionManager
+						.getEntries()
+						.flatMap((entry) =>
+							entry.type === 'custom' && entry.customType === 'byos.ledger'
+								? [entry.data]
+								: []
+						);
+				runtime.session.setActiveToolsByName(['bash']);
+
+				const selected = runtime.session.modelRuntime.getModel(
+					'scripted',
+					'scripted'
+				);
+
+				if (selected === undefined) {
+					throw new Error('The scripted model was not registered.');
+				}
+
+				await runtime.session.setModel(selected);
+				await runtime.session.prompt('Run the reviewed command.');
+
+				const escalation = {
+					kind: 'escalation',
+					outcome: 'allowed',
+					decider: {
+						kind: 'permission-extension',
+						extension: '<inline:credential-review>'
+					},
+					request: {
+						toolCallId: 'credential-call',
+						command,
+						justification: 'Read synthetic credential data.',
+						access: { paths: { read: [hostPath] } },
+						destination: {
+							kind: 'provider',
+							providerId,
+							policy: profile.policy,
+							effectiveRestrictions: expect.stringContaining(
+								'host user data read-only'
+							) as unknown
+						}
+					}
+				};
+
+				expect({
+					errors,
+					opened,
+					requests,
+					ledger: readLedger()
+				}).toStrictEqual({
+					errors: [],
+					opened: [{ paths: { read: [hostPath] }, ledger: [escalation] }],
+					requests: [
+						{
+							kind: 'shell',
+							dialect: 'bash',
+							command,
+							cwd: backend.workspace.root
+						}
+					],
+					ledger: [escalation]
+				});
+			}
+		);
+	} finally {
+		await rm(home, { recursive: true, force: true });
+	}
 });
 
 it.each([

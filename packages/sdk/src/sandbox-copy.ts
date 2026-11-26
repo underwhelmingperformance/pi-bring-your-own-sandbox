@@ -5,6 +5,7 @@ import { settleSandboxClose } from './cleanup-report.js';
 import type {
 	Sandbox,
 	SandboxCloseReport,
+	SandboxCopy,
 	SandboxCopyOptions,
 	SandboxErrorContext
 } from './contracts.js';
@@ -60,6 +61,24 @@ export function checkCopiedSandbox(
 			backendId: sandbox.backendId,
 			...(extensionSource !== undefined && { extensionSource }),
 			detail: { kind: 'declaration', field: 'workspace.relationship' }
+		});
+	}
+}
+
+export async function checkedCopy(
+	copy: SandboxCopy,
+	options: SandboxCopyOptions,
+	extensionSource: string
+): Promise<SandboxCopy> {
+	try {
+		checkCopiedSandbox(copy.sandbox, options, extensionSource);
+
+		return copy;
+	} catch (error) {
+		return rethrowCopyError(error, () => copy.close(), {
+			operation: 'dispose',
+			providerId: copy.sandbox.providerId,
+			backendId: copy.sandbox.backendId
 		});
 	}
 }

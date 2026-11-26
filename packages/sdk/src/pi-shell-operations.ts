@@ -82,7 +82,7 @@ export function createShellOperations(
 	};
 }
 
-export function throwShellOperationError(
+function throwShellOperationError(
 	error: unknown,
 	timeoutSeconds?: number
 ): never {

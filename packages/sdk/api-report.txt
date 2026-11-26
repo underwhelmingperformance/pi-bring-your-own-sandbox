@@ -457,9 +457,6 @@ export type ProcessEnvironment = Readonly<Static<typeof environmentSchema>>;
 export type ProcessExit = Readonly<Static<typeof processExitSchema>>;
 
 // contracts.d.ts
-export type ProcessKind = ProcessRequest['kind'];
-
-// contracts.d.ts
 export type ProcessRequest = ProcessLocation & ({
     readonly kind: 'argv';
     readonly executable: string;
@@ -484,9 +481,6 @@ export type RecoveryDescriptor = {
     readonly lease: string;
     readonly expiresAt?: string;
 };
-
-// contracts.d.ts
-export type SandboxCapability = Static<typeof capabilitySchema>;
 
 // contracts.d.ts
 export type SandboxContext = Pick<ExtensionContext, 'cwd' | 'sessionManager'> & Partial<Pick<ExtensionContext, 'isProjectTrusted'>>;
@@ -555,13 +549,7 @@ export type SandboxOperation = Static<typeof operationSchema>;
 export type SandboxPolicy = Policy;
 
 // contracts.d.ts
-export type SandboxRequirements = ProfileRequirements;
-
-// contracts.d.ts
 export type SandboxSharedSettings = Readonly<Static<typeof sharedSettingsSchema>>;
-
-// contracts.d.ts
-export type SandboxViolation = Readonly<Static<typeof violationsSchema>[number]>;
 
 // contracts.d.ts
 export type ShellDialect = Static<typeof shellSchema>;
@@ -586,6 +574,18 @@ interface ProcessLocation {
 
 // contracts.d.ts
 type OrdinarySandboxErrorName = Static<typeof ordinaryErrorNameSchema>;
+
+// contracts.d.ts
+type ProcessKind = ProcessRequest['kind'];
+
+// contracts.d.ts
+type SandboxCapability = Static<typeof capabilitySchema>;
+
+// contracts.d.ts
+type SandboxRequirements = ProfileRequirements;
+
+// contracts.d.ts
+type SandboxViolation = Readonly<Static<typeof violationsSchema>[number]>;
 
 // diagnostic-registration.d.ts
 export declare function registerSandboxDiagnostics(pi: ExtensionAPI, extensionSource: string): void;
@@ -748,7 +748,7 @@ declare const ordinaryErrorNameSchema: Type.TUnion<[
 ]>;
 
 // errors.d.ts
-export declare abstract class SandboxError<Name extends string = string> extends Error {
+declare abstract class SandboxError<Name extends string = string> extends Error {
     readonly name: Name;
     readonly operation: SandboxOperation;
     readonly extensionSource?: string;
@@ -1143,17 +1143,6 @@ export declare function defineSandboxProviderTests<Config>(options: SandboxProvi
 export declare function registerSandboxProvider<Config, Input = Config>(pi: SandboxHost, extensionSource: string, provider: SandboxProvider<Config>, options?: NoInfer<SandboxProviderRegistration<Input>>): void;
 
 // provider-test-contracts.d.ts
-export interface SandboxPolicyProbe {
-    readonly permitted: SandboxProcessProbe;
-    readonly denied: SandboxProcessProbe;
-    readonly observe: () => Promise<SandboxPolicyEvidence>;
-    readonly file?: {
-        readonly path: string;
-        readonly error: 'absent' | 'denied' | 'unsupported-file';
-    };
-}
-
-// provider-test-contracts.d.ts
 export interface SandboxProcessProbe {
     readonly request: ProcessRequest;
     readonly exit: ProcessExit;
@@ -1249,7 +1238,21 @@ export interface SandboxProviderTestOptions<Config> {
 }
 
 // provider-test-contracts.d.ts
-export type SandboxPolicyEvidence = {
+export type SandboxPolicyScenario = 'read-only' | 'protected-path' | 'protected-alias' | 'late-special-file' | 'denied-network';
+
+// provider-test-contracts.d.ts
+interface SandboxPolicyProbe {
+    readonly permitted: SandboxProcessProbe;
+    readonly denied: SandboxProcessProbe;
+    readonly observe: () => Promise<SandboxPolicyEvidence>;
+    readonly file?: {
+        readonly path: string;
+        readonly error: 'absent' | 'denied' | 'unsupported-file';
+    };
+}
+
+// provider-test-contracts.d.ts
+type SandboxPolicyEvidence = {
     readonly kind: 'file';
     readonly content: Uint8Array;
     readonly mode: number;
@@ -1265,9 +1268,6 @@ export type SandboxPolicyEvidence = {
     readonly kind: 'listener';
     readonly connections: number;
 };
-
-// provider-test-contracts.d.ts
-export type SandboxPolicyScenario = 'read-only' | 'protected-path' | 'protected-alias' | 'late-special-file' | 'denied-network';
 
 // request-schemas.d.ts
 declare const environmentSchema: Type.TRecord<"^.*$", Type.TUnion<[

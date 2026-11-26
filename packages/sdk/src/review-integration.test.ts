@@ -3,13 +3,10 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 import { ScriptedModel } from '../../../test-support/scripted-model.js';
 
-import type {
-	DestinationDescription,
-	SandboxNegotiation,
-	ShellReviewSource
-} from './contracts.js';
+import type { SandboxNegotiation, ShellReviewSource } from './contracts.js';
 import { ensureSandboxService } from './default-broker.js';
 import { UnsupportedSandboxCapabilityError } from './errors.js';
+import type { DestinationDescription } from './escalation-ledger.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { loadSdkInstance } from './fixtures/sdk-instance.js';
 import { shellBackend } from './fixtures/shell-backend.js';

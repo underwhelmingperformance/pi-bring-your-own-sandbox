@@ -1,12 +1,8 @@
 import { Type } from 'typebox';
 import { expect, it } from 'vitest';
 
-import {
-	atFeatureLevel,
-	introducedAt,
-	projectOffer,
-	wholeOffer
-} from './protocol-schema.js';
+import { introducedAt } from './fixtures/protocol-feature.js';
+import { atFeatureLevel, projectOffer, wholeOffer } from './protocol-schema.js';
 import { checker, denseArray } from './schemas.js';
 
 const trace = introducedAt(1, Type.Literal('trace'));

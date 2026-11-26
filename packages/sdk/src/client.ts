@@ -7,8 +7,6 @@ import type {
 	SandboxClient,
 	SandboxCloseReport,
 	SandboxContext,
-	SandboxCopy,
-	SandboxCopyOptions,
 	SandboxErrorInfo,
 	SandboxHost,
 	SandboxNegotiation
@@ -26,11 +24,6 @@ import {
 	recordEscalationDecision
 } from './review-route.js';
 import { runtimeSettings } from './runtime-settings.js';
-import {
-	checkCopiedSandbox,
-	copyOptions,
-	rethrowCopyError
-} from './sandbox-copy.js';
 
 function identifyRequester(
 	error: SandboxErrorInfo,
@@ -90,43 +83,6 @@ export async function getSandbox(
 		return sandbox;
 	} catch (error) {
 		throw isSandboxError(error) ? identifyRequester(error, source) : error;
-	}
-}
-
-/**
-Copy the host workspace into a private sandbox from the selected provider. The
-broker ranks profiles within the session's
-configured access. Close the copy when it is no longer needed. Use
-`sandbox.copy` instead to copy a sandbox whose files can differ from the host.
-*/
-export async function copyHostWorkspace(
-	pi: SandboxHost,
-	context: SandboxContext,
-	options?: SandboxCopyOptions
-): Promise<SandboxCopy> {
-	inspectContext(context, 'acquire');
-
-	const source = protocolAddress(pi.events).extensionSource;
-	const settings = copyOptions(options, source);
-	const broker = ensureSandboxService(pi);
-	let copy: SandboxCopy;
-
-	try {
-		copy = await broker.copy(context, { kind: 'host' }, settings);
-	} catch (error) {
-		throw isSandboxError(error) ? identifyRequester(error, source) : error;
-	}
-
-	try {
-		checkCopiedSandbox(copy.sandbox, settings, source);
-
-		return copy;
-	} catch (error) {
-		return rethrowCopyError(error, () => copy.close(), {
-			operation: 'dispose',
-			providerId: copy.sandbox.providerId,
-			backendId: copy.sandbox.backendId
-		});
 	}
 }
 

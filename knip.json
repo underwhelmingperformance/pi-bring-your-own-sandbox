@@ -15,8 +15,7 @@
 				"src/**/*.ts!",
 				"examples/**/*.ts!",
 				"*.config.ts",
-				"!src/fixtures/**!",
-				"!examples/**/test/**!"
+				"!src/fixtures/**!"
 			]
 		},
 		"packages/provider-docker": {

@@ -6,7 +6,8 @@ import type {
 import type { RuntimeOptions } from '../../../../test-support/pi-runtime.js';
 import { withPiRuntime as runPi } from '../../../../test-support/pi-runtime.js';
 import { bindFactory } from '../default-broker.js';
-import { hasProtocolAddress } from '../protocol-address.js';
+
+import { fixtureProtocolAddress } from './protocol-address.js';
 
 export function withPiRuntime(
 	extensions: readonly InlineExtension[],
@@ -32,7 +33,7 @@ export function withPiRuntime(
 				async factory(pi) {
 					await item.factory(pi);
 
-					if (!hasProtocolAddress(pi.events)) {
+					if (fixtureProtocolAddress(pi.events) === undefined) {
 						bindFactory(pi, `<inline:${item.name}>`);
 					}
 				}

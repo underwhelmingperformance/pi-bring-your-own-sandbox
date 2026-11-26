@@ -52,7 +52,7 @@ export type SandboxPolicyScenario =
 /**
 Independent observations of a protected object or a controlled listener.
 */
-export type SandboxPolicyEvidence =
+type SandboxPolicyEvidence =
 	| {
 			readonly kind: 'file';
 			readonly content: Uint8Array;
@@ -71,7 +71,7 @@ export type SandboxPolicyEvidence =
 /**
 Target commands and an independent observer for one policy restriction.
 */
-export interface SandboxPolicyProbe {
+interface SandboxPolicyProbe {
 	readonly permitted: SandboxProcessProbe;
 	readonly denied: SandboxProcessProbe;
 	readonly observe: () => Promise<SandboxPolicyEvidence>;

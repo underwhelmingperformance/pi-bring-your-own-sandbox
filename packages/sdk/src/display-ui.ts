@@ -43,15 +43,6 @@ export function notifyDisplay(
 	context.ui.notify(message, type);
 }
 
-export function isDisplayConfirmed(
-	context: ExtensionContext,
-	title: DisplayText,
-	message: DisplayText,
-	options?: ExtensionUIDialogOptions
-): Promise<boolean> {
-	return context.ui.confirm(title, message, options);
-}
-
 export function chooseDisplayOption(
 	context: ExtensionContext,
 	details: readonly DisplayText[],

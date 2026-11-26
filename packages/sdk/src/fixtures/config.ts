@@ -4,9 +4,10 @@ import { cleanupSelectionSchema } from '../cleanup-budgets.js';
 import type { SandboxHost, SandboxProvider } from '../contracts.js';
 import { InvalidSandboxConfigError } from '../errors.js';
 import { accessPolicySchema } from '../policy-model.js';
-import { hasProtocolAddress, protocolAddress } from '../protocol-address.js';
 import { registerSandboxProvider } from '../provider-registration.js';
 import { checker, shellSchema } from '../schemas.js';
+
+import { fixtureProtocolAddress } from './protocol-address.js';
 
 const schema = Type.Object(
 	{
@@ -21,9 +22,9 @@ const schema = Type.Object(
 const isSettings = checker(schema);
 
 function source(pi: SandboxHost): string {
-	return hasProtocolAddress(pi.events)
-		? protocolAddress(pi.events).extensionSource
-		: import.meta.filename;
+	return (
+		fixtureProtocolAddress(pi.events)?.extensionSource ?? import.meta.filename
+	);
 }
 
 export class FixtureConfig {

@@ -26,7 +26,7 @@ const isBrokerReply = checker(brokerReply);
 const isProviderAdvertisement = checker(providerAdvertisement);
 const isProviderInfo = checker(providerInfoSchema);
 
-export function protocolIdentity({
+function protocolIdentity({
 	buildId,
 	packageVersion,
 	extensionSource,

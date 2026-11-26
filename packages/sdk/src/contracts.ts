@@ -5,24 +5,17 @@ import type {
 import type { Static } from 'typebox';
 
 import type {
-	EscalationDecision,
-	EscalationRequest
-} from './escalation-ledger.js';
-export type {
-	DestinationDescription,
-	EscalationDestination,
-	EscalationRequest,
-	SandboxLedgerEntry
-} from './escalation-ledger.js';
-import type { DestinationDescription } from './escalation-ledger.js';
-import type { ReviewUnavailableReason } from './review-identities.js';
-export type { ReviewUnavailableReason } from './review-identities.js';
-import type {
 	errorDetailSchema,
 	operationSchema,
 	ordinaryErrorNameSchema
 } from './error-schema.js';
+import type {
+	EscalationDecision,
+	EscalationRequest
+} from './escalation-ledger.js';
+import type { DestinationDescription } from './escalation-ledger.js';
 import type { PathGrants, Policy, Profile } from './policy-model.js';
+import type { ReviewUnavailableReason } from './review-identities.js';
 export type {
 	Access,
 	AccessProperty,
@@ -75,7 +68,7 @@ export type ShellDialect = Static<typeof shellSchema>;
 /**
 Request forms accepted by a provider. Shell dialects are advertised separately.
 */
-export type ProcessKind = ProcessRequest['kind'];
+type ProcessKind = ProcessRequest['kind'];
 /**
 Processes that must have stopped before execution completes or cancellation is
 acknowledged. `none` waits for the command's normal result but promises no
@@ -87,7 +80,7 @@ export type TerminationScope = Static<typeof terminationScopeSchema>;
 /**
 Operation groups that consumers can require before using a shared backend.
 */
-export type SandboxCapability = Static<typeof capabilitySchema>;
+type SandboxCapability = Static<typeof capabilitySchema>;
 
 /**
 Implemented operations and shell dialects from the chosen profile.
@@ -224,7 +217,7 @@ export interface SandboxWriteOptions extends SandboxOperationOptions {
 Requirements checked against the selected, shared backend. Requirements do
 not select another provider or reconfigure an existing backend.
 */
-export type SandboxRequirements = ProfileRequirements;
+type SandboxRequirements = ProfileRequirements;
 
 export interface SandboxAcquireOptions
 	extends SandboxOperationOptions, SandboxRequirements {}
@@ -529,9 +522,7 @@ completion. Non-zero codes remain successful SDK results.
 	readonly violations?: readonly SandboxViolation[];
 }
 
-export type SandboxViolation = Readonly<
-	Static<typeof violationsSchema>[number]
->;
+type SandboxViolation = Readonly<Static<typeof violationsSchema>[number]>;
 /**
 Filesystem entry kinds; directory listings report links without following
 them.

@@ -17,7 +17,7 @@ Shared context for concrete sandbox errors. Construct a specific subclass.
 Use the structural guard when errors can come from another installed SDK
 copy.
 */
-export abstract class SandboxError<Name extends string = string> extends Error {
+abstract class SandboxError<Name extends string = string> extends Error {
 	/**
 	Stable class identity, preserved across SDK copies and minification.
 	*/
@@ -153,7 +153,7 @@ export class IncompatibleSandboxProtocolError extends SandboxError<'Incompatible
 /**
 The activated provider does not match a guard requirement.
 */
-export class SandboxProviderMismatchError extends SandboxError<'SandboxProviderMismatchError'> {
+class SandboxProviderMismatchError extends SandboxError<'SandboxProviderMismatchError'> {
 	/**
 	Stable identity used by the structural guard across SDK copies.
 	*/
@@ -172,7 +172,7 @@ export class SandboxProviderMismatchError extends SandboxError<'SandboxProviderM
 /**
 A guard requires explicit provider activation before SDK operations can proceed.
 */
-export class SandboxProviderRequiredError extends SandboxError<'SandboxProviderRequiredError'> {
+class SandboxProviderRequiredError extends SandboxError<'SandboxProviderRequiredError'> {
 	/**
 	Stable identity used by the structural guard across SDK copies.
 	*/

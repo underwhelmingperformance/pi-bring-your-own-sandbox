@@ -11,10 +11,6 @@ import { PROTOCOL_FEATURE_LEVEL, PROTOCOL_MAJOR } from './protocol-envelope.js';
 
 const addresses = new WeakMap<EventBus, ProtocolIdentity>();
 
-export function hasProtocolAddress(events: EventBus): boolean {
-	return addresses.has(events);
-}
-
 export function isPiBound(pi: SandboxHost): boolean {
 	try {
 		pi.getActiveTools();

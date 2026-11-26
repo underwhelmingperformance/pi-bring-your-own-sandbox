@@ -214,7 +214,7 @@ export function formatStatus(status: SandboxStatus): DisplayText {
 	return joinDisplayLines(display);
 }
 
-export function formatProviderDiagnostics(
+function formatProviderDiagnostics(
 	status: Pick<SandboxStatus, 'diagnostics' | 'diagnosticsDropped'>
 ): readonly DisplayText[] {
 	const lines = (status.diagnostics ?? []).map(

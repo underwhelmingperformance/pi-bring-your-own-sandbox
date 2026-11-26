@@ -38,18 +38,21 @@ import {
 	runtimeSettingsSchema
 } from './service-schemas.js';
 
-export const buildRequest = Type.Object(
+const buildRequest = Type.Object(
 	{ type: Type.Literal('get-builds') },
 	{ additionalProperties: false }
 );
+
 export const buildAdvertisement = Type.Object(
 	{ type: Type.Literal('build'), activate: callable<() => void>() },
 	{ additionalProperties: false }
 );
-export const brokerRequest = Type.Object(
+
+const brokerRequest = Type.Object(
 	{ type: Type.Literal('get-broker') },
 	{ additionalProperties: false }
 );
+
 export const brokerReply = Type.Object(
 	{
 		type: Type.Literal('broker'),
@@ -58,10 +61,12 @@ export const brokerReply = Type.Object(
 	},
 	{ additionalProperties: false }
 );
-export const providerRequest = Type.Object(
+
+const providerRequest = Type.Object(
 	{ type: Type.Literal('get-providers') },
 	{ additionalProperties: false }
 );
+
 export const providerAdvertisement = Type.Object(
 	{
 		type: Type.Literal('provider'),
@@ -94,11 +99,11 @@ export const hostBindingSchema = Type.Object(
 	{ additionalProperties: false }
 );
 
-export const reviewAvailability = Type.Object(
+const reviewAvailability = Type.Object(
 	{ type: Type.Literal('available') },
 	{ additionalProperties: false }
 );
-export const shellIntegration = Type.Object(
+const shellIntegration = Type.Object(
 	{ type: Type.Literal('shell-integration') },
 	{ additionalProperties: false }
 );

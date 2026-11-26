@@ -1,7 +1,7 @@
 import { Type } from 'typebox';
 import { expect, it } from 'vitest';
 
-import { introducedAt } from './protocol-schema.js';
+import { introducedAt } from './fixtures/protocol-feature.js';
 import { protocolSnapshot } from './protocol-snapshot.js';
 
 const base = Type.String({ minLength: 1 });

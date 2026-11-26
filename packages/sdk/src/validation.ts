@@ -17,9 +17,7 @@ export const isPolicy = checker(accessPolicySchema);
 export const isProviderInfo = checker(providerInfoSchema);
 export const isRecovery = checker(recoverySchema);
 
-export function snapshotCapabilities(
-	value: SandboxCapabilities
-): SandboxCapabilities {
+function snapshotCapabilities(value: SandboxCapabilities): SandboxCapabilities {
 	return Object.freeze({
 		terminationScope: value.terminationScope,
 		processKinds: Object.freeze([...value.processKinds]),

@@ -6,13 +6,6 @@ const introduced = 'x-byos-feature-level';
 const keepWhole = 'x-byos-whole-offer';
 const unrepresentable = Symbol('unrepresentable');
 
-export function introducedAt<Schema extends TSchema>(
-	level: number,
-	schema: Schema
-) {
-	return Type.With(schema, { [introduced]: level });
-}
-
 export function wholeOffer<Schema extends TSchema>(schema: Schema) {
 	return Type.With(schema, { [keepWhole]: true });
 }

@@ -230,7 +230,7 @@ export interface ProviderInfo {
 Version 1 broker service discovered through Pi. A runtime has one service;
 session generations allocate a backend for each negotiated policy lazily.
 */
-export interface BrokerServiceV1 {
+interface BrokerServiceV1 {
 	/**
 	Open a private copy of the host workspace or of a ready backend in this
 	generation. A sandbox handle's `copy` method uses the same operation.

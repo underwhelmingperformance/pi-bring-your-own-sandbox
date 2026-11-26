@@ -7,8 +7,9 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { ScriptedModel } from '../../../test-support/scripted-model.js';
 
 import { createSandboxClient } from './client.js';
-import type { EscalationRequest, ProcessRequest } from './contracts.js';
+import type { ProcessRequest } from './contracts.js';
 import { InvalidSandboxRequestError, SandboxStartupError } from './errors.js';
+import type { EscalationRequest } from './escalation-ledger.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import sandboxTools from './pi-tools.js';

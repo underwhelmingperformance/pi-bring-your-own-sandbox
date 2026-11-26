@@ -14,7 +14,7 @@
 		"check": "pnpm build && pnpm run --sequential '/^check:.*/'",
 		"check:api": "node scripts/api-report.ts",
 		"check:format": "prettier --check .",
-		"check:knip": "knip --include dependencies,unlisted --no-progress",
+		"check:knip": "knip --include dependencies,unlisted --no-progress && knip --production --no-progress",
 		"check:lint": "oxlint --deny-warnings && eslint . --max-warnings 0",
 		"check:markdown": "markdownlint-cli2 '**/*.md' '#**/node_modules' '#**/dist'",
 		"check:protocol": "node scripts/check-legacy-protocol.ts",

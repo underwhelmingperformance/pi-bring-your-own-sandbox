@@ -20,7 +20,7 @@ import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
 import type { FixtureApi } from './fixtures/sdk-instance.js';
 import { loadSdkInstance } from './fixtures/sdk-instance.js';
-import type { BrokerServiceV1 } from './protocol.js';
+import type { BrokerService } from './protocol.js';
 import { bindProtocolAddress } from './protocol-address.js';
 import { registerSandboxProvider } from './provider-registration.js';
 import { ensureBroker } from './service.js';
@@ -45,7 +45,7 @@ function fixture(
 	const template = new MemoryBackend();
 	const sandboxes: Sandbox[] = [];
 	const contexts: SandboxContext[] = [];
-	const services: BrokerServiceV1[] = [];
+	const services: BrokerService[] = [];
 	const backends: MemoryBackend[] = [];
 	let opens = 0;
 	let disposals = 0;

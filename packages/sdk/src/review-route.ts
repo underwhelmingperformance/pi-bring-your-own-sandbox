@@ -29,11 +29,7 @@ import { collectProtocolReplies, REVIEW_CHANNEL } from './protocol-envelope.js';
 import { copyOptionsSchema, sourceReply } from './protocol-payloads.js';
 import { checkDemand, sharedFeatureLevel } from './protocol-version.js';
 import type { ReviewUnavailableReason } from './review-identities.js';
-import {
-	checkCopiedSandbox,
-	copyOptions,
-	rethrowCopyError
-} from './sandbox-copy.js';
+import { checkedCopy, copyOptions } from './sandbox-copy.js';
 import { checker } from './schemas.js';
 
 const isSource = checker(sourceReply);
@@ -239,17 +235,7 @@ function bindReviewSource(
 
 			const copy = await source.copy(options);
 
-			try {
-				checkCopiedSandbox(copy.sandbox, options, local.extensionSource);
-
-				return copy;
-			} catch (error) {
-				return rethrowCopyError(error, () => copy.close(), {
-					operation: 'dispose',
-					providerId: copy.sandbox.providerId,
-					backendId: copy.sandbox.backendId
-				});
-			}
+			return checkedCopy(copy, options, local.extensionSource);
 		}
 	});
 }

@@ -75,7 +75,7 @@ const grantedPathSchema = Type.Object(
 	{ additionalProperties: false }
 );
 
-export const grantedPathsSchema = Type.Array(grantedPathSchema);
+const grantedPathsSchema = Type.Array(grantedPathSchema);
 
 const backendShape = Type.Object({
 	id: nonEmptyStringSchema,

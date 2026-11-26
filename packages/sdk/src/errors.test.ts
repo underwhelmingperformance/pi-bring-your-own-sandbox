@@ -14,14 +14,11 @@ import {
 	ProviderNotFoundError,
 	SandboxCancelledError,
 	SandboxCleanupError,
-	SandboxError,
 	SandboxInitialisationError,
 	SandboxOperationError,
 	SandboxOutputCallbackError,
 	SandboxPathNotFoundError,
 	SandboxPermissionDeniedError,
-	SandboxProviderMismatchError,
-	SandboxProviderRequiredError,
 	SandboxSessionClosingError,
 	SandboxStartupError,
 	SandboxTimeoutError,
@@ -193,16 +190,26 @@ const cases = [
 	{
 		name: 'SandboxProviderRequiredError',
 		create: (cause: unknown) =>
-			new SandboxProviderRequiredError(
-				{ operation: 'exec', providerId: 'test.remote' },
+			rehydrateSandboxError(
+				{
+					message: 'Remote provider failure.',
+					name: 'SandboxProviderRequiredError',
+					operation: 'exec',
+					providerId: 'test.remote'
+				},
 				{ cause }
 			)
 	},
 	{
 		name: 'SandboxProviderMismatchError',
 		create: (cause: unknown) =>
-			new SandboxProviderMismatchError(
-				{ operation: 'exec', providerId: 'test.remote' },
+			rehydrateSandboxError(
+				{
+					message: 'Remote provider failure.',
+					name: 'SandboxProviderMismatchError',
+					operation: 'exec',
+					providerId: 'test.remote'
+				},
 				{ cause }
 			)
 	},
@@ -422,7 +429,6 @@ it.each(cases)(
 			});
 			expect(error.message.length).toBeGreaterThan(0);
 			expect(error).toBeInstanceOf(Error);
-			expect(error).toBeInstanceOf(SandboxError);
 			expect(error).toBeInstanceOf(original.constructor);
 			expect(error).not.toHaveProperty('code');
 			expect(error).not.toHaveProperty('failure');

@@ -13,13 +13,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { InlineExtension } from '@earendil-works/pi-coding-agent';
 import { expect, it } from 'vitest';
 
+import type * as build from './compute-protocol-build.js';
 import type * as consumer from './consumer.js';
 import type { SandboxAcquireOptions, SandboxHost } from './contracts.js';
 import type * as discovery from './discovery.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
-import type * as build from './protocol-build.js';
 import type * as provider from './provider.js';
 import { isRecord } from './validation.js';
 
@@ -36,6 +36,20 @@ async function rewrite(file: string, from: string, to: string): Promise<void> {
 		file,
 		source.replace(from, () => to)
 	);
+}
+
+async function writeProtocolBuild(distribution: string) {
+	const module = (await import(
+		pathToFileURL(path.join(distribution, 'compute-protocol-build.js')).href
+	)) as typeof build;
+	const identity = module.computeProtocolBuild();
+
+	await writeFile(
+		path.join(distribution, 'protocol-build.json'),
+		JSON.stringify(identity) + '\n'
+	);
+
+	return identity;
 }
 
 async function loadBuild(
@@ -70,13 +84,8 @@ async function loadBuild(
 
 		await rewrite(
 			schemas,
-			"import { Compile } from 'typebox/compile';",
-			"import { Compile } from 'typebox/compile';\nimport { introducedAt } from './protocol-schema.js';"
-		);
-		await rewrite(
-			schemas,
 			"Type.Literal('copy')",
-			"Type.Literal('copy'), introducedAt(1, Type.Literal('fixture-trace'))"
+			"Type.Literal('copy'), Type.With(Type.Literal('fixture-trace'), { 'x-byos-feature-level': 1 })"
 		);
 	}
 
@@ -88,11 +97,7 @@ async function loadBuild(
 		);
 	}
 
-	const buildModule = (await import(
-		pathToFileURL(path.join(distribution, 'protocol-build.js')).href
-	)) as typeof build;
-
-	buildModule.writeProtocolBuild();
+	const identity = await writeProtocolBuild(distribution);
 
 	const consumers = (await import(
 		pathToFileURL(path.join(distribution, 'consumer.js')).href
@@ -111,7 +116,7 @@ async function loadBuild(
 		name,
 		featureLevel,
 		major,
-		...buildModule.protocolBuild()
+		...identity
 	};
 }
 
@@ -317,13 +322,9 @@ it('changes the build ID when the code changes within one schema and package rel
 			source + '\nexport const fixtureChange = true;\n'
 		);
 
-		const location = path.join(root, second.name, 'dist/protocol-build.js');
-		const writer = (await import(pathToFileURL(location).href)) as typeof build;
-
-		writer.writeProtocolBuild();
-
-		const metadata = path.join(root, second.name, 'dist/protocol-build.json');
-		const changed: unknown = JSON.parse(await readFile(metadata, 'utf8'));
+		const changed = await writeProtocolBuild(
+			path.join(root, second.name, 'dist')
+		);
 
 		expect(changed).toStrictEqual({
 			packageVersion: first.packageVersion,

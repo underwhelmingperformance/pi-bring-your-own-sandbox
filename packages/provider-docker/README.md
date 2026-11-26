@@ -5,6 +5,11 @@ Unix-socket daemon on Linux or macOS. It supports argv, POSIX `sh`, Bash and an
 optional PowerShell image. It uses the same workspace for shell, file and search
 operations. The paths below refer to this checkout.
 
+Install `pi-byos-provider-docker` from its compiled archive or from a built
+checkout of this repository. A Git subdirectory install is not supported because
+pnpm cannot resolve the provider's SDK workspace dependency in the consumer
+project.
+
 Install the provider extension and its dependencies in a trusted directory
 outside the writable workspace. For example, install them in a separate package
 under `~/.pi/agent/` and load the extension by absolute path. Commands with

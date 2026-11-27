@@ -1,8 +1,11 @@
+import path from 'node:path';
+
 import { expect, it } from 'vitest';
 
-import { validateBackend } from './backend-validation.js';
+import { validateBackend, verifyGrantedPaths } from './backend-validation.js';
 import { InvalidSandboxDeclarationError } from './errors.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
+import { OperationScope } from './lifecycle.js';
 
 const provider = {
 	id: 'fixture',
@@ -76,4 +79,75 @@ it.each([
 	expect(() =>
 		validateBackend(Object.assign(backend, malformed), provider, required)
 	).toThrow(InvalidSandboxDeclarationError);
+});
+
+it.each([
+	{
+		case: 'refuses a different workspace file',
+		flavor: 'posix',
+		file: 'other.txt',
+		supportsRead: true,
+		isReachable: false
+	},
+	{
+		case: 'refuses a workspace grant without a probe',
+		flavor: 'posix',
+		file: 'requested.txt',
+		supportsRead: false,
+		isReachable: false
+	},
+	{
+		case: 'uses the target path flavour for a nested workspace grant',
+		flavor: 'win32',
+		file: 'requested.txt',
+		supportsRead: true,
+		isReachable: true
+	}
+] as const)('$case', async ({ flavor, file, supportsRead, isReachable }) => {
+	const checkout = path.resolve('/host/checkout');
+	const hostPath = path.join(checkout, 'nested', 'requested.txt');
+	const backend = new MemoryBackend(supportsRead ? 'files' : 'exec');
+	const root = flavor === 'posix' ? backend.workspace.root : 'C:\\fixture';
+	const targetPath = path[flavor].join(root, 'nested', file);
+	const scope = new OperationScope(
+		{ operation: 'open' },
+		new AbortController().signal,
+		{},
+		60_000
+	);
+
+	Object.assign(backend, {
+		workspace: { ...backend.workspace, root, pathFlavor: flavor },
+		grantedPaths: [{ kind: 'read' as const, hostPath, targetPath }]
+	});
+	backend.seed(targetPath, new Uint8Array([1]));
+
+	try {
+		const result = verifyGrantedPaths(
+			backend,
+			[{ kind: 'read', path: hostPath, location: 'workspace' }],
+			scope.context,
+			provider,
+			checkout
+		);
+
+		if (isReachable) {
+			await expect(result).resolves.toBeUndefined();
+
+			return;
+		}
+
+		await expect(result).rejects.toMatchObject({
+			name: 'UnsupportedSandboxPolicyError',
+			providerId: provider.id,
+			detail: {
+				kind: 'path',
+				access: 'read',
+				path: hostPath,
+				reason: 'unreachable'
+			}
+		});
+	} finally {
+		scope.dispose();
+	}
 });

@@ -72,12 +72,14 @@ capability lacks cases. Run each case against an isolated fixture. Use
 independent observations of target effects, live files, processes and provider
 resources. A backend's own declaration cannot prove enforcement.
 
-The suite checks workspace visibility and a reachable read grant for each live
-checkout profile. Supply `fixture.visibility` for each open profile. The suite
-also checks special-file refusal for profiles that enforce isolation on hosts
-with FIFOs. Omit `workspaceVisibility` and `capabilities` to generate the full
-suite from the declaration. Use `workspaceVisibility` to focus a suite on shared
-or copied checkout behaviour. The test runner labels focused suites as partial.
+The suite checks workspace visibility and read-grant eligibility for each live
+checkout profile. It checks placement and reads the granted file when the
+profile offers file reads. Otherwise the grant must fail before allocation.
+Supply `fixture.visibility` for each open profile. The suite also checks
+special-file refusal for profiles that enforce isolation on hosts with FIFOs.
+Omit `workspaceVisibility` and `capabilities` to generate the full suite from
+the declaration. Use `workspaceVisibility` to focus a suite on shared or copied
+checkout behaviour. The test runner labels focused suites as partial.
 
 ## Default configured policy
 

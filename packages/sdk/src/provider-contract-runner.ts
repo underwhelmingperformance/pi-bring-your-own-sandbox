@@ -169,7 +169,7 @@ export function defineSandboxProviderTests<Config>(
 			}
 
 			it(
-				label + 'grants a reachable read path in the workspace',
+				label + 'checks a workspace read grant',
 				() => verifyWorkspaceCase(registered, 'read-grant', selection),
 				testTimeout
 			);

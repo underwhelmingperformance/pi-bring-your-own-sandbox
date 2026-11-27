@@ -7,9 +7,20 @@ import type {
 import { MemoryBackend } from './memory-backend.js';
 import { fixtureProfile } from './profile-fixture.js';
 
-export function shellBackend(output = 'target output') {
-	const template = new MemoryBackend('exec');
+export function shellBackend(
+	output = 'target output',
+	readablePaths: readonly string[] = []
+) {
+	const template = new MemoryBackend(
+		readablePaths.length > 0 ? 'files' : 'exec'
+	);
+	const read = template.files?.read;
 	const requests: ProcessRequest[] = [];
+
+	for (const filename of readablePaths) {
+		template.seed(filename, new Uint8Array());
+	}
+
 	const backend: SandboxBackend = {
 		id: template.id,
 		workspace: template.workspace,
@@ -20,9 +31,10 @@ export function shellBackend(output = 'target output') {
 			processKinds: ['argv', 'shell'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			operations: [],
+			operations: read === undefined ? [] : ['files.read'],
 			shells: ['bash', 'powershell']
 		}),
+		...(read !== undefined && { files: { read } }),
 		exec(request: ProcessRequest, context: BackendProcessContext) {
 			requests.push(request);
 			context.onOutput({

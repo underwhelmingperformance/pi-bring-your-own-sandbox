@@ -244,7 +244,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 				'open profile 1: checks credential read grant eligibility',
 				'open profile 1: checks credential write grant eligibility',
 				'open profile 1: workspace visibility (shared)',
-				'open profile 1: grants a reachable read path in the workspace',
+				'open profile 1: checks a workspace read grant',
 				...(process.platform === 'win32'
 					? []
 					: ['open profile 1: refuses a workspace with a special file'])

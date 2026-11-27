@@ -60,7 +60,7 @@ it.each([
 		const prompts: string[][] = [];
 		const notices: string[] = [];
 		const allocatedExclusions: (readonly string[] | undefined)[] = [];
-		const { backend, requests } = shellBackend();
+		const { backend, requests } = shellBackend('target output', [root]);
 		const hostUserData =
 			scenario === 'read-write' || scenario === 'denied'
 				? scenario

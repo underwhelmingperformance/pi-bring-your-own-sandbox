@@ -406,6 +406,32 @@ it.each([
 	]);
 });
 
+it.each(['read', 'write'] as const)(
+	'refuses a workspace %s grant before allocation without the matching probe',
+	async (kind) => {
+		await fixture(async (client, context, opens) => {
+			const hostPath = await realpath(context.cwd);
+			const options = { access: { paths: { [kind]: ['.'] } } };
+			const error = {
+				name: 'UnsupportedSandboxPolicyError',
+				detail: {
+					kind: 'path',
+					access: kind,
+					path: hostPath,
+					reason: 'profile'
+				}
+			};
+
+			expect(await client.negotiate(context, options)).toMatchObject({
+				ok: false,
+				error
+			});
+			await expect(client.get(context, options)).rejects.toMatchObject(error);
+			expect(opens).toStrictEqual([]);
+		});
+	}
+);
+
 it.each(['missing', 'outside target'] as const)(
 	'disposes a backend with a %s workspace grant',
 	async (defect) => {
@@ -431,7 +457,7 @@ it.each(['missing', 'outside target'] as const)(
 				expect(disposed).toStrictEqual(['disposed']);
 			},
 			(chosen) =>
-				Object.assign(new MemoryBackend('exec'), {
+				Object.assign(new MemoryBackend(), {
 					policy: chosen.policy,
 					workspace: {
 						root: '/fixture/workspace',
@@ -448,7 +474,8 @@ it.each(['missing', 'outside target'] as const)(
 
 						return Promise.resolve();
 					}
-				})
+				}),
+			{ ...profile, capabilities: new MemoryBackend().profile.capabilities }
 		);
 	}
 );
@@ -472,7 +499,12 @@ it.each([
 			{},
 			60_000
 		);
-		const backend = new MemoryBackend('exec');
+		const backend = new MemoryBackend();
+		const targetPath =
+			target === 'home' ? '/target-home/' + filename : hostPath;
+
+		backend.seed(targetPath, new Uint8Array());
+
 		const provider = { id: 'fixture.policy' };
 
 		try {
@@ -483,14 +515,14 @@ it.each([
 						{
 							kind: 'read' as const,
 							hostPath,
-							targetPath:
-								target === 'home' ? '/target-home/' + filename : hostPath
+							targetPath
 						}
 					]
 				}),
 				[{ kind: 'read', path: hostPath, location: 'host-user-data' }],
 				scope.context,
 				provider,
+				path.resolve(tmpdir()),
 				true
 			);
 
@@ -523,11 +555,12 @@ it.each([true, false])(
 			cwd: workspace,
 			sessionManager: SessionManager.inMemory(workspace)
 		};
-		const { backend } = shellBackend();
-		const withGrant = { ...backend.profile, pathGrantKinds: ['read'] as const };
+
 		const opened: Profile[] = [];
 		const disposed: string[] = [];
 		const targetHome = '/fixture-home';
+		const { backend } = shellBackend('target output', [targetHome]);
+		const withGrant = { ...backend.profile, pathGrantKinds: ['read'] as const };
 		const providerId = 'fixture.path-grant';
 		const generation = new SandboxGeneration(context, {
 			providers: () => [
@@ -624,6 +657,7 @@ it.each([
 		const filename = path.join(root, 'file');
 		const selected: Profile = {
 			...profile,
+			capabilities: new MemoryBackend().profile.capabilities,
 			policy: {
 				...profile.policy,
 				hostUserData: policyMode === 'implicit' ? 'read-only' : policyMode
@@ -645,7 +679,9 @@ it.each([
 					open(request) {
 						rootsSeen.push(request.hostUserDataRoots?.includes(root) === true);
 
-						const backend = new MemoryBackend('exec');
+						const backend = new MemoryBackend();
+
+						backend.seed(filename, new Uint8Array());
 
 						return Promise.resolve(
 							Object.assign(backend, {

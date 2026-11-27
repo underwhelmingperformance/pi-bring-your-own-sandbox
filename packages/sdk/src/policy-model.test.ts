@@ -18,7 +18,7 @@ import { checker } from './schemas.js';
 
 const profile: Profile = {
 	policy: unrestrictedPolicy,
-	capabilities: [],
+	capabilities: ['files.read', 'files.write'],
 	processKinds: ['argv'],
 	shells: [],
 	exitStatus: 'guaranteed',
@@ -348,6 +348,7 @@ it.each([
 it('chooses a stable profile for equal policies regardless of declaration or metadata order', () => {
 	const shell: Profile = {
 		...profile,
+		capabilities: [],
 		processKinds: ['shell', 'argv'],
 		shells: ['sh', 'bash']
 	};

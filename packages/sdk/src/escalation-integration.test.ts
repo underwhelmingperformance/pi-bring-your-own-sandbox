@@ -56,7 +56,9 @@ it.each([
 	const hostPath = path.join(home, '.ssh/id_ed25519');
 	const targetHome = '/fixture-home';
 	const providerId = 'fixture.credentials';
-	const { backend, requests } = shellBackend();
+	const { backend, requests } = shellBackend('target output', [
+		path.posix.join(targetHome, '.ssh/id_ed25519')
+	]);
 	const isHostFallback = route === 'fallback';
 	const profile = {
 		...backend.profile,
@@ -878,7 +880,7 @@ it.each([
 		try {
 			const root = await realpath(directory);
 			const file = path.join(root, 'document.txt');
-			const { backend, requests } = shellBackend();
+			const { backend, requests } = shellBackend('target output', [file]);
 			const profile = { ...backend.profile, pathGrantKinds: ['read'] as const };
 			const prompts: string[][] = [];
 			const resultErrors: boolean[] = [];

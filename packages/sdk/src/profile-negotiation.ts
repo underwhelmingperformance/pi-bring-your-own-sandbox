@@ -274,21 +274,24 @@ export function selectProfile({
 			};
 		}
 
+		const probe = `files.${path.kind}` as const;
+
 		eligible = eligible.filter(
 			(profile) =>
-				canGrantPath(
+				profile.capabilities.includes(probe) &&
+				(canGrantPath(
 					profile.policy,
 					path,
 					mode,
 					isUnrestrictedHost,
 					isWithinScope
 				) ||
-				(isEscalated &&
-					mode === 'open' &&
-					path.location !== 'workspace' &&
-					profile.pathGrantKinds?.includes(path.kind) === true &&
-					(path.isCredential !== true ||
-						profile.credentialPathGrantKinds?.includes(path.kind) === true))
+					(isEscalated &&
+						mode === 'open' &&
+						path.location !== 'workspace' &&
+						profile.pathGrantKinds?.includes(path.kind) === true &&
+						(path.isCredential !== true ||
+							profile.credentialPathGrantKinds?.includes(path.kind) === true)))
 		);
 
 		if (eligible.length === 0) {

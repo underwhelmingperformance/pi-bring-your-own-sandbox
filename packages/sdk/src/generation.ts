@@ -535,6 +535,7 @@ export class SandboxGeneration {
 			slot.paths,
 			scope.context,
 			prepared.provider,
+			this.#session.workspace,
 			this.#dependencies.isEscalated
 		);
 		scope.check();

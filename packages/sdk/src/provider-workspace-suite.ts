@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 
 import { expect } from 'vitest';
 
+import { isWithinLimit } from './profile-negotiation.js';
 import type { FixtureAttempt } from './provider-test-broker.js';
 import { fixtureBroker } from './provider-test-broker.js';
 import type {
@@ -22,6 +23,8 @@ export async function verifyWorkspaceCase<Config>(
 
 	try {
 		const provider = fixture.provider ?? options.provider;
+		const openProfiles =
+			selection === undefined ? provider.profiles.open : [selection.profile];
 		const attempt: FixtureAttempt = {};
 
 		if (scenario === 'special') {
@@ -34,7 +37,7 @@ export async function verifyWorkspaceCase<Config>(
 		}
 
 		const runtime = await fixtureBroker(
-			provider,
+			{ ...provider, profiles: { ...provider.profiles, open: openProfiles } },
 			fixture.hostWorkspace,
 			fixture.configuration,
 			{ policy: fixture.policy },
@@ -69,13 +72,29 @@ export async function verifyWorkspaceCase<Config>(
 			await writeFile(hostPath, contents, { flag: 'wx' });
 
 			const canonical = await realpath(hostPath);
-			const sandbox = await runtime.acquire(
-				{
-					timeoutMs,
-					access: { paths: { read: [hostPath] } }
-				},
-				'open'
+			const request = { timeoutMs, access: { paths: { read: [hostPath] } } };
+			const hasProbe = openProfiles.some(
+				({ capabilities, policy }) =>
+					isWithinLimit(policy, fixture.policy) &&
+					capabilities.includes('files.read')
 			);
+
+			if (!hasProbe) {
+				await expect(runtime.acquire(request, 'open')).rejects.toMatchObject({
+					name: 'UnsupportedSandboxPolicyError',
+					detail: {
+						kind: 'path',
+						access: 'read',
+						path: canonical,
+						reason: 'profile'
+					}
+				});
+				expect(attempt).toStrictEqual({});
+
+				return;
+			}
+
+			const sandbox = await runtime.acquire(request, 'open');
 			const target = path[sandbox.workspace.pathFlavor].join(
 				sandbox.workspace.root,
 				filename
@@ -89,9 +108,7 @@ export async function verifyWorkspaceCase<Config>(
 				{ kind: 'read', hostPath: canonical, targetPath: target }
 			]);
 
-			if (sandbox.profile.capabilities.includes('files.read')) {
-				expect(await sandbox.files.readFile(target)).toStrictEqual(contents);
-			}
+			expect(await sandbox.files.readFile(target)).toStrictEqual(contents);
 		} finally {
 			expect(await runtime.close()).toStrictEqual({
 				confirmed: true,

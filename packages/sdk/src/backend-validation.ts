@@ -121,6 +121,29 @@ function isWithinTarget(
 	);
 }
 
+function workspaceTarget(
+	hostPath: string,
+	hostWorkspace: string,
+	workspace: SandboxWorkspace
+): string | undefined {
+	const host = platform();
+	const root = hostPathComparisonKey(hostWorkspace, host);
+	const candidate = hostPathComparisonKey(hostPath, host);
+
+	if (!isWithinTarget(root, candidate, path)) {
+		return undefined;
+	}
+
+	const components = path.relative(root, candidate).split(path.sep);
+	const flavor = path[workspace.pathFlavor];
+
+	return components.some(
+		(component) => flavor.basename(component) !== component
+	)
+		? undefined
+		: flavor.resolve(workspace.root, ...components);
+}
+
 function extraTarget(
 	hostPath: string,
 	hostHome: string,
@@ -149,6 +172,7 @@ export async function verifyGrantedPaths(
 	requested: readonly ResolvedPath[],
 	context: SandboxOperationContext,
 	provider: Pick<ProviderServiceV1, 'id' | 'protocol'>,
+	hostWorkspace: string,
 	isEscalated = false
 ): Promise<void> {
 	const extensionSource = provider.protocol?.extensionSource;
@@ -193,7 +217,8 @@ export async function verifyGrantedPaths(
 			matches.length !== 1 ||
 			!flavor.isAbsolute(grant.targetPath) ||
 			(isWorkspace &&
-				!isWithinTarget(backend.workspace.root, grant.targetPath, flavor)) ||
+				flavor.normalize(grant.targetPath) !==
+					workspaceTarget(request.path, hostWorkspace, backend.workspace)) ||
 			(hostHome !== undefined &&
 				!isWorkspace &&
 				flavor.normalize(grant.targetPath) !==
@@ -204,12 +229,14 @@ export async function verifyGrantedPaths(
 
 		const files = backend.files?.[request.kind];
 
-		if (files !== undefined) {
-			try {
-				await files.access(grant.targetPath, context);
-			} catch (error) {
-				unreachable(error);
-			}
+		if (files === undefined) {
+			unreachable();
+		}
+
+		try {
+			await files.access(grant.targetPath, context);
+		} catch (error) {
+			unreachable(error);
 		}
 	}
 

@@ -51,18 +51,9 @@ const contractProvider = {
 			}
 
 			const backend = await provider.create().open(request, context);
-			const grantedPaths = request.paths?.read?.map((hostPath) => ({
-				kind: 'read' as const,
-				hostPath,
-				targetPath: path.posix.join(
-					backend.workspace.root,
-					path.basename(hostPath)
-				)
-			}));
 
 			return {
 				...backend,
-				...(grantedPaths !== undefined && { grantedPaths }),
 				async exec(invocation, execution) {
 					if (
 						invocation.kind !== 'argv' ||

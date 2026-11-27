@@ -294,11 +294,13 @@ read or write. For host paths, resolve `~` against the host user's home and
 relative paths against Pi's workspace before evaluating policy. Read and write
 requirements are separate. Before allocation, the broker classifies each
 resolved host path and checks it against the configured policy and eligible
-profiles. After opening, the backend reports the target location of each path.
-The broker returns a typed error for a missing or unreachable grant and disposes
-of the backend. An ordinary grant confirms existing access. It leaves the policy
-unchanged. A copy may require paths reachable in the copy. Copy writes stay in
-the copy.
+profiles. A profile must offer file access of the requested kind. After opening,
+the backend reports the target location of each path. A workspace grant keeps
+the same relative path under the target workspace root. The broker checks the
+placement and probes the requested access. It returns a typed error for a
+missing or unreachable grant and disposes of the backend. An ordinary grant
+confirms existing access. It leaves the policy unchanged. A copy may require
+paths reachable in the copy. Copy writes stay in the copy.
 
 Escalation can add access to requested paths beyond the configured policy. A
 profile declares whether the provider can grant extra read paths or extra write

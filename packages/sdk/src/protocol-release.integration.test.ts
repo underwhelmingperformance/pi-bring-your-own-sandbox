@@ -16,6 +16,14 @@ const snapshotCommand = `
 	process.stdout.write(JSON.stringify(protocolSnapshot(major, level, protocolSchemas, schemaLevel)));
 `;
 
+it('uses major 1 at feature level 0 for the first release draft', async () => {
+	expect({
+		major: PROTOCOL_MAJOR,
+		featureLevel: PROTOCOL_FEATURE_LEVEL,
+		snapshots: await readdir(directory)
+	}).toStrictEqual({ major: 1, featureLevel: 0, snapshots: ['1.0.json'] });
+});
+
 async function builtSnapshot(
 	level: number,
 	schemaLevel = level

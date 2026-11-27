@@ -267,13 +267,13 @@ it.each([
 const describe = (sdkCopy: Awaited<ReturnType<typeof loadBuild>>) =>
 	`major ${String(sdkCopy.major)} from ${sdkCopy.name} (build ${sdkCopy.buildId})`;
 
-it('reports both compiled builds when their protocol majors disagree', async () => {
+it('reports both compiled builds when the census sees a future protocol major', async () => {
 	const root = await mkdtemp(path.join(tmpdir(), 'pi-byos-compat-'));
 
 	try {
 		const [first, second] = await Promise.all([
 			loadBuild(root, 'first', 0),
-			loadBuild(root, 'second', 0, 1)
+			loadBuild(root, 'second', 0, PROTOCOL_MAJOR + 1)
 		]);
 		const identities = [first, second];
 

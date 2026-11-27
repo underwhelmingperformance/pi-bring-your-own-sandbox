@@ -5,6 +5,7 @@ import { discoverBroker } from './discovery.js';
 import { ensureFixtureBroker } from './fixtures/fixture-broker-service.js';
 import { fixtureEvents } from './fixtures/protocol-peer.js';
 import { brokerReply, respond } from './fixtures/protocol-peer.js';
+import { PROTOCOL_MAJOR } from './protocol-envelope.js';
 
 function fixtureContext() {
 	return {
@@ -86,7 +87,7 @@ it('does not construct a replacement for an incompatible advertisement', () => {
 
 	respond(events, 'pi-byos:runtime', {
 		...brokerReply(),
-		major: 1
+		major: PROTOCOL_MAJOR + 1
 	});
 	expect(() =>
 		ensureFixtureBroker(events, () => {

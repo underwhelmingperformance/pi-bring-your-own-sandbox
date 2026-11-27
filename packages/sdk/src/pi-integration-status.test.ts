@@ -6,6 +6,7 @@ import {
 	describeShellIntegration,
 	registerShellIntegrationDiagnostics
 } from './pi-integration-status.js';
+import { PROTOCOL_MAJOR } from './protocol-envelope.js';
 
 it('reports a loaded integration without allocating or verifying tool ownership', () => {
 	const events = fixtureEvents(import.meta.filename);
@@ -18,17 +19,17 @@ it('reports a loaded integration without allocating or verifying tool ownership'
 	});
 });
 
-it.each([{ type: 'shell-integration', major: 1 }, { type: 'unexpected' }])(
-	'reports an unrecognised diagnostic reply as unavailable: %j',
-	(reply) => {
-		const events = fixtureEvents(import.meta.filename);
+it.each([
+	{ type: 'shell-integration', major: PROTOCOL_MAJOR + 1 },
+	{ type: 'unexpected' }
+])('reports an unrecognised diagnostic reply as unavailable: %j', (reply) => {
+	const events = fixtureEvents(import.meta.filename);
 
-		respond(events, 'pi-byos:runtime', reply, false, 'get-shell-integration');
-		expect(describeShellIntegration(events)).toBe(
-			'Pi shell integration: request status unavailable; routing unverified.'
-		);
-	}
-);
+	respond(events, 'pi-byos:runtime', reply, false, 'get-shell-integration');
+	expect(describeShellIntegration(events)).toBe(
+		'Pi shell integration: request status unavailable; routing unverified.'
+	);
+});
 
 it('ignores a diagnostic reply after collection closes', async () => {
 	const events = fixtureEvents(import.meta.filename);

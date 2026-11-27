@@ -706,50 +706,6 @@
 			"type": "object",
 			"~kind": "Object"
 		},
-		"broker.copyOrigin": {
-			"anyOf": [
-				{
-					"properties": {
-						"kind": {
-							"const": "host",
-							"type": "string",
-							"~kind": "Literal"
-						}
-					},
-					"required": ["kind"],
-					"type": "object",
-					"~kind": "Object"
-				},
-				{
-					"properties": {
-						"backendId": {
-							"minLength": 1,
-							"type": "string",
-							"~kind": "String"
-						},
-						"generationId": {
-							"minLength": 1,
-							"type": "string",
-							"~kind": "String"
-						},
-						"kind": {
-							"const": "sandbox",
-							"type": "string",
-							"~kind": "Literal"
-						},
-						"providerId": {
-							"minLength": 1,
-							"type": "string",
-							"~kind": "String"
-						}
-					},
-					"required": ["kind", "providerId", "generationId", "backendId"],
-					"type": "object",
-					"~kind": "Object"
-				}
-			],
-			"~kind": "Union"
-		},
 		"broker.providerInfo": {
 			"properties": {
 				"id": {
@@ -823,6 +779,37 @@
 										"type": "array",
 										"uniqueItems": true,
 										"~kind": "Array",
+										"~refine": [
+											{
+												"check": {
+													"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+												},
+												"error": {
+													"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+												}
+											}
+										]
+									},
+									"credentialPathGrantKinds": {
+										"items": {
+											"anyOf": [
+												{
+													"const": "read",
+													"type": "string",
+													"~kind": "Literal"
+												},
+												{
+													"const": "write",
+													"type": "string",
+													"~kind": "Literal"
+												}
+											],
+											"~kind": "Union"
+										},
+										"type": "array",
+										"uniqueItems": true,
+										"~kind": "Array",
+										"~optional": true,
 										"~refine": [
 											{
 												"check": {
@@ -1042,7 +1029,7 @@
 								"~refine": [
 									{
 										"check": {
-											"implementation": "370d0ad98f17a192e921672b85e21b71b89609e1058970f0a3df54a58c206c02"
+											"implementation": "597791199f5ca1e2f6903141882419f9eaafc1d8fd895ebccfa9437fc82aa558"
 										},
 										"error": {
 											"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
@@ -1132,6 +1119,37 @@
 											}
 										]
 									},
+									"credentialPathGrantKinds": {
+										"items": {
+											"anyOf": [
+												{
+													"const": "read",
+													"type": "string",
+													"~kind": "Literal"
+												},
+												{
+													"const": "write",
+													"type": "string",
+													"~kind": "Literal"
+												}
+											],
+											"~kind": "Union"
+										},
+										"type": "array",
+										"uniqueItems": true,
+										"~kind": "Array",
+										"~optional": true,
+										"~refine": [
+											{
+												"check": {
+													"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+												},
+												"error": {
+													"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+												}
+											}
+										]
+									},
 									"exitStatus": {
 										"anyOf": [
 											{
@@ -1340,7 +1358,7 @@
 								"~refine": [
 									{
 										"check": {
-											"implementation": "370d0ad98f17a192e921672b85e21b71b89609e1058970f0a3df54a58c206c02"
+											"implementation": "597791199f5ca1e2f6903141882419f9eaafc1d8fd895ebccfa9437fc82aa558"
 										},
 										"error": {
 											"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
@@ -1348,7 +1366,6 @@
 									}
 								]
 							},
-							"minItems": 1,
 							"type": "array",
 							"~kind": "Array",
 							"~refine": [
@@ -1366,6 +1383,30 @@
 					"required": ["open", "copy"],
 					"type": "object",
 					"~kind": "Object"
+				},
+				"unavailable": {
+					"additionalProperties": false,
+					"properties": {
+						"kind": {
+							"const": "unsupported-platform",
+							"type": "string",
+							"~kind": "Literal"
+						},
+						"message": {
+							"minLength": 1,
+							"type": "string",
+							"~kind": "String"
+						},
+						"platform": {
+							"minLength": 1,
+							"type": "string",
+							"~kind": "String"
+						}
+					},
+					"required": ["kind", "platform", "message"],
+					"type": "object",
+					"~kind": "Object",
+					"~optional": true
 				}
 			},
 			"required": ["id", "label", "profiles"],
@@ -1374,7 +1415,7 @@
 			"~refine": [
 				{
 					"check": {
-						"implementation": "17b171f5fd127efd6d38350090b27f0b09463ebb41a268b96b8573d62d50a43c"
+						"implementation": "0302a04eb026632948b1a0877d2f5e012082f9cb36e06112bcc40d0434ac17f2"
 					},
 					"error": {
 						"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
@@ -1947,6 +1988,41 @@
 										},
 										{
 											"properties": {
+												"kind": {
+													"const": "provider-unavailable",
+													"type": "string",
+													"~kind": "Literal"
+												},
+												"reason": {
+													"additionalProperties": false,
+													"properties": {
+														"kind": {
+															"const": "unsupported-platform",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														"message": {
+															"minLength": 1,
+															"type": "string",
+															"~kind": "String"
+														},
+														"platform": {
+															"minLength": 1,
+															"type": "string",
+															"~kind": "String"
+														}
+													},
+													"required": ["kind", "platform", "message"],
+													"type": "object",
+													"~kind": "Object"
+												}
+											},
+											"required": ["kind", "reason"],
+											"type": "object",
+											"~kind": "Object"
+										},
+										{
+											"properties": {
 												"field": {
 													"minLength": 1,
 													"type": "string",
@@ -2183,6 +2259,11 @@
 												},
 												{
 													"const": "ProviderNotFoundError",
+													"type": "string",
+													"~kind": "Literal"
+												},
+												{
+													"const": "SandboxProviderUnavailableError",
 													"type": "string",
 													"~kind": "Literal"
 												},
@@ -2622,6 +2703,27 @@
 							"~kind": "Object",
 							"~optional": true
 						},
+						"readRoots": {
+							"items": {
+								"minLength": 1,
+								"pattern": "^[^\\u0000]*$",
+								"type": "string",
+								"~kind": "String"
+							},
+							"type": "array",
+							"~kind": "Array",
+							"~optional": true,
+							"~refine": [
+								{
+									"check": {
+										"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+									},
+									"error": {
+										"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+									}
+								}
+							]
+						},
 						"userShell": {
 							"anyOf": [
 								{
@@ -2659,6 +2761,28 @@
 					"minLength": 1,
 					"type": "string",
 					"~kind": "String"
+				},
+				"hostUserDataRoots": {
+					"items": {
+						"minLength": 1,
+						"pattern": "^[^\\u0000]*$",
+						"type": "string",
+						"~kind": "String"
+					},
+					"type": "array",
+					"uniqueItems": true,
+					"~kind": "Array",
+					"~optional": true,
+					"~refine": [
+						{
+							"check": {
+								"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+							},
+							"error": {
+								"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+							}
+						}
+					]
 				},
 				"hostWorkspace": {
 					"minLength": 1,
@@ -2774,6 +2898,37 @@
 							"type": "array",
 							"uniqueItems": true,
 							"~kind": "Array",
+							"~refine": [
+								{
+									"check": {
+										"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+									},
+									"error": {
+										"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+									}
+								}
+							]
+						},
+						"credentialPathGrantKinds": {
+							"items": {
+								"anyOf": [
+									{
+										"const": "read",
+										"type": "string",
+										"~kind": "Literal"
+									},
+									{
+										"const": "write",
+										"type": "string",
+										"~kind": "Literal"
+									}
+								],
+								"~kind": "Union"
+							},
+							"type": "array",
+							"uniqueItems": true,
+							"~kind": "Array",
+							"~optional": true,
 							"~refine": [
 								{
 									"check": {
@@ -2993,7 +3148,7 @@
 					"~refine": [
 						{
 							"check": {
-								"implementation": "370d0ad98f17a192e921672b85e21b71b89609e1058970f0a3df54a58c206c02"
+								"implementation": "597791199f5ca1e2f6903141882419f9eaafc1d8fd895ebccfa9437fc82aa558"
 							},
 							"error": {
 								"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
@@ -3185,6 +3340,28 @@
 											"~kind": "Array",
 											"~optional": true
 										},
+										"hostUserDataRoots": {
+											"items": {
+												"minLength": 1,
+												"pattern": "^[^\\u0000]*$",
+												"type": "string",
+												"~kind": "String"
+											},
+											"type": "array",
+											"uniqueItems": true,
+											"~kind": "Array",
+											"~optional": true,
+											"~refine": [
+												{
+													"check": {
+														"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+													},
+													"error": {
+														"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+													}
+												}
+											]
+										},
 										"id": {
 											"minLength": 1,
 											"type": "string",
@@ -3252,6 +3429,37 @@
 													"type": "array",
 													"uniqueItems": true,
 													"~kind": "Array",
+													"~refine": [
+														{
+															"check": {
+																"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+															},
+															"error": {
+																"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+															}
+														}
+													]
+												},
+												"credentialPathGrantKinds": {
+													"items": {
+														"anyOf": [
+															{
+																"const": "read",
+																"type": "string",
+																"~kind": "Literal"
+															},
+															{
+																"const": "write",
+																"type": "string",
+																"~kind": "Literal"
+															}
+														],
+														"~kind": "Union"
+													},
+													"type": "array",
+													"uniqueItems": true,
+													"~kind": "Array",
+													"~optional": true,
 													"~refine": [
 														{
 															"check": {
@@ -3471,7 +3679,7 @@
 											"~refine": [
 												{
 													"check": {
-														"implementation": "370d0ad98f17a192e921672b85e21b71b89609e1058970f0a3df54a58c206c02"
+														"implementation": "597791199f5ca1e2f6903141882419f9eaafc1d8fd895ebccfa9437fc82aa558"
 													},
 													"error": {
 														"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
@@ -3853,6 +4061,28 @@
 					"type": "string",
 					"~kind": "String"
 				},
+				"hostUserDataRoots": {
+					"items": {
+						"minLength": 1,
+						"pattern": "^[^\\u0000]*$",
+						"type": "string",
+						"~kind": "String"
+					},
+					"type": "array",
+					"uniqueItems": true,
+					"~kind": "Array",
+					"~optional": true,
+					"~refine": [
+						{
+							"check": {
+								"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+							},
+							"error": {
+								"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+							}
+						}
+					]
+				},
 				"hostWorkspace": {
 					"minLength": 1,
 					"type": "string",
@@ -3967,6 +4197,37 @@
 							"type": "array",
 							"uniqueItems": true,
 							"~kind": "Array",
+							"~refine": [
+								{
+									"check": {
+										"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+									},
+									"error": {
+										"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+									}
+								}
+							]
+						},
+						"credentialPathGrantKinds": {
+							"items": {
+								"anyOf": [
+									{
+										"const": "read",
+										"type": "string",
+										"~kind": "Literal"
+									},
+									{
+										"const": "write",
+										"type": "string",
+										"~kind": "Literal"
+									}
+								],
+								"~kind": "Union"
+							},
+							"type": "array",
+							"uniqueItems": true,
+							"~kind": "Array",
+							"~optional": true,
 							"~refine": [
 								{
 									"check": {
@@ -4186,7 +4447,7 @@
 					"~refine": [
 						{
 							"check": {
-								"implementation": "370d0ad98f17a192e921672b85e21b71b89609e1058970f0a3df54a58c206c02"
+								"implementation": "597791199f5ca1e2f6903141882419f9eaafc1d8fd895ebccfa9437fc82aa558"
 							},
 							"error": {
 								"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
@@ -4213,657 +4474,721 @@
 					"~kind": "String"
 				},
 				"service": {
-					"allOf": [
-						{
-							"properties": {
-								"id": {
-									"minLength": 1,
-									"type": "string",
-									"~kind": "String"
-								},
-								"label": {
-									"minLength": 1,
-									"type": "string",
-									"~kind": "String"
-								},
-								"profiles": {
-									"additionalProperties": false,
-									"properties": {
-										"copy": {
-											"items": {
-												"additionalProperties": false,
-												"properties": {
-													"capabilities": {
-														"contains": {
-															"const": "exec",
-															"type": "string",
-															"~kind": "Literal"
-														},
-														"items": {
-															"anyOf": [
-																{
-																	"const": "exec",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "files.read",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "files.write",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "files.list",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "search.find",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "search.grep",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "copy",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "violations",
-																	"type": "string",
-																	"~kind": "Literal"
-																}
-															],
-															"~kind": "Union"
-														},
-														"type": "array",
-														"uniqueItems": true,
-														"~kind": "Array",
-														"~refine": [
-															{
-																"check": {
-																	"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
-																},
-																"error": {
-																	"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-																}
-															}
-														]
-													},
-													"exitStatus": {
-														"anyOf": [
-															{
-																"const": "guaranteed",
-																"type": "string",
-																"~kind": "Literal"
-															},
-															{
-																"const": "optional",
-																"type": "string",
-																"~kind": "Literal"
-															}
-														],
-														"~kind": "Union"
-													},
-													"pathGrantKinds": {
-														"items": {
-															"anyOf": [
-																{
-																	"const": "read",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "write",
-																	"type": "string",
-																	"~kind": "Literal"
-																}
-															],
-															"~kind": "Union"
-														},
-														"type": "array",
-														"uniqueItems": true,
-														"~kind": "Array",
-														"~optional": true,
-														"~refine": [
-															{
-																"check": {
-																	"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
-																},
-																"error": {
-																	"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-																}
-															}
-														]
-													},
-													"policy": {
-														"additionalProperties": false,
-														"properties": {
-															"hostSystemFiles": {
-																"anyOf": [
-																	{
-																		"const": "denied",
-																		"type": "string",
-																		"~kind": "Literal"
-																	},
-																	{
-																		"const": "read-only",
-																		"type": "string",
-																		"~kind": "Literal"
-																	},
-																	{
-																		"const": "read-write",
-																		"type": "string",
-																		"~kind": "Literal"
-																	}
-																],
-																"~kind": "Union"
-															},
-															"hostUserData": {
-																"anyOf": [
-																	{
-																		"const": "denied",
-																		"type": "string",
-																		"~kind": "Literal"
-																	},
-																	{
-																		"const": "read-only",
-																		"type": "string",
-																		"~kind": "Literal"
-																	},
-																	{
-																		"const": "read-write",
-																		"type": "string",
-																		"~kind": "Literal"
-																	}
-																],
-																"~kind": "Union"
-															},
-															"hostWorkspaceWrites": {
-																"type": "boolean",
-																"~kind": "Boolean"
-															},
-															"network": {
-																"type": "boolean",
-																"~kind": "Boolean"
-															}
-														},
-														"required": [
-															"hostWorkspaceWrites",
-															"network",
-															"hostUserData",
-															"hostSystemFiles"
-														],
-														"type": "object",
-														"x-byos-whole-offer": true,
-														"~kind": "Object"
-													},
-													"processKinds": {
-														"items": {
-															"anyOf": [
-																{
-																	"const": "argv",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "shell",
-																	"type": "string",
-																	"~kind": "Literal"
-																}
-															],
-															"~kind": "Union"
-														},
-														"minItems": 1,
-														"type": "array",
-														"uniqueItems": true,
-														"~kind": "Array",
-														"~refine": [
-															{
-																"check": {
-																	"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
-																},
-																"error": {
-																	"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-																}
-															}
-														]
-													},
-													"shells": {
-														"items": {
-															"anyOf": [
-																{
-																	"const": "bash",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "sh",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "powershell",
-																	"type": "string",
-																	"~kind": "Literal"
-																}
-															],
-															"~kind": "Union"
-														},
-														"type": "array",
-														"uniqueItems": true,
-														"~kind": "Array",
-														"~refine": [
-															{
-																"check": {
-																	"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
-																},
-																"error": {
-																	"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-																}
-															}
-														]
-													},
-													"terminationScope": {
-														"anyOf": [
-															{
-																"const": "none",
-																"type": "string",
-																"~kind": "Literal"
-															},
-															{
-																"const": "process-group",
-																"type": "string",
-																"~kind": "Literal"
-															},
-															{
-																"const": "workload",
-																"type": "string",
-																"~kind": "Literal"
-															}
-														],
-														"~kind": "Union"
-													}
-												},
-												"required": [
-													"policy",
-													"capabilities",
-													"processKinds",
-													"shells",
-													"exitStatus",
-													"terminationScope"
-												],
-												"type": "object",
-												"~kind": "Object",
-												"~refine": [
-													{
-														"check": {
-															"implementation": "370d0ad98f17a192e921672b85e21b71b89609e1058970f0a3df54a58c206c02"
-														},
-														"error": {
-															"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-														}
-													}
-												]
-											},
-											"type": "array",
-											"~kind": "Array",
-											"~refine": [
-												{
-													"check": {
-														"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
-													},
-													"error": {
-														"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-													}
-												}
-											]
-										},
-										"open": {
-											"items": {
-												"additionalProperties": false,
-												"properties": {
-													"capabilities": {
-														"contains": {
-															"const": "exec",
-															"type": "string",
-															"~kind": "Literal"
-														},
-														"items": {
-															"anyOf": [
-																{
-																	"const": "exec",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "files.read",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "files.write",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "files.list",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "search.find",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "search.grep",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "copy",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "violations",
-																	"type": "string",
-																	"~kind": "Literal"
-																}
-															],
-															"~kind": "Union"
-														},
-														"type": "array",
-														"uniqueItems": true,
-														"~kind": "Array",
-														"~refine": [
-															{
-																"check": {
-																	"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
-																},
-																"error": {
-																	"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-																}
-															}
-														]
-													},
-													"exitStatus": {
-														"anyOf": [
-															{
-																"const": "guaranteed",
-																"type": "string",
-																"~kind": "Literal"
-															},
-															{
-																"const": "optional",
-																"type": "string",
-																"~kind": "Literal"
-															}
-														],
-														"~kind": "Union"
-													},
-													"pathGrantKinds": {
-														"items": {
-															"anyOf": [
-																{
-																	"const": "read",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "write",
-																	"type": "string",
-																	"~kind": "Literal"
-																}
-															],
-															"~kind": "Union"
-														},
-														"type": "array",
-														"uniqueItems": true,
-														"~kind": "Array",
-														"~optional": true,
-														"~refine": [
-															{
-																"check": {
-																	"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
-																},
-																"error": {
-																	"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-																}
-															}
-														]
-													},
-													"policy": {
-														"additionalProperties": false,
-														"properties": {
-															"hostSystemFiles": {
-																"anyOf": [
-																	{
-																		"const": "denied",
-																		"type": "string",
-																		"~kind": "Literal"
-																	},
-																	{
-																		"const": "read-only",
-																		"type": "string",
-																		"~kind": "Literal"
-																	},
-																	{
-																		"const": "read-write",
-																		"type": "string",
-																		"~kind": "Literal"
-																	}
-																],
-																"~kind": "Union"
-															},
-															"hostUserData": {
-																"anyOf": [
-																	{
-																		"const": "denied",
-																		"type": "string",
-																		"~kind": "Literal"
-																	},
-																	{
-																		"const": "read-only",
-																		"type": "string",
-																		"~kind": "Literal"
-																	},
-																	{
-																		"const": "read-write",
-																		"type": "string",
-																		"~kind": "Literal"
-																	}
-																],
-																"~kind": "Union"
-															},
-															"hostWorkspaceWrites": {
-																"type": "boolean",
-																"~kind": "Boolean"
-															},
-															"network": {
-																"type": "boolean",
-																"~kind": "Boolean"
-															}
-														},
-														"required": [
-															"hostWorkspaceWrites",
-															"network",
-															"hostUserData",
-															"hostSystemFiles"
-														],
-														"type": "object",
-														"x-byos-whole-offer": true,
-														"~kind": "Object"
-													},
-													"processKinds": {
-														"items": {
-															"anyOf": [
-																{
-																	"const": "argv",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "shell",
-																	"type": "string",
-																	"~kind": "Literal"
-																}
-															],
-															"~kind": "Union"
-														},
-														"minItems": 1,
-														"type": "array",
-														"uniqueItems": true,
-														"~kind": "Array",
-														"~refine": [
-															{
-																"check": {
-																	"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
-																},
-																"error": {
-																	"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-																}
-															}
-														]
-													},
-													"shells": {
-														"items": {
-															"anyOf": [
-																{
-																	"const": "bash",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "sh",
-																	"type": "string",
-																	"~kind": "Literal"
-																},
-																{
-																	"const": "powershell",
-																	"type": "string",
-																	"~kind": "Literal"
-																}
-															],
-															"~kind": "Union"
-														},
-														"type": "array",
-														"uniqueItems": true,
-														"~kind": "Array",
-														"~refine": [
-															{
-																"check": {
-																	"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
-																},
-																"error": {
-																	"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-																}
-															}
-														]
-													},
-													"terminationScope": {
-														"anyOf": [
-															{
-																"const": "none",
-																"type": "string",
-																"~kind": "Literal"
-															},
-															{
-																"const": "process-group",
-																"type": "string",
-																"~kind": "Literal"
-															},
-															{
-																"const": "workload",
-																"type": "string",
-																"~kind": "Literal"
-															}
-														],
-														"~kind": "Union"
-													}
-												},
-												"required": [
-													"policy",
-													"capabilities",
-													"processKinds",
-													"shells",
-													"exitStatus",
-													"terminationScope"
-												],
-												"type": "object",
-												"~kind": "Object",
-												"~refine": [
-													{
-														"check": {
-															"implementation": "370d0ad98f17a192e921672b85e21b71b89609e1058970f0a3df54a58c206c02"
-														},
-														"error": {
-															"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-														}
-													}
-												]
-											},
-											"minItems": 1,
-											"type": "array",
-											"~kind": "Array",
-											"~refine": [
-												{
-													"check": {
-														"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
-													},
-													"error": {
-														"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-													}
-												}
-											]
-										}
-									},
-									"required": ["open", "copy"],
-									"type": "object",
-									"~kind": "Object"
-								}
-							},
-							"required": ["id", "label", "profiles"],
-							"type": "object",
-							"~kind": "Object",
-							"~refine": [
-								{
-									"check": {
-										"implementation": "17b171f5fd127efd6d38350090b27f0b09463ebb41a268b96b8573d62d50a43c"
-									},
-									"error": {
-										"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-									}
-								}
-							]
+					"properties": {
+						"id": {
+							"minLength": 1,
+							"type": "string",
+							"~kind": "String"
 						},
-						{
+						"label": {
+							"minLength": 1,
+							"type": "string",
+							"~kind": "String"
+						},
+						"profiles": {
+							"additionalProperties": false,
 							"properties": {
-								"configure": {
-									"parameters": [],
-									"returnType": {
-										"~kind": "Unknown"
+								"copy": {
+									"items": {
+										"additionalProperties": false,
+										"properties": {
+											"capabilities": {
+												"contains": {
+													"const": "exec",
+													"type": "string",
+													"~kind": "Literal"
+												},
+												"items": {
+													"anyOf": [
+														{
+															"const": "exec",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "files.read",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "files.write",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "files.list",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "search.find",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "search.grep",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "copy",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "violations",
+															"type": "string",
+															"~kind": "Literal"
+														}
+													],
+													"~kind": "Union"
+												},
+												"type": "array",
+												"uniqueItems": true,
+												"~kind": "Array",
+												"~refine": [
+													{
+														"check": {
+															"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+														},
+														"error": {
+															"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+														}
+													}
+												]
+											},
+											"credentialPathGrantKinds": {
+												"items": {
+													"anyOf": [
+														{
+															"const": "read",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "write",
+															"type": "string",
+															"~kind": "Literal"
+														}
+													],
+													"~kind": "Union"
+												},
+												"type": "array",
+												"uniqueItems": true,
+												"~kind": "Array",
+												"~optional": true,
+												"~refine": [
+													{
+														"check": {
+															"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+														},
+														"error": {
+															"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+														}
+													}
+												]
+											},
+											"exitStatus": {
+												"anyOf": [
+													{
+														"const": "guaranteed",
+														"type": "string",
+														"~kind": "Literal"
+													},
+													{
+														"const": "optional",
+														"type": "string",
+														"~kind": "Literal"
+													}
+												],
+												"~kind": "Union"
+											},
+											"pathGrantKinds": {
+												"items": {
+													"anyOf": [
+														{
+															"const": "read",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "write",
+															"type": "string",
+															"~kind": "Literal"
+														}
+													],
+													"~kind": "Union"
+												},
+												"type": "array",
+												"uniqueItems": true,
+												"~kind": "Array",
+												"~optional": true,
+												"~refine": [
+													{
+														"check": {
+															"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+														},
+														"error": {
+															"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+														}
+													}
+												]
+											},
+											"policy": {
+												"additionalProperties": false,
+												"properties": {
+													"hostSystemFiles": {
+														"anyOf": [
+															{
+																"const": "denied",
+																"type": "string",
+																"~kind": "Literal"
+															},
+															{
+																"const": "read-only",
+																"type": "string",
+																"~kind": "Literal"
+															},
+															{
+																"const": "read-write",
+																"type": "string",
+																"~kind": "Literal"
+															}
+														],
+														"~kind": "Union"
+													},
+													"hostUserData": {
+														"anyOf": [
+															{
+																"const": "denied",
+																"type": "string",
+																"~kind": "Literal"
+															},
+															{
+																"const": "read-only",
+																"type": "string",
+																"~kind": "Literal"
+															},
+															{
+																"const": "read-write",
+																"type": "string",
+																"~kind": "Literal"
+															}
+														],
+														"~kind": "Union"
+													},
+													"hostWorkspaceWrites": {
+														"type": "boolean",
+														"~kind": "Boolean"
+													},
+													"network": {
+														"type": "boolean",
+														"~kind": "Boolean"
+													}
+												},
+												"required": [
+													"hostWorkspaceWrites",
+													"network",
+													"hostUserData",
+													"hostSystemFiles"
+												],
+												"type": "object",
+												"x-byos-whole-offer": true,
+												"~kind": "Object"
+											},
+											"processKinds": {
+												"items": {
+													"anyOf": [
+														{
+															"const": "argv",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "shell",
+															"type": "string",
+															"~kind": "Literal"
+														}
+													],
+													"~kind": "Union"
+												},
+												"minItems": 1,
+												"type": "array",
+												"uniqueItems": true,
+												"~kind": "Array",
+												"~refine": [
+													{
+														"check": {
+															"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+														},
+														"error": {
+															"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+														}
+													}
+												]
+											},
+											"shells": {
+												"items": {
+													"anyOf": [
+														{
+															"const": "bash",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "sh",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "powershell",
+															"type": "string",
+															"~kind": "Literal"
+														}
+													],
+													"~kind": "Union"
+												},
+												"type": "array",
+												"uniqueItems": true,
+												"~kind": "Array",
+												"~refine": [
+													{
+														"check": {
+															"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+														},
+														"error": {
+															"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+														}
+													}
+												]
+											},
+											"terminationScope": {
+												"anyOf": [
+													{
+														"const": "none",
+														"type": "string",
+														"~kind": "Literal"
+													},
+													{
+														"const": "process-group",
+														"type": "string",
+														"~kind": "Literal"
+													},
+													{
+														"const": "workload",
+														"type": "string",
+														"~kind": "Literal"
+													}
+												],
+												"~kind": "Union"
+											}
+										},
+										"required": [
+											"policy",
+											"capabilities",
+											"processKinds",
+											"shells",
+											"exitStatus",
+											"terminationScope"
+										],
+										"type": "object",
+										"~kind": "Object",
+										"~refine": [
+											{
+												"check": {
+													"implementation": "597791199f5ca1e2f6903141882419f9eaafc1d8fd895ebccfa9437fc82aa558"
+												},
+												"error": {
+													"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+												}
+											}
+										]
 									},
-									"type": "function",
-									"~kind": "Function",
-									"~unsafe": null
+									"type": "array",
+									"~kind": "Array",
+									"~refine": [
+										{
+											"check": {
+												"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+											},
+											"error": {
+												"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+											}
+										}
+									]
+								},
+								"open": {
+									"items": {
+										"additionalProperties": false,
+										"properties": {
+											"capabilities": {
+												"contains": {
+													"const": "exec",
+													"type": "string",
+													"~kind": "Literal"
+												},
+												"items": {
+													"anyOf": [
+														{
+															"const": "exec",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "files.read",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "files.write",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "files.list",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "search.find",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "search.grep",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "copy",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "violations",
+															"type": "string",
+															"~kind": "Literal"
+														}
+													],
+													"~kind": "Union"
+												},
+												"type": "array",
+												"uniqueItems": true,
+												"~kind": "Array",
+												"~refine": [
+													{
+														"check": {
+															"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+														},
+														"error": {
+															"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+														}
+													}
+												]
+											},
+											"credentialPathGrantKinds": {
+												"items": {
+													"anyOf": [
+														{
+															"const": "read",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "write",
+															"type": "string",
+															"~kind": "Literal"
+														}
+													],
+													"~kind": "Union"
+												},
+												"type": "array",
+												"uniqueItems": true,
+												"~kind": "Array",
+												"~optional": true,
+												"~refine": [
+													{
+														"check": {
+															"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+														},
+														"error": {
+															"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+														}
+													}
+												]
+											},
+											"exitStatus": {
+												"anyOf": [
+													{
+														"const": "guaranteed",
+														"type": "string",
+														"~kind": "Literal"
+													},
+													{
+														"const": "optional",
+														"type": "string",
+														"~kind": "Literal"
+													}
+												],
+												"~kind": "Union"
+											},
+											"pathGrantKinds": {
+												"items": {
+													"anyOf": [
+														{
+															"const": "read",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "write",
+															"type": "string",
+															"~kind": "Literal"
+														}
+													],
+													"~kind": "Union"
+												},
+												"type": "array",
+												"uniqueItems": true,
+												"~kind": "Array",
+												"~optional": true,
+												"~refine": [
+													{
+														"check": {
+															"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+														},
+														"error": {
+															"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+														}
+													}
+												]
+											},
+											"policy": {
+												"additionalProperties": false,
+												"properties": {
+													"hostSystemFiles": {
+														"anyOf": [
+															{
+																"const": "denied",
+																"type": "string",
+																"~kind": "Literal"
+															},
+															{
+																"const": "read-only",
+																"type": "string",
+																"~kind": "Literal"
+															},
+															{
+																"const": "read-write",
+																"type": "string",
+																"~kind": "Literal"
+															}
+														],
+														"~kind": "Union"
+													},
+													"hostUserData": {
+														"anyOf": [
+															{
+																"const": "denied",
+																"type": "string",
+																"~kind": "Literal"
+															},
+															{
+																"const": "read-only",
+																"type": "string",
+																"~kind": "Literal"
+															},
+															{
+																"const": "read-write",
+																"type": "string",
+																"~kind": "Literal"
+															}
+														],
+														"~kind": "Union"
+													},
+													"hostWorkspaceWrites": {
+														"type": "boolean",
+														"~kind": "Boolean"
+													},
+													"network": {
+														"type": "boolean",
+														"~kind": "Boolean"
+													}
+												},
+												"required": [
+													"hostWorkspaceWrites",
+													"network",
+													"hostUserData",
+													"hostSystemFiles"
+												],
+												"type": "object",
+												"x-byos-whole-offer": true,
+												"~kind": "Object"
+											},
+											"processKinds": {
+												"items": {
+													"anyOf": [
+														{
+															"const": "argv",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "shell",
+															"type": "string",
+															"~kind": "Literal"
+														}
+													],
+													"~kind": "Union"
+												},
+												"minItems": 1,
+												"type": "array",
+												"uniqueItems": true,
+												"~kind": "Array",
+												"~refine": [
+													{
+														"check": {
+															"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+														},
+														"error": {
+															"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+														}
+													}
+												]
+											},
+											"shells": {
+												"items": {
+													"anyOf": [
+														{
+															"const": "bash",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "sh",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														{
+															"const": "powershell",
+															"type": "string",
+															"~kind": "Literal"
+														}
+													],
+													"~kind": "Union"
+												},
+												"type": "array",
+												"uniqueItems": true,
+												"~kind": "Array",
+												"~refine": [
+													{
+														"check": {
+															"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+														},
+														"error": {
+															"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+														}
+													}
+												]
+											},
+											"terminationScope": {
+												"anyOf": [
+													{
+														"const": "none",
+														"type": "string",
+														"~kind": "Literal"
+													},
+													{
+														"const": "process-group",
+														"type": "string",
+														"~kind": "Literal"
+													},
+													{
+														"const": "workload",
+														"type": "string",
+														"~kind": "Literal"
+													}
+												],
+												"~kind": "Union"
+											}
+										},
+										"required": [
+											"policy",
+											"capabilities",
+											"processKinds",
+											"shells",
+											"exitStatus",
+											"terminationScope"
+										],
+										"type": "object",
+										"~kind": "Object",
+										"~refine": [
+											{
+												"check": {
+													"implementation": "597791199f5ca1e2f6903141882419f9eaafc1d8fd895ebccfa9437fc82aa558"
+												},
+												"error": {
+													"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+												}
+											}
+										]
+									},
+									"type": "array",
+									"~kind": "Array",
+									"~refine": [
+										{
+											"check": {
+												"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+											},
+											"error": {
+												"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+											}
+										}
+									]
 								}
 							},
-							"required": ["configure"],
+							"required": ["open", "copy"],
 							"type": "object",
 							"~kind": "Object"
+						},
+						"unavailable": {
+							"additionalProperties": false,
+							"properties": {
+								"kind": {
+									"const": "unsupported-platform",
+									"type": "string",
+									"~kind": "Literal"
+								},
+								"message": {
+									"minLength": 1,
+									"type": "string",
+									"~kind": "String"
+								},
+								"platform": {
+									"minLength": 1,
+									"type": "string",
+									"~kind": "String"
+								}
+							},
+							"required": ["kind", "platform", "message"],
+							"type": "object",
+							"~kind": "Object",
+							"~optional": true
 						}
-					],
-					"~kind": "Intersect"
+					},
+					"required": ["id", "label", "profiles"],
+					"type": "object",
+					"~kind": "Object",
+					"~refine": [
+						{
+							"check": {
+								"implementation": "0302a04eb026632948b1a0877d2f5e012082f9cb36e06112bcc40d0434ac17f2"
+							},
+							"error": {
+								"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+							}
+						}
+					]
 				},
 				"type": {
 					"const": "provider",
@@ -5028,6 +5353,11 @@
 		"runtime.broker": {
 			"additionalProperties": false,
 			"properties": {
+				"candidateId": {
+					"minLength": 1,
+					"type": "string",
+					"~kind": "String"
+				},
 				"id": {
 					"minLength": 1,
 					"type": "string",
@@ -5036,24 +5366,6 @@
 				"service": {
 					"properties": {
 						"acquire": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~unsafe": null
-						},
-						"close": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~unsafe": null
-						},
-						"copy": {
 							"parameters": [],
 							"returnType": {
 								"~kind": "Unknown"
@@ -5074,26 +5386,6 @@
 							},
 							"type": "function",
 							"~kind": "Function",
-							"~unsafe": null
-						},
-						"planEscalation": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~optional": true,
-							"~unsafe": null
-						},
-						"prepareReview": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~optional": true,
 							"~unsafe": null
 						},
 						"providers": {
@@ -5125,15 +5417,7 @@
 							"~unsafe": null
 						}
 					},
-					"required": [
-						"copy",
-						"id",
-						"acquire",
-						"negotiate",
-						"close",
-						"status",
-						"providers"
-					],
+					"required": ["id", "acquire", "negotiate", "status", "providers"],
 					"type": "object",
 					"~kind": "Object"
 				},
@@ -5143,14 +5427,52 @@
 					"~kind": "Literal"
 				}
 			},
-			"required": ["type", "id", "service"],
+			"required": ["type", "candidateId", "id", "service"],
 			"type": "object",
 			"~kind": "Object"
 		},
 		"runtime.build": {
 			"additionalProperties": false,
 			"properties": {
-				"activate": {
+				"candidateId": {
+					"minLength": 1,
+					"type": "string",
+					"~kind": "String"
+				},
+				"type": {
+					"const": "build",
+					"type": "string",
+					"~kind": "Literal"
+				}
+			},
+			"required": ["type", "candidateId"],
+			"type": "object",
+			"~kind": "Object"
+		},
+		"runtime.connect-runtime": {
+			"additionalProperties": false,
+			"properties": {
+				"brokerId": {
+					"minLength": 1,
+					"type": "string",
+					"~kind": "String"
+				},
+				"candidateId": {
+					"minLength": 1,
+					"type": "string",
+					"~kind": "String"
+				},
+				"electionId": {
+					"minLength": 1,
+					"type": "string",
+					"~kind": "String"
+				},
+				"ownerCandidateId": {
+					"minLength": 1,
+					"type": "string",
+					"~kind": "String"
+				},
+				"receive": {
 					"parameters": [],
 					"returnType": {
 						"~kind": "Unknown"
@@ -5159,53 +5481,26 @@
 					"~kind": "Function",
 					"~unsafe": null
 				},
-				"type": {
-					"const": "build",
-					"type": "string",
-					"~kind": "Literal"
-				}
-			},
-			"required": ["type", "activate"],
-			"type": "object",
-			"~kind": "Object"
-		},
-		"runtime.configuration-providers": {
-			"additionalProperties": false,
-			"properties": {
-				"id": {
+				"sessionId": {
 					"minLength": 1,
 					"type": "string",
 					"~kind": "String"
 				},
-				"service": {
-					"additionalProperties": false,
-					"properties": {
-						"id": {
-							"minLength": 1,
-							"type": "string",
-							"~kind": "String"
-						},
-						"resolve": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~unsafe": null
-						}
-					},
-					"required": ["id", "resolve"],
-					"type": "object",
-					"~kind": "Object"
-				},
 				"type": {
-					"const": "configuration-providers",
+					"const": "connect-runtime",
 					"type": "string",
 					"~kind": "Literal"
 				}
 			},
-			"required": ["type", "id", "service"],
+			"required": [
+				"type",
+				"electionId",
+				"candidateId",
+				"ownerCandidateId",
+				"brokerId",
+				"sessionId",
+				"receive"
+			],
 			"type": "object",
 			"~kind": "Object"
 		},
@@ -5235,45 +5530,6 @@
 			"type": "object",
 			"~kind": "Object"
 		},
-		"runtime.get-configuration-providers": {
-			"additionalProperties": false,
-			"properties": {
-				"type": {
-					"const": "get-configuration-providers",
-					"type": "string",
-					"~kind": "Literal"
-				}
-			},
-			"required": ["type"],
-			"type": "object",
-			"~kind": "Object"
-		},
-		"runtime.get-host-options": {
-			"additionalProperties": false,
-			"properties": {
-				"type": {
-					"const": "get-host-options",
-					"type": "string",
-					"~kind": "Literal"
-				}
-			},
-			"required": ["type"],
-			"type": "object",
-			"~kind": "Object"
-		},
-		"runtime.get-settings": {
-			"additionalProperties": false,
-			"properties": {
-				"type": {
-					"const": "get-settings",
-					"type": "string",
-					"~kind": "Literal"
-				}
-			},
-			"required": ["type"],
-			"type": "object",
-			"~kind": "Object"
-		},
 		"runtime.get-shell-integration": {
 			"additionalProperties": false,
 			"properties": {
@@ -5287,212 +5543,6 @@
 			"type": "object",
 			"~kind": "Object"
 		},
-		"runtime.host-options": {
-			"additionalProperties": false,
-			"properties": {
-				"id": {
-					"minLength": 1,
-					"type": "string",
-					"~kind": "String"
-				},
-				"service": {
-					"additionalProperties": false,
-					"properties": {
-						"id": {
-							"minLength": 1,
-							"type": "string",
-							"~kind": "String"
-						},
-						"options": {
-							"additionalProperties": false,
-							"properties": {
-								"cleanup": {
-									"properties": {
-										"cancellationGraceMs": {
-											"maximum": 300000,
-											"minimum": 1,
-											"type": "integer",
-											"~kind": "Integer",
-											"~optional": true
-										},
-										"disposalTimeoutMs": {
-											"maximum": 300000,
-											"minimum": 1,
-											"type": "integer",
-											"~kind": "Integer",
-											"~optional": true
-										}
-									},
-									"type": "object",
-									"~kind": "Object",
-									"~optional": true
-								}
-							},
-							"type": "object",
-							"~kind": "Object"
-						}
-					},
-					"required": ["id", "options"],
-					"type": "object",
-					"~kind": "Object"
-				},
-				"type": {
-					"const": "host-options",
-					"type": "string",
-					"~kind": "Literal"
-				}
-			},
-			"required": ["type", "id", "service"],
-			"type": "object",
-			"~kind": "Object"
-		},
-		"runtime.settings": {
-			"additionalProperties": false,
-			"properties": {
-				"id": {
-					"minLength": 1,
-					"type": "string",
-					"~kind": "String"
-				},
-				"service": {
-					"properties": {
-						"assertConfigurable": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~unsafe": null
-						},
-						"close": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~unsafe": null
-						},
-						"diagnostics": {
-							"properties": {
-								"record": {
-									"parameters": [],
-									"returnType": {
-										"~kind": "Unknown"
-									},
-									"type": "function",
-									"~kind": "Function",
-									"~unsafe": null
-								},
-								"snapshot": {
-									"parameters": [],
-									"returnType": {
-										"~kind": "Unknown"
-									},
-									"type": "function",
-									"~kind": "Function",
-									"~unsafe": null
-								}
-							},
-							"required": ["record", "snapshot"],
-							"type": "object",
-							"~kind": "Object"
-						},
-						"id": {
-							"minLength": 1,
-							"type": "string",
-							"~kind": "String"
-						},
-						"lifetime": {
-							"properties": {
-								"aborted": {
-									"type": "boolean",
-									"~kind": "Boolean"
-								},
-								"addEventListener": {
-									"parameters": [],
-									"returnType": {
-										"~kind": "Unknown"
-									},
-									"type": "function",
-									"~kind": "Function",
-									"~unsafe": null
-								},
-								"dispatchEvent": {
-									"parameters": [],
-									"returnType": {
-										"~kind": "Unknown"
-									},
-									"type": "function",
-									"~kind": "Function",
-									"~unsafe": null
-								},
-								"reason": {
-									"~kind": "Unknown"
-								},
-								"removeEventListener": {
-									"parameters": [],
-									"returnType": {
-										"~kind": "Unknown"
-									},
-									"type": "function",
-									"~kind": "Function",
-									"~unsafe": null
-								},
-								"throwIfAborted": {
-									"parameters": [],
-									"returnType": {
-										"~kind": "Unknown"
-									},
-									"type": "function",
-									"~kind": "Function",
-									"~unsafe": null
-								}
-							},
-							"required": [
-								"aborted",
-								"addEventListener",
-								"removeEventListener",
-								"dispatchEvent",
-								"throwIfAborted",
-								"reason"
-							],
-							"type": "object",
-							"~kind": "Object",
-							"~unsafe": null
-						},
-						"read": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~unsafe": null
-						}
-					},
-					"required": [
-						"diagnostics",
-						"assertConfigurable",
-						"id",
-						"lifetime",
-						"close",
-						"read"
-					],
-					"type": "object",
-					"~kind": "Object"
-				},
-				"type": {
-					"const": "settings",
-					"type": "string",
-					"~kind": "Literal"
-				}
-			},
-			"required": ["type", "id", "service"],
-			"type": "object",
-			"~kind": "Object"
-		},
 		"runtime.shell-integration": {
 			"additionalProperties": false,
 			"properties": {
@@ -5503,6 +5553,82 @@
 				}
 			},
 			"required": ["type"],
+			"type": "object",
+			"~kind": "Object"
+		},
+		"runtime.start-broker": {
+			"additionalProperties": false,
+			"properties": {
+				"candidateId": {
+					"minLength": 1,
+					"type": "string",
+					"~kind": "String"
+				},
+				"owner": {
+					"additionalProperties": false,
+					"properties": {
+						"buildId": {
+							"minLength": 1,
+							"type": "string",
+							"~kind": "String"
+						},
+						"extensionSource": {
+							"minLength": 1,
+							"type": "string",
+							"~kind": "String"
+						},
+						"featureLevel": {
+							"maximum": 9007199254740991,
+							"minimum": 0,
+							"type": "integer",
+							"~kind": "Integer"
+						},
+						"major": {
+							"maximum": 9007199254740991,
+							"minimum": 1,
+							"type": "integer",
+							"~kind": "Integer"
+						},
+						"packageVersion": {
+							"pattern": {
+								"pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?:-(?:(?:0|[1-9][0-9]*)|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:(?:0|[1-9][0-9]*)|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*)?(?:\\+[0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*)?$",
+								"flags": ""
+							},
+							"type": "string",
+							"~kind": "String"
+						}
+					},
+					"required": [
+						"buildId",
+						"packageVersion",
+						"extensionSource",
+						"major",
+						"featureLevel"
+					],
+					"type": "object",
+					"~kind": "Object"
+				},
+				"receive": {
+					"parameters": [],
+					"returnType": {
+						"~kind": "Unknown"
+					},
+					"type": "function",
+					"~kind": "Function",
+					"~unsafe": null
+				},
+				"sessionId": {
+					"minLength": 1,
+					"type": "string",
+					"~kind": "String"
+				},
+				"type": {
+					"const": "start-broker",
+					"type": "string",
+					"~kind": "Literal"
+				}
+			},
+			"required": ["type", "candidateId", "owner", "sessionId", "receive"],
 			"type": "object",
 			"~kind": "Object"
 		},
@@ -6192,6 +6318,41 @@
 										},
 										{
 											"properties": {
+												"kind": {
+													"const": "provider-unavailable",
+													"type": "string",
+													"~kind": "Literal"
+												},
+												"reason": {
+													"additionalProperties": false,
+													"properties": {
+														"kind": {
+															"const": "unsupported-platform",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														"message": {
+															"minLength": 1,
+															"type": "string",
+															"~kind": "String"
+														},
+														"platform": {
+															"minLength": 1,
+															"type": "string",
+															"~kind": "String"
+														}
+													},
+													"required": ["kind", "platform", "message"],
+													"type": "object",
+													"~kind": "Object"
+												}
+											},
+											"required": ["kind", "reason"],
+											"type": "object",
+											"~kind": "Object"
+										},
+										{
+											"properties": {
 												"field": {
 													"minLength": 1,
 													"type": "string",
@@ -6428,6 +6589,11 @@
 												},
 												{
 													"const": "ProviderNotFoundError",
+													"type": "string",
+													"~kind": "Literal"
+												},
+												{
+													"const": "SandboxProviderUnavailableError",
 													"type": "string",
 													"~kind": "Literal"
 												},

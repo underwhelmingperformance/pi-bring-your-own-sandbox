@@ -520,12 +520,15 @@ fields and identity envelopes.
 
 [wire]: api-protocol.md#internal-protocol
 
+The first release uses protocol 1.0. Earlier drafts can advertise the same
+version with incompatible contracts. Upgrade all BYOS extensions together and
+restart Pi before using the release.
+
 During the Pi extension factory, consumers create a client with
 `createSandboxClient(pi, import.meta.filename)`. Provider registration, the Pi
 tool integration and `initialiseSandboxHost` join the build census from their
-respective factories. Protocol 2 removes the outside-factory exception for
-embedding hosts. Calling `createSandboxClient` or `initialiseSandboxHost` after
-the factories have run raises `SandboxInitialisationError`.
+respective factories. Calling `createSandboxClient` or `initialiseSandboxHost`
+after the factories have run raises `SandboxInitialisationError`.
 
 The first BYOS `session_start` handler elects the build with the highest feature
 level. Ties use the SDK package version in SemVer order, then the build ID and

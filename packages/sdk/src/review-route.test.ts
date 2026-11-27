@@ -8,7 +8,11 @@ import { publishFixtureBroker } from './fixtures/fixture-broker-service.js';
 import { fixtureEvents, respond } from './fixtures/protocol-peer.js';
 import { defaultPolicy } from './policy-model.js';
 import { protocolAddress } from './protocol-address.js';
-import { onProtocolRequest, REVIEW_CHANNEL } from './protocol-envelope.js';
+import {
+	onProtocolRequest,
+	PROTOCOL_MAJOR,
+	REVIEW_CHANNEL
+} from './protocol-envelope.js';
 import { findReviewRequest } from './protocol-payloads.js';
 import { ReviewIdentities } from './review-identities.js';
 import { findShellReviewSource, hasShellReviewRoute } from './review-route.js';
@@ -108,7 +112,7 @@ it.each([
 		reason: 'invalid-source'
 	},
 	{
-		reply: { type: 'incompatible-major', major: 1 },
+		reply: { type: 'incompatible-major', major: PROTOCOL_MAJOR + 1 },
 		reason: 'incompatible-protocol'
 	}
 ] as const)('returns the typed reason $reason', ({ reply, reason }) => {

@@ -19,7 +19,7 @@ export const RUNTIME_CHANNEL = 'pi-byos:runtime';
 export const PROVIDER_CHANNEL = 'pi-byos:provider';
 export const REVIEW_CHANNEL = 'pi-byos:review';
 
-export const PROTOCOL_MAJOR = 2;
+export const PROTOCOL_MAJOR = 1;
 export const PROTOCOL_FEATURE_LEVEL = 0;
 
 const identityFields = {

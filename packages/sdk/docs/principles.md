@@ -173,13 +173,13 @@ one message format. The protocol version has two parts, a major number and a
 feature level. Each SDK build implements exactly one major number and one
 feature level.
 
-Within a major number, the protocol changes only by addition. A new optional
-field, a new value in a list and a new method each raise the feature level, and
-the schema records the level that introduced each addition. Any other change,
-such as removing or renaming a field or changing the meaning of a value, starts
-a new major number. Builds with different major numbers do not work together.
-Discovery fails, and the error identifies both builds and the extensions that
-loaded them.
+After release, the protocol changes only by addition within a major number. A
+new optional field, a new value in a list and a new method each raise the
+feature level, and the schema records the level that introduced each addition.
+Any other change, such as removing or renaming a field or changing the meaning
+of a value, starts a new major number. Builds with different major numbers do
+not work together. Discovery fails, and the error identifies both builds and the
+extensions that loaded them.
 
 Two builds with the same major number use the lower of their feature levels, and
 nothing above that level passes between them. When a message uses a feature
@@ -203,9 +203,9 @@ Enforced by:
 
 - feature-level annotations on the schemas, from which the SDK generates the
   checks for any level, so reducing a message to a lower level is mechanical;
-- a committed snapshot of the protocol schemas, and a test that fails unless a
-  change to them is an addition that raises the feature level or the change
-  raises the major number;
+- a committed snapshot of the released protocol schemas, and a test that fails
+  unless a change to them is an addition that raises the feature level or the
+  change raises the major number;
 - a compatibility test that runs the first build of the current major number
   against the current build, as both provider and consumer;
 - the build identity, major number and feature level in every advertisement and

@@ -1,6 +1,6 @@
 # API and protocol appendix
 
-This appendix specifies protocol major 2 at feature level 0. The
+This appendix specifies protocol major 1 at feature level 0. The
 [specification][spec] defines behaviour and identifies the consumers of the
 contract. Runtime schemas define the types.
 
@@ -727,11 +727,12 @@ callbacks. The runtime offers no settings service. The shell integration query
 returns `{ type: 'shell-integration' }` when an extension registers the Pi
 tools.
 
-Protocol 2 keeps the envelope and build census verb. SDK copies use the census
-to detect a major mismatch before bootstrap. The [2.0 snapshot][v2] records the
-current schemas. The [1.0 snapshot][v1] records the pinned contract.
+SDK copies use the build census to detect a major mismatch before bootstrap. The
+[1.0 snapshot][v1] records the draft schemas until the first release. Earlier
+drafts also claimed protocol 1.0 and are incompatible with the release. Upgrade
+every extension that bundles BYOS together, then restart Pi to load the released
+builds in a fresh process.
 
-[v2]: ../src/fixtures/protocol-snapshots/2.0.json
 [v1]: ../src/fixtures/protocol-snapshots/1.0.json
 
 The envelope header is fixed within a protocol major. The major is a positive

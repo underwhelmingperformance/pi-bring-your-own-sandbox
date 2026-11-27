@@ -8,14 +8,9 @@ import type { BrokerService } from './protocol.js';
 import { callable, nonEmptyStringSchema } from './schemas.js';
 
 export const brokerServiceSchema = Type.Object({
-	copy: callable<BrokerService['copy']>(),
 	id: nonEmptyStringSchema,
 	acquire: callable<BrokerService['acquire']>(),
 	negotiate: callable<BrokerService['negotiate']>(),
-	planEscalation:
-		Type.Optional(callable<NonNullable<BrokerService['planEscalation']>>()),
-	prepareReview:
-		Type.Optional(callable<NonNullable<BrokerService['prepareReview']>>()),
 	resolveReviewSource:
 		Type.Optional(
 			callable<NonNullable<BrokerService['resolveReviewSource']>>()

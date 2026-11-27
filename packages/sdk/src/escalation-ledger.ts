@@ -10,6 +10,7 @@ import {
 	joinFullDisplayLines
 } from './display-text.js';
 import { appendTypedEntry } from './display-ui.js';
+import { InvalidSandboxDeclarationError } from './errors.js';
 import { accessPolicySchema, accessSchema } from './policy-model.js';
 import { violationsSchema } from './result-schemas.js';
 import { checker, nonEmptyStringSchema, safeTextSchema } from './schemas.js';
@@ -50,18 +51,26 @@ const requestFields = {
 	access: accessSchema
 };
 
-export const escalationRequestSchema = Type.Object(
+const escalationRequestSchema = Type.Object(
 	{ ...requestFields, destination: destinationSchema },
 	{ additionalProperties: false }
 );
+
 export type EscalationRequest = ReadonlyData<
 	Static<typeof escalationRequestSchema>
 >;
+
+const isEscalationRequest = checker(escalationRequestSchema);
+
 export type EscalationDecision = 'allow' | 'deny';
 
 export function snapshotEscalationRequest(
 	request: EscalationRequest
 ): EscalationRequest {
+	if (!isEscalationRequest(request)) {
+		throw new InvalidSandboxDeclarationError({ operation: 'acquire' });
+	}
+
 	const { paths, ...access } = request.access;
 	const grants =
 		paths === undefined

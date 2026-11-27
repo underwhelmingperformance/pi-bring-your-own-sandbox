@@ -97,9 +97,6 @@ export function brokerOffers(
 
 			return Object.freeze({ ok: true, profile });
 		},
-		async copy(context, source, options) {
-			return reduceCopy(await service.copy(context, source, options));
-		},
 		async status(context) {
 			const status = await service.status(context);
 

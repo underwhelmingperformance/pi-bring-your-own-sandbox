@@ -44,7 +44,6 @@ function broker(
 	return publishFixtureBroker(pi, (id) => ({
 		id,
 		acquire: unexpected,
-		copy: unexpected,
 		negotiate: unexpected,
 		close: unexpected,
 		status: unexpected,

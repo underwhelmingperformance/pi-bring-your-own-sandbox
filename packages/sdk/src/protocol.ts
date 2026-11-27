@@ -5,8 +5,6 @@ import type {
 	SandboxCapabilities,
 	SandboxCloseReport,
 	SandboxContext,
-	SandboxCopy,
-	SandboxCopyOptions,
 	SandboxCopySource,
 	SandboxDiagnosticRecord,
 	SandboxErrorInfo,
@@ -58,8 +56,8 @@ export interface ConfiguredProviderV1 {
 }
 
 /**
-Version 1 provider responder shared across separately installed SDK copies.
-Discovery and configuration allocate no backend.
+Provider operations delivered to the elected broker at startup.
+Configuration validation allocates no backend.
 */
 export interface ProviderServiceV1 extends ProviderInfo {
 	readonly protocol?: ProtocolIdentity;
@@ -227,20 +225,10 @@ export interface ProviderInfo {
 }
 
 /**
-Version 1 broker service discovered through Pi. A runtime has one service;
-session generations allocate a backend for each negotiated policy lazily.
+Broker service discovered through Pi. Each runtime has one service.
+The session generation allocates a backend for each policy on demand.
 */
-interface BrokerServiceV1 {
-	/**
-	Open a private copy of the host workspace or of a ready backend in this
-	generation. A sandbox handle's `copy` method uses the same operation.
-	*/
-	readonly copy: (
-		context: SandboxContext,
-		source: CopySourceIdentity,
-		options?: SandboxCopyOptions
-	) => Promise<SandboxCopy>;
-
+export interface BrokerService {
 	/**
 	Runtime service identity shared across independently installed SDK
 	copies.
@@ -285,20 +273,10 @@ interface BrokerServiceV1 {
 	readonly providers: (
 		context: SandboxContext
 	) => Promise<readonly ProviderInfo[]>;
-}
 
-export interface BrokerService extends BrokerServiceV1 {
-	readonly prepareReview?: (
-		context: SandboxContext,
-		route: unknown
-	) => Promise<import('./broker-review.js').BrokerReviewRegistration>;
 	readonly resolveReviewSource?: (
 		context: SandboxContext,
 		query: import('./review-identities.js').ReviewQuery,
 		sourceId: string
 	) => import('./broker-review.js').BrokerReviewSource | undefined;
-	readonly planEscalation?: (
-		context: SandboxContext,
-		options: SandboxAcquireOptions
-	) => Promise<import('./escalation-plan.js').EscalationPlan>;
 }

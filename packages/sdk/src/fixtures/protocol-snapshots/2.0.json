@@ -706,50 +706,6 @@
 			"type": "object",
 			"~kind": "Object"
 		},
-		"broker.copyOrigin": {
-			"anyOf": [
-				{
-					"properties": {
-						"kind": {
-							"const": "host",
-							"type": "string",
-							"~kind": "Literal"
-						}
-					},
-					"required": ["kind"],
-					"type": "object",
-					"~kind": "Object"
-				},
-				{
-					"properties": {
-						"backendId": {
-							"minLength": 1,
-							"type": "string",
-							"~kind": "String"
-						},
-						"generationId": {
-							"minLength": 1,
-							"type": "string",
-							"~kind": "String"
-						},
-						"kind": {
-							"const": "sandbox",
-							"type": "string",
-							"~kind": "Literal"
-						},
-						"providerId": {
-							"minLength": 1,
-							"type": "string",
-							"~kind": "String"
-						}
-					},
-					"required": ["kind", "providerId", "generationId", "backendId"],
-					"type": "object",
-					"~kind": "Object"
-				}
-			],
-			"~kind": "Union"
-		},
 		"broker.providerInfo": {
 			"properties": {
 				"id": {
@@ -5037,15 +4993,6 @@
 							"~kind": "Function",
 							"~unsafe": null
 						},
-						"copy": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~unsafe": null
-						},
 						"id": {
 							"minLength": 1,
 							"type": "string",
@@ -5058,26 +5005,6 @@
 							},
 							"type": "function",
 							"~kind": "Function",
-							"~unsafe": null
-						},
-						"planEscalation": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~optional": true,
-							"~unsafe": null
-						},
-						"prepareReview": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~optional": true,
 							"~unsafe": null
 						},
 						"providers": {
@@ -5110,7 +5037,6 @@
 						}
 					},
 					"required": [
-						"copy",
 						"id",
 						"acquire",
 						"negotiate",

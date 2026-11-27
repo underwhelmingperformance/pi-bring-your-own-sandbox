@@ -18,7 +18,6 @@ import type {
 	SandboxProvider,
 	SandboxWorkspace
 } from './contracts.js';
-import { ensureSandboxService } from './default-broker.js';
 import {
 	isSandboxError,
 	SandboxCleanupError,
@@ -29,6 +28,7 @@ import { createSandbox } from './facade.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
 import {
 	closeSandboxSession,
+	fixtureOwner,
 	fixtureTools,
 	setFixtureSession
 } from './fixtures/fixture-client.js';
@@ -348,7 +348,7 @@ it('rejects a copy of a stale sandbox identity', async () => {
 		const target = await getSandbox(pi, context);
 
 		await expect(
-			ensureSandboxService(pi).copy(context, {
+			fixtureOwner(pi).copy(context, {
 				kind: 'sandbox',
 				providerId: target.providerId,
 				generationId: 'stale',

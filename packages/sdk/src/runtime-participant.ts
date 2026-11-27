@@ -1,3 +1,4 @@
+import type { SandboxBroker } from './broker.js';
 import type {
 	SandboxConfigResolver,
 	SandboxContext,
@@ -12,6 +13,7 @@ import {
 import type { ProviderInfo, ProviderServiceV1 } from './protocol.js';
 import type { ProtocolIdentity } from './protocol-envelope.js';
 import type { BrokerPin } from './protocol-payloads.js';
+import type { ShellRouteRegistration } from './shell-review-routes.js';
 
 export interface RuntimeProvider extends ProviderServiceV1 {
 	readonly resolve: SandboxConfigResolver<SandboxProviderConfig<unknown>>;
@@ -28,11 +30,14 @@ export interface ShellSettings {
 export interface RuntimeParticipant {
 	readonly providers: readonly RuntimeProvider[];
 	readonly hostOptions?: SandboxHostOptions;
+	readonly shellRoutes: readonly ShellRouteRegistration[];
 	readonly commit: (settings: ShellSettings) => void;
 }
 
 interface RuntimeBindings {
 	readonly providers: RuntimeProvider[];
+	readonly shellRoutes: ShellRouteRegistration[];
+	owner?: SandboxBroker;
 	hostOptions?: SandboxHostOptions;
 	wantsShellSettings?: true;
 	shellSettings?: ShellSettings;
@@ -61,7 +66,7 @@ export function localRuntimeBindings(pi: SandboxHost): RuntimeBindings {
 		return existing;
 	}
 
-	const local: RuntimeBindings = { providers: [] };
+	const local: RuntimeBindings = { providers: [], shellRoutes: [] };
 
 	bindings.set(pi, local);
 

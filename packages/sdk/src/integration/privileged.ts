@@ -4,27 +4,29 @@ import type {
 	ExtensionAPI,
 	ExtensionContext
 } from '@earendil-works/pi-coding-agent';
+import type { TSchema } from 'typebox';
 import { Type } from 'typebox';
 
 import { reportCleanup } from '../cleanup-report.js';
 import type { ProcessExit } from '../contracts.js';
 import { bindFactory } from '../default-broker.js';
 import { cleanDisplayText } from '../display-text.js';
-import { InvalidSandboxRequestError } from '../errors.js';
+import { SandboxInitialisationError } from '../errors.js';
 import type { EscalatedSandbox } from '../escalation-plan.js';
 import { describeRestrictions } from '../escalation-plan.js';
 import { passthroughProvider } from '../passthrough-provider.js';
 import { registerShellIntegrationDiagnostics } from '../pi-integration-status.js';
 import { createShellOperations } from '../pi-shell-operations.js';
-import { registerShellSettings } from '../runtime-participant.js';
+import { protocolAddress } from '../protocol-address.js';
 import {
-	effectiveCommand,
-	escalationInput,
+	localRuntimeBindings,
+	registerShellSettings
+} from '../runtime-participant.js';
+import {
 	escalationJustificationSchema,
-	escalationListSchema,
-	PendingEscalation
+	escalationListSchema
 } from '../shell-escalation.js';
-import { ShellReviewRoutes } from '../shell-review-routes.js';
+import type { ClaimShellCall } from '../shell-review-routes.js';
 import { registerShellSystemPrompt } from '../shell-system-prompt.js';
 import { registerUserShell } from '../user-shell.js';
 
@@ -59,54 +61,23 @@ const escalationParameters = {
 async function verifyPendingCall(
 	pi: ExtensionAPI,
 	dialect: Dialect,
-	reviews: ShellReviewRoutes,
+	claim: ClaimShellCall,
 	id: string,
 	input: ShellInput,
 	context: ExtensionContext,
 	run: ShellExecutor
 ): ReturnType<ShellExecutor> {
-	const prefix =
-		dialect === 'bash' ? pi.getSettings().shellCommandPrefix : undefined;
-	const requested = escalationInput(
-		id,
-		effectiveCommand(input.command, prefix),
-		input
-	);
-	let escalation = reviews.escalation(id);
+	const dispatch = claim(id, input, context);
 
-	if (requested === undefined && escalation !== undefined) {
-		throw new InvalidSandboxRequestError({ operation: 'exec' });
-	}
-
-	if (requested === undefined) {
-		reviews.verifyExecution(id, input.command, prefix);
-	}
-
-	if (requested === undefined && input.justification !== undefined) {
-		throw new InvalidSandboxRequestError({
-			operation: 'exec',
-			detail: { kind: 'request', field: 'justification' }
-		});
-	}
-
-	if (requested !== undefined) {
-		if (escalation === undefined) {
-			escalation = new PendingEscalation(pi, context, requested);
-			await escalation.prepare(dialect);
-		}
-
-		escalation.verify(context, requested);
-	}
-
-	const pending = escalation;
 	const feedback: { type: 'text'; text: string }[] = [];
 	const execution: { exit?: ProcessExit } = {};
 	let allocation: EscalatedSandbox | undefined;
+	const open = dispatch.open;
 	const operations = createShellOperations(pi, context, dialect, {
 		toolCallId: id,
-		...(pending !== undefined && {
+		...(open !== undefined && {
 			getSandbox: async (command, options) => {
-				allocation = await pending.open(context, command, options ?? {});
+				allocation = await open(command, options ?? {});
 
 				return allocation.sandbox;
 			}
@@ -149,7 +120,7 @@ async function verifyPendingCall(
 	});
 
 	try {
-		const result = await run(prefix, operations);
+		const result = await run(dispatch.prefix, operations);
 
 		return feedback.length === 0
 			? result
@@ -165,7 +136,7 @@ async function verifyPendingCall(
 			content: [{ type: 'text', text: error.message }, ...feedback]
 		};
 	} finally {
-		pending?.finish();
+		dispatch.finish();
 
 		if (allocation !== undefined) {
 			reportCleanup(pi, context, await allocation.close());
@@ -179,15 +150,33 @@ export function bindShellIntegration(pi: ExtensionAPI, extensionPath: string) {
 
 	return {
 		escalationParameters,
-		registerRoute(dialect: Dialect, isSelected: () => boolean) {
-			const reviews = new ShellReviewRoutes(pi, dialect, isSelected);
+		registerRoute(dialect: Dialect, parameters: TSchema) {
+			let claim: ClaimShellCall | undefined;
+
+			localRuntimeBindings(pi).shellRoutes.push(
+				Object.freeze({
+					pi,
+					toolName: dialect,
+					identity: protocolAddress(pi.events),
+					parameters,
+					receive(connected: ClaimShellCall) {
+						claim = connected;
+					}
+				})
+			);
 
 			return (
 				id: string,
 				input: ShellInput,
 				context: ExtensionContext,
 				run: ShellExecutor
-			) => verifyPendingCall(pi, dialect, reviews, id, input, context, run);
+			) => {
+				if (claim === undefined) {
+					throw new SandboxInitialisationError({ operation: 'exec' });
+				}
+
+				return verifyPendingCall(pi, dialect, claim, id, input, context, run);
+			};
 		},
 		complete(isRoutedShell: (name: string) => boolean) {
 			registerShellSystemPrompt(pi, isRoutedShell);

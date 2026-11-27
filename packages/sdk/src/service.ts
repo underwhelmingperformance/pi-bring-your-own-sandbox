@@ -6,8 +6,7 @@ import { isBrokerService } from './discovery.js';
 import {
 	InvalidSandboxDeclarationError,
 	isSandboxError,
-	SandboxInitialisationError,
-	UnsupportedSandboxCapabilityError
+	SandboxInitialisationError
 } from './errors.js';
 import type { BrokerService } from './protocol.js';
 import { protocolAddress } from './protocol-address.js';
@@ -54,29 +53,11 @@ export function publishBroker(
 	};
 
 	const service = Object.freeze<BrokerService>({
-		copy: (context, source, options) =>
-			invoke((broker) => broker.copy(context, source, options)),
 		id,
 		acquire: (context, options) =>
 			invoke((broker) => broker.acquire(context, options)),
 		negotiate: (context, options) =>
 			invoke((broker) => broker.negotiate(context, options)),
-		planEscalation: (context, options) =>
-			invoke(
-				(broker) =>
-					broker.planEscalation?.(context, options) ??
-					Promise.reject(
-						new UnsupportedSandboxCapabilityError({ operation: 'acquire' })
-					)
-			),
-		prepareReview: (context, route) =>
-			invoke(
-				(broker) =>
-					broker.prepareReview?.(context, route) ??
-					Promise.reject(
-						new UnsupportedSandboxCapabilityError({ operation: 'acquire' })
-					)
-			),
 		resolveReviewSource: (context, query, id) =>
 			target?.resolveReviewSource?.(context, query, id),
 		close: (context) => invoke((broker) => broker.close(context)),

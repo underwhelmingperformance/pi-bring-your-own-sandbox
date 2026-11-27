@@ -12,72 +12,144 @@ import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { loadSdkInstance } from './fixtures/sdk-instance.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import sandboxTools from './pi-tools.js';
+import { protocolAddress } from './protocol-address.js';
+import {
+	collectProtocolReplies,
+	RUNTIME_CHANNEL
+} from './protocol-envelope.js';
 import { registerSandboxProvider } from './provider-registration.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();
 });
 
-it('rejects review registration with extension callbacks before issuing an identity', async () => {
-	const callback = vi.fn();
-	const attempts: string[] = [];
+it('publishes a broker without unbound copy or escalation operations', async () => {
+	const replies: unknown[] = [];
 
 	await withPiRuntime(
 		[
 			{
-				name: 'forged-route',
+				name: 'broker-observer',
 				factory(pi) {
 					createSandboxClient(pi, import.meta.filename);
 
-					pi.on('session_start', async (_event, context) => {
+					pi.on('session_start', () => {
 						const broker = ensureSandboxService(pi);
+						const local = protocolAddress(pi.events);
+						const [reply] = collectProtocolReplies(
+							pi.events,
+							RUNTIME_CHANNEL,
+							local,
+							{
+								type: 'get-broker'
+							}
+						);
 
-						if (broker.prepareReview === undefined) {
-							throw new Error(
-								'The broker did not publish review registration.'
-							);
-						}
-
-						await expect(
-							broker.prepareReview(context, {
-								call: { toolName: 'bash', toolCallId: 'forged-call' },
-								isCurrent: callback,
-								markReviewed: callback,
-								recordDecision: callback
-							})
-						).rejects.toMatchObject({
-							name: 'InvalidSandboxRequestError',
-							detail: { kind: 'request', field: 'review' }
+						replies.push({
+							client: Object.keys(broker).toSorted((a, b) =>
+								a.localeCompare(b)
+							),
+							wire: reply?.payload
 						});
-						attempts.push('rejected');
-
-						const call = { toolName: 'bash', toolCallId: 'unobserved-call' };
-						const registration = await broker.prepareReview(context, { call });
-						const sourceId = registration.issue({
-							...call,
-							sessionId: context.sessionManager.getSessionId(),
-							requestId: 'query-without-a-call',
-							extensionSource: '<inline:forged-route>'
-						});
-
-						expect(sourceId).toBeUndefined();
-						registration.revoke();
 					});
 				}
 			}
 		],
 		(_runtime, errors) => {
-			expect({
-				errors,
-				attempts,
-				invocations: callback.mock.calls
-			}).toStrictEqual({
+			const method = expect.any(Function) as unknown;
+			const id = expect.any(String) as unknown;
+			const service = {
+				acquire: method,
+				close: method,
+				id,
+				negotiate: method,
+				providers: method,
+				resolveReviewSource: method,
+				status: method
+			};
+
+			expect({ errors, replies }).toStrictEqual({
 				errors: [],
-				attempts: ['rejected'],
-				invocations: []
+				replies: [
+					{
+						client: Object.keys(service).toSorted((a, b) => a.localeCompare(b)),
+						wire: { type: 'broker', id, candidateId: id, service }
+					}
+				]
 			});
 
 			return Promise.resolve();
+		}
+	);
+});
+
+it('refuses a shell command changed after Pi reports the pending call', async () => {
+	const { backend, requests } = shellBackend();
+	const model = new ScriptedModel([
+		{
+			type: 'toolCall',
+			name: 'bash',
+			id: 'changed-command',
+			arguments: { command: 'printf original' }
+		}
+	]);
+
+	await withPiRuntime(
+		[
+			{
+				name: 'provider',
+				factory(pi) {
+					registerSandboxProvider(pi, '<inline:provider>', {
+						id: 'fixture',
+						label: 'Fixture',
+						profiles: { open: [backend.profile], copy: [] },
+						validateConfig: () => ({}),
+						open: () => Promise.resolve(backend)
+					});
+				}
+			},
+			{
+				name: 'shell',
+				factory(pi) {
+					sandboxTools(pi, '<inline:shell>');
+				}
+			},
+			{
+				name: 'edit-command',
+				factory(pi) {
+					pi.on('tool_call', (event) => {
+						if (event.toolName === 'bash') {
+							event.input.command = 'printf changed';
+						}
+					});
+				}
+			},
+			model.extension
+		],
+		async (runtime, errors) => {
+			const selected = runtime.session.modelRuntime.getModel(
+				'scripted',
+				'scripted'
+			);
+
+			if (selected === undefined) {
+				throw new Error('The scripted model was not registered.');
+			}
+
+			await runtime.session.setModel(selected);
+			runtime.session.setActiveToolsByName(['bash']);
+			await runtime.session.prompt('Run the shell command.');
+
+			const results = model.requests
+				.at(1)
+				?.messages.filter((message) => message.role === 'toolResult')
+				.map((message) => message.isError);
+
+			expect({ requests, results, errors }).toStrictEqual({
+				requests: [],
+				results: [true],
+				errors: []
+			});
 		}
 	);
 });

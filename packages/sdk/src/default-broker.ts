@@ -46,6 +46,7 @@ import {
 import { createRuntimeSettings } from './runtime-settings.js';
 import { checker } from './schemas.js';
 import { publishBroker } from './service.js';
+import { ShellReviewRoutes } from './shell-review-routes.js';
 
 const isBuildAdvertisement = checker(buildAdvertisement);
 const isConnectRuntimeRequest = checker(connectRuntimeRequest);
@@ -184,58 +185,60 @@ export function bindFactory(pi: SandboxHost, extensionSource: string): void {
 		const providers = () => (declared ??= providerList(pi, participants));
 		const settings = createRuntimeSettings(providers, hosts[0]);
 
-		publishBroker(
-			pi.events,
-			candidateId,
-			(id) => {
-				const broker = new SandboxBroker(
-					id,
-					pi,
-					{
-						diagnostics: settings.diagnostics,
-						appendLedger(entry) {
-							appendLedgerEntry(pi, entry);
-						},
-						protocol: identity,
-						providers: async (configContext) => [
-							await createPassthroughProvider(configContext.cwd),
-							...providers()
-						],
-						readConfig: (configContext) => settings.read(configContext)
-					},
-					session,
-					settings.close
-				);
+		const shellSettings = Object.freeze({
+			lifetime: settings.lifetime,
+			async read(requestContext: SandboxContext) {
+				session.check(requestContext, 'configure');
 
-				pi.on('session_shutdown', async (_event, shutdownContext) => {
-					reportCleanup(
-						pi,
-						shutdownContext,
-						await broker.close(shutdownContext)
-					);
+				const config = await settings.read(session.context);
+
+				return Object.freeze({
+					allowsEscalation: config.allowEscalation ?? true,
+					providerId: config.selection.providerId
 				});
-
-				return broker;
+			}
+		});
+		const broker = new SandboxBroker(
+			brokerId,
+			pi,
+			{
+				diagnostics: settings.diagnostics,
+				appendLedger(entry) {
+					appendLedgerEntry(pi, entry);
+				},
+				protocol: identity,
+				providers: async (configContext) => [
+					await createPassthroughProvider(configContext.cwd),
+					...providers()
+				],
+				readConfig: (configContext) => settings.read(configContext)
 			},
-			brokerId
+			session,
+			settings.close
 		);
 
 		for (const participant of participants) {
-			participant.commit(
-				Object.freeze({
-					lifetime: settings.lifetime,
-					async read(requestContext: SandboxContext) {
-						session.check(requestContext, 'configure');
+			for (const route of participant.shellRoutes) {
+				const routes = new ShellReviewRoutes(
+					route,
+					broker,
+					session,
+					shellSettings
+				);
 
-						const config = await settings.read(session.context);
+				route.receive(routes.claim.bind(routes));
+			}
+		}
 
-						return Object.freeze({
-							allowsEscalation: config.allowEscalation ?? true,
-							providerId: config.selection.providerId
-						});
-					}
-				})
-			);
+		pi.on('session_shutdown', async (_event, shutdownContext) => {
+			reportCleanup(pi, shutdownContext, await broker.close(shutdownContext));
+		});
+
+		publishBroker(pi.events, candidateId, () => broker, brokerId);
+		bindings.owner = broker;
+
+		for (const participant of participants) {
+			participant.commit(shellSettings);
 		}
 	}
 
@@ -320,6 +323,7 @@ export function bindFactory(pi: SandboxHost, extensionSource: string): void {
 				identity,
 				Object.freeze<RuntimeParticipant>({
 					providers: Object.freeze([...bindings.providers]),
+					shellRoutes: Object.freeze([...bindings.shellRoutes]),
 					...(bindings.hostOptions !== undefined && {
 						hostOptions: bindings.hostOptions
 					}),

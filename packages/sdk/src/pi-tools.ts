@@ -43,7 +43,7 @@ function shellDefinition(
 					tool.sourceInfo.path === extensionPath &&
 					tool.parameters === parameters
 			);
-	const execute = integration.registerRoute(dialect, isSelected);
+	const execute = integration.registerRoute(dialect, parameters);
 
 	const tool = defineTool({
 		...base,

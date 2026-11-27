@@ -88,12 +88,6 @@ function boundBroker(
 
 	return Object.freeze<BrokerService>({
 		id: service.id,
-		...(service.planEscalation !== undefined && {
-			planEscalation: service.planEscalation.bind(service)
-		}),
-		...(service.prepareReview !== undefined && {
-			prepareReview: service.prepareReview.bind(service)
-		}),
 		...(service.resolveReviewSource !== undefined && {
 			resolveReviewSource: service.resolveReviewSource.bind(service)
 		}),
@@ -112,11 +106,6 @@ function boundBroker(
 			);
 
 			return service.negotiate(context, options);
-		},
-		copy(context, source, options) {
-			checkDemand(acquireOptionsSchema, options ?? {}, local, peer, 'copy');
-
-			return service.copy(context, source, options);
 		},
 		close: service.close.bind(service),
 		async status(context) {

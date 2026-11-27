@@ -363,11 +363,11 @@ it.each([
 	}
 );
 
-it('rejects an independent broker without a copy method', () => {
+it('rejects an independent broker without a status method', () => {
 	const events = fixtureEvents(import.meta.filename);
 	const reply = brokerReply();
 
-	Object.defineProperty(reply.service, 'copy', { value: undefined });
+	Object.defineProperty(reply.service, 'status', { value: undefined });
 	respond(events, 'pi-byos:runtime', reply);
 	expect(() => discoverBroker(events)).toThrow(
 		expect.objectContaining({ name: 'InvalidSandboxDeclarationError' })

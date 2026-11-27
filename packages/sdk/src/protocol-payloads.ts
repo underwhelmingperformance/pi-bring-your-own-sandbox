@@ -147,16 +147,6 @@ function message(type: string) {
 	);
 }
 
-const copyOrigin = Type.Union([
-	Type.Object({ kind: Type.Literal('host') }),
-	Type.Object({
-		kind: Type.Literal('sandbox'),
-		providerId: nonEmptyStringSchema,
-		generationId: nonEmptyStringSchema,
-		backendId: nonEmptyStringSchema
-	})
-]);
-
 const providerOpenRequest = Type.Object({
 	generationId: nonEmptyStringSchema,
 	sessionId: nonEmptyStringSchema,
@@ -203,7 +193,6 @@ export const protocolSchemas = {
 	'review.source': sourceReply,
 	'broker.acquireOptions': acquireOptionsSchema,
 	'broker.copyOptions': copyOptionsSchema,
-	'broker.copyOrigin': copyOrigin,
 	'broker.providerInfo': providerInfoSchema,
 	'sandbox.capabilities': capabilitiesSchema,
 	'sandbox.policy': policySchema,

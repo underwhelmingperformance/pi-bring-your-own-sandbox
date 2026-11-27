@@ -1,8 +1,10 @@
 import { homedir } from 'node:os';
 
-import { Type } from 'typebox';
-
-import type { SandboxContext, ShellReviewSource } from './contracts.js';
+import type {
+	ReviewedToolCall,
+	SandboxContext,
+	ShellReviewSource
+} from './contracts.js';
 import {
 	InvalidSandboxRequestError,
 	SandboxInitialisationError,
@@ -15,10 +17,6 @@ import type {
 	EscalationRequest,
 	SandboxLedgerEntry
 } from './escalation-ledger.js';
-import {
-	escalationRequestSchema,
-	snapshotEscalationRequest
-} from './escalation-ledger.js';
 import type { SandboxGeneration } from './generation.js';
 import { passthroughProvider } from './passthrough-provider.js';
 import type { CopySourceIdentity } from './protocol.js';
@@ -28,49 +26,6 @@ import {
 	copyOptions,
 	rethrowCopyError
 } from './sandbox-copy.js';
-import { checker, nonEmptyStringSchema } from './schemas.js';
-
-const reviewCall = Type.Object(
-	{
-		toolName: Type.Union([Type.Literal('bash'), Type.Literal('powershell')]),
-		toolCallId: nonEmptyStringSchema
-	},
-	{ additionalProperties: false }
-);
-const reviewRequest = Type.Object(
-	{
-		call: reviewCall,
-		escalation: Type.Optional(escalationRequestSchema),
-		decisionDeadline: Type.Optional(Type.Number())
-	},
-	{ additionalProperties: false }
-);
-const isReviewRequest = checker(reviewRequest);
-
-export function reviewRegistrationInput(input: unknown) {
-	if (
-		!isReviewRequest(input) ||
-		(input.escalation === undefined) !==
-			(input.decisionDeadline === undefined) ||
-		(input.escalation !== undefined &&
-			input.escalation.toolCallId !== input.call.toolCallId)
-	) {
-		throw new InvalidSandboxRequestError({
-			operation: 'acquire',
-			detail: { kind: 'request', field: 'review' }
-		});
-	}
-
-	const { escalation, call, decisionDeadline } = input;
-
-	return Object.freeze({
-		call: Object.freeze({ ...call }),
-		...(escalation !== undefined && {
-			escalation: snapshotEscalationRequest(escalation)
-		}),
-		...(decisionDeadline !== undefined && { decisionDeadline })
-	});
-}
 
 type PermissionDecider = Extract<
 	NonNullable<EscalationEntry['decider']>,
@@ -82,13 +37,11 @@ type ReviewDecision =
 	| { readonly choice: 'conflict' };
 
 export interface BrokerReviewRegistration extends ReviewRegistration {
-	readonly isReviewed: () => boolean;
 	readonly decision: () => ReviewDecision | undefined;
 	readonly claimDecision: () => ReviewDecision | undefined;
 }
 
 export class ReviewState {
-	#isReviewed = false;
 	#isClaimed = false;
 	#decision: ReviewDecision | undefined;
 	readonly #deadline: number | undefined;
@@ -101,14 +54,9 @@ export class ReviewState {
 		return this.#deadline === undefined || performance.now() < this.#deadline;
 	}
 
-	markReviewed(): void {
-		this.#isReviewed = true;
-	}
-
 	bind(registration: ReviewRegistration): BrokerReviewRegistration {
 		return Object.freeze<BrokerReviewRegistration>({
 			...registration,
-			isReviewed: () => this.#isReviewed,
 			decision: () => this.#decision,
 			claimDecision: () => {
 				this.#isClaimed = true;
@@ -152,7 +100,8 @@ interface ReviewDestination {
 }
 
 export interface RegisteredReview {
-	readonly route: ReturnType<typeof reviewRegistrationInput>;
+	readonly call: ReviewedToolCall;
+	readonly escalation?: EscalationRequest;
 	readonly state: ReviewState;
 	readonly target: ReviewDestination;
 	readonly generation: SandboxGeneration;
@@ -246,9 +195,8 @@ export function resolvedReviewSource(
 	isCurrent: () => boolean,
 	append?: (entry: SandboxLedgerEntry) => void
 ): BrokerReviewSource {
-	const { generation, route, state, target } = review;
+	const { generation, call, escalation, state, target } = review;
 	const { destination, source } = target;
-	const { escalation } = route;
 	const check = () => {
 		if (!isCurrent() || !state.isCurrent()) {
 			throw new StaleSandboxHandleError({ operation: 'acquire' });
@@ -293,7 +241,7 @@ export function resolvedReviewSource(
 				checkCopiedSandbox(copy.sandbox, options, extension);
 				append?.({
 					kind: 'review-copy',
-					toolCallId: route.call.toolCallId,
+					toolCallId: call.toolCallId,
 					source: destination,
 					policy: copy.sandbox.policy,
 					decider: { kind: 'permission-extension', extension }

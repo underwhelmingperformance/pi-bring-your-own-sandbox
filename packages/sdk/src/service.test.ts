@@ -96,17 +96,3 @@ it('does not construct a replacement for an incompatible advertisement', () => {
 		expect.objectContaining({ name: 'IncompatibleSandboxProtocolError' })
 	);
 });
-
-it('reports a copy against a broker without copies', async () => {
-	const service = ensureFixtureBroker(
-		fixtureEvents(import.meta.filename),
-		(id) => brokerReply(id).service
-	);
-
-	await expect(
-		service.copy(fixtureContext(), { kind: 'host' })
-	).rejects.toMatchObject({
-		name: 'UnsupportedSandboxCapabilityError',
-		operation: 'acquire'
-	});
-});

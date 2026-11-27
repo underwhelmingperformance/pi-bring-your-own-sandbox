@@ -2,7 +2,6 @@ import type { RegisteredReview } from './broker-review.js';
 import {
 	describeReviewDestination,
 	resolvedReviewSource,
-	reviewRegistrationInput,
 	ReviewState
 } from './broker-review.js';
 import { reportCleanup } from './cleanup-report.js';
@@ -27,6 +26,7 @@ import type {
 } from './protocol.js';
 import type { ReviewQuery } from './review-identities.js';
 import { isReviewQuery, ReviewIdentities } from './review-identities.js';
+import type { PendingEscalation } from './shell-escalation.js';
 
 function reviewCallKey(sessionId: string, call: ReviewedToolCall): string {
 	return JSON.stringify([sessionId, call.toolName, call.toolCallId]);
@@ -133,22 +133,27 @@ export class SandboxBroker implements BrokerService {
 		return this.#resolve(context).generation.planEscalation(context, options);
 	}
 
-	async prepareReview(context: SandboxContext, input: unknown) {
-		const route = reviewRegistrationInput(input);
+	async prepareReview(
+		context: SandboxContext,
+		call: ReviewedToolCall,
+		pending?: PendingEscalation
+	) {
+		const escalation = pending?.request;
 		const { session, generation } = this.#resolve(context);
 		const target = await describeReviewDestination(
 			generation,
 			session.context,
-			route.escalation
+			escalation
 		);
-		const state = new ReviewState(route.decisionDeadline);
-		const registration = this.#reviewIdentities.register(session, route.call, {
-			route,
+		const state = new ReviewState(pending?.decisionDeadline);
+		const registration = this.#reviewIdentities.register(session, call, {
+			call,
+			...(escalation !== undefined && { escalation }),
 			target,
 			generation,
 			state
 		});
-		const key = reviewCallKey(session.sessionId, route.call);
+		const key = reviewCallKey(session.sessionId, call);
 
 		return state.bind({
 			issue: (query) =>
@@ -180,8 +185,6 @@ export class SandboxBroker implements BrokerService {
 		if (proof === undefined || !proof.value.state.isCurrent()) {
 			return;
 		}
-
-		proof.value.state.markReviewed();
 
 		return resolvedReviewSource(
 			context,

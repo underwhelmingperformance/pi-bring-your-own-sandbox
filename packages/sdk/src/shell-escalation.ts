@@ -1,24 +1,21 @@
-import { isDeepStrictEqual } from 'node:util';
-
 import type {
 	ExtensionAPI,
 	ExtensionContext
 } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 
+import type { SandboxBroker } from './broker.js';
 import type { BrokerReviewRegistration } from './broker-review.js';
 import type {
 	Access,
 	AccessProperty,
 	SandboxOperationOptions
 } from './contracts.js';
-import { ensureSandboxService } from './default-broker.js';
 import { cleanDisplayText, cleanFullDisplayText } from './display-text.js';
 import { chooseDisplayOption } from './display-ui.js';
 import {
 	InvalidSandboxRequestError,
-	SandboxPermissionDeniedError,
-	UnsupportedSandboxCapabilityError
+	SandboxPermissionDeniedError
 } from './errors.js';
 import type {
 	EscalationDecision,
@@ -29,7 +26,7 @@ import { appendLedgerEntry } from './escalation-ledger.js';
 import type { EscalatedSandbox, EscalationPlan } from './escalation-plan.js';
 import { observe, OperationScope } from './lifecycle.js';
 import { accessPolicySchema, pathGrantsSchema } from './policy-model.js';
-import { shellSettings } from './runtime-participant.js';
+import type { ShellSettings } from './runtime-participant.js';
 import { checker, denseArray, safeTextSchema } from './schemas.js';
 
 const listItem = Type.Union([Type.KeyOf(accessPolicySchema), pathGrantsSchema]);
@@ -77,15 +74,18 @@ function escalationAccess(list: unknown): Access {
 		}
 	}
 
-	return {
+	const reads = Object.freeze([...read].toSorted(comparePaths));
+	const writes = Object.freeze([...write].toSorted(comparePaths));
+
+	return Object.freeze({
 		...access,
 		...(read.size + write.size > 0 && {
-			paths: {
-				...(read.size > 0 && { read: [...read].toSorted(comparePaths) }),
-				...(write.size > 0 && { write: [...write].toSorted(comparePaths) })
-			}
+			paths: Object.freeze({
+				...(read.size > 0 && { read: reads }),
+				...(write.size > 0 && { write: writes })
+			})
 		})
-	};
+	});
 }
 
 type Decider = NonNullable<EscalationEntry['decider']>;
@@ -108,12 +108,12 @@ export function escalationInput(
 		});
 	}
 
-	return {
+	return Object.freeze({
 		toolCallId,
 		command,
 		justification: input.justification,
 		access: escalationAccess(input.escalate)
-	};
+	});
 }
 
 export function effectiveCommand(
@@ -128,6 +128,8 @@ export class PendingEscalation {
 	readonly #context: ExtensionContext;
 	readonly #input: EscalationData;
 	readonly #scope: OperationScope;
+	readonly #settings: ShellSettings;
+	readonly #broker: SandboxBroker;
 	#plan: EscalationPlan | undefined;
 	#request: EscalationRequest | undefined;
 	#review: BrokerReviewRegistration | undefined;
@@ -138,21 +140,25 @@ export class PendingEscalation {
 	constructor(
 		pi: ExtensionAPI,
 		context: ExtensionContext,
-		input: EscalationData
+		input: EscalationData,
+		settings: ShellSettings,
+		broker: SandboxBroker
 	) {
 		this.#pi = pi;
 		this.#context = context;
 		this.#input = input;
+		this.#settings = settings;
+		this.#broker = broker;
 		this.#scope = new OperationScope(
 			{ operation: 'exec' },
-			shellSettings(pi).lifetime,
+			settings.lifetime,
 			{},
 			60_000
 		);
 	}
 
 	async #prepare(dialect: Dialect): Promise<void> {
-		const config = await shellSettings(this.#pi).read(this.#context);
+		const config = await this.#settings.read(this.#context);
 
 		this.#scope.check();
 
@@ -162,13 +168,7 @@ export class PendingEscalation {
 			throw this.#refusal('allowEscalation');
 		}
 
-		const broker = ensureSandboxService(this.#pi);
-
-		if (broker.planEscalation === undefined) {
-			throw new UnsupportedSandboxCapabilityError({ operation: 'acquire' });
-		}
-
-		const plan = await broker.planEscalation(this.#context, {
+		const plan = await this.#broker.planEscalation(this.#context, {
 			access: this.#input.access,
 			processKinds: ['shell'],
 			shells: [dialect]
@@ -293,20 +293,6 @@ export class PendingEscalation {
 		}
 	}
 
-	verify(context: ExtensionContext, input: EscalationData): void {
-		if (
-			this.#context.sessionManager.getSessionId() ===
-				context.sessionManager.getSessionId() &&
-			isDeepStrictEqual(input, this.#input)
-		) {
-			return;
-		}
-
-		this.#complete('cancelled');
-
-		throw new InvalidSandboxRequestError({ operation: 'exec' });
-	}
-
 	get decisionDeadline(): number {
 		return performance.now() + this.#scope.context.remainingMs();
 	}
@@ -380,6 +366,10 @@ export class PendingEscalation {
 			signal?.removeEventListener('abort', cancel);
 			this.finish();
 		}
+	}
+
+	invalidate(): void {
+		this.#complete('cancelled');
 	}
 
 	finish(): void {

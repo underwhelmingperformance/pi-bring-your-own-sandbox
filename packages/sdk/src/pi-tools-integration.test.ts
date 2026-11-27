@@ -56,6 +56,15 @@ function provider(backend: SandboxBackend): InlineExtension {
 	};
 }
 
+function shellExtension(name: string): InlineExtension {
+	return {
+		name,
+		factory(pi) {
+			sandboxTools(pi, `<inline:${name}>`);
+		}
+	};
+}
+
 function prepare(_directory: string, agentDirectory: string): Promise<void> {
 	vi.stubEnv('PI_CODING_AGENT_DIR', agentDirectory);
 
@@ -154,11 +163,7 @@ it.each(['confirmed', 'unconfirmed'] as const)(
 		]);
 
 		await withPiRuntime(
-			[
-				provider(waiting),
-				{ name: 'shell', factory: sandboxTools },
-				model.extension
-			],
+			[provider(waiting), shellExtension('shell'), model.extension],
 			async (runtime) => {
 				runtime.session.setActiveToolsByName(['bash']);
 
@@ -290,7 +295,7 @@ it.each([
 		await withPiRuntime(
 			[
 				provider(backend),
-				{ name: 'sandbox-tools', factory: sandboxTools },
+				shellExtension('sandbox-tools'),
 				model.extension,
 				approver
 			],
@@ -386,7 +391,7 @@ it.each([
 					name: 'sandbox-tools',
 					factory(pi) {
 						extension = pi;
-						sandboxTools(pi);
+						sandboxTools(pi, '<inline:sandbox-tools>');
 					}
 				}
 			],
@@ -463,7 +468,7 @@ it.each([
 		await withPiRuntime(
 			[
 				provider(backend),
-				{ name: 'sandbox-tools', factory: sandboxTools },
+				shellExtension('sandbox-tools'),
 				consumer,
 				model.extension
 			],
@@ -564,7 +569,7 @@ it('keeps Pi full-output storage and formatting for large target output', async 
 	await withPiRuntime(
 		[
 			provider(backend),
-			{ name: 'sandbox-tools', factory: sandboxTools },
+			shellExtension('sandbox-tools'),
 			model.extension,
 			observer
 		],
@@ -651,11 +656,7 @@ it('returns a selected-provider transport failure without local execution', asyn
 	]);
 
 	await withPiRuntime(
-		[
-			provider(failed),
-			{ name: 'sandbox-tools', factory: sandboxTools },
-			model.extension
-		],
+		[provider(failed), shellExtension('sandbox-tools'), model.extension],
 		async (runtime, errors) => {
 			runtime.session.setActiveToolsByName(['bash']);
 
@@ -717,7 +718,7 @@ it('preserves the current Pi Bash command prefix through sandbox execution', asy
 	]);
 
 	await withPiRuntime(
-		[{ name: 'shell', factory: sandboxTools }, model.extension],
+		[shellExtension('shell'), model.extension],
 		async (runtime, errors) => {
 			runtime.services.settingsManager.setShellCommandPrefix(
 				'export BYOS_PREFIX_TEST=present'
@@ -908,25 +909,22 @@ it.each([
 it.each(['bash', 'powershell'])(
 	'describes finite shell and decision deadlines for %s',
 	async (name) => {
-		await withPiRuntime(
-			[{ name: 'shell', factory: sandboxTools }],
-			(runtime) => {
-				const parameters: unknown = runtime.session
-					.getAllTools()
-					.find((tool) => tool.name === name)?.parameters;
+		await withPiRuntime([shellExtension('shell')], (runtime) => {
+			const parameters: unknown = runtime.session
+				.getAllTools()
+				.find((tool) => tool.name === name)?.parameters;
 
-				expect(parameters).toMatchObject({
-					properties: {
-						timeout: {
-							description:
-								'Timeout in seconds for startup and execution. BYOS allows 60 seconds for startup and 120 seconds for execution by default. An escalation decision allows at most 60 seconds.'
-						}
+			expect(parameters).toMatchObject({
+				properties: {
+					timeout: {
+						description:
+							'Timeout in seconds for startup and execution. BYOS allows 60 seconds for startup and 120 seconds for execution by default. An escalation decision allows at most 60 seconds.'
 					}
-				});
+				}
+			});
 
-				return Promise.resolve();
-			}
-		);
+			return Promise.resolve();
+		});
 	}
 );
 

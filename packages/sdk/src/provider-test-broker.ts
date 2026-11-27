@@ -14,9 +14,10 @@ import type {
 	SandboxProvider,
 	SandboxSharedSettings
 } from './contracts.js';
-import { ensureSandboxService, startSandboxRuntime } from './default-broker.js';
+import { startSandboxRuntime } from './default-broker.js';
 import { initialiseSandboxHost } from './host.js';
 import { registerSandboxProvider } from './provider-registration.js';
+import { localRuntimeBindings } from './runtime-participant.js';
 
 const fixtureSource = '<inline:provider-conformance>';
 
@@ -110,11 +111,10 @@ export async function fixtureBroker<Config>(
 	isReady = true;
 	await startSandboxRuntime(pi, context);
 
-	const broker = ensureSandboxService(pi);
-	const planEscalation = broker.planEscalation?.bind(broker);
+	const broker = localRuntimeBindings(pi).owner;
 
-	if (planEscalation === undefined) {
-		throw new Error('The broker does not support escalation planning.');
+	if (broker === undefined) {
+		throw new Error('The test runtime did not elect the provider fixture.');
 	}
 
 	return {
@@ -122,7 +122,7 @@ export async function fixtureBroker<Config>(
 		context,
 		status: () => broker.status(context),
 		planEscalation: (options: SandboxAcquireOptions) =>
-			planEscalation(context, options),
+			broker.planEscalation(context, options),
 		negotiate: (options: SandboxAcquireOptions) =>
 			client.negotiate(context, options),
 		async acquire(options: SandboxAcquireOptions, mode: 'open' | 'copy') {

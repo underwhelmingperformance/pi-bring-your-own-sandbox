@@ -546,7 +546,6 @@ it.each([
 				bindProtocolAddress(pi.events, import.meta.filename);
 				publishFixtureBroker(pi, (id) => ({
 					id,
-					copy: () => Promise.reject(new Error('Fixture does not copy.')),
 					acquire: () => Promise.resolve(sandbox),
 					negotiate: () =>
 						Promise.resolve({ ok: true, profile: backend.profile }),

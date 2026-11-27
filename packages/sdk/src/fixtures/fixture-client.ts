@@ -9,11 +9,9 @@ import type {
 	SandboxCopyOptions,
 	SandboxHost
 } from '../contracts.js';
-import {
-	ensureSandboxService,
-	startSandboxRuntime
-} from '../default-broker.js';
+import { startSandboxRuntime } from '../default-broker.js';
 import { protocolAddress } from '../protocol-address.js';
+import { localRuntimeBindings } from '../runtime-participant.js';
 import { checkedCopy, copyOptions } from '../sandbox-copy.js';
 
 interface FixtureSession {
@@ -70,6 +68,16 @@ export async function negotiateSandbox(
 	return negotiate(...parameters);
 }
 
+export function fixtureOwner(pi: SandboxHost) {
+	const owner = localRuntimeBindings(pi).owner;
+
+	if (owner === undefined) {
+		throw new Error('The fixture must run in the elected SDK copy.');
+	}
+
+	return owner;
+}
+
 export async function copyHostWorkspace(
 	pi: SandboxHost,
 	context: SandboxContext,
@@ -85,11 +93,7 @@ export async function copyHostWorkspace(
 
 	const source = protocolAddress(pi.events).extensionSource;
 	const settings = copyOptions(options, source);
-	const copy = await ensureSandboxService(pi).copy(
-		context,
-		{ kind: 'host' },
-		settings
-	);
+	const copy = await fixtureOwner(pi).copy(context, { kind: 'host' }, settings);
 
 	return checkedCopy(copy, settings, source);
 }

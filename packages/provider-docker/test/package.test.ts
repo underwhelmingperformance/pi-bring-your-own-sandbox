@@ -115,29 +115,42 @@ process.stdout.write(JSON.stringify([typeof main.default, typeof shell.default])
 
 			expect(copiedMatcher.stdout).toBe(await readFile(matcher, 'utf8'));
 
-			const loader = new DefaultResourceLoader({
-				cwd: consumer,
-				agentDir: path.join(consumer, 'agent'),
-				settingsManager: SettingsManager.inMemory(),
-				noExtensions: true,
-				noSkills: true,
-				noThemes: true,
-				noPromptTemplates: true,
-				noContextFiles: true,
-				additionalExtensionPaths: [path.join(installed, 'dist/index.js')]
-			});
+			for (const [filename, tools] of [
+				[
+					'extension.js',
+					['bash', 'powershell', 'read', 'write', 'edit', 'ls', 'find', 'grep']
+				],
+				['shell-profile.js', ['bash']]
+			] as const) {
+				const loader = new DefaultResourceLoader({
+					cwd: consumer,
+					agentDir: path.join(consumer, 'agent'),
+					settingsManager: SettingsManager.inMemory(),
+					noExtensions: true,
+					noSkills: true,
+					noThemes: true,
+					noPromptTemplates: true,
+					noContextFiles: true,
+					additionalExtensionPaths: [path.join(assets, filename)]
+				});
 
-			await loader.reload();
+				await loader.reload();
 
-			const loaded = loader.getExtensions();
+				const loaded = loader.getExtensions();
 
-			expect({
-				errors: loaded.errors,
-				tools: loaded.extensions.flatMap((item) => item.tools.keys().toArray()),
-				commands: loaded.extensions.flatMap((item) =>
-					item.commands.keys().toArray()
-				)
-			}).toStrictEqual({ errors: [], tools: [], commands: [] });
+				expect(
+					{
+						errors: loaded.errors,
+						tools: loaded.extensions.flatMap((item) =>
+							item.tools.keys().toArray()
+						),
+						commands: loaded.extensions.flatMap((item) =>
+							item.commands.keys().toArray()
+						)
+					},
+					filename
+				).toStrictEqual({ errors: [], tools, commands: [] });
+			}
 		}),
 	180_000
 );

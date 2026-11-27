@@ -15,6 +15,7 @@ import {
 import { connect, createServer } from 'node:net';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import type {
@@ -241,6 +242,78 @@ function withDockerCopy(
 describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 	'Docker SDK integration (pnpm test:provider requires a local daemon and the pinned image)',
 	() => {
+		it('selects BYOS tools and runs the first Bash call through the documented entry', async () => {
+			const entry = fileURLToPath(
+				new URL('../dist/extension.js', import.meta.url)
+			);
+			const names = ['bash', 'read', 'write', 'edit', 'ls', 'find', 'grep'];
+			const model = new ScriptedModel([
+				{
+					type: 'toolCall',
+					id: 'first-docker-bash',
+					name: 'bash',
+					arguments: { command: 'pwd && test -f /.dockerenv' }
+				}
+			]);
+
+			await withPiRuntime(
+				[model.extension],
+				async ({ session }, errors) => {
+					const selected = session.getAllTools();
+					const scripted = session.modelRuntime.getModel(
+						'scripted',
+						'scripted'
+					);
+
+					if (scripted === undefined) {
+						throw new Error('The scripted model was not registered.');
+					}
+
+					await session.setModel(scripted);
+					await session.prompt('Check the working directory.');
+
+					const results = model.requests
+						.at(1)
+						?.messages.filter((message) => message.role === 'toolResult')
+						.map(({ toolName, content, isError }) => ({
+							toolName,
+							output: content[0],
+							isError
+						}));
+
+					expect({
+						errors,
+						tools: names.map((name) => [
+							name,
+							selected.find((tool) => tool.name === name)?.sourceInfo.path
+						]),
+						results
+					}).toStrictEqual({
+						errors: [],
+						tools: names.map((name) => [name, entry]),
+						results: [
+							{
+								toolName: 'bash',
+								output: { type: 'text', text: '/workspace\n' },
+								isError: false
+							}
+						]
+					});
+				},
+				{
+					includeBuiltins: true,
+					additionalExtensionPaths: [entry],
+					...(process.platform === 'darwin' && {
+						temporaryDirectory: homedir()
+					}),
+					async prepare(workspace, agentDirectory) {
+						await mkdir(path.join(workspace, '.pi'));
+						vi.stubEnv('PI_CODING_AGENT_DIR', agentDirectory);
+					}
+				}
+			);
+		});
+
 		it('satisfies the intermediate filesystem request with Docker workspace isolation', async () => {
 			await withDockerSession(
 				async ({ sandbox, fixture }) => {

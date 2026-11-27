@@ -32,15 +32,17 @@ Start Pi from the project that you want to work on. Load the provider by
 absolute path from a separate checkout outside that project.
 
 ```sh
-pi -e /absolute/path/to/byos/packages/provider-docker/dist/index.js
+pi -e /absolute/path/to/byos/packages/provider-docker/dist/extension.js
 ```
 
 The provider resolves the local Docker CLI and the daemon endpoint at
 configuration time. `DOCKER_HOST`, `DOCKER_CONTEXT` and the current Docker
 context can select the endpoint. Use trusted absolute overrides for the
 executable and socket when needed. The daemon socket remains outside the
-workload. In the target design the provider loads the [Pi integration][pi] when
-its extension factory runs.
+workload.
+
+This entry registers Docker and the [Pi integration][pi]. When the broker
+selects Docker, Pi's shell, file and search tools run in the Docker workspace.
 
 For the checkout's offline shell preset, load `dist/shell-profile.js` with Pi's
 `--tools bash` option. The provider ships this preset with a default policy that

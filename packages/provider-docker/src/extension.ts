@@ -1,59 +1,18 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import sandboxTools from 'pi-bring-your-own-sandbox/pi-tools';
 import type { SandboxSharedSettings } from 'pi-bring-your-own-sandbox/provider';
-import {
-	cleanDisplayText,
-	registerSandboxProviderFactory,
-	sendDisplayMessage
-} from 'pi-bring-your-own-sandbox/provider';
 
-import { resolveDockerConfig } from './config.js';
-import type { DockerConfig } from './contracts.js';
-import { createDockerProvider, dockerProviderDeclaration } from './provider.js';
+import { registerDockerProvider } from './provider-registration.js';
 
 /**
-Registers the Docker example; allocation waits until a consumer acquires it.
-Each session uses the Docker CLI and daemon that are current when it starts.
+Registers Docker and the Pi tool integration. Allocation waits until a tool
+or another SDK consumer acquires a sandbox.
 */
 export default function dockerExtension(
 	pi: ExtensionAPI,
 	extensionSource = import.meta.filename,
 	settings?: SandboxSharedSettings
 ): void {
-	registerSandboxProviderFactory<DockerConfig>(
-		pi,
-		extensionSource,
-		dockerProviderDeclaration(),
-		() => {
-			const provider = createDockerProvider();
-
-			return {
-				...provider,
-				open(request, context) {
-					return provider.open(request, {
-						...context,
-						reportDiagnostic(warning) {
-							context.reportDiagnostic(warning);
-							sendDisplayMessage(
-								pi,
-								cleanDisplayText('byos-docker'),
-								cleanDisplayText(warning.message),
-								{ triggerTurn: false }
-							);
-						}
-					});
-				}
-			};
-		},
-		{
-			async configure({ pi: session, signal, reportDiagnostic }) {
-				return {
-					configuration: await resolveDockerConfig(
-						{},
-						{ workspace: session.cwd, signal, reportDiagnostic }
-					),
-					...(settings !== undefined && { settings })
-				};
-			}
-		}
-	);
+	registerDockerProvider(pi, extensionSource, settings);
+	sandboxTools(pi, extensionSource);
 }

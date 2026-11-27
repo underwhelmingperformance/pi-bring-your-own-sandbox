@@ -1043,7 +1043,6 @@ socket.on('error', error => {
 					executable: 'pwd',
 					args: []
 				});
-				const duration: unknown = expect.any(Number);
 
 				expect({ result, allocations: fixture.allocations.size }).toStrictEqual(
 					{
@@ -1051,8 +1050,7 @@ socket.on('error', error => {
 							exit: { kind: 'code', code: 0 },
 							stdout: new TextEncoder().encode('/workspace\n'),
 							stderr: new Uint8Array(),
-							omittedBytes: { stdout: 0, stderr: 0 },
-							durationMs: duration
+							omittedBytes: { stdout: 0, stderr: 0 }
 						},
 						allocations: 1
 					}
@@ -1540,15 +1538,13 @@ socket.on('error', error => {
 						}
 					}
 				);
-				const duration: unknown = expect.any(Number);
 
 				expect({ result, delivered }).toStrictEqual({
 					result: {
 						exit: { kind: 'code', code: 0 },
 						stdout: new Uint8Array(16),
 						stderr: new Uint8Array(),
-						omittedBytes: { stdout: 131_056, stderr: 0 },
-						durationMs: duration
+						omittedBytes: { stdout: 131_056, stderr: 0 }
 					},
 					delivered: 131_072
 				});

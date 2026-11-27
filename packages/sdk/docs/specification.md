@@ -203,9 +203,9 @@ access mode, and the protected path stays read-only.
 
 ### Default toolchain roots
 
-The SDK exports one list of built-in read roots for providers. Under the default
-policy, ordinary host user data reads are limited to these roots and any
-additional read roots in the provider's settings.
+The SDK exports `hostToolchainRoots` from `/provider`. Under the default policy,
+ordinary host user data reads are limited to these roots and any additional read
+roots in the provider's settings.
 
 | Platform        | Default toolchain roots                                                                                                                                            |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -225,10 +225,11 @@ exclusion takes precedence over a built-in or configured read root. A `denied`
 policy prevents access to all host user data. Docker provides `denied` because
 its backend does not mount the home directory.
 
-Providers can import the exclusion list from `/provider`. Each exclusion applies
-to the listed path and its descendants. The broker evaluates each resolved grant
-path. It resolves Pi's credential files under the effective agent directory
-through Pi's own directory lookup, which accounts for an override. The workspace
+Providers call `resolveCredentialLocations()` from `/provider` for the absolute
+exclusion paths. The function expands the home-relative entries from
+`credentialLocations` and locates both Pi credential files through Pi's own
+agent-directory lookup. Each exclusion applies to the listed path and its
+descendants. The broker evaluates each resolved grant path. The workspace
 contract still applies inside the checkout.
 
 | Location                                      | Reason                                                               |

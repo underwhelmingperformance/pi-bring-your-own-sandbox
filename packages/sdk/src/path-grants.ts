@@ -2,7 +2,7 @@ import { realpath } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import path from 'node:path';
 
-import { credentialLocations } from './credential-locations.js';
+import { resolveCredentialLocations } from './credential-locations.js';
 import { UnsupportedSandboxPolicyError } from './errors.js';
 import { hostSystemRoots } from './host-system-roots.js';
 import type { PathGrants } from './policy-model.js';
@@ -68,10 +68,7 @@ export async function resolvePathGrants(
 			? candidate.slice(darwinDataVolume.length)
 			: candidate;
 	const root = comparisonPath(await canonicalPath(workspace));
-	const home = homedir();
-	const excluded = credentialLocations.map((location) =>
-		path.join(home, location.slice(2))
-	);
+	const excluded = resolveCredentialLocations();
 	const excludedResolved = await Promise.all(
 		excluded.map(async (location) => {
 			try {

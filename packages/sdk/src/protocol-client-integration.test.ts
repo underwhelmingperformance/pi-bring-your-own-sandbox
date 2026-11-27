@@ -147,6 +147,7 @@ const nonFactoryFunctions = new Set([
 	'isSandboxError',
 	'mapSandboxErrno',
 	'isProtectedWorkspacePath',
+	'resolveCredentialLocations',
 	'resolveSandboxCleanupBudgets',
 	'resolveSandboxCopySource',
 	'sandboxRipgrepArguments',

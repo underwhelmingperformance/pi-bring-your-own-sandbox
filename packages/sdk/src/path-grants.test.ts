@@ -1,4 +1,11 @@
-import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises';
+import {
+	mkdir,
+	mkdtemp,
+	realpath,
+	rm,
+	symlink,
+	writeFile
+} from 'node:fs/promises';
 import { homedir, platform, tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -291,3 +298,60 @@ it('classifies resolved credential paths without changing the checkout boundary'
 		await rm(temporary, { recursive: true, force: true });
 	}
 });
+
+it.skipIf(path.sep !== '/')(
+	'treats package credentials and both Pi stores as credential paths',
+	async () => {
+		const directory = await mkdtemp(
+			path.join(tmpdir(), 'byos-credential-roots-')
+		);
+
+		try {
+			const root = await realpath(directory);
+			const checkout = path.join(root, 'checkout');
+			const home = path.join(root, 'home');
+			const agent = path.join(root, 'custom-agent');
+			const alias = path.join(root, 'auth-alias');
+			const auth = path.join(agent, 'auth.json');
+			const oauth = path.join(agent, 'mcp-auth.json');
+			const ordinary = path.join(agent, 'models.json');
+			const credentials = [
+				'~/.cargo/credentials',
+				'~/.cargo/credentials.toml',
+				'~/.gem/credentials',
+				'~/.npmrc',
+				'~/.terraform.d/credentials.tfrc.json',
+				'~/.yarnrc.yml'
+			];
+			const paths = [
+				auth,
+				oauth,
+				...credentials.map((entry) => path.join(home, entry.slice(2)))
+			];
+
+			vi.stubEnv('HOME', home);
+			vi.stubEnv('PI_CODING_AGENT_DIR', agent);
+			await Promise.all([mkdir(checkout), mkdir(home), mkdir(agent)]);
+			await writeFile(auth, 'fixture');
+			await symlink(auth, alias);
+
+			const result = await resolvePathGrants(checkout, {
+				read: [alias, oauth, ordinary, ...credentials]
+			});
+			const expected = [
+				{ kind: 'read', path: ordinary, location: 'host-user-data' },
+				...paths.map((credential) => ({
+					kind: 'read',
+					path: credential,
+					location: 'host-user-data',
+					isCredential: true
+				}))
+			].toSorted((a, b) => Number(a.path > b.path) - Number(a.path < b.path));
+
+			expect(result).toStrictEqual(expected);
+		} finally {
+			vi.unstubAllEnvs();
+			await rm(directory, { recursive: true, force: true });
+		}
+	}
+);

@@ -36,7 +36,10 @@ export type {
 	SandboxWorkspace,
 	ShellDialect
 } from './contracts.js';
-export { credentialLocations } from './credential-locations.js';
+export {
+	credentialLocations,
+	resolveCredentialLocations
+} from './credential-locations.js';
 export { cleanDisplayText } from './display-text.js';
 export { sendDisplayMessage } from './display-ui.js';
 export {
@@ -62,6 +65,7 @@ export type {
 } from './host-process.js';
 export { PosixProcessRunner } from './host-process.js';
 export { hostSystemRoots } from './host-system-roots.js';
+export { hostToolchainRoots } from './host-toolchain-roots.js';
 export { SandboxLaunchFrames } from './launch-frames.js';
 export {
 	defaultProtectedWorkspacePaths,

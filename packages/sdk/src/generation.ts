@@ -59,10 +59,7 @@ import {
 	settleOperation
 } from './lifecycle.js';
 import { MutationQueue } from './mutation-queue.js';
-import {
-	createPassthroughProvider,
-	passthroughProvider
-} from './passthrough-provider.js';
+import { createPassthroughProvider } from './passthrough-provider.js';
 import { requestedPathGrants, resolvePathGrants } from './path-grants.js';
 import type { Profile } from './policy-model.js';
 import {
@@ -117,6 +114,7 @@ export interface GenerationDependencies {
 interface Prepared {
 	readonly provider: ProviderServiceV1;
 	readonly configured: ConfiguredProviderV1;
+	readonly source: ProviderSelection['source'];
 }
 interface Disposable {
 	readonly dispose: (context: SandboxOperationContext) => Promise<void>;
@@ -357,7 +355,11 @@ export class SandboxGeneration {
 				this.#state = 'idle';
 			}
 
-			pending.resolve({ provider, configured });
+			pending.resolve({
+				provider,
+				configured,
+				source: config.selection.source
+			});
 		} catch (error_) {
 			const error = this.#normalise(error_, 'configure');
 
@@ -451,7 +453,7 @@ export class SandboxGeneration {
 		const peer = prepared.provider.protocol;
 
 		const paths = requestedPathGrants(slot.paths);
-		const isConstrained = prepared.provider.id !== passthroughProvider.id;
+		const isConstrained = prepared.source !== 'default';
 		const canAccessUserData = slot.profile.policy.hostUserData !== 'denied';
 		const hostUserDataRoots =
 			isConstrained && canAccessUserData ? this.#hostUserDataRoots : undefined;
@@ -942,7 +944,7 @@ export class SandboxGeneration {
 			mode,
 			paths,
 			hostUserDataRoots: this.#hostUserDataRoots,
-			isUnrestrictedHost: provider.id === passthroughProvider.id
+			isUnrestrictedHost: this.#selection?.source === 'default'
 		});
 
 		if (!result.ok) {
@@ -1005,7 +1007,7 @@ export class SandboxGeneration {
 
 		const configured = await provider.prepare();
 
-		return { provider, configured, profile: choice.profile };
+		return { provider, configured, source: 'default', profile: choice.profile };
 	}
 
 	async #openEscalation(
@@ -1014,7 +1016,7 @@ export class SandboxGeneration {
 		paths: readonly ResolvedPath[],
 		options: SandboxOperationOptions = {}
 	): Promise<EscalatedSandbox> {
-		const { provider, configured, profile } = chosen;
+		const { provider, configured, profile, source } = chosen;
 		const generation = new SandboxGeneration(this.#session, {
 			...this.#dependencies,
 			isEscalated: true,
@@ -1028,7 +1030,7 @@ export class SandboxGeneration {
 			readConfig: () =>
 				Promise.resolve({
 					selection: {
-						source: 'extension',
+						source,
 						providerId: provider.id,
 						policy: profile.policy
 					},
@@ -1213,8 +1215,7 @@ export class SandboxGeneration {
 			hostUserDataRoots: this.#hostUserDataRoots,
 			isEscalated: true
 		});
-		const isHost =
-			!choice.ok || prepared.provider.id === passthroughProvider.id;
+		const isHost = !choice.ok || prepared.source === 'default';
 		const destination = isHost
 			? await this.#hostEscalation(options, paths)
 			: { ...prepared, profile: choice.profile };
@@ -1426,7 +1427,11 @@ export class SandboxGeneration {
 				],
 				readConfig: () =>
 					Promise.resolve({
-						selection: { source: 'extension', providerId: provider.id, policy },
+						selection: {
+							source: ready.value.source,
+							providerId: provider.id,
+							policy
+						},
 						hostUserDataRoots: this.#hostUserDataRoots,
 						resolveCredentialExclusions: this.#resolveCredentialExclusions,
 						cleanup: this.#cleanup

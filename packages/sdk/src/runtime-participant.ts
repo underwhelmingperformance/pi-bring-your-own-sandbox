@@ -26,7 +26,7 @@ export interface ShellSettings {
 	readonly lifetime: AbortSignal;
 	readonly read: (context: SandboxContext) => Promise<{
 		readonly allowEscalation: boolean;
-		readonly providerId: string;
+		readonly isUnrestrictedHost: boolean;
 		readonly hostUserDataRoots?: readonly string[];
 	}>;
 }

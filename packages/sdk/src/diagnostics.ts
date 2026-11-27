@@ -3,7 +3,6 @@ import type { SandboxErrorInfo, SandboxPolicy } from './contracts.js';
 import { describeHostUserData } from './credential-locations.js';
 import type { DisplayText } from './display-text.js';
 import { cleanDisplayText, joinDisplayLines } from './display-text.js';
-import { passthroughProvider } from './passthrough-provider.js';
 import { accessOrder } from './policy-model.js';
 import type { ProviderInfo, SandboxStatus } from './protocol.js';
 
@@ -31,14 +30,18 @@ function policyKey(value: SandboxPolicy): string {
 
 function policy(
 	value: SandboxPolicy,
-	providerId?: string,
+	isUnrestrictedHost?: boolean,
 	relationship?: string
 ): string {
 	const checkout = relationship === undefined ? '' : ` (${relationship})`;
 	const access = value.hostWorkspaceWrites ? 'read-write' : 'read-only';
 	const network = value.network ? 'allowed' : 'denied';
+	const hostUserData =
+		isUnrestrictedHost === undefined
+			? value.hostUserData
+			: describeHostUserData(value.hostUserData, isUnrestrictedHost);
 
-	return `workspace ${access}${checkout}, network ${network}, host user data ${describeHostUserData(value.hostUserData, providerId === passthroughProvider.id)}, host system files ${value.hostSystemFiles}`;
+	return `workspace ${access}${checkout}, network ${network}, host user data ${hostUserData}, host system files ${value.hostSystemFiles}`;
 }
 
 function userShell(status: SandboxStatus): string {
@@ -113,6 +116,8 @@ function failureDetail(error: SandboxErrorInfo): string[] {
 
 export function formatStatus(status: SandboxStatus): DisplayText {
 	const selection = status.selection;
+	const isUnrestrictedHost =
+		selection === undefined ? undefined : selection.source === 'default';
 	const providerId =
 		status.failure?.name === 'SandboxProviderUnavailableError'
 			? status.failure.providerId
@@ -155,13 +160,13 @@ export function formatStatus(status: SandboxStatus): DisplayText {
 
 	if (status.profile !== undefined) {
 		lines.push(
-			`Effective policy: ${policy(status.profile.policy, selection?.providerId, status.workspace?.relationship)}`
+			`Effective policy: ${policy(status.profile.policy, isUnrestrictedHost, status.workspace?.relationship)}`
 		);
 	}
 
 	if (selection !== undefined && status.profile === undefined) {
 		lines.push(
-			`Requested policy: ${policy(selection.policy, selection.providerId)}`
+			`Requested policy: ${policy(selection.policy, isUnrestrictedHost)}`
 		);
 	}
 
@@ -218,8 +223,8 @@ export function formatStatus(status: SandboxStatus): DisplayText {
 			cleanDisplayText(`Additional backend${id} (${state})`),
 			cleanDisplayText(
 				backend.effectivePolicy === undefined
-					? `Requested policy: ${policy(backend.policy, selection?.providerId)}`
-					: `Effective policy: ${policy(backend.effectivePolicy, selection?.providerId)}`
+					? `Requested policy: ${policy(backend.policy, isUnrestrictedHost)}`
+					: `Effective policy: ${policy(backend.effectivePolicy, isUnrestrictedHost)}`
 			)
 		);
 	}
@@ -271,7 +276,7 @@ export function formatProviders(
 
 			for (const profile of profiles) {
 				lines.push(
-					`  ${mode}: ${policy(profile.policy, provider.id, mode === 'copy' ? 'copied' : 'shared')}`,
+					`  ${mode}: ${policy(profile.policy, undefined, mode === 'copy' ? 'copied' : 'shared')}`,
 					`    Operations: ${list(['exec', ...profile.capabilities])}`,
 					`    Termination scope: ${profile.terminationScope}`,
 					`    Shells: ${list(profile.shells)}`

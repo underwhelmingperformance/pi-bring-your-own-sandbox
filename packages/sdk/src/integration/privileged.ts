@@ -16,7 +16,6 @@ import {
 } from '../errors.js';
 import type { EscalatedSandbox } from '../escalation-plan.js';
 import { describeRestrictions } from '../escalation-plan.js';
-import { passthroughProvider } from '../passthrough-provider.js';
 import { registerShellIntegrationDiagnostics } from '../pi-integration-status.js';
 import { createShellOperations } from '../pi-shell-operations.js';
 import { protocolAddress } from '../protocol-address.js';
@@ -80,6 +79,7 @@ async function verifyPendingCall(
 	const feedback: { type: 'text'; text: string }[] = [];
 	let allocation: EscalatedSandbox | undefined;
 	let hostUserDataRoots: readonly string[] = [];
+	let isUnrestrictedHost = false;
 	const open = dispatch.open;
 	const operations = createShellOperations(pi, context, dialect, {
 		...(open !== undefined && {
@@ -103,7 +103,7 @@ async function verifyPendingCall(
 					}
 				}),
 				hostUserDataRoots,
-				isUnrestrictedHost: sandbox.providerId === passthroughProvider.id
+				isUnrestrictedHost
 			});
 
 			feedback.push({
@@ -117,6 +117,8 @@ async function verifyPendingCall(
 		const settings = await shellSettings(pi).read(context);
 
 		hostUserDataRoots = settings.hostUserDataRoots ?? [];
+		isUnrestrictedHost =
+			dispatch.isUnrestrictedHost ?? settings.isUnrestrictedHost;
 
 		const result = await run(dispatch.prefix, operations);
 

@@ -208,7 +208,7 @@ export function bindFactory(pi: SandboxHost, extensionSource: string): void {
 
 				return Object.freeze({
 					allowEscalation: config.allowEscalation ?? true,
-					providerId: config.selection.providerId,
+					isUnrestrictedHost: config.selection.source === 'default',
 					...(config.hostUserDataRoots !== undefined && {
 						hostUserDataRoots: config.hostUserDataRoots
 					})

@@ -50,6 +50,7 @@ interface Route {
 
 interface ShellDispatch {
 	readonly prefix: string | undefined;
+	readonly isUnrestrictedHost?: boolean;
 	readonly open?: (
 		command: string,
 		options: SandboxOperationOptions
@@ -353,9 +354,13 @@ export class ShellReviewRoutes {
 		route.isClaimed = true;
 
 		const pending = route.pending;
+		const destination = pending?.request?.destination;
 
 		return Object.freeze<ShellDispatch>({
 			prefix: route.command.prefix,
+			...(destination !== undefined && {
+				isUnrestrictedHost: destination.kind === 'host'
+			}),
 			...(pending !== undefined && {
 				open: (effective, options) => pending.open(context, effective, options)
 			}),

@@ -76,7 +76,7 @@ const piHostSchema = Type.Unsafe<SandboxHost>(piHostShape);
 
 const shellSettingsResult = Type.Object({
 	allowEscalation: Type.Boolean(),
-	providerId: nonEmptyStringSchema,
+	isUnrestrictedHost: Type.Boolean(),
 	hostUserDataRoots: Type.Optional(hostUserDataRootsSchema)
 });
 
@@ -99,6 +99,7 @@ const openShell = callable<NonNullable<Dispatch['open']>>(
 
 export const shellDispatchSchema = Type.Object({
 	prefix: Type.Union([safeTextSchema, Type.Undefined()]),
+	isUnrestrictedHost: Type.Optional(Type.Boolean()),
 	open: Type.Optional(openShell),
 	finish: callable<Dispatch['finish']>([], noResult)
 });

@@ -92,11 +92,20 @@ it('records bounded provider warnings separately from process output and cleanup
 });
 
 it.each([
-	{ label: 'implicit', settings: undefined },
-	{ label: 'explicit default', settings: { policy: defaultPolicy } }
+	{ label: 'implicit', id: 'fixture.network', settings: undefined },
+	{
+		label: 'explicit default',
+		id: 'fixture.network',
+		settings: { policy: defaultPolicy }
+	},
+	{
+		label: 'extension origin with the passthrough ID',
+		id: 'passthrough',
+		settings: undefined
+	}
 ])(
 	'keeps the effective ordinary policy for a network escalation with $label settings',
-	async ({ settings }) => {
+	async ({ id, settings }) => {
 		const workspace = process.cwd();
 		const context: SandboxContext = {
 			cwd: workspace,
@@ -108,7 +117,7 @@ it.each([
 			policy: { ...ordinary.policy, network: true }
 		};
 		const provider: ProviderServiceV1 = {
-			id: 'fixture.network',
+			id,
 			label: 'Network fixture',
 			profiles: { open: [ordinary, withNetwork], copy: [] },
 			prepare: () => ({

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { mkdtemp, realpath, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { MessageChannel } from 'node:worker_threads';
@@ -13,7 +13,11 @@ import type {
 	SandboxPolicy,
 	SandboxWorkspace
 } from '../contracts.js';
-import { SandboxOperationError, SandboxTransportError } from '../errors.js';
+import {
+	SandboxOperationError,
+	SandboxTransportError,
+	UnsupportedSandboxPolicyError
+} from '../errors.js';
 import { unrestrictedPolicy } from '../policy-model.js';
 import type { SandboxProviderTestOptions } from '../provider-test-contracts.js';
 import { isRecord } from '../validation.js';
@@ -342,7 +346,15 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 		validateConfig(input) {
 			assert.deepEqual(input, {});
 		},
-		open(request, context) {
+		async open(request, context) {
+			const entries = await readdir(request.hostWorkspace, {
+				withFileTypes: true
+			});
+
+			if (entries.some((entry) => entry.isFIFO())) {
+				throw new UnsupportedSandboxPolicyError({ operation: 'open' });
+			}
+
 			context.reportRecovery({ kind: 'none' });
 
 			const backend = new MessageBackend(request.profile.policy, visibility);
@@ -357,14 +369,12 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 
 			connections.push(backend);
 
-			return Promise.resolve(
-				Object.assign(
-					backend,
-					grantedPaths === undefined ? {} : { grantedPaths },
-					request.hostUserDataRoots === undefined
-						? {}
-						: { hostUserDataRoots: request.hostUserDataRoots }
-				)
+			return Object.assign(
+				backend,
+				grantedPaths === undefined ? {} : { grantedPaths },
+				request.hostUserDataRoots === undefined
+					? {}
+					: { hostUserDataRoots: request.hostUserDataRoots }
 			);
 		}
 	});

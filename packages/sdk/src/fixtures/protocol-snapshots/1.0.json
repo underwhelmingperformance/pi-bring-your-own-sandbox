@@ -20015,6 +20015,11 @@
 					"~kind": "Function",
 					"~unsafe": null
 				},
+				"isUnrestrictedHost": {
+					"type": "boolean",
+					"~kind": "Boolean",
+					"~optional": true
+				},
 				"open": {
 					"parameters": [
 						{
@@ -20425,13 +20430,12 @@
 									}
 								]
 							},
-							"providerId": {
-								"minLength": 1,
-								"type": "string",
-								"~kind": "String"
+							"isUnrestrictedHost": {
+								"type": "boolean",
+								"~kind": "Boolean"
 							}
 						},
-						"required": ["allowEscalation", "providerId"],
+						"required": ["allowEscalation", "isUnrestrictedHost"],
 						"type": "object",
 						"~kind": "Object"
 					},

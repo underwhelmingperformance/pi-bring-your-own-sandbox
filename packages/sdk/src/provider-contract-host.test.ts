@@ -1,6 +1,7 @@
 import {
 	mkdir,
 	mkdtemp,
+	readdir,
 	readFile,
 	realpath,
 	rm,
@@ -15,6 +16,7 @@ import { expect } from 'vitest';
 
 import { nodeVisibilityProbe } from '../../../test-support/node-visibility-probe.js';
 
+import { UnsupportedSandboxPolicyError } from './errors.js';
 import { firstOpenProfile } from './fixtures/profile-fixture.js';
 import { fixtureProvider } from './fixtures/register-provider.js';
 import { openPassthrough, probePassthrough } from './passthrough.js';
@@ -30,6 +32,14 @@ const provider = fixtureProvider<undefined>({
 		return;
 	},
 	async open(request, context) {
+		const entries = await readdir(request.hostWorkspace, {
+			withFileTypes: true
+		});
+
+		if (entries.some((entry) => entry.isFIFO())) {
+			throw new UnsupportedSandboxPolicyError({ operation: 'open' });
+		}
+
 		const backend = await openPassthrough(
 			request.hostWorkspace,
 			context,

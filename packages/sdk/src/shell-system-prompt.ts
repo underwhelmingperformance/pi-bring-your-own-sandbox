@@ -9,7 +9,6 @@ import type { DisplayText } from './display-text.js';
 import { cleanDisplayText, joinDisplayLines } from './display-text.js';
 import { isSandboxError } from './errors.js';
 import { describeRestrictions } from './escalation-plan.js';
-import { passthroughProvider } from './passthrough-provider.js';
 import { accessOrder } from './policy-model.js';
 import { shellRequirements } from './profile-negotiation.js';
 import { shellSettings } from './runtime-participant.js';
@@ -43,7 +42,7 @@ async function describeShellPolicy(
 
 		const config = await shellSettings(pi).read(context);
 		const restrictions = describeRestrictions(result.profile.policy, {
-			isUnrestrictedHost: config.providerId === passthroughProvider.id,
+			isUnrestrictedHost: config.isUnrestrictedHost,
 			...(config.hostUserDataRoots !== undefined && {
 				hostUserDataRoots: config.hostUserDataRoots
 			})

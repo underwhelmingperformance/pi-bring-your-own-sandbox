@@ -2,8 +2,6 @@ import { describe, it } from 'vitest';
 
 import { resolveCleanupBudgets } from './cleanup-budgets.js';
 import { credentialLocations } from './credential-locations.js';
-import { unrestrictedPolicy } from './policy-model.js';
-import { isWithinLimit } from './profile-negotiation.js';
 import {
 	providerContractCases,
 	usingProviderFixture
@@ -152,15 +150,7 @@ export function defineSandboxProviderTests<Config>(
 				continue;
 			}
 
-			const profiles =
-				selection === undefined
-					? registered.provider.profiles.open
-					: [selection.profile];
-			const hasIsolation = profiles.every(
-				({ policy }) => !isWithinLimit(unrestrictedPolicy, policy)
-			);
-
-			if (hasIsolation && process.platform !== 'win32') {
+			if (process.platform !== 'win32') {
 				it(
 					label + 'refuses a workspace with a special file',
 					() => verifyWorkspaceCase(registered, 'special', selection),

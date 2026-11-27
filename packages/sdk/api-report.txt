@@ -1443,6 +1443,8 @@ export interface SandboxProviderFixtureOptions<Config> extends Omit<SandboxProvi
 
 // provider-test-contracts.d.ts
 export interface SandboxProviderTestFixture<Config = unknown> {
+    readonly register?: (pi: ExtensionAPI, extensionSource: string) => void | Promise<void>;
+    readonly stageSettings?: (shared: unknown) => Promise<void>;
     readonly policyEffects?: Partial<Readonly<Record<SandboxPolicyScenario, (backend: SandboxBackend) => Promise<SandboxPolicyProbe>>>>;
     readonly visibility?: {
         readonly targetPath: string;

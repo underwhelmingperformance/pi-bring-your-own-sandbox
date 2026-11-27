@@ -1,3 +1,5 @@
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+
 import type {
 	AvailableSandboxProvider,
 	DirectoryEntry,
@@ -90,6 +92,21 @@ An isolated test workspace and provider-specific probes. The suite creates a
 fresh fixture for every test. Seed target files before returning this value.
 */
 export interface SandboxProviderTestFixture<Config = unknown> {
+	/**
+	Install the shipped provider registration in a fresh Pi runtime. A full
+	suite requires this callback. Use the supplied source for registration.
+	*/
+	readonly register?: (
+		pi: ExtensionAPI,
+		extensionSource: string
+	) => void | Promise<void>;
+	/**
+	Stage shared input for the provider's real settings reader. For a custom
+	global directory, use the same isolated directory in the host options.
+	Fixed presets omit this callback.
+	*/
+	readonly stageSettings?: (shared: unknown) => Promise<void>;
+
 	/**
 	Prepare the restricted resource after opening, and inspect it independently of the backend.
 	*/

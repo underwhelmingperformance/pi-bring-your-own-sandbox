@@ -48,14 +48,17 @@ exceptions. Test the portable helper and `rg` on the same corpus, using the
 
 ## Shared settings conformance
 
-Run the provider's settings parser through its registration path. Supply a valid
-file with every [shared settings key][settings] and the required
-provider-specific settings. Assert that the parser preserves the shared values
-and that the broker uses them. Omit settings that have defaults and check the
-effective values. Then invalidate one shared key at a time. Include an omitted
-policy if the provider has no default. Each invalid file must fail with
-`InvalidSandboxConfigError` before backend allocation. Use the same parser that
-the provider runs in Pi.
+Supply `register(pi, extensionSource)` on the fixture to install the shipped
+provider in an isolated Pi runtime. If the provider reads settings, also supply
+`stageSettings(shared)`. Write the supplied [shared settings][settings] beside
+the provider-specific values in a test settings file. For a custom agent
+directory, pass the directory to `initialiseSandboxHost` during registration.
+The suite checks valid input, defaults and an invalid value for every shared
+key. Each invalid file must fail with `InvalidSandboxConfigError` before backend
+allocation.
+
+For a fixed preset, use its registration path and omit `stageSettings`. The
+suite verifies the configured policy against the fixture's policy.
 
 [settings]: api-protocol.md#provider-settings
 
@@ -74,7 +77,7 @@ checkout profile. Supply `fixture.visibility` for each open profile. The suite
 also checks special-file refusal for profiles that enforce isolation on hosts
 with FIFOs. Omit `workspaceVisibility` and `capabilities` to generate the full
 suite from the declaration. Use `workspaceVisibility` to focus a suite on shared
-or copied checkout behaviour.
+or copied checkout behaviour. The test runner labels focused suites as partial.
 
 ## Default configured policy
 

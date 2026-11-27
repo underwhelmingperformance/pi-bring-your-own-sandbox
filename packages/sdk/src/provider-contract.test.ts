@@ -6,6 +6,7 @@ import type {
 	BackendProcessContext,
 	ProcessRequest,
 	SandboxBackend,
+	SandboxHost,
 	SandboxOperationContext,
 	SandboxPolicy
 } from './contracts.js';
@@ -20,11 +21,41 @@ import {
 	providerContractCases,
 	usingProviderFixture as usingBrokerProviderFixture
 } from './provider-contract-suite.js';
-import { verifyUndeclaredCredentialGrant } from './provider-credential-suite.js';
+import { verifyCredentialGrant } from './provider-credential-suite.js';
+import { registerSandboxProvider } from './provider-registration.js';
+import { verifyFixtureSettings } from './provider-settings-suite.js';
 import type { SandboxProviderTestOptions } from './provider-test-contracts.js';
 import { defineSandboxProviderTests } from './testing.js';
 
-defineSandboxProviderTests(contractScenario());
+const memoryContract = contractScenario();
+
+defineSandboxProviderTests({
+	...memoryContract,
+	capabilities: firstOpenProfile(memoryContract.provider)
+});
+
+it('stages defaults and invokes the real registration for settings tests', async () => {
+	const options = contractScenario();
+	const stageSettings = vi.fn((_shared: unknown) => Promise.resolve());
+	const register = vi.fn((pi: SandboxHost, source: string) => {
+		registerSandboxProvider(pi, source, options.provider);
+	});
+
+	await verifyFixtureSettings(
+		{
+			...options,
+			async createFixture() {
+				return { ...(await options.createFixture()), register, stageSettings };
+			}
+		},
+		'default'
+	);
+
+	expect({
+		staged: stageSettings.mock.calls,
+		registrations: register.mock.calls.length
+	}).toStrictEqual({ staged: [[{}]], registrations: 1 });
+});
 
 it('checks undeclared credential grant kinds without opening a backend', async () => {
 	const scenario = contractScenario();
@@ -34,11 +65,7 @@ it('checks undeclared credential grant kinds without opening a backend', async (
 		credentialPathGrantKinds: ['read'] as const
 	};
 
-	await verifyUndeclaredCredentialGrant(
-		scenario,
-		{ mode: 'open', profile },
-		'write'
-	);
+	await verifyCredentialGrant(scenario, { mode: 'open', profile }, 'write');
 });
 
 it('opens the fixture provider through the broker and verifies the backend allocation', async () => {
@@ -123,6 +150,13 @@ const openShellOnly = shellOnly.provider.create().open;
 defineSandboxProviderTests({
 	...shellOnly,
 	label: 'shell-only provider with unavailable exit details',
+	capabilities: {
+		capabilities: [],
+		processKinds: ['shell'],
+		shells: ['sh'],
+		terminationScope: 'workload',
+		exitStatus: 'optional'
+	},
 	provider: {
 		...shellOnly.provider,
 		profiles: {
@@ -164,8 +198,12 @@ defineSandboxProviderTests({
 		})
 	},
 	async createFixture(selection) {
-		const { processes: _processes, ...fixture } =
-			await shellOnly.createFixture(selection);
+		const {
+			processes: _processes,
+			register: _register,
+			stageSettings: _stageSettings,
+			...fixture
+		} = await shellOnly.createFixture(selection);
 		const sh = fixture.shells?.sh;
 
 		if (sh === undefined) {

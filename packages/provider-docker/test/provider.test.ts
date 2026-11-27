@@ -74,7 +74,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 			async createFixture() {
 				const fixture = await DockerFixture.create();
 
-				const base = fixture.contract({
+				const { register: _register, ...base } = fixture.contract({
 					hostWorkspaceWrites: false,
 					hostUserData: 'denied',
 					hostSystemFiles: 'denied',

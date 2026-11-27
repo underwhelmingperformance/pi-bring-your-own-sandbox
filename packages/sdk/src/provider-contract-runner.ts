@@ -9,8 +9,9 @@ import {
 	usingProviderFixture
 } from './provider-contract-suite.js';
 import {
+	piCredentialProbePaths,
 	verifyCredentialExclusion,
-	verifyUndeclaredCredentialGrant
+	verifyCredentialGrant
 } from './provider-credential-suite.js';
 import { verifyOpeningCase } from './provider-opening-suite.js';
 import {
@@ -22,6 +23,7 @@ import type {
 	SandboxProviderTestOptions,
 	SandboxProviderTestSelection
 } from './provider-test-contracts.js';
+import { bounded } from './provider-test-harness.js';
 import { verifyWorkspaceCase } from './provider-workspace-suite.js';
 
 /**
@@ -44,24 +46,31 @@ export function defineSandboxProviderTests<Config>(
 		3 * cleanup.disposalTimeoutMs +
 		2 * cleanup.cancellationGraceMs;
 
-	describe(options.label, async () => {
-		let registered: SandboxProviderTestOptions<Config>;
+	const isFocused =
+		options.workspaceVisibility !== undefined ||
+		options.capabilities !== undefined;
 
-		if ('provider' in options) {
-			registered = options;
-		} else {
-			const fixture = await options.createFixture();
+	const suiteLabel = isFocused ? options.label + ' (partial)' : options.label;
 
-			try {
-				registered = { ...options, provider: fixture.provider };
-			} finally {
-				await fixture.cleanup();
-			}
+	describe(suiteLabel, async () => {
+		const fixture = await options.createFixture();
+		const provider =
+			'provider' in options ? options.provider : fixture.provider;
+		const canRegister = fixture.register !== undefined;
+		const canStageSettings = fixture.stageSettings !== undefined;
+
+		await bounded(options, () => fixture.cleanup());
+
+		if (provider === undefined) {
+			throw new Error(
+				'Provide a declaration for conformance profile selection.'
+			);
 		}
 
-		const isFocused =
-			options.workspaceVisibility !== undefined ||
-			options.capabilities !== undefined;
+		const registered: SandboxProviderTestOptions<Config> = {
+			...options,
+			provider
+		};
 		const variants = isFocused
 			? [
 					{
@@ -75,7 +84,10 @@ export function defineSandboxProviderTests<Config>(
 			: (['open', 'copy'] as const).flatMap((mode) =>
 					registered.provider.profiles[mode].map((profile, index) => ({
 						mode,
-						selection: { mode, profile } satisfies SandboxProviderTestSelection,
+						selection: {
+							mode,
+							profile
+						} satisfies SandboxProviderTestSelection,
 						label: `${mode} profile ${String(index + 1)}: `
 					}))
 				);
@@ -108,28 +120,23 @@ export function defineSandboxProviderTests<Config>(
 			}
 
 			if (selection?.mode === 'open') {
-				const { pathGrantKinds = [], credentialPathGrantKinds = [] } =
-					selection.profile;
-
-				for (const kind of pathGrantKinds) {
-					if (!credentialPathGrantKinds.includes(kind)) {
-						it(
-							label +
-								`excludes the profile from an undeclared credential ${kind} grant`,
-							() =>
-								verifyUndeclaredCredentialGrant(registered, selection, kind),
-							testTimeout
-						);
-					}
+				for (const kind of ['read', 'write'] as const) {
+					it(
+						label + `checks credential ${kind} grant eligibility`,
+						() => verifyCredentialGrant(registered, selection, kind),
+						testTimeout
+					);
 				}
 			}
 
 			if (
 				selection !== undefined &&
-				!('provider' in options) &&
 				selection.profile.policy.hostUserData !== 'denied'
 			) {
-				for (const location of credentialLocations) {
+				for (const location of [
+					...credentialLocations,
+					...piCredentialProbePaths
+				]) {
 					it(
 						label + 'excludes the credential location ' + location,
 						() => verifyCredentialExclusion(registered, selection, location),
@@ -172,6 +179,20 @@ export function defineSandboxProviderTests<Config>(
 			registered.provider.profiles.open.length === 0 ||
 			options.workspaceVisibility === 'copied'
 		) {
+			return;
+		}
+
+		if (isFocused && !canRegister) {
+			return;
+		}
+
+		if (!canStageSettings) {
+			it(
+				'uses the shipped provider registration and preset settings',
+				() => verifyFixtureSettings(registered, 'preset'),
+				testTimeout
+			);
+
 			return;
 		}
 

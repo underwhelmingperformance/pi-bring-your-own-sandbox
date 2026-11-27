@@ -28,6 +28,7 @@ import { NodeDockerClient } from '../src/client.js';
 import { resolveDockerConfig } from '../src/config.js';
 import type { DockerClient, DockerConfig } from '../src/contracts.js';
 import { DOCKER_IMAGE } from '../src/image.js';
+import { registerDockerProvider } from '../src/provider-registration.js';
 import { ALLOCATION_LABEL } from '../src/resources.js';
 
 const NETWORK_PROBE = `
@@ -431,6 +432,9 @@ server.listen(8080, '0.0.0.0');`
 		const cwd = '/workspace/nested';
 
 		return {
+			register(pi, source) {
+				registerDockerProvider(pi, source, { policy });
+			},
 			configuration: this.config,
 			hostWorkspace: this.workspace,
 			find: [

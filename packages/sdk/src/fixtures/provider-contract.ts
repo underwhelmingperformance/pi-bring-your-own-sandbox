@@ -1,13 +1,17 @@
-import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { expect } from 'vitest';
 
 import type { SandboxBackend } from '../contracts.js';
-import { SandboxCancelledError } from '../errors.js';
+import { InvalidSandboxConfigError, SandboxCancelledError } from '../errors.js';
+import { initialiseSandboxHost } from '../host.js';
 import { unrestrictedPolicy } from '../policy-model.js';
+import { registerSandboxProvider } from '../provider-registration.js';
 import type { SandboxProviderTestOptions } from '../provider-test-contracts.js';
+import { invalidField } from '../request-schemas.js';
+import { checker } from '../schemas.js';
 
 import { MemoryBackend } from './memory-backend.js';
 import { fixtureProfiles } from './profile-fixture.js';
@@ -175,6 +179,7 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 		label: provider.id,
 		provider,
 		async createFixture(selection) {
+			let agentDirectory: string | undefined;
 			const directory =
 				selection === undefined
 					? undefined
@@ -183,6 +188,51 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 				directory === undefined ? undefined : await realpath(directory);
 
 			return {
+				register(pi, source) {
+					if (agentDirectory === undefined) {
+						throw new Error('Stage the provider settings before registration.');
+					}
+
+					initialiseSandboxHost(pi, source, { agentDirectory });
+					registerSandboxProvider(pi, source, {
+						...provider,
+						create() {
+							return {
+								...provider.create(),
+								async configure(context, shared) {
+									const file = path.join(
+										context.agentDirectory,
+										'provider.json'
+									);
+									const settings: unknown = JSON.parse(
+										await readFile(file, 'utf8')
+									);
+
+									if (!checker(shared)(settings)) {
+										throw new InvalidSandboxConfigError({
+											operation: 'configure',
+											detail: {
+												kind: 'config',
+												field: invalidField(shared, settings).join('.')
+											}
+										});
+									}
+
+									return { configuration: undefined, settings };
+								}
+							};
+						}
+					});
+				},
+				async stageSettings(settings) {
+					agentDirectory ??= await mkdtemp(
+						path.join(tmpdir(), 'byos-memory-settings-')
+					);
+					await writeFile(
+						path.join(agentDirectory, 'provider.json'),
+						JSON.stringify(settings)
+					);
+				},
 				configuration: undefined,
 				hostWorkspace: workspace ?? tmpdir(),
 				policy: unrestrictedPolicy,
@@ -229,14 +279,19 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 					}
 				},
 				verifyDisposed: () => {
-					expect(isDisposed).toBe(true);
+					expect(memory === undefined || isDisposed).toBe(true);
 
 					return Promise.resolve();
 				},
-				cleanup: () =>
-					workspace === undefined
-						? Promise.resolve()
-						: rm(workspace, { recursive: true, force: true })
+				async cleanup() {
+					if (agentDirectory !== undefined) {
+						await rm(agentDirectory, { recursive: true, force: true });
+					}
+
+					if (workspace !== undefined) {
+						await rm(workspace, { recursive: true, force: true });
+					}
+				}
 			};
 		}
 	};

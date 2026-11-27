@@ -1,4 +1,11 @@
 import { messageScenario } from './fixtures/message-provider.js';
+import { firstOpenProfile } from './fixtures/profile-fixture.js';
 import { defineSandboxProviderTests } from './testing.js';
 
-defineSandboxProviderTests(messageScenario());
+const scenario = messageScenario();
+
+defineSandboxProviderTests({
+	...scenario,
+	workspaceVisibility: 'shared',
+	capabilities: firstOpenProfile(scenario.provider)
+});

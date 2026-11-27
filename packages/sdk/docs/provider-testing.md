@@ -165,11 +165,12 @@ inaccessible and that an undeclared kind cannot be granted by that provider
 profile. Include a grant of one host user file under a policy that denies the
 rest of the home directory.
 
-Exercise the default one-call approval, session approval and **Always** for an
-eligible read path. Verify that a session grant expires when the session ends
-and that **Always** adds the path to the provider's configured read roots. Check
-that remembered directory grants keep credential exclusions and that a specific
-credential read, write grant or network grant requires a decision for each call.
+Exercise one-call and session approval for an eligible read path. Verify that a
+session grant expires when the session ends. For a provider that supplies a
+settings writer, check that **Always** appears under the configured read-only
+policy and that a fresh session uses the saved root. Check that remembered
+directory grants keep credential exclusions and that a specific credential read,
+write grant or network grant requires a decision for each call.
 
 ## Broker and lifecycle cases
 

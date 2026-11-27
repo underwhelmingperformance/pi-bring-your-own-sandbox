@@ -16,6 +16,7 @@ import { observe, OperationScope } from './lifecycle.js';
 import { resolveHostUserDataRoots } from './path-grants.js';
 import type { DiagnosticStore } from './provider-diagnostics.js';
 import { ProviderDiagnostics } from './provider-diagnostics.js';
+import { bindReadRootPersistence } from './read-root-persistence.js';
 import { invalidField, providerConfigSchema } from './request-schemas.js';
 import type { RuntimeProvider } from './runtime-participant.js';
 import { checker } from './schemas.js';
@@ -135,9 +136,16 @@ export function createRuntimeSettings(
 
 					scope.check();
 
+					const saveReadRoots =
+						activation !== undefined &&
+						value.selection.policy.hostUserData === 'read-only'
+							? bindReadRootPersistence(activation)
+							: undefined;
+
 					return Object.freeze({
 						...value,
 						...(hostUserDataRoots !== undefined && { hostUserDataRoots }),
+						...(saveReadRoots !== undefined && { saveReadRoots }),
 						cleanup: resolveCleanupBudgets({
 							...defaults,
 							...value.cleanup

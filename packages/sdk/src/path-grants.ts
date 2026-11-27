@@ -70,23 +70,25 @@ export async function resolveHostUserDataRoots(
 		host === 'darwin' || host === 'linux' ? hostToolchainRoots[host] : [];
 
 	const roots = await Promise.all(
-		[...builtIn, ...settings].map(async (root) => {
-			if (isHomeRelative(root)) {
-				return canonicalPath(path.resolve(homedir(), root.slice(2)));
-			}
-
-			if (!path.isAbsolute(root)) {
-				throw new TypeError('Read roots must be absolute or start with ~/.');
-			}
-
-			return canonicalPath(path.normalize(root));
-		})
+		[...builtIn, ...settings].map((root) => resolveReadRoot(root))
 	);
 
 	return Object.freeze([...new Set(roots)]);
 }
 
-export function isWithinHostUserDataRoots(
+export async function resolveReadRoot(root: string): Promise<string> {
+	if (isHomeRelative(root)) {
+		return canonicalPath(path.resolve(homedir(), root.slice(2)));
+	}
+
+	if (!path.isAbsolute(root)) {
+		throw new TypeError('Read roots must be absolute or start with ~/.');
+	}
+
+	return canonicalPath(path.normalize(root));
+}
+
+export function isWithinHostRoots(
 	candidate: string,
 	roots: readonly string[]
 ): boolean {

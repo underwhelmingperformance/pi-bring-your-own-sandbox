@@ -134,17 +134,18 @@ export class SandboxBroker implements BrokerService {
 		return this.#resolve(context).generation.planEscalation(context, options);
 	}
 
-	rememberReadApprovals(plan: EscalationPlan, toolCallId: string): void {
-		if (
-			plan.readApproval === undefined ||
-			plan.destination.kind !== 'provider'
-		) {
+	rememberReadApprovals(
+		plan: EscalationPlan,
+		toolCallId: string,
+		paths = plan.readApproval?.paths
+	): void {
+		if (paths === undefined || plan.destination.kind !== 'provider') {
 			return;
 		}
 
 		const { providerId } = plan.destination;
 
-		for (const path of plan.readApproval.paths) {
+		for (const path of paths) {
 			this.#readApprovals.set(JSON.stringify([providerId, path]), toolCallId);
 		}
 	}

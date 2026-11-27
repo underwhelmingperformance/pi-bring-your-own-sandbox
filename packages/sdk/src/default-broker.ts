@@ -132,7 +132,10 @@ function providerList(
 			return Object.freeze({
 				...info,
 				configure: provider.configure,
-				resolve: provider.resolve
+				resolve: provider.resolve,
+				...(provider.persistReadRoot !== undefined && {
+					persistReadRoot: provider.persistReadRoot
+				})
 			});
 		})
 	);

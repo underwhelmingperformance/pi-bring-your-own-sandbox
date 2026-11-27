@@ -10,6 +10,7 @@ import {
 import { defaultPolicy, unrestrictedPolicy } from './policy-model.js';
 import { selectProfile } from './profile-negotiation.js';
 import type { ProviderSelection, ProviderServiceV1 } from './protocol.js';
+import type { SaveReadRoots } from './read-root-persistence.js';
 import { isPolicy, snapshotPolicy } from './validation.js';
 
 export interface SandboxConfig {
@@ -17,6 +18,7 @@ export interface SandboxConfig {
 	readonly selection: ProviderSelection;
 	readonly allowEscalation?: boolean;
 	readonly hostUserDataRoots?: readonly string[];
+	readonly saveReadRoots?: SaveReadRoots;
 	readonly providerConfig: unknown;
 	readonly providerConfigSource?: 'extension';
 	readonly policySource?: 'extension';

@@ -129,7 +129,12 @@ it.each([
 										allowEscalation: true,
 										readRoots: [home]
 									}
-								})
+								}),
+								persistReadRoot() {
+									throw new Error(
+										'Credential approvals must not reach the writer.'
+									);
+								}
 							}
 						);
 					}

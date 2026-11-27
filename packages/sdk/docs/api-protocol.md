@@ -337,6 +337,18 @@ interface SandboxProviderRegistration<Input> {
     context: SandboxConfigContext,
     sharedSettingsSchema: TObject
   ) => SandboxProviderConfig<Input> | Promise<SandboxProviderConfig<Input>>;
+  readonly persistReadRoot?: (
+    context: SandboxReadRootPersistence,
+    sharedSettingsSchema: TObject
+  ) => Promise<void>;
+}
+
+interface SandboxReadRootPersistence {
+  readonly paths: readonly string[];
+  readonly updateSettings: (
+    filename: string,
+    isValid: (settings: unknown) => boolean
+  ) => Promise<void>;
 }
 
 interface SandboxProviderConfig<Input> {
@@ -385,6 +397,15 @@ path to `readRoots`.
 
 [settings-behaviour]: specification.md#default-configured-policy
 [toolchain-roots]: specification.md#default-toolchain-roots
+
+For **Always**, the elected broker calls the selected provider's
+`persistReadRoot` callback with the approved canonical paths. The callback
+awaits one call to `updateSettings` with the provider's global settings filename
+and a validator for the whole file. The file must be a regular file in Pi's
+effective agent directory outside the checkout. The SDK rereads the file,
+validates the original and updated settings, deduplicates the roots, and
+replaces the file atomically. Concurrent approvals from separate sessions can
+lose one update.
 
 ## Process, files and search
 

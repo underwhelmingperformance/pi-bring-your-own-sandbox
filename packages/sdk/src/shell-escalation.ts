@@ -12,7 +12,7 @@ import type {
 	SandboxOperationOptions
 } from './contracts.js';
 import { cleanDisplayText, cleanFullDisplayText } from './display-text.js';
-import { chooseDisplayOption } from './display-ui.js';
+import { chooseDisplayOption, notifyDisplay } from './display-ui.js';
 import {
 	InvalidSandboxRequestError,
 	SandboxPermissionDeniedError
@@ -95,7 +95,7 @@ type Dialect = 'bash' | 'powershell';
 interface GrantDecision {
 	readonly choice: EscalationDecision;
 	readonly decider: Decider;
-	readonly rememberReads?: true;
+	readonly duration?: 'session' | 'always';
 }
 
 export function escalationInput(
@@ -230,6 +230,22 @@ export class PendingEscalation {
 			plan.readApproval === undefined
 				? ['Deny', 'Allow']
 				: ['Deny', 'Allow', sessionChoice];
+		const persistence = plan.readApproval?.persistence;
+		const alwaysChoice =
+			plan.readApproval?.coversRequest === true &&
+			persistence?.paths.length === plan.readApproval.paths.length
+				? 'Allow always'
+				: 'Allow and save eligible reads';
+
+		if (persistence !== undefined) {
+			choices.push(alwaysChoice);
+			display.push(
+				cleanFullDisplayText(
+					'Read roots to save: ' + JSON.stringify(persistence.paths)
+				)
+			);
+		}
+
 		const pending = observe(
 			chooseDisplayOption(context, display, choices, { signal })
 		);
@@ -252,8 +268,49 @@ export class PendingEscalation {
 		return {
 			choice: result === 'Deny' ? 'deny' : 'allow',
 			decider: { kind: 'confirmation' },
-			...(result === sessionChoice && { rememberReads: true })
+			...(result === sessionChoice && { duration: 'session' }),
+			...(result === alwaysChoice && { duration: 'always' })
 		};
+	}
+
+	async #saveReadApproval(
+		context: ExtensionContext,
+		plan: EscalationPlan,
+		request: EscalationRequest
+	): Promise<void> {
+		const persistence = plan.readApproval?.persistence;
+
+		if (persistence === undefined) {
+			throw new InvalidSandboxRequestError({ operation: 'exec' });
+		}
+
+		const writing = observe(persistence.save(this.#scope.context.signal));
+		const result = await Promise.race([writing, this.#scope.whenCancelled()]);
+
+		if (result.kind === 'cancelled') {
+			throw this.#scope.cancellationError('not-started');
+		}
+
+		if (result.kind === 'rejected') {
+			throw result.error;
+		}
+
+		this.#check(context);
+		this.#broker.rememberReadApprovals(
+			plan,
+			request.toolCallId,
+			persistence.paths
+		);
+		notifyDisplay(
+			context,
+			cleanFullDisplayText(
+				'Saved read roots ' +
+					JSON.stringify(persistence.paths) +
+					' in ' +
+					result.value
+			),
+			'info'
+		);
 	}
 
 	#rememberedDecision(plan: EscalationPlan): GrantDecision | undefined {
@@ -386,8 +443,10 @@ export class PendingEscalation {
 				throw this.#refusal('escalate');
 			}
 
-			if (decided.rememberReads === true) {
+			if (decided.duration === 'session') {
 				this.#broker.rememberReadApprovals(plan, request.toolCallId);
+			} else if (decided.duration === 'always') {
+				await this.#saveReadApproval(context, plan, request);
 			}
 
 			this.#complete('allowed', decided.decider);

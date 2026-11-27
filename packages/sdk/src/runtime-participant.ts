@@ -5,7 +5,8 @@ import type {
 	SandboxHost,
 	SandboxHostHandle,
 	SandboxHostOptions,
-	SandboxProviderConfig
+	SandboxProviderConfig,
+	SandboxReadRootPersistence
 } from './contracts.js';
 import {
 	InvalidSandboxRequestError,
@@ -18,6 +19,9 @@ import type { ShellRouteRegistration } from './shell-review-routes.js';
 
 export interface RuntimeProvider extends ProviderServiceV1 {
 	readonly resolve: SandboxConfigResolver<SandboxProviderConfig<unknown>>;
+	readonly persistReadRoot?: (
+		context: SandboxReadRootPersistence
+	) => Promise<void>;
 }
 
 export interface ShellSettings {

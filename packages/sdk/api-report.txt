@@ -74,6 +74,7 @@ type SandboxOperation (contracts.d.ts)
 type SandboxOperationContext (contracts.d.ts)
 type SandboxPolicy (contracts.d.ts)
 type SandboxProvider (contracts.d.ts)
+type SandboxReadRootPersistence (contracts.d.ts)
 type SandboxSharedSettings (contracts.d.ts)
 type SandboxWorkspace (contracts.d.ts)
 type ShellDialect (contracts.d.ts)
@@ -446,6 +447,13 @@ export interface SandboxProviderConfig<Config> {
 // contracts.d.ts
 export interface SandboxProviderRegistration<Input> {
     readonly configure: (context: SandboxConfigContext, schema: typeof sharedSettingsSchema) => SandboxProviderConfig<Input> | Promise<SandboxProviderConfig<Input>>;
+    readonly persistReadRoot?: (context: SandboxReadRootPersistence, schema: typeof sharedSettingsSchema) => Promise<void>;
+}
+
+// contracts.d.ts
+export interface SandboxReadRootPersistence {
+    readonly paths: readonly string[];
+    readonly updateSettings: (filename: string, isValid: (settings: unknown) => boolean) => Promise<void>;
 }
 
 // contracts.d.ts

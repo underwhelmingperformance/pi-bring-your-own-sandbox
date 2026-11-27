@@ -32,6 +32,7 @@ export type {
 	SandboxOperationContext,
 	SandboxPolicy,
 	SandboxProvider,
+	SandboxReadRootPersistence,
 	SandboxSharedSettings,
 	SandboxWorkspace,
 	ShellDialect

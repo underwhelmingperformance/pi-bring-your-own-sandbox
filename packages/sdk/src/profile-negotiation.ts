@@ -1,4 +1,4 @@
-import { isWithinHostUserDataRoots } from './path-grants.js';
+import { isWithinHostRoots } from './path-grants.js';
 import type {
 	Access,
 	AccessProperty,
@@ -256,7 +256,7 @@ export function selectProfile({
 		const isWithinScope =
 			isUnrestrictedHost ||
 			path.location !== 'host-user-data' ||
-			isWithinHostUserDataRoots(path.path, hostUserDataRoots);
+			isWithinHostRoots(path.path, hostUserDataRoots);
 
 		if (
 			!isEscalated &&

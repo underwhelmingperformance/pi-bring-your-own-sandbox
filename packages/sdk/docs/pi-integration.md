@@ -70,10 +70,12 @@ under the [toolchain roots][toolchain-roots] and the provider's configured read
 roots. [Credential exclusions][credentials] take precedence. Access to a
 specific credential path requires approval for each call.
 
-Eligible read grants can apply to the current call, the session or **Always**.
-The prompt defaults to the current call. **Always** records the path in the
-provider's configured read roots. Directory grants keep credential exclusions.
-Write and network grants apply only to the current call.
+The prompt defaults to the current call. Eligible read grants can also apply to
+the Pi session. **Always** is available for host user data reads under a
+configured read-only policy when the provider supplies a settings writer. BYOS
+reports the saved roots and settings file after a successful write. Directory
+grants keep credential exclusions. Write and network grants apply only to the
+current call.
 
 [credentials]: specification.md#credential-locations
 [escalation]: specification.md#escalation

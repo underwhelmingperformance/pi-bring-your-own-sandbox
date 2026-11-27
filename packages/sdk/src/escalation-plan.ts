@@ -21,6 +21,10 @@ export interface EscalationPlan {
 	readonly readApproval?: {
 		readonly paths: readonly string[];
 		readonly coversRequest: boolean;
+		readonly persistence?: {
+			readonly paths: readonly string[];
+			readonly save: (signal: AbortSignal) => Promise<string>;
+		};
 	};
 	readonly assertCurrent: (context: SandboxContext) => void;
 	readonly open: (

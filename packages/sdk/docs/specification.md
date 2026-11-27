@@ -450,10 +450,16 @@ dismissal, cancellation or expiry prevents dispatch.
 
 ### Read grant duration
 
-Approval defaults to the current call. For an eligible read grant, the user can
-choose the session or choose **Always**. A session grant expires with that Pi
-session. **Always** adds the path to the provider's configured read roots so
-later sessions can read it under the provider's ordinary policy.
+Approval defaults to the current call. The user can remember eligible reads for
+the Pi session. **Always** is available for host user data reads when the
+configured policy is read-only and the provider supplies a settings writer.
+Under a read-write policy, saving the root would also allow writes. Under a
+denied policy, the saved root would grant no access.
+
+**Always** saves the approved paths to the provider's global `readRoots` setting
+so later sessions can read them under the ordinary policy. BYOS reports the
+paths and settings file after saving. The current call can run after the write
+succeeds.
 
 Access to a specific credential path requires approval for that call. Directory
 grants keep credential exclusions at every duration. Write and network grants

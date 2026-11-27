@@ -914,6 +914,27 @@ export interface SandboxProviderRegistration<Input> {
 		context: SandboxConfigContext,
 		schema: typeof sharedSettingsSchema
 	) => SandboxProviderConfig<Input> | Promise<SandboxProviderConfig<Input>>;
+	/**
+	Save an approved read grant using the same global settings file as the
+	configuration resolver.
+	*/
+	readonly persistReadRoot?: (
+		context: SandboxReadRootPersistence,
+		schema: typeof sharedSettingsSchema
+	) => Promise<void>;
+}
+
+/**
+An approved set of canonical host paths. Call and await `updateSettings`
+once. The SDK rereads the selected file and validates the old and new values
+before replacing it.
+*/
+export interface SandboxReadRootPersistence {
+	readonly paths: readonly string[];
+	readonly updateSettings: (
+		filename: string,
+		isValid: (settings: unknown) => boolean
+	) => Promise<void>;
 }
 
 /**

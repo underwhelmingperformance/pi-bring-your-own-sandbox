@@ -86,6 +86,7 @@ import type { ProtocolIdentity } from './protocol-envelope.js';
 import { checkDemand } from './protocol-version.js';
 import type { DiagnosticStore } from './provider-diagnostics.js';
 import { ProviderDiagnostics } from './provider-diagnostics.js';
+import type { SaveReadRoots } from './read-root-persistence.js';
 import { acquireOptionsSchema } from './request-schemas.js';
 import { copyOptions, copySource, rethrowCopyError } from './sandbox-copy.js';
 import { callable, checker } from './schemas.js';
@@ -159,6 +160,7 @@ export class SandboxGeneration {
 	#selection: ProviderSelection | undefined;
 	#allowsEscalation = true;
 	#hostUserDataRoots: readonly string[] = Object.freeze([]);
+	#saveReadRoots: SaveReadRoots | undefined;
 	#configurationSource: 'extension' | undefined;
 	#prepared: Promise<Prepared> | undefined;
 	readonly #slots = new Map<string, BackendSlot>();
@@ -291,6 +293,7 @@ export class SandboxGeneration {
 			this.#cleanup = resolveCleanupBudgets(config.cleanup);
 			this.#hostUserDataRoots =
 				config.hostUserDataRoots ?? this.#hostUserDataRoots;
+			this.#saveReadRoots = config.saveReadRoots;
 
 			if (this.#lifetime.signal.aborted) {
 				throw new SandboxSessionClosingError({ operation: 'configure' });
@@ -1193,6 +1196,11 @@ export class SandboxGeneration {
 		const readApprovalPaths = Object.freeze(
 			eligibleReads.map((entry) => entry.path)
 		);
+		const saveReadRoots = this.#saveReadRoots;
+		const userDataReads = eligibleReads
+			.filter(({ location }) => location === 'host-user-data')
+			.map(({ path }) => path);
+		const pathsToSave = Object.freeze(userDataReads);
 		let isUsed = false;
 
 		return Object.freeze<EscalationPlan>({
@@ -1213,7 +1221,15 @@ export class SandboxGeneration {
 				readApproval: Object.freeze({
 					paths: readApprovalPaths,
 					coversRequest:
-						!hasAccessProperties && eligibleReads.length === paths.length
+						!hasAccessProperties && eligibleReads.length === paths.length,
+					...(saveReadRoots !== undefined &&
+						pathsToSave.length > 0 && {
+							persistence: Object.freeze({
+								paths: pathsToSave,
+								save: (signal: AbortSignal) =>
+									saveReadRoots(pathsToSave, this.#session.workspace, signal)
+							})
+						})
 				})
 			}),
 			assertCurrent,

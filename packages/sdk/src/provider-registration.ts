@@ -1,7 +1,8 @@
 import type {
 	SandboxHost,
 	SandboxProvider,
-	SandboxProviderRegistration
+	SandboxProviderRegistration,
+	SandboxReadRootPersistence
 } from './contracts.js';
 import { bindFactory } from './default-broker.js';
 import {
@@ -109,6 +110,16 @@ export function registerSandboxProvider<Config, Input = Config>(
 		});
 	}
 
+	const persistReadRoot = options?.persistReadRoot;
+
+	if (persistReadRoot !== undefined && typeof persistReadRoot !== 'function') {
+		throw new InvalidSandboxRequestError({
+			operation: 'configure',
+			extensionSource,
+			detail: { kind: 'request', field: 'persistReadRoot' }
+		});
+	}
+
 	bindFactory(pi, extensionSource);
 
 	const { id } = provider;
@@ -171,6 +182,10 @@ export function registerSandboxProvider<Config, Input = Config>(
 	localRuntimeBindings(pi).providers.push(
 		Object.freeze({
 			...service,
+			...(persistReadRoot !== undefined && {
+				persistReadRoot: (context: SandboxReadRootPersistence) =>
+					persistReadRoot(context, sharedSettingsSchema)
+			}),
 			resolve: (context: import('./contracts.js').SandboxConfigContext) =>
 				configure === undefined
 					? { configuration: {} }

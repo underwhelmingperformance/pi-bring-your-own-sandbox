@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
 	cp,
 	mkdtemp,
@@ -14,6 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { InlineExtension } from '@earendil-works/pi-coding-agent';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 
+import release from '../../../test-support/fixtures/byos-release-1.0.json' with { type: 'json' };
 import {
 	add,
 	packedArchive,
@@ -106,6 +108,37 @@ function installedPackages(): readonly [string, string] {
 
 	return installed;
 }
+
+it.skipIf(!isPackageRun || process.env['BYOS_RELEASE_ARTIFACTS'] === undefined)(
+	'verifies the retained archive checksums and installed build identity',
+	async () => {
+		const [root] = installedPackages();
+		const directory = process.env['BYOS_RELEASE_ARTIFACTS'];
+
+		if (directory === undefined) {
+			throw new Error('Supply the directory of the retained release archives.');
+		}
+
+		const checksums = await Promise.all(
+			Object.keys(release.archives).map(async (filename) => {
+				const bytes = await readFile(path.join(directory, filename));
+
+				return [
+					filename,
+					createHash('sha256').update(bytes).digest('hex')
+				] as const;
+			})
+		);
+		const build: unknown = JSON.parse(
+			await readFile(path.join(root, 'dist/protocol-build.json'), 'utf8')
+		);
+
+		expect({ archives: Object.fromEntries(checksums), build }).toStrictEqual({
+			archives: release.archives,
+			build: release.sdkBuild
+		});
+	}
+);
 
 it.skipIf(!isPackageRun)(
 	'matches the frozen registry in the installed release',

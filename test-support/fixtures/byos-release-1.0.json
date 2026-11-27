@@ -1,0 +1,23 @@
+{
+	"sourceCommit": "0df8fdc0c135fe014e7e11c5d6d8a903d680b86f",
+	"toolchain": {
+		"node": "26.13.1",
+		"pnpm": "12.18.0",
+		"typescript": "7.0.2",
+		"platform": "darwin",
+		"architecture": "arm64"
+	},
+	"sdkBuild": {
+		"packageVersion": "1.0.0",
+		"buildId": "1.0.0+3ed09d4292ec8dbe82d660d17fe8ec2426009cc140e50ab319a93296fea1cbdd"
+	},
+	"protocol": {
+		"major": 1,
+		"featureLevel": 0,
+		"snapshotSha256": "edca4cb0633cf548f3fe8709825eb3e6387cccf40e887848be7fac112209dbf3"
+	},
+	"archives": {
+		"pi-bring-your-own-sandbox-1.0.0.tgz": "3087dc97e49fe2a8919b4ebf3277b23cd4ebb598b84c356b7604b188019d1d82",
+		"pi-byos-provider-docker-1.0.0.tgz": "60b093cae8c7d85fe137998b9d96a34a04f21ddc31ebf352381a2913427cc7e8"
+	}
+}

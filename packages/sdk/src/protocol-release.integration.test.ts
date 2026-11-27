@@ -5,6 +5,8 @@ import { promisify } from 'node:util';
 
 import { expect, it } from 'vitest';
 
+import release from '../../../test-support/fixtures/byos-release-1.0.json' with { type: 'json' };
+
 import { PROTOCOL_FEATURE_LEVEL, PROTOCOL_MAJOR } from './protocol-envelope.js';
 import { isRecord } from './validation.js';
 
@@ -47,9 +49,9 @@ it('retains the frozen protocol 1.0 snapshot', async () => {
 		featureLevel: PROTOCOL_FEATURE_LEVEL,
 		digest
 	}).toStrictEqual({
-		major: 1,
-		featureLevel: 0,
-		digest: 'edca4cb0633cf548f3fe8709825eb3e6387cccf40e887848be7fac112209dbf3'
+		major: release.protocol.major,
+		featureLevel: release.protocol.featureLevel,
+		digest: release.protocol.snapshotSha256
 	});
 });
 

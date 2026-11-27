@@ -19,11 +19,13 @@ enforces it.
 
 ## 1. The system enforces the rules
 
-Types, runtime checks, conformance tests and repository checks enforce the
-contract. The [rule for adding APIs][api-additions] is the exception. Review
-checks whether a proposed API has a known use case. For the rest of the
-contract, make the wrong thing impossible to write where possible and detect it
-automatically where necessary.
+Every rule in the contract is enforced by code: by the types, by a runtime
+check, by the conformance suite, or by a repository check such as lint. A rule
+that is only written down is a defect, so enforce it or delete it. Where
+possible, make the wrong thing impossible to write. Otherwise, detect it
+automatically. Rely on review only when neither is possible.
+
+Review enforces the single exception, the [rule for adding APIs][api-additions].
 
 [api-additions]: #11-a-small-surface-split-by-audience
 

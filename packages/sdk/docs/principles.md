@@ -101,25 +101,25 @@ Enforced by:
 [negotiation]: specification.md#configuration-and-negotiation
 [escalation]: #escalation
 
-## 4. A requirement changes only what it is about
+## 4. Each requirement constrains one property
 
-Asking for a restriction or a need changes only that property of the sandbox.
-Setting `network: 'prevented'`, for example, removes network access and nothing
-else. Anything else that a consumer depends on, such as working directly on the
-user's files, is a need of its own.
+A restriction or need constrains its own property. A consumer must state its
+requirements for every property that affects the operation's correctness.
+Omitted properties take their values from the highest-ranked eligible profile.
+For example, a network restriction can exclude the only profile that permits
+host user data reads. If the consumer omits a need for those reads, the broker
+can select an offline profile that denies them.
 
-When one requirement quietly changes something unrelated, the consumer receives
-a sandbox that differs from what it expects, and no error tells it so. A
-provider that can share the user's files only while the network is enabled must
-therefore reject a request for both. It must not hand out a private copy
-instead, because the consumer would then act on files that the user and the
-model cannot see.
+Acquisition of the live checkout requires a shared workspace. If every shared
+profile requires network access, an acquisition with `network: 'prevented'`
+fails. A private copy requires a separate copy request because changes to the
+copy stay outside the live checkout.
 
 Enforced by:
 
-- a mapping from each restriction and need to exactly one policy setting;
-- conformance cases that open a sandbox with and without each requirement and
-  check that only the related property differs.
+- a mapping from each restriction and need to one policy setting
+- conformance cases that check explicit needs and restrictions
+- a correlated-profile case that checks the value of a narrowed omitted property
 
 ## 5. BYOS knows whether a request can work before it starts anything
 

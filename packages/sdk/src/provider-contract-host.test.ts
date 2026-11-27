@@ -30,8 +30,18 @@ const provider: SandboxProvider<undefined> = {
 	validateConfig: () => {
 		return;
 	},
-	open: (request, context) =>
-		openPassthrough(request.hostWorkspace, context, hostProfile, request.paths)
+	async open(request, context) {
+		const backend = await openPassthrough(
+			request.hostWorkspace,
+			context,
+			hostProfile,
+			request.paths
+		);
+
+		return request.hostUserDataRoots === undefined
+			? backend
+			: { ...backend, hostUserDataRoots: request.hostUserDataRoots };
+	}
 };
 
 defineSandboxProviderTests({

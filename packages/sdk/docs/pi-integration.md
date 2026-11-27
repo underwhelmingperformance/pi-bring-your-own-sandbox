@@ -64,11 +64,11 @@ integration then uses the recorded verdict. The model sees effective
 restrictions from the policy and path grants. Provider `violations` appear
 separately from command output.
 
-The system prompt and `/byos status` describe the effective host user-data
-policy. The default permits reads under [toolchain roots][toolchain-roots] and
-the provider's configured read roots. [Credential exclusions][credentials] take
-precedence. Access to a specific credential path requires approval for each
-call.
+The system prompt describes the effective host user data policy and roots.
+`/byos status` shows the policy mode. Read-only and read-write access apply
+under the [toolchain roots][toolchain-roots] and the provider's configured read
+roots. [Credential exclusions][credentials] take precedence. Access to a
+specific credential path requires approval for each call.
 
 Eligible read grants can apply to the current call, the session or **Always**.
 The prompt defaults to the current call. **Always** records the path in the

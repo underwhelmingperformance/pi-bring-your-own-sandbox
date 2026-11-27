@@ -1,4 +1,4 @@
-import { realpath, writeFile } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -27,6 +27,8 @@ import type { Profile } from './policy-model.js';
 import { defaultPolicy } from './policy-model.js';
 import { verifyCredentialExclusion } from './provider-credential-suite.js';
 import { registerSandboxProvider } from './provider-registration.js';
+import type { FixtureAttempt } from './provider-test-broker.js';
+import { fixtureBroker } from './provider-test-broker.js';
 
 const source = '<inline:policy-provider>';
 const consumer = '<inline:policy-consumer>';
@@ -76,6 +78,12 @@ async function fixture(
 										description: 'In-memory fixture.'
 									}
 								});
+
+							if (request.hostUserDataRoots !== undefined) {
+								Object.assign(backend, {
+									hostUserDataRoots: request.hostUserDataRoots
+								});
+							}
 
 							return Promise.resolve(backend);
 						}
@@ -327,7 +335,12 @@ it.each([
 			provider: {
 				...original.provider,
 				profiles: { open: [backend.profile], copy: [] },
-				open: () => Promise.resolve(backend)
+				open: ({ hostUserDataRoots }) =>
+					Promise.resolve(
+						hostUserDataRoots === undefined
+							? backend
+							: Object.assign(backend, { hostUserDataRoots })
+					)
 			},
 			async createFixture(selection) {
 				const selected = await original.createFixture(selection);
@@ -594,6 +607,171 @@ it.each([true, false])(
 			});
 		} finally {
 			await generation.close();
+		}
+	}
+);
+
+it.each([
+	{ policyMode: 'implicit', access: 'read', isConfigured: false },
+	{ policyMode: 'read-only', access: 'read', isConfigured: false },
+	{ policyMode: 'read-write', access: 'write', isConfigured: false },
+	{ policyMode: 'read-write', access: 'write', isConfigured: true }
+] as const)(
+	'scopes $access with $policyMode host user data (configured root: $isConfigured)',
+	async ({ policyMode, access, isConfigured }) => {
+		const allowedDirectory = await mkdtemp(path.join(tmpdir(), 'byos-root-'));
+		const checkout = await mkdtemp(path.join(tmpdir(), 'byos-workspace-'));
+		const root = await realpath(allowedDirectory);
+		const filename = path.join(root, 'file');
+		const selected: Profile = {
+			...profile,
+			policy: {
+				...profile.policy,
+				hostUserData: policyMode === 'implicit' ? 'read-only' : policyMode
+			}
+		};
+		const attempt: FixtureAttempt = {};
+		const rootsSeen: boolean[] = [];
+		const settings = {
+			...(policyMode !== 'implicit' && { policy: selected.policy }),
+			...(isConfigured && { readRoots: [allowedDirectory] })
+		};
+		const runtime = await fixtureBroker(
+			{
+				id: 'fixture.roots',
+				label: 'Read roots fixture',
+				profiles: { open: [selected], copy: [] },
+				validateConfig: () => ({}),
+				open(request) {
+					rootsSeen.push(request.hostUserDataRoots?.includes(root) === true);
+
+					const backend = new MemoryBackend('exec');
+
+					return Promise.resolve(
+						Object.assign(backend, {
+							policy: selected.policy,
+							workspace: {
+								...backend.workspace,
+								hostUserDataRoot: '/target-home'
+							},
+							...(request.hostUserDataRoots !== undefined && {
+								hostUserDataRoots: request.hostUserDataRoots
+							}),
+							grantedPaths: [
+								{ hostPath: filename, targetPath: filename, kind: access }
+							]
+						})
+					);
+				}
+			},
+			checkout,
+			{},
+			settings,
+			attempt
+		);
+
+		try {
+			const options = { access: { paths: { [access]: [filename] } } };
+			const result = await runtime.negotiate(options);
+
+			if (!isConfigured) {
+				expect({ result, attempt, rootsSeen }).toMatchObject({
+					result: {
+						ok: false,
+						error: {
+							name: 'UnsupportedSandboxPolicyError',
+							detail: { kind: 'path', access, path: filename, reason: 'limit' }
+						}
+					},
+					attempt: {},
+					rootsSeen: []
+				});
+
+				return;
+			}
+
+			const sandbox = await runtime.acquire(options, 'open');
+
+			expect({ result, rootsSeen, grants: sandbox.grantedPaths }).toStrictEqual(
+				{
+					result: { ok: true, profile: selected },
+					rootsSeen: [true],
+					grants: [{ kind: access, hostPath: filename, targetPath: filename }]
+				}
+			);
+		} finally {
+			await runtime.close();
+			await rm(allowedDirectory, { recursive: true, force: true });
+			await rm(checkout, { recursive: true, force: true });
+		}
+	}
+);
+
+it.each([
+	{ mode: 'open', echo: 'missing' },
+	{ mode: 'copy', echo: 'different' }
+] as const)(
+	'disposes the $mode backend whose host user data roots echo is $echo',
+	async ({ mode, echo }) => {
+		const openProfile: Profile = {
+			...profile,
+			capabilities: [...profile.capabilities, 'copy']
+		};
+		const copyProfile: Profile = {
+			...openProfile,
+			policy: { ...openProfile.policy, hostWorkspaceWrites: false }
+		};
+		const selected = mode === 'open' ? openProfile : copyProfile;
+		const disposals: string[] = [];
+		const allocate = () => {
+			const backend = new MemoryBackend('exec');
+
+			return Promise.resolve(
+				Object.assign(backend, {
+					policy: selected.policy,
+					capabilities: {
+						...backend.capabilities,
+						operations: selected.capabilities
+					},
+					workspace: {
+						...backend.workspace,
+						relationship:
+							mode === 'copy' ? ('copied' as const) : ('shared' as const),
+						hostUserDataRoot: '/target-home'
+					},
+					...(echo === 'different' && { hostUserDataRoots: ['/different'] }),
+					dispose() {
+						disposals.push(mode);
+
+						return Promise.resolve();
+					}
+				})
+			);
+		};
+
+		const runtime = await fixtureBroker(
+			{
+				id: 'fixture.echo',
+				label: 'Read roots echo fixture',
+				profiles: { open: [openProfile], copy: [copyProfile] },
+				validateConfig: () => ({}),
+				open: allocate,
+				copy: allocate
+			},
+			await realpath(tmpdir()),
+			{},
+			{},
+			{}
+		);
+
+		try {
+			await expect(runtime.acquire({}, mode)).rejects.toMatchObject({
+				name: 'InvalidSandboxDeclarationError',
+				detail: { kind: 'declaration', field: 'hostUserDataRoots' }
+			});
+			expect(disposals).toStrictEqual([mode]);
+		} finally {
+			await runtime.close();
 		}
 	}
 );

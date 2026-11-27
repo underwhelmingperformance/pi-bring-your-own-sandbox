@@ -19,6 +19,7 @@ import {
 import type { EscalationRequest } from './escalation-ledger.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { shellBackend } from './fixtures/shell-backend.js';
+import { resolveHostUserDataRoots } from './path-grants.js';
 import sandboxTools from './pi-tools.js';
 import { unrestrictedPolicy } from './policy-model.js';
 import { registerSandboxProvider } from './provider-registration.js';
@@ -36,6 +37,11 @@ it.each([
 	{
 		route: 'reviewed',
 		behaviour: 'grants a credential path after recording explicit approval'
+	},
+	{
+		route: 'confirmation',
+		behaviour:
+			'shows the effective roots and permits only one-call credential approval'
 	}
 ] as const)('$behaviour', async ({ route }) => {
 	const temporaryHome = await mkdtemp(path.join(tmpdir(), 'byos-home-'));
@@ -52,6 +58,7 @@ it.each([
 	};
 	const opened: { paths: PathGrants | undefined; ledger: unknown[] }[] = [];
 	const refusals: unknown[] = [];
+	const confirmations: { roots: boolean; choices: readonly string[] }[] = [];
 	const command = 'printf fixture';
 	const model = new ScriptedModel([
 		{
@@ -69,6 +76,10 @@ it.each([
 
 	try {
 		vi.stubEnv('HOME', home);
+
+		const roots = await resolveHostUserDataRoots([home]);
+		const scopeDescription = 'host user data roots ' + JSON.stringify(roots);
+
 		await withPiRuntime(
 			[
 				{
@@ -91,6 +102,9 @@ it.each([
 									return Promise.resolve({
 										...backend,
 										profile: request.profile,
+										...(request.hostUserDataRoots !== undefined && {
+											hostUserDataRoots: request.hostUserDataRoots
+										}),
 										workspace: {
 											...backend.workspace,
 											home: targetHome,
@@ -110,7 +124,11 @@ it.each([
 							{
 								configure: () => ({
 									configuration: {},
-									settings: { policy: profile.policy, allowEscalation: true }
+									settings: {
+										policy: profile.policy,
+										allowEscalation: true,
+										readRoots: [home]
+									}
 								})
 							}
 						);
@@ -145,6 +163,10 @@ it.each([
 								}
 							});
 
+							return;
+						}
+
+						if (route !== 'reviewed') {
 							return;
 						}
 
@@ -214,10 +236,13 @@ it.each([
 				const escalation = {
 					kind: 'escalation',
 					outcome: 'allowed',
-					decider: {
-						kind: 'permission-extension',
-						extension: '<inline:credential-review>'
-					},
+					decider:
+						route === 'reviewed'
+							? {
+									kind: 'permission-extension',
+									extension: '<inline:credential-review>'
+								}
+							: { kind: 'confirmation' },
 					request: {
 						toolCallId: 'credential-call',
 						command,
@@ -228,7 +253,7 @@ it.each([
 							providerId,
 							policy: profile.policy,
 							effectiveRestrictions: expect.stringContaining(
-								'host user data read-only'
+								scopeDescription
 							) as unknown
 						}
 					}
@@ -238,10 +263,15 @@ it.each([
 					errors,
 					opened,
 					requests,
+					confirmations,
 					ledger: readLedger()
 				}).toStrictEqual({
 					errors: [],
 					opened: [{ paths: { read: [hostPath] }, ledger: [escalation] }],
+					confirmations:
+						route === 'confirmation'
+							? [{ roots: true, choices: ['Deny', 'Allow'] }]
+							: [],
 					requests: [
 						{
 							kind: 'shell',
@@ -252,6 +282,16 @@ it.each([
 					],
 					ledger: [escalation]
 				});
+			},
+			{
+				select(text, choices) {
+					confirmations.push({
+						roots: text.includes(scopeDescription),
+						choices
+					});
+
+					return Promise.resolve('Allow');
+				}
 			}
 		);
 	} finally {

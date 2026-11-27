@@ -22,6 +22,7 @@ import { SandboxCancelledError, SandboxTransportError } from './errors.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfile, fixtureProfiles } from './fixtures/profile-fixture.js';
 import { shellBackend } from './fixtures/shell-backend.js';
+import { resolveHostUserDataRoots } from './path-grants.js';
 import { createShellOperations } from './pi-shell-operations.js';
 import sandboxTools, { registerShellOnlyTools } from './pi-tools.js';
 import { unrestrictedPolicy } from './policy-model.js';
@@ -784,7 +785,7 @@ it.each([
 	},
 	{
 		route: 'shells',
-		profile: 'unrestricted',
+		profile: 'read-write',
 		allowEscalation: true,
 		hasForcedPrompt: false
 	}
@@ -793,7 +794,8 @@ it.each([
 	async ({ route, profile, allowEscalation, hasForcedPrompt }) => {
 		const { backend } = shellBackend();
 		const policy =
-			profile === 'unrestricted' ? unrestrictedPolicy : backend.profile.policy;
+			profile === 'read-write' ? unrestrictedPolicy : backend.profile.policy;
+		const readRoots = ['~/.byos-prompt-fixture'];
 		const selectedProfile = { ...backend.profile, policy };
 		const open = vi.fn(() =>
 			Promise.resolve({ ...backend, profile: selectedProfile })
@@ -824,7 +826,8 @@ it.each([
 								configuration: {},
 								settings: {
 									policy: { ...policy, network: true },
-									allowEscalation
+									allowEscalation,
+									...(profile === 'read-write' && { readRoots })
 								}
 							})
 						}
@@ -870,8 +873,10 @@ it.each([
 					restricted:
 						'Host workspace writes allowed, network denied, host user data denied, host system files read-only',
 					host: 'none',
-					unrestricted:
-						'Host workspace writes allowed, network allowed, host user data read-write (credential locations excluded), host system files read-write'
+					'read-write':
+						'Host workspace writes allowed, network allowed, host user data read-write (credential locations excluded), host system files read-write, ' +
+						'host user data roots ' +
+						JSON.stringify(await resolveHostUserDataRoots(readRoots))
 				}[profile];
 				const escalation = allowEscalation
 					? 'Use escalate with a justification to request extra access for one command. You can request hostWorkspaceWrites, network, hostUserData, hostSystemFiles, or specific read and write paths. BYOS selects the destination before the decision. The host has no sandbox restrictions.'

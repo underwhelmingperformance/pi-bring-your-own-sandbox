@@ -32,11 +32,12 @@ async function describeShellPolicy(
 		}
 
 		const config = await shellSettings(pi).read(context);
-		const restrictions = describeRestrictions(
-			result.profile.policy,
-			undefined,
-			config.providerId === passthroughProvider.id
-		);
+		const restrictions = describeRestrictions(result.profile.policy, {
+			isUnrestrictedHost: config.providerId === passthroughProvider.id,
+			...(config.hostUserDataRoots !== undefined && {
+				hostUserDataRoots: config.hostUserDataRoots
+			})
+		});
 		const escalation = config.allowsEscalation
 			? escalationGuidance
 			: 'allowEscalation is false, so BYOS will refuse escalations.';

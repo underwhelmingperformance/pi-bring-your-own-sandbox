@@ -16,6 +16,7 @@ export interface SandboxConfig {
 	readonly cleanup?: Partial<SandboxCleanupBudgets>;
 	readonly selection: ProviderSelection;
 	readonly allowEscalation?: boolean;
+	readonly hostUserDataRoots?: readonly string[];
 	readonly providerConfig: unknown;
 	readonly providerConfigSource?: 'extension';
 	readonly policySource?: 'extension';

@@ -77,6 +77,9 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 
 				policyDescription: memory.policyDescription,
 				recovery: memory.recovery,
+				...(request.hostUserDataRoots !== undefined && {
+					hostUserDataRoots: request.hostUserDataRoots
+				}),
 				...(grantedPaths.length > 0 && { grantedPaths }),
 				...(memory.files !== undefined && { files: memory.files }),
 				profile: request.profile,

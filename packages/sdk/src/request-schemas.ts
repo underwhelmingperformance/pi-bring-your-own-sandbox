@@ -27,6 +27,7 @@ export const sharedSettingsSchema = Type.Object(
 		policy: Type.Optional(accessPolicySchema),
 		allowEscalation: Type.Optional(Type.Boolean({ default: true })),
 		userShell: Type.Optional(shellSchema),
+		readRoots: Type.Optional(denseArray(targetPathSchema)),
 		cleanup: Type.Optional(cleanupSelectionSchema)
 	},
 	{ additionalProperties: false }

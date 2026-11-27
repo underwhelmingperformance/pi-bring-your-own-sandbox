@@ -5,10 +5,18 @@ import path from 'node:path';
 import { resolveCredentialLocations } from './credential-locations.js';
 import { UnsupportedSandboxPolicyError } from './errors.js';
 import { hostSystemRoots } from './host-system-roots.js';
+import { hostToolchainRoots } from './host-toolchain-roots.js';
 import type { PathGrants } from './policy-model.js';
 import type { ResolvedPath } from './profile-negotiation.js';
 
 const darwinDataVolume = '/System/Volumes/Data';
+
+function comparisonPath(candidate: string, host = platform()): string {
+	// realpath preserves the Data volume spelling across APFS firmlinks.
+	return host === 'darwin' && candidate.startsWith(darwinDataVolume + '/')
+		? candidate.slice(darwinDataVolume.length)
+		: candidate;
+}
 
 function isWithin(root: string, candidate: string): boolean {
 	const relative = path.relative(root, candidate);
@@ -40,15 +48,51 @@ async function canonicalPath(candidate: string): Promise<string> {
 	}
 }
 
-function hostPath(workspace: string, input: string): string {
-	if (input === '~') {
-		return homedir();
-	}
-
-	return input.startsWith('~/') ||
+function isHomeRelative(input: string): boolean {
+	return (
+		input === '~' ||
+		input.startsWith('~/') ||
 		(path.sep === '\\' && input.startsWith('~\\'))
+	);
+}
+
+function hostPath(workspace: string, input: string): string {
+	return isHomeRelative(input)
 		? path.resolve(homedir(), input.slice(2))
 		: path.resolve(workspace, input);
+}
+
+export async function resolveHostUserDataRoots(
+	settings: readonly string[] = []
+): Promise<readonly string[]> {
+	const host = platform();
+	const builtIn =
+		host === 'darwin' || host === 'linux' ? hostToolchainRoots[host] : [];
+
+	const roots = await Promise.all(
+		[...builtIn, ...settings].map(async (root) => {
+			if (isHomeRelative(root)) {
+				return canonicalPath(path.resolve(homedir(), root.slice(2)));
+			}
+
+			if (!path.isAbsolute(root)) {
+				throw new TypeError('Read roots must be absolute or start with ~/.');
+			}
+
+			return canonicalPath(path.normalize(root));
+		})
+	);
+
+	return Object.freeze([...new Set(roots)]);
+}
+
+export function isWithinHostUserDataRoots(
+	candidate: string,
+	roots: readonly string[]
+): boolean {
+	const compared = comparisonPath(candidate);
+
+	return roots.some((root) => isWithin(comparisonPath(root), compared));
 }
 
 export async function resolvePathGrants(
@@ -62,23 +106,20 @@ export async function resolvePathGrants(
 	const host = platform();
 	const systemRoots =
 		host === 'darwin' || host === 'linux' ? hostSystemRoots[host] : [];
-	// realpath preserves the Data volume spelling across APFS firmlinks.
-	const comparisonPath = (candidate: string) =>
-		host === 'darwin' && candidate.startsWith(darwinDataVolume + '/')
-			? candidate.slice(darwinDataVolume.length)
-			: candidate;
-	const root = comparisonPath(await canonicalPath(workspace));
+	const root = comparisonPath(await canonicalPath(workspace), host);
 	const excluded = resolveCredentialLocations();
 	const excludedResolved = await Promise.all(
 		excluded.map(async (location) => {
 			try {
-				return comparisonPath(await canonicalPath(location));
+				return comparisonPath(await canonicalPath(location), host);
 			} catch {
-				return comparisonPath(location);
+				return comparisonPath(location, host);
 			}
 		})
 	);
-	const excludedLexical = excluded.map((location) => comparisonPath(location));
+	const excludedLexical = excluded.map((location) =>
+		comparisonPath(location, host)
+	);
 	const resolved: ResolvedPath[] = [];
 
 	for (const kind of ['read', 'write'] as const) {
@@ -90,8 +131,8 @@ export async function resolvePathGrants(
 
 			try {
 				const candidate = await canonicalPath(absolute);
-				const lexical = comparisonPath(absolute);
-				const canonical = comparisonPath(candidate);
+				const lexical = comparisonPath(absolute, host);
+				const canonical = comparisonPath(candidate, host);
 
 				paths.set(
 					candidate,
@@ -122,7 +163,7 @@ export async function resolvePathGrants(
 
 		for (const candidate of ordered) {
 			const isCredential = paths.get(candidate) === true;
-			const file = comparisonPath(candidate);
+			const file = comparisonPath(candidate, host);
 			const location = isWithin(root, file)
 				? 'workspace'
 				: systemRoots.some((directory) => isWithin(directory, file))

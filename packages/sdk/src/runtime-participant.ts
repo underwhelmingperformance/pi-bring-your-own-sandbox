@@ -25,6 +25,7 @@ export interface ShellSettings {
 	readonly read: (context: SandboxContext) => Promise<{
 		readonly allowsEscalation: boolean;
 		readonly providerId: string;
+		readonly hostUserDataRoots?: readonly string[];
 	}>;
 }
 

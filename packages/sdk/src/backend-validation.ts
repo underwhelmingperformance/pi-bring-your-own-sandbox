@@ -45,7 +45,8 @@ export function validateBackend(
 	value: unknown,
 	provider: Pick<ProviderServiceV1, 'id' | 'protocol'>,
 	required: Profile,
-	mode: ProfileMode = 'open'
+	mode: ProfileMode = 'open',
+	hostUserDataRoots?: readonly string[]
 ): SandboxBackend {
 	const extensionSource = provider.protocol?.extensionSource;
 	const identity = {
@@ -85,6 +86,21 @@ export function validateBackend(
 				kind: 'declaration',
 				field: hasWrongWorkspace ? 'workspace.relationship' : 'profile'
 			}
+		});
+	}
+
+	const enforced = value.hostUserDataRoots;
+	const areRootsEqual =
+		hostUserDataRoots === undefined
+			? enforced === undefined
+			: enforced?.length === hostUserDataRoots.length &&
+				hostUserDataRoots.every((root) => enforced.includes(root));
+
+	if (!areRootsEqual) {
+		throw new InvalidSandboxDeclarationError({
+			...identity,
+			backendId: value.id,
+			detail: { kind: 'declaration', field: 'hostUserDataRoots' }
 		});
 	}
 

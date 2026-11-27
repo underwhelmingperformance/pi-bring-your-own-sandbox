@@ -194,7 +194,10 @@ export function bindFactory(pi: SandboxHost, extensionSource: string): void {
 
 				return Object.freeze({
 					allowsEscalation: config.allowEscalation ?? true,
-					providerId: config.selection.providerId
+					providerId: config.selection.providerId,
+					...(config.hostUserDataRoots !== undefined && {
+						hostUserDataRoots: config.hostUserDataRoots
+					})
 				});
 			}
 		});

@@ -158,6 +158,7 @@ export class SandboxGeneration {
 	#providerInfos: readonly ProviderInfo[] = [];
 	#selection: ProviderSelection | undefined;
 	#allowsEscalation = true;
+	#hostUserDataRoots: readonly string[] = Object.freeze([]);
 	#configurationSource: 'extension' | undefined;
 	#prepared: Promise<Prepared> | undefined;
 	readonly #slots = new Map<string, BackendSlot>();
@@ -288,6 +289,8 @@ export class SandboxGeneration {
 
 			this.#allowsEscalation = config.allowEscalation ?? true;
 			this.#cleanup = resolveCleanupBudgets(config.cleanup);
+			this.#hostUserDataRoots =
+				config.hostUserDataRoots ?? this.#hostUserDataRoots;
 
 			if (this.#lifetime.signal.aborted) {
 				throw new SandboxSessionClosingError({ operation: 'configure' });
@@ -429,6 +432,11 @@ export class SandboxGeneration {
 		let isOpening = true;
 		let candidate: unknown;
 		const paths = requestedPathGrants(slot.paths);
+		const hostUserDataRoots =
+			prepared.provider.id === passthroughProvider.id ||
+			slot.profile.policy.hostUserData === 'denied'
+				? undefined
+				: this.#hostUserDataRoots;
 
 		try {
 			candidate = await prepared.configured.open(
@@ -438,6 +446,7 @@ export class SandboxGeneration {
 					hostWorkspace: this.#session.workspace,
 					profile: slot.profile,
 					cleanupBudgets: this.#cleanup,
+					...(hostUserDataRoots !== undefined && { hostUserDataRoots }),
 					...(paths !== undefined && { paths })
 				},
 				{
@@ -492,7 +501,8 @@ export class SandboxGeneration {
 			candidate,
 			prepared.provider,
 			slot.profile,
-			this.#dependencies.mode ?? 'open'
+			this.#dependencies.mode ?? 'open',
+			hostUserDataRoots
 		);
 
 		await verifyGrantedPaths(
@@ -893,6 +903,7 @@ export class SandboxGeneration {
 			requirements: options,
 			mode,
 			paths,
+			hostUserDataRoots: this.#hostUserDataRoots,
 			isUnrestrictedHost: provider.id === passthroughProvider.id
 		});
 
@@ -991,6 +1002,7 @@ export class SandboxGeneration {
 						policy: profile.policy
 					},
 					providerConfig: {},
+					hostUserDataRoots: this.#hostUserDataRoots,
 					cleanup: this.#cleanup
 				})
 		});
@@ -1154,6 +1166,7 @@ export class SandboxGeneration {
 			limit,
 			requirements: options,
 			paths,
+			hostUserDataRoots: this.#hostUserDataRoots,
 			isEscalated: true
 		});
 		const isHost =
@@ -1189,7 +1202,10 @@ export class SandboxGeneration {
 						kind: 'provider',
 						providerId: destination.provider.id,
 						policy,
-						effectiveRestrictions: describeRestrictions(policy, grants)
+						effectiveRestrictions: describeRestrictions(policy, {
+							...(grants !== undefined && { paths: grants }),
+							hostUserDataRoots: this.#hostUserDataRoots
+						})
 					}),
 			label: destination.provider.label,
 			...(grants !== undefined && { paths: grants }),
@@ -1339,6 +1355,7 @@ export class SandboxGeneration {
 					Promise.resolve({
 						selection: { source: 'extension', providerId: provider.id, policy },
 						providerConfig: {},
+						hostUserDataRoots: this.#hostUserDataRoots,
 						cleanup: this.#cleanup
 					})
 			});

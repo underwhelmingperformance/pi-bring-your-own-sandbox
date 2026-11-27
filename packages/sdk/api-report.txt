@@ -292,6 +292,7 @@ export interface SandboxBackend {
     readonly workspace: SandboxWorkspace;
     readonly profile: Profile;
     readonly grantedPaths?: readonly GrantedPath[];
+    readonly hostUserDataRoots?: readonly string[];
     readonly policyDescription: string;
     readonly recovery: RecoveryDescriptor;
     readonly exec: (request: ProcessRequest, context: BackendProcessContext) => Promise<BackendProcessOutcome>;
@@ -399,6 +400,7 @@ export interface SandboxOpenRequest<Config = unknown> {
     readonly hostWorkspace: string;
     readonly profile: Profile;
     readonly paths?: PathGrants;
+    readonly hostUserDataRoots?: readonly string[];
     readonly cleanupBudgets?: SandboxCleanupBudgets;
     readonly configuration: Config;
 }
@@ -1645,6 +1647,7 @@ declare const sharedSettingsSchema: Type.TObject<{
         Type.TLiteral<"sh">,
         Type.TLiteral<"powershell">
     ]>>;
+    readRoots: Type.TOptional<Type.TRefine<Type.TArray<Type.TString>>>;
     cleanup: Type.TOptional<Type.TObject<{
         cancellationGraceMs: Type.TOptional<Type.TInteger>;
         disposalTimeoutMs: Type.TOptional<Type.TInteger>;

@@ -31,8 +31,15 @@ export interface EscalationPlan {
 
 export function describeRestrictions(
 	policy: SandboxPolicy,
-	paths?: PathGrants,
-	isUnrestrictedHost = false
+	{
+		paths,
+		hostUserDataRoots = [],
+		isUnrestrictedHost = false
+	}: {
+		readonly paths?: PathGrants;
+		readonly hostUserDataRoots?: readonly string[];
+		readonly isUnrestrictedHost?: boolean;
+	} = {}
 ): string {
 	if (isUnrestrictedHost) {
 		return 'none';
@@ -46,6 +53,9 @@ export function describeRestrictions(
 		`network ${policy.network ? 'allowed' : 'denied'}`,
 		`host user data ${describeHostUserData(policy.hostUserData, false)}`,
 		`host system files ${policy.hostSystemFiles}`,
+		...(policy.hostUserData === 'denied'
+			? []
+			: [`host user data roots ${JSON.stringify(hostUserDataRoots)}`]),
 		...(read === undefined || read.length === 0
 			? []
 			: [`read grants ${JSON.stringify(read)}`]),

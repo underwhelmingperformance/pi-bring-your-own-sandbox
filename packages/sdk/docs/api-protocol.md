@@ -222,6 +222,7 @@ interface SandboxOpenRequest<Config> {
   readonly configuration: Config;
   readonly profile: Profile;
   readonly paths?: PathGrants;
+  readonly hostUserDataRoots?: readonly string[];
 }
 
 type SandboxCopySource =
@@ -237,6 +238,7 @@ interface SandboxBackend {
   readonly id: string;
   readonly workspace: SandboxWorkspace;
   readonly profile: Profile;
+  readonly hostUserDataRoots?: readonly string[];
   readonly policyDescription: string;
   readonly recovery: RecoveryDescriptor;
   readonly grantedPaths?: readonly {
@@ -276,6 +278,12 @@ on the sandbox facade. The [specification][placement] defines where each grant
 appears in the target.
 
 [placement]: specification.md#escalation
+
+For a provider profile that permits host user data access, both allocation
+methods receive canonical host paths in `hostUserDataRoots`. The backend reports
+the same set of roots, including an empty set if supplied. It enforces the
+selected mode and credential exclusions within the roots. A backend for a
+profile that denies host user data omits the field.
 
 `reportRecovery` supplies one aggregate descriptor before allocation. Updates
 describe all outstanding allocations. The final backend's `recovery` matches the
@@ -341,6 +349,7 @@ interface SandboxSharedSettings {
   readonly userShell?: ShellDialect;
   readonly cleanup?: Partial<SandboxCleanupBudgets>;
   readonly allowEscalation?: boolean;
+  readonly readRoots?: string[];
 }
 ```
 
@@ -355,6 +364,7 @@ invalid key. It omits the raw settings from user-facing diagnostics.
 | `userShell`       | A target shell dialect. If omitted, use the provider's advertised default. A user-shell command fails if neither supplies a dialect.                                                              |
 | `cleanup`         | Optional `cancellationGraceMs` and `disposalTimeoutMs`. Each is an integer from 1 to 300,000. Omitted values use embedding-host defaults when supplied, then 5,000 ms and 10,000 ms respectively. |
 | `allowEscalation` | A boolean. Defaults to `true`.                                                                                                                                                                    |
+| `readRoots`       | Additional host user data roots. Paths must be absolute, `~` or start with `~/`. Defaults to an empty list.                                                                                       |
 
 The SDK's default `policy` has these values.
 
@@ -368,10 +378,10 @@ The SDK's default `policy` has these values.
 ```
 
 The [specification][settings-behaviour] describes how provider support can
-narrow these defaults and when passthrough applies. The default read scope
-includes the [built-in toolchain roots][toolchain-roots] and read roots in the
-provider's settings. A user who chooses **Always** for an eligible read grant
-adds that path to the configured read roots.
+narrow these defaults and when passthrough applies. Both permitted host user
+data modes use the [built-in toolchain roots][toolchain-roots] and the paths in
+`readRoots`. A user who chooses **Always** for an eligible read grant adds that
+path to `readRoots`.
 
 [settings-behaviour]: specification.md#default-configured-policy
 [toolchain-roots]: specification.md#default-toolchain-roots

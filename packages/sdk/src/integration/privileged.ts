@@ -20,7 +20,8 @@ import { createShellOperations } from '../pi-shell-operations.js';
 import { protocolAddress } from '../protocol-address.js';
 import {
 	localRuntimeBindings,
-	registerShellSettings
+	registerShellSettings,
+	shellSettings
 } from '../runtime-participant.js';
 import {
 	escalationJustificationSchema,
@@ -72,6 +73,7 @@ async function verifyPendingCall(
 	const feedback: { type: 'text'; text: string }[] = [];
 	const execution: { exit?: ProcessExit } = {};
 	let allocation: EscalatedSandbox | undefined;
+	let hostUserDataRoots: readonly string[] = [];
 	const open = dispatch.open;
 	const operations = createShellOperations(pi, context, dialect, {
 		toolCallId: id,
@@ -84,20 +86,20 @@ async function verifyPendingCall(
 		}),
 		onSandbox: (sandbox) => {
 			const paths = sandbox.grantedPaths;
-			const restrictions = describeRestrictions(
-				sandbox.policy,
-				paths === undefined
-					? undefined
-					: {
-							read: paths
-								.filter((grant) => grant.kind === 'read')
-								.map((grant) => grant.targetPath),
-							write: paths
-								.filter((grant) => grant.kind === 'write')
-								.map((grant) => grant.targetPath)
-						},
-				sandbox.providerId === passthroughProvider.id
-			);
+			const restrictions = describeRestrictions(sandbox.policy, {
+				...(paths !== undefined && {
+					paths: {
+						read: paths
+							.filter((grant) => grant.kind === 'read')
+							.map((grant) => grant.targetPath),
+						write: paths
+							.filter((grant) => grant.kind === 'write')
+							.map((grant) => grant.targetPath)
+					}
+				}),
+				hostUserDataRoots,
+				isUnrestrictedHost: sandbox.providerId === passthroughProvider.id
+			});
 
 			feedback.push({
 				type: 'text',
@@ -120,6 +122,10 @@ async function verifyPendingCall(
 	});
 
 	try {
+		const settings = await shellSettings(pi).read(context);
+
+		hostUserDataRoots = settings.hostUserDataRoots ?? [];
+
 		const result = await run(dispatch.prefix, operations);
 
 		return feedback.length === 0

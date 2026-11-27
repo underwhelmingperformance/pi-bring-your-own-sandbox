@@ -483,11 +483,13 @@ do not affect its class.
 ### Host user data
 
 Host files with canonical paths outside the checkout and outside the platform's
-system roots. Readable policies exclude [credential
-locations][credential-locations] unless an approved escalation specifies the
+system roots. Access follows the policy mode within the [host user data
+roots][host-user-data-roots]. That scope excludes [credential
+locations][credential-locations]. An approved escalation can grant a specific
 path.
 
 [credential-locations]: specification.md#credential-locations
+[host-user-data-roots]: specification.md#default-toolchain-roots
 
 ### Ledger
 

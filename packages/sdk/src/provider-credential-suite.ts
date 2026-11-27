@@ -62,7 +62,7 @@ export async function verifyCredentialExclusion<Config>(
 				provider,
 				fixture.hostWorkspace,
 				fixture.configuration,
-				{ policy: fixture.policy },
+				{ policy: fixture.policy, readRoots: ['~'] },
 				attempt
 			);
 

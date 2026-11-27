@@ -1,3 +1,4 @@
+import { isWithinHostUserDataRoots } from './path-grants.js';
 import type {
 	Access,
 	AccessProperty,
@@ -68,6 +69,7 @@ interface ProfileRequest {
 	readonly requirements?: ProfileRequirements;
 	readonly mode?: ProfileMode;
 	readonly paths?: readonly ResolvedPath[];
+	readonly hostUserDataRoots?: readonly string[];
 	readonly isEscalated?: boolean;
 	readonly isUnrestrictedHost?: boolean;
 }
@@ -118,7 +120,8 @@ function canGrantPath(
 	policy: Policy,
 	path: ResolvedPath,
 	mode: ProfileMode,
-	isUnrestrictedHost: boolean
+	isUnrestrictedHost: boolean,
+	isWithinScope: boolean
 ): boolean {
 	if (path.location === 'workspace') {
 		return (
@@ -127,6 +130,7 @@ function canGrantPath(
 	}
 
 	if (
+		!isWithinScope ||
 		(!isUnrestrictedHost && path.isCredential === true) ||
 		(mode === 'copy' && path.kind === 'write')
 	) {
@@ -194,6 +198,7 @@ export function selectProfile({
 	requirements = {},
 	mode = 'open',
 	paths = [],
+	hostUserDataRoots = [],
 	isEscalated = false,
 	isUnrestrictedHost = false
 }: ProfileRequest): ProfileSelection {
@@ -227,8 +232,16 @@ export function selectProfile({
 			};
 		}
 
-		eligible = eligible.filter((profile) =>
-			isSatisfiedBy(profile.policy, state)
+		const requiresReadOnly =
+			isEscalated &&
+			!isUnrestrictedHost &&
+			property === 'hostUserData' &&
+			state === 'needed';
+
+		eligible = eligible.filter(({ policy }) =>
+			requiresReadOnly
+				? policy.hostUserData === 'read-only'
+				: isSatisfiedBy(policy, state)
 		);
 
 		if (eligible.length === 0) {
@@ -240,7 +253,15 @@ export function selectProfile({
 	}
 
 	for (const path of paths) {
-		if (!isEscalated && !canGrantPath(limit, path, mode, isUnrestrictedHost)) {
+		const isWithinScope =
+			isUnrestrictedHost ||
+			path.location !== 'host-user-data' ||
+			isWithinHostUserDataRoots(path.path, hostUserDataRoots);
+
+		if (
+			!isEscalated &&
+			!canGrantPath(limit, path, mode, isUnrestrictedHost, isWithinScope)
+		) {
 			return {
 				ok: false,
 				detail: {
@@ -254,7 +275,13 @@ export function selectProfile({
 
 		eligible = eligible.filter(
 			(profile) =>
-				canGrantPath(profile.policy, path, mode, isUnrestrictedHost) ||
+				canGrantPath(
+					profile.policy,
+					path,
+					mode,
+					isUnrestrictedHost,
+					isWithinScope
+				) ||
 				(isEscalated &&
 					mode === 'open' &&
 					path.location !== 'workspace' &&

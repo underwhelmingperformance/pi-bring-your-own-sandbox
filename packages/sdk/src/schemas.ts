@@ -30,6 +30,9 @@ export const targetPathSchema = Type.String({
 	minLength: 1,
 	pattern: '^[^\\u0000]*$'
 });
+export const hostUserDataRootsSchema = denseArray(targetPathSchema, {
+	uniqueItems: true
+});
 export const safeIntegerSchema = Type.Integer({
 	minimum: Number.MIN_SAFE_INTEGER,
 	maximum: Number.MAX_SAFE_INTEGER

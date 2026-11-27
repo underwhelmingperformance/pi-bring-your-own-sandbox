@@ -47,7 +47,12 @@ function fileProvider(backend: SandboxBackend): InlineExtension {
 				label: 'File operation fixture',
 				profiles: { open: [backend.profile], copy: [] },
 				validateConfig: () => ({}),
-				open: () => Promise.resolve(backend)
+				open: ({ hostUserDataRoots }) =>
+					Promise.resolve(
+						hostUserDataRoots === undefined
+							? backend
+							: { ...backend, hostUserDataRoots }
+					)
 			});
 		}
 	};

@@ -124,7 +124,7 @@ conformance cases handle it.
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `hostWorkspaceWrites` | Prevents all changes to the host checkout, including changes through aliases. The permission reviewer relies on this during investigations.               | Requires write access to the live checkout. Escalated `bash` uses it for commands that must edit the live checkout when the configured policy keeps it read-only. |
 | `network`             | Prevents workload network access. The permission reviewer and Docker shell profile rely on it for offline commands.                                       | Requires network access. Escalated `bash` uses it for operations such as fetching a dependency.                                                                   |
-| `hostUserData`        | Prevents reads and writes to host user data. The permission reviewer and Docker shell profile rely on it to exclude host credentials and unrelated files. | Requires read access to host user data. Escalated `bash` uses it for commands that must read user configuration outside the checkout.                             |
+| `hostUserData`        | Prevents reads and writes to host user data. The permission reviewer and Docker shell profile rely on it to exclude host credentials and unrelated files. | Requires read access under the host user data roots. A command can request a specific path outside those roots through escalation.                                |
 | `hostSystemFiles`     | Prevents reads and writes to host system files. The Docker shell profile relies on it to run against the container image's system files.                  | Requires read access to host system files. Escalated `bash` uses it for commands that need files under a system root.                                             |
 
 The broker classifies host files by canonical path in this order.
@@ -203,9 +203,10 @@ access mode, and the protected path stays read-only.
 
 ### Default toolchain roots
 
-The SDK exports `hostToolchainRoots` from `/provider`. Under the default policy,
-ordinary host user data reads are limited to these roots and any additional read
-roots in the provider's settings.
+The SDK exports `hostToolchainRoots` from `/provider`. Both `read-only` and
+`read-write` host user data policies apply within these roots and the additional
+roots in the provider's `readRoots` setting. The broker checks ordinary path
+requests against the roots before allocation.
 
 | Platform        | Default toolchain roots                                                                                                                                            |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -213,10 +214,13 @@ roots in the provider's settings.
 | Linux           | `~/.local/share/pnpm`                                                                                                                                              |
 | macOS           | `~/Library/pnpm`                                                                                                                                                   |
 
-The list uses fixed paths and resolves `~` against the host user's home. A
-relocated toolchain, a cache or a Go workspace needs a configured read root or
-an explicit grant. A `hostUserData: prevented` requirement denies access to host
-user data even under these roots.
+The list uses fixed paths. The broker expands `~` against the host user's home
+and resolves all roots to canonical host paths. Add `~` to `readRoots` to allow
+access across the home directory. A relocated toolchain, a cache or a Go
+workspace outside the roots needs a configured root or an explicit grant. A
+`hostUserData: prevented` requirement denies access to host user data even under
+these roots. Workspace content and host system files use their own policy
+settings.
 
 ### Credential locations
 
@@ -399,6 +403,11 @@ decision. The host enforces no restrictions. This destination is an explicit
 exception to preserving unlisted properties. A failure at a selected destination
 does not trigger another attempt.
 
+A `hostUserData: needed` escalation selects only read-only provider profiles.
+The property grants reads within the host user data roots. Request an explicit
+path grant for a read or write outside the roots. If no eligible provider
+profile exists, the confirmation identifies the unrestricted host destination.
+
 Paths inside the checkout keep the provider's workspace mapping. For an extra
 path under the host home directory, the provider uses the same relative path
 under the target home directory. An extra path outside both directories uses the
@@ -413,6 +422,12 @@ directory keep their home-relative paths under this root. Credential exclusions
 still apply. A native provider can report the original host home path while
 using scratch space for the target home. A provider that denies host user data
 omits the field. Docker omits it because its profiles deny host user data.
+
+For both permitted host user data modes, the broker sends `hostUserDataRoots` to
+provider `open` and `copy`. The backend reports the same set of canonical host
+roots in `hostUserDataRoots`. The broker rejects and disposes a backend if the
+set is absent or different. The provider enforces credential exclusions within
+each root. The unrestricted host destination uses no root list.
 
 The elected broker prepares each shell call from Pi's `tool_execution_start`
 event. It checks the active tool's source path and the identity of its parameter
@@ -445,11 +460,12 @@ grants keep credential exclusions at every duration. Write and network grants
 apply only to the current call.
 
 Before a run with a BYOS shell, the system prompt describes the negotiated
-policy for ordinary shell commands and explains whether escalation is available.
-The shell result describes the effective policy and path grants for that call.
-Providers can report structured violations for the tool result. The cleaning
-function returns the display text type for model, provider and extension text.
-User interfaces require that type and diagnostics omit raw settings.
+policy and roots for ordinary shell commands and explains whether escalation is
+available. An escalation prompt and a shell result describe the effective
+policy, roots and path grants for that call. Providers can report structured
+violations for the tool result. The cleaning function returns the display text
+type for model, provider and extension text. User interfaces require that type
+and diagnostics omit raw settings.
 
 The [API appendix][escalation-api] defines the tool arguments, pending request
 and decision function.

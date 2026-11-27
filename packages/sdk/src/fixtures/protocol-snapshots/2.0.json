@@ -2578,6 +2578,27 @@
 							"~kind": "Object",
 							"~optional": true
 						},
+						"readRoots": {
+							"items": {
+								"minLength": 1,
+								"pattern": "^[^\\u0000]*$",
+								"type": "string",
+								"~kind": "String"
+							},
+							"type": "array",
+							"~kind": "Array",
+							"~optional": true,
+							"~refine": [
+								{
+									"check": {
+										"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+									},
+									"error": {
+										"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+									}
+								}
+							]
+						},
 						"userShell": {
 							"anyOf": [
 								{
@@ -2615,6 +2636,28 @@
 					"minLength": 1,
 					"type": "string",
 					"~kind": "String"
+				},
+				"hostUserDataRoots": {
+					"items": {
+						"minLength": 1,
+						"pattern": "^[^\\u0000]*$",
+						"type": "string",
+						"~kind": "String"
+					},
+					"type": "array",
+					"uniqueItems": true,
+					"~kind": "Array",
+					"~optional": true,
+					"~refine": [
+						{
+							"check": {
+								"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+							},
+							"error": {
+								"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+							}
+						}
+					]
 				},
 				"hostWorkspace": {
 					"minLength": 1,
@@ -3140,6 +3183,28 @@
 											"type": "array",
 											"~kind": "Array",
 											"~optional": true
+										},
+										"hostUserDataRoots": {
+											"items": {
+												"minLength": 1,
+												"pattern": "^[^\\u0000]*$",
+												"type": "string",
+												"~kind": "String"
+											},
+											"type": "array",
+											"uniqueItems": true,
+											"~kind": "Array",
+											"~optional": true,
+											"~refine": [
+												{
+													"check": {
+														"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+													},
+													"error": {
+														"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+													}
+												}
+											]
 										},
 										"id": {
 											"minLength": 1,
@@ -3808,6 +3873,28 @@
 					"minLength": 1,
 					"type": "string",
 					"~kind": "String"
+				},
+				"hostUserDataRoots": {
+					"items": {
+						"minLength": 1,
+						"pattern": "^[^\\u0000]*$",
+						"type": "string",
+						"~kind": "String"
+					},
+					"type": "array",
+					"uniqueItems": true,
+					"~kind": "Array",
+					"~optional": true,
+					"~refine": [
+						{
+							"check": {
+								"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
+							},
+							"error": {
+								"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+							}
+						}
+					]
 				},
 				"hostWorkspace": {
 					"minLength": 1,

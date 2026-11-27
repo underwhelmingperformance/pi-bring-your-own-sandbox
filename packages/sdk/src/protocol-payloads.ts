@@ -34,6 +34,7 @@ import type { RuntimeParticipant } from './runtime-participant.js';
 import {
 	callable,
 	capabilitiesSchema,
+	hostUserDataRootsSchema,
 	nonEmptyStringSchema,
 	recoverySchema
 } from './schemas.js';
@@ -152,7 +153,8 @@ const providerOpenRequest = Type.Object({
 	sessionId: nonEmptyStringSchema,
 	hostWorkspace: nonEmptyStringSchema,
 	profile: profileSchema,
-	paths: Type.Optional(pathGrantsSchema)
+	paths: Type.Optional(pathGrantsSchema),
+	hostUserDataRoots: Type.Optional(hostUserDataRootsSchema)
 });
 
 const providerCopySource = Type.Union([

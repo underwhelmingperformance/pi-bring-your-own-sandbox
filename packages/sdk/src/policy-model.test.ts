@@ -161,7 +161,18 @@ it.each(['read-only', 'read-write'] as const)(
 			})
 		}).toStrictEqual({
 			ordinary: { ok: false, detail: { ...detail, reason: 'limit' } },
-			propertyOnly: { ok: true, profile: ordinary },
+			propertyOnly:
+				hostUserData === 'read-only'
+					? { ok: true, profile: ordinary }
+					: {
+							ok: false,
+							detail: {
+								kind: 'access',
+								property: 'hostUserData',
+								value: 'needed',
+								reason: 'profile'
+							}
+						},
 			unsupportedGrant: { ok: false, detail: { ...detail, reason: 'profile' } },
 			explicitGrant: { ok: true, profile: granting },
 			host: { ok: true, profile: ordinary }
@@ -269,6 +280,7 @@ it.each([
 				profiles: [candidate],
 				limit: policy,
 				mode: operation,
+				hostUserDataRoots: ['/fixture'],
 				paths: [{ kind, location, path }]
 			})
 		).toStrictEqual(

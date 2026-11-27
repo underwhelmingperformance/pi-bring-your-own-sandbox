@@ -860,6 +860,12 @@ export interface SandboxOpenRequest<Config = unknown> {
 	readonly paths?: PathGrants;
 
 	/**
+	Canonical host roots for ordinary access to host user data. Enforce the
+	profile's access mode within these roots and exclude credential locations.
+	*/
+	readonly hostUserDataRoots?: readonly string[];
+
+	/**
 	Resolved durations for the new allocation. Older brokers can omit them.
 	*/
 	readonly cleanupBudgets?: SandboxCleanupBudgets;
@@ -1040,6 +1046,11 @@ export interface SandboxBackend {
 
 	readonly profile: Profile;
 	readonly grantedPaths?: readonly GrantedPath[];
+	/**
+	The host user data roots enforced by this backend. Return the requested
+	roots when the broker supplies them, including an empty list.
+	*/
+	readonly hostUserDataRoots?: readonly string[];
 	readonly policyDescription: string;
 
 	/**

@@ -12,6 +12,7 @@ import type {
 import { profileSchema } from './policy-model.js';
 import {
 	callable,
+	hostUserDataRootsSchema,
 	nonEmptyStringSchema,
 	recoverySchema,
 	shellSchema,
@@ -100,6 +101,7 @@ const backendShape = Type.Object({
 	profile: profileSchema,
 	workspace: workspaceSchema,
 	grantedPaths: Type.Optional(grantedPathsSchema),
+	hostUserDataRoots: Type.Optional(hostUserDataRootsSchema),
 	policyDescription: nonEmptyStringSchema,
 	recovery: recoverySchema,
 	exec: callable<SandboxBackend['exec']>(),

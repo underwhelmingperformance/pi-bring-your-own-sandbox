@@ -66,6 +66,9 @@ export function snapshotBackend(backend: SandboxBackend): SandboxBackend {
 			})
 		}),
 		profile: snapshotProfile(backend.profile),
+		...(backend.hostUserDataRoots !== undefined && {
+			hostUserDataRoots: Object.freeze([...backend.hostUserDataRoots])
+		}),
 		...(backend.grantedPaths !== undefined && {
 			grantedPaths: Object.freeze(
 				backend.grantedPaths.map((grant) => Object.freeze({ ...grant }))

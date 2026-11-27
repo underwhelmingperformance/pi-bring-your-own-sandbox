@@ -361,7 +361,10 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 			return Promise.resolve(
 				Object.assign(
 					backend,
-					grantedPaths === undefined ? {} : { grantedPaths }
+					grantedPaths === undefined ? {} : { grantedPaths },
+					request.hostUserDataRoots === undefined
+						? {}
+						: { hostUserDataRoots: request.hostUserDataRoots }
 				)
 			);
 		}

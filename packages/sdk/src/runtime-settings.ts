@@ -13,6 +13,7 @@ import {
 	isSandboxError
 } from './errors.js';
 import { observe, OperationScope } from './lifecycle.js';
+import { resolveHostUserDataRoots } from './path-grants.js';
 import type { DiagnosticStore } from './provider-diagnostics.js';
 import { ProviderDiagnostics } from './provider-diagnostics.js';
 import { invalidField, providerConfigSchema } from './request-schemas.js';
@@ -107,9 +108,36 @@ export function createRuntimeSettings(
 						provided,
 						activation === undefined ? 'default' : 'extension'
 					);
+					const profiles = [
+						...provider.profiles.open,
+						...provider.profiles.copy
+					];
+					const readRoots = provided.settings?.readRoots;
+					let hostUserDataRoots: readonly string[] | undefined;
+
+					if (
+						readRoots !== undefined ||
+						(activation !== undefined &&
+							profiles.some(({ policy }) => policy.hostUserData !== 'denied'))
+					) {
+						try {
+							hostUserDataRoots = await resolveHostUserDataRoots(readRoots);
+						} catch (error) {
+							throw new InvalidSandboxConfigError(
+								{
+									...identity,
+									detail: { kind: 'config', field: 'settings.readRoots' }
+								},
+								{ cause: error }
+							);
+						}
+					}
+
+					scope.check();
 
 					return Object.freeze({
 						...value,
+						...(hostUserDataRoots !== undefined && { hostUserDataRoots }),
 						cleanup: resolveCleanupBudgets({
 							...defaults,
 							...value.cleanup

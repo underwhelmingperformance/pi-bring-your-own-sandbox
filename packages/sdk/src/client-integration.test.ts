@@ -13,9 +13,12 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 import { ScriptedModel } from '../../../test-support/scripted-model.js';
 
-import { closeSandboxSession } from './client.js';
 import { createSandboxClient } from './consumer.js';
-import type { SandboxContext, SandboxHost } from './contracts.js';
+import type {
+	SandboxContext,
+	SandboxHost,
+	SandboxHostHandle
+} from './contracts.js';
 import { discoverBroker } from './discovery.js';
 import { SandboxStartupError } from './errors.js';
 import { createSandbox } from './facade.js';
@@ -27,6 +30,7 @@ import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
 import { brokerReply, respond } from './fixtures/protocol-peer.js';
 import { loadSdkInstance } from './fixtures/sdk-instance.js';
+import { initialiseSandboxHost } from './host.js';
 import { probePassthrough } from './passthrough.js';
 import { bindProtocolAddress } from './protocol-address.js';
 import { RUNTIME_CHANNEL } from './protocol-envelope.js';
@@ -332,25 +336,37 @@ it.each(['{', '{"provider":null}', '{"unexpected":true}'])(
 );
 
 it('closes explicitly before raw disposal and keeps a closed service until invalidation', async () => {
-	await fixture(async ({ pi, context, runtime }) => {
-		const sandbox = await getSandbox(pi, context);
-		const report = await closeSandboxSession(pi, context);
+	let host: SandboxHostHandle | undefined;
 
-		expect({
-			report,
-			repeated: await closeSandboxSession(pi, context)
-		}).toStrictEqual({
-			report: { confirmed: true, recoveries: [], failures: [] },
-			repeated: { confirmed: true, recoveries: [], failures: [] }
-		});
-		await expect(getSandbox(pi, context)).rejects.toMatchObject({
-			name: 'SandboxSessionClosingError'
-		});
-		runtime.session.dispose();
-		await expect(sandbox.files.readFile('result')).rejects.toMatchObject({
-			name: 'StaleSandboxHandleError'
-		});
-	});
+	await fixture(
+		async ({ pi, context, runtime }) => {
+			if (host === undefined) {
+				throw new Error('Pi did not initialise the host fixture.');
+			}
+
+			const sandbox = await getSandbox(pi, context);
+			const report = await host.close();
+
+			expect({
+				report,
+				repeated: await host.close()
+			}).toStrictEqual({
+				report: { confirmed: true, recoveries: [], failures: [] },
+				repeated: { confirmed: true, recoveries: [], failures: [] }
+			});
+			await expect(getSandbox(pi, context)).rejects.toMatchObject({
+				name: 'SandboxSessionClosingError'
+			});
+			runtime.session.dispose();
+			await expect(sandbox.files.readFile('result')).rejects.toMatchObject({
+				name: 'StaleSandboxHandleError'
+			});
+		},
+		[],
+		(pi) => {
+			host = initialiseSandboxHost(pi, import.meta.filename, {});
+		}
+	);
 });
 
 it('shares consumer-only startup across independent SDK instances', async () => {
@@ -362,7 +378,7 @@ it('shares consumer-only startup across independent SDK instances', async () => 
 	let rightClient: import('./contracts.js').SandboxClient | undefined;
 
 	await fixture(
-		async ({ pi, context }) => {
+		async ({ context }) => {
 			if (leftClient === undefined || rightClient === undefined) {
 				throw new Error('Both client factories must have run.');
 			}
@@ -387,14 +403,6 @@ it('shares consumer-only startup across independent SDK instances', async () => 
 				sameGeneration: true,
 				sameBackend: true,
 				content: 'shared content'
-			});
-			expect(await second.closeSandboxSession(pi, context)).toStrictEqual({
-				confirmed: true,
-				recoveries: [],
-				failures: []
-			});
-			await expect(leftClient.get(context)).rejects.toMatchObject({
-				name: 'SandboxSessionClosingError'
 			});
 		},
 		[],
@@ -549,8 +557,6 @@ it.each([
 					acquire: () => Promise.resolve(sandbox),
 					negotiate: () =>
 						Promise.resolve({ ok: true, profile: backend.profile }),
-					close: () =>
-						Promise.resolve({ confirmed: true, failures: [], recoveries: [] }),
 					status: () =>
 						Promise.resolve({ generationId: 'independent', state: 'idle' }),
 					providers: () => Promise.resolve([])

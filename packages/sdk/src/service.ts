@@ -60,7 +60,6 @@ export function publishBroker(
 			invoke((broker) => broker.negotiate(context, options)),
 		resolveReviewSource: (context, query, id) =>
 			target?.resolveReviewSource?.(context, query, id),
-		close: (context) => invoke((broker) => broker.close(context)),
 		status: (context) => invoke((broker) => broker.status(context)),
 		providers: (context) => invoke((broker) => broker.providers(context))
 	});

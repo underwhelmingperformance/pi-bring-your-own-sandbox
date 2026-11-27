@@ -1,5 +1,4 @@
 import {
-	closeSandboxSession as close,
 	getSandbox as acquire,
 	negotiateSandbox as negotiate
 } from '../client.js';
@@ -98,16 +97,14 @@ export async function copyHostWorkspace(
 	return checkedCopy(copy, settings, source);
 }
 
-export async function closeSandboxSession(
-	...parameters: Parameters<typeof close>
-) {
-	const starting = startFixture(parameters[0]);
+export async function closeSandboxSession(pi: SandboxHost) {
+	const starting = startFixture(pi);
 
 	if (starting !== undefined) {
 		await starting;
 	}
 
-	return close(...parameters);
+	return fixtureOwner(pi).close();
 }
 
 export function fixtureTools(pi: SandboxHost): string[] {

@@ -60,7 +60,6 @@ it('publishes a broker without unbound copy or escalation operations', async () 
 			const id = expect.any(String) as unknown;
 			const service = {
 				acquire: method,
-				close: method,
 				id,
 				negotiate: method,
 				providers: method,

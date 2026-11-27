@@ -64,7 +64,7 @@ async function fixture(
 	try {
 		await run(pi, context);
 	} finally {
-		await closeSandboxSession(pi, context);
+		await closeSandboxSession(pi);
 		await rm(directory, { recursive: true, force: true });
 	}
 }
@@ -290,7 +290,7 @@ it('cancels shared configuration on shutdown and ignores its late result', async
 			name: 'SandboxCancelledError',
 			reason: 'shutdown'
 		});
-		const report = await closeSandboxSession(pi, context);
+		const report = await closeSandboxSession(pi);
 
 		await failure;
 		configured.resolve({ configuration: {} });

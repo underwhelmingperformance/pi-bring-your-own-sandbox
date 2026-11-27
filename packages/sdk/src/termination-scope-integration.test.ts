@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 
-import { closeSandboxSession, getSandbox } from './client.js';
+import { getSandbox } from './client.js';
 import type { SandboxAcquireOptions, SandboxBackend } from './contracts.js';
 import { discoverBroker } from './discovery.js';
 import { isSandboxError } from './errors.js';
@@ -57,7 +57,8 @@ it('keeps sandbox execution usable after cancellation without a termination guar
 				{
 					name: 'scope-fixture',
 					factory(pi) {
-						initialiseSandboxHost(pi, import.meta.filename, {});
+						const host = initialiseSandboxHost(pi, import.meta.filename, {});
+
 						config.activate(pi, {
 							id: 'fixture',
 							label: 'Termination fixture',
@@ -134,7 +135,7 @@ it('keeps sandbox execution usable after cancellation without a termination guar
 									expect({
 										result: { ...result, durationMs: 0 },
 										state: status?.state,
-										report: await closeSandboxSession(pi, context),
+										report: await host.close(),
 										calls,
 										disposals
 									}).toStrictEqual({

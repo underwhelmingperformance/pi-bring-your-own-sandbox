@@ -4,7 +4,7 @@ import {
 	resolvedReviewSource,
 	ReviewState
 } from './broker-review.js';
-import { reportCleanup } from './cleanup-report.js';
+import { failedCloseReport, reportCleanup } from './cleanup-report.js';
 import { SandboxSession } from './context.js';
 import type {
 	ReviewedToolCall,
@@ -12,8 +12,7 @@ import type {
 	SandboxCloseReport,
 	SandboxContext,
 	SandboxCopyOptions,
-	SandboxHost,
-	SandboxOperation
+	SandboxHost
 } from './contracts.js';
 import { SandboxInitialisationError } from './errors.js';
 import type { GenerationDependencies } from './generation.js';
@@ -87,7 +86,7 @@ export class SandboxBroker implements BrokerService {
 			await this.#start(session).initialize();
 		});
 		pi.on('session_shutdown', async (_event, context) => {
-			const report = await this.close(context);
+			const report = await this.close();
 
 			reportCleanup(pi, context, report);
 		});
@@ -101,14 +100,14 @@ export class SandboxBroker implements BrokerService {
 		return generation;
 	}
 
-	#resolve(context: SandboxContext, operation: SandboxOperation = 'acquire') {
+	#resolve(context: SandboxContext) {
 		const current = this.#current;
 
 		if (current === undefined) {
-			throw new SandboxInitialisationError({ operation });
+			throw new SandboxInitialisationError({ operation: 'acquire' });
 		}
 
-		current.session.check(context, operation);
+		current.session.check(context, 'acquire');
 
 		return current;
 	}
@@ -195,15 +194,30 @@ export class SandboxBroker implements BrokerService {
 		);
 	}
 
-	close(context: SandboxContext): Promise<SandboxCloseReport> {
-		const { generation } = this.#resolve(context, 'dispose');
+	close(): Promise<SandboxCloseReport> {
+		const generation = this.#current?.generation;
 
-		this.#abortConfig?.();
+		if (generation === undefined) {
+			return Promise.resolve(
+				failedCloseReport(
+					new SandboxInitialisationError({ operation: 'dispose' })
+				)
+			);
+		}
+
+		if (this.#isClosing) {
+			return generation.close();
+		}
+
 		this.#isClosing = true;
 		this.#reviewIdentities.close();
 		this.#liveReviewCalls.clear();
 
-		return generation.close();
+		const closing = generation.close();
+
+		this.#abortConfig?.();
+
+		return closing;
 	}
 
 	status(context: SandboxContext): Promise<SandboxStatus> {

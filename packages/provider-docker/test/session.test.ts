@@ -32,7 +32,8 @@ import {
 	createSandboxClient,
 	GrepOutput
 } from 'pi-bring-your-own-sandbox/consumer';
-import { closeSandboxSession } from 'pi-bring-your-own-sandbox/host';
+import type { SandboxHostHandle } from 'pi-bring-your-own-sandbox/host';
+import { initialiseSandboxHost } from 'pi-bring-your-own-sandbox/host';
 import sandboxTools from 'pi-bring-your-own-sandbox/pi-tools';
 import type {
 	SandboxBackend,
@@ -73,6 +74,7 @@ interface DockerSession {
 	readonly runtime: AgentSessionRuntime;
 	readonly sandbox: Sandbox;
 	readonly client: SandboxClient;
+	readonly host: SandboxHostHandle;
 	readonly pi: SandboxHost;
 	readonly context: ExtensionContext;
 	readonly fixture: DockerFixture;
@@ -102,6 +104,7 @@ async function withDockerSession(
 		pi?: SandboxHost;
 		context?: ExtensionContext;
 		client?: SandboxClient;
+		host?: SandboxHostHandle;
 	} = {};
 
 	try {
@@ -127,6 +130,7 @@ async function withDockerSession(
 							}
 						);
 						current.pi = pi;
+						current.host = initialiseSandboxHost(pi, import.meta.filename, {});
 						current.client = createSandboxClient(pi, import.meta.filename);
 						pi.on('session_start', (_event, context) => {
 							current.context = context;
@@ -136,11 +140,12 @@ async function withDockerSession(
 				...extensions
 			],
 			async (runtime, errors) => {
-				const { pi, context, client } = current;
+				const { pi, context, client, host } = current;
 
 				if (
 					pi === undefined ||
 					client === undefined ||
+					host === undefined ||
 					context === undefined ||
 					fixture === undefined
 				) {
@@ -150,9 +155,9 @@ async function withDockerSession(
 				const sandbox = await client.get(context);
 
 				try {
-					await run({ sandbox, fixture, pi, context, runtime, client });
+					await run({ sandbox, fixture, pi, context, runtime, client, host });
 				} finally {
-					expect(await closeSandboxSession(pi, context)).toStrictEqual({
+					expect(await host.close()).toStrictEqual({
 						confirmed: true,
 						failures: [],
 						recoveries: []
@@ -354,7 +359,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 
 		it('shares editor saves across shell and SDK requests while each review retains its inputs', async () => {
 			await withDockerSession(
-				async ({ sandbox, fixture, pi, context }) => {
+				async ({ sandbox, fixture, host }) => {
 					expect(sandbox.workspace.relationship).toBe('shared');
 
 					for (const [file, contents] of [
@@ -455,7 +460,7 @@ exit 1`
 					await expect(sandbox.files.stat('created.txt')).rejects.toMatchObject(
 						{ name: 'UnsupportedSandboxPolicyError', operation: 'stat' }
 					);
-					await closeSandboxSession(pi, context);
+					await host.close();
 					expect(await readFile(filename, 'utf8')).toBe('editor');
 				},
 				[],

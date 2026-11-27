@@ -6,7 +6,7 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 import { afterEach, expect, it, vi } from 'vitest';
 
-import { closeSandboxSession } from './client.js';
+import type { SandboxHostHandle } from './contracts.js';
 import { registerSandboxDiagnostics as sandboxExtension } from './diagnostic-registration.js';
 import { discoverBroker } from './discovery.js';
 import type { SandboxLedgerEntry } from './escalation-ledger.js';
@@ -16,6 +16,7 @@ import { getSandbox } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
+import { initialiseSandboxHost } from './host.js';
 import sandboxTools from './pi-tools.js';
 import { registerSandboxProvider } from './provider-registration.js';
 import { isRecord } from './validation.js';
@@ -26,6 +27,7 @@ afterEach(() => {
 
 interface Fixture {
 	readonly pi: ExtensionAPI;
+	readonly host: SandboxHostHandle;
 	readonly context: ExtensionContext;
 	readonly runtime: AgentSessionRuntime;
 	readonly errors: readonly unknown[];
@@ -56,7 +58,11 @@ async function fixture(
 			: Promise.resolve();
 	};
 
-	const current: { pi?: ExtensionAPI; context?: ExtensionContext } = {};
+	const current: {
+		pi?: ExtensionAPI;
+		context?: ExtensionContext;
+		host?: SandboxHostHandle;
+	} = {};
 
 	const config = new FixtureConfig();
 
@@ -66,6 +72,7 @@ async function fixture(
 				name: 'framework',
 				factory(pi) {
 					sandboxExtension(pi, import.meta.filename);
+					current.host = initialiseSandboxHost(pi, import.meta.filename, {});
 				}
 			},
 			{
@@ -115,14 +122,15 @@ async function fixture(
 			}
 		],
 		async (runtime, errors) => {
-			const { pi, context } = current;
+			const { pi, context, host } = current;
 
-			if (pi === undefined || context === undefined) {
+			if (pi === undefined || context === undefined || host === undefined) {
 				throw new Error('Pi did not initialise the diagnostic fixture.');
 			}
 
 			await execute({
 				pi,
+				host,
 				context,
 				runtime,
 				errors,
@@ -289,28 +297,31 @@ it('keeps provider enumeration available after startup fails and excludes raw er
 });
 
 it('reports incomplete cleanup without exposing raw disposal errors', async () => {
-	await fixture('cleanup-failure', async ({ pi, context, runtime, counts }) => {
-		await getSandbox(pi, context);
-		await closeSandboxSession(pi, context);
-		await runtime.session.prompt('/byos status');
+	await fixture(
+		'cleanup-failure',
+		async ({ pi, context, host, runtime, counts }) => {
+			await getSandbox(pi, context);
+			await host.close();
+			await runtime.session.prompt('/byos status');
 
-		const output = JSON.stringify(messages(runtime));
+			const output = JSON.stringify(messages(runtime));
 
-		expect({
-			...counts(),
-			hasClosedState: output.includes('State: closed'),
-			hasIncompleteCleanup: output.includes('Cleanup: incomplete'),
-			hasCleanupError: output.includes('SandboxCleanupError'),
-			leaksSecret: output.includes('PRIVATE_PROVIDER_TOKEN')
-		}).toStrictEqual({
-			opens: 1,
-			disposals: 1,
-			hasClosedState: true,
-			hasIncompleteCleanup: true,
-			hasCleanupError: true,
-			leaksSecret: false
-		});
-	});
+			expect({
+				...counts(),
+				hasClosedState: output.includes('State: closed'),
+				hasIncompleteCleanup: output.includes('Cleanup: incomplete'),
+				hasCleanupError: output.includes('SandboxCleanupError'),
+				leaksSecret: output.includes('PRIVATE_PROVIDER_TOKEN')
+			}).toStrictEqual({
+				opens: 1,
+				disposals: 1,
+				hasClosedState: true,
+				hasIncompleteCleanup: true,
+				hasCleanupError: true,
+				leaksSecret: false
+			});
+		}
+	);
 });
 
 it('remains usable after Pi records an initial configuration error', async () => {

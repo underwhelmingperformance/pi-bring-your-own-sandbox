@@ -107,7 +107,6 @@ function boundBroker(
 
 			return service.negotiate(context, options);
 		},
-		close: service.close.bind(service),
 		async status(context) {
 			const status = await service.status(context);
 

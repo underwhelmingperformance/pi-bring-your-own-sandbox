@@ -1,7 +1,6 @@
 import type { EventBus } from '@earendil-works/pi-coding-agent';
 import { createEventBus } from '@earendil-works/pi-coding-agent';
 
-import { UnsupportedSandboxCapabilityError } from '../errors.js';
 import { bindProtocolAddress } from '../protocol-address.js';
 import { PROTOCOL_MAJOR, PROVIDER_CHANNEL } from '../protocol-envelope.js';
 import { isRecord } from '../validation.js';
@@ -55,26 +54,15 @@ class IndependentBroker {
 		return Promise.reject(new Error('Fixture only.'));
 	}
 
-	copy() {
-		return Promise.reject(
-			new UnsupportedSandboxCapabilityError({ operation: 'acquire' })
-		);
-	}
-
 	negotiate() {
 		return Promise.reject(new Error('Fixture only.'));
 	}
 
-	close() {
-		return Promise.resolve({
-			confirmed: this.id === this.#identity,
-			recoveries: [],
-			failures: []
-		});
-	}
-
 	status() {
-		return Promise.resolve({ generationId: 'fixture', state: 'idle' as const });
+		return Promise.resolve({
+			generationId: this.#identity,
+			state: 'idle' as const
+		});
 	}
 
 	providers() {

@@ -4984,15 +4984,6 @@
 							"~kind": "Function",
 							"~unsafe": null
 						},
-						"close": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~unsafe": null
-						},
 						"id": {
 							"minLength": 1,
 							"type": "string",
@@ -5036,14 +5027,7 @@
 							"~unsafe": null
 						}
 					},
-					"required": [
-						"id",
-						"acquire",
-						"negotiate",
-						"close",
-						"status",
-						"providers"
-					],
+					"required": ["id", "acquire", "negotiate", "status", "providers"],
 					"type": "object",
 					"~kind": "Object"
 				},

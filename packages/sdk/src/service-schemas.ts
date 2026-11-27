@@ -15,7 +15,6 @@ export const brokerServiceSchema = Type.Object({
 		Type.Optional(
 			callable<NonNullable<BrokerService['resolveReviewSource']>>()
 		),
-	close: callable<BrokerService['close']>(),
 	status: callable<BrokerService['status']>(),
 	providers: callable<BrokerService['providers']>()
 });

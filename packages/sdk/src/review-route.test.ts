@@ -45,7 +45,6 @@ function broker(
 		id,
 		acquire: unexpected,
 		negotiate: unexpected,
-		close: unexpected,
 		status: unexpected,
 		providers: unexpected,
 		resolveReviewSource: (scope, query, token) =>

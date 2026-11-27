@@ -1,11 +1,9 @@
 import { acquireOptions, checkRequirements } from './acquire-options.js';
-import { failedCloseReport } from './cleanup-report.js';
 import { inspectContext } from './context.js';
 import type {
 	Sandbox,
 	SandboxAcquireOptions,
 	SandboxClient,
-	SandboxCloseReport,
 	SandboxContext,
 	SandboxErrorInfo,
 	SandboxHost,
@@ -106,24 +104,6 @@ export async function negotiateSandbox(
 	return result.ok
 		? result
 		: { ok: false, error: identifyRequester(result.error, source) };
-}
-
-/**
-Close the shared generation before an embedding host disposes a raw Pi
-session. Repeated calls return the same cleanup report. Pi's session runtime
-performs this shutdown through lifecycle handlers.
-*/
-export async function closeSandboxSession(
-	pi: SandboxHost,
-	context: SandboxContext
-): Promise<SandboxCloseReport> {
-	inspectContext(context, 'dispose');
-
-	try {
-		return await ensureSandboxService(pi).close(context);
-	} catch (error) {
-		return failedCloseReport(error);
-	}
 }
 
 /**

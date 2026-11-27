@@ -1,9 +1,10 @@
 import { afterEach, expect, it, vi } from 'vitest';
 
-import { closeSandboxSession, getSandbox } from './client.js';
+import { getSandbox } from './client.js';
 import type {
 	BackendProcessOutcome,
 	SandboxBackend,
+	SandboxHostHandle,
 	SandboxOperationContext
 } from './contracts.js';
 import { FixtureConfig } from './fixtures/config.js';
@@ -19,6 +20,7 @@ afterEach(() => {
 });
 
 it('uses the generation cleanup budgets for sandbox execution and disposal', async () => {
+	let host: SandboxHostHandle | undefined;
 	let isRunning = false;
 	let isDisposed = false;
 	let execution: SandboxOperationContext | undefined;
@@ -61,7 +63,7 @@ it('uses the generation cleanup budgets for sandbox execution and disposal', asy
 			{
 				name: 'host',
 				factory(pi) {
-					initialiseSandboxHost(pi, import.meta.filename, {
+					host = initialiseSandboxHost(pi, import.meta.filename, {
 						cleanup: { cancellationGraceMs: 9000, disposalTimeoutMs: 9000 }
 					});
 				}
@@ -91,6 +93,10 @@ it('uses the generation cleanup budgets for sandbox execution and disposal', asy
 						description:
 							'Exercise cleanup deadlines through a real Pi runtime.',
 						async handler(_arguments, context) {
+							if (host === undefined) {
+								throw new Error('Pi did not initialise the cleanup host.');
+							}
+
 							const executor = await getSandbox(pi, context);
 
 							expect(executor.cleanupBudgets).toStrictEqual({
@@ -127,7 +133,7 @@ it('uses the generation cleanup budgets for sandbox execution and disposal', asy
 								});
 								expect(isRunning).toBe(false);
 
-								const closing = closeSandboxSession(pi, context);
+								const closing = host.close();
 
 								await vi.advanceTimersByTimeAsync(0);
 								expect({
@@ -140,7 +146,7 @@ it('uses the generation cleanup budgets for sandbox execution and disposal', asy
 									isDisposed: true
 								});
 							} finally {
-								const closing = closeSandboxSession(pi, context);
+								const closing = host.close();
 
 								await vi.runAllTimersAsync();
 								await closing;

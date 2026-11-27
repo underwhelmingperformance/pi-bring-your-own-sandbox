@@ -89,7 +89,7 @@ async function fixture(
 	try {
 		await run(pi, context);
 	} finally {
-		await closeSandboxSession(pi, context);
+		await closeSandboxSession(pi);
 		await rm(directory, { recursive: true, force: true });
 	}
 }
@@ -208,7 +208,7 @@ it('copies a sandbox into private allocations with the highest-ranked supported 
 			name: 'SandboxSessionClosingError'
 		});
 		expect(released).toStrictEqual(['copy-1']);
-		await closeSandboxSession(pi, context);
+		await closeSandboxSession(pi);
 		await expect(second.close()).resolves.toMatchObject({ confirmed: true });
 		expect(released).toStrictEqual(['copy-1', 'copy-2']);
 	});
@@ -269,7 +269,7 @@ it('rejects a copy of a closed sandbox through the returned promise', async () =
 		const target = await getSandbox(pi, context);
 		let copying: Promise<unknown> | undefined;
 
-		await closeSandboxSession(pi, context);
+		await closeSandboxSession(pi);
 		expect(() => {
 			copying = target.copy();
 		}).not.toThrow();

@@ -141,7 +141,6 @@ const nonFactoryFunctions = new Set([
 	'ShellTransportRunner',
 	'checkSandboxTargetStatus',
 	'cleanDisplayText',
-	'closeSandboxSession',
 	'createSandboxCleanupContext',
 	'createTargetFileOperations',
 	'encodePosixArgv',

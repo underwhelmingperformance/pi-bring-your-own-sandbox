@@ -1,6 +1,15 @@
-import type { SandboxHost, SandboxHostOptions } from './contracts.js';
+import { failedCloseReport } from './cleanup-report.js';
+import type {
+	SandboxHost,
+	SandboxHostHandle,
+	SandboxHostOptions
+} from './contracts.js';
 import { bindFactory } from './default-broker.js';
-import { InvalidSandboxRequestError } from './errors.js';
+import {
+	InvalidSandboxRequestError,
+	SandboxInitialisationError
+} from './errors.js';
+import { isPiBound } from './protocol-address.js';
 import { registerHostOptions } from './runtime-participant.js';
 import { checker } from './schemas.js';
 import { hostOptionsSchema } from './service-schemas.js';
@@ -8,20 +17,39 @@ import { hostOptionsSchema } from './service-schemas.js';
 const isHostOptions = checker(hostOptionsSchema);
 
 /**
-Bind cleanup defaults for an embedded Pi runtime. Call
-once from the host's first extension factory, before other SDK services exist.
-Every SDK copy then discovers the same service. A late or repeated binding
-fails; it cannot change an existing service's configuration.
+Register the embedding host during its Pi extension factory. The returned
+handle shares the elected broker's shutdown operation after session startup.
 */
 export function initialiseSandboxHost(
 	pi: SandboxHost,
 	extensionSource: string,
 	options: SandboxHostOptions
-): void {
+): SandboxHostHandle {
+	if (isPiBound(pi)) {
+		throw new SandboxInitialisationError({ operation: 'configure' });
+	}
+
 	if (!isHostOptions(options)) {
 		throw new InvalidSandboxRequestError({ operation: 'configure' });
 	}
 
 	bindFactory(pi, extensionSource);
-	registerHostOptions(pi, options);
+
+	let close: SandboxHostHandle['close'] | undefined;
+
+	registerHostOptions(pi, options, (ownerClose) => {
+		close = ownerClose;
+	});
+
+	return Object.freeze<SandboxHostHandle>({
+		close() {
+			return close === undefined
+				? Promise.resolve(
+						failedCloseReport(
+							new SandboxInitialisationError({ operation: 'dispose' })
+						)
+					)
+				: close();
+		}
+	});
 }

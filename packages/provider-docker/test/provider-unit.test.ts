@@ -8,7 +8,6 @@ import { promisify } from 'node:util';
 
 import { createSandboxClient } from 'pi-bring-your-own-sandbox/consumer';
 import {
-	closeSandboxSession,
 	initialiseSandboxHost,
 	registerSandboxDiagnostics
 } from 'pi-bring-your-own-sandbox/host';
@@ -492,7 +491,8 @@ it('reports confirmed broker cleanup after Docker opening releases partial alloc
 			{
 				name: 'docker',
 				factory(pi) {
-					initialiseSandboxHost(pi, import.meta.filename, {});
+					const host = initialiseSandboxHost(pi, import.meta.filename, {});
+
 					registerSandboxProvider(
 						pi,
 						import.meta.filename,
@@ -514,7 +514,7 @@ it('reports confirmed broker cleanup after Docker opening releases partial alloc
 								name: 'UnsupportedSandboxPolicyError'
 							});
 							expect({
-								report: await closeSandboxSession(pi, context),
+								report: await host.close(),
 								containers: docker.containers,
 								hasVolume: docker.isVolumePresent
 							}).toStrictEqual({

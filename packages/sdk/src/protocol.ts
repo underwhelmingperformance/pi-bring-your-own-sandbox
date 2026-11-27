@@ -255,12 +255,6 @@ export interface BrokerService {
 	) => Promise<SandboxNegotiation>;
 
 	/**
-	Begin the shutdown barrier and return the generation cleanup report.
-	Repeated calls share the result.
-	*/
-	readonly close: (context: SandboxContext) => Promise<SandboxCloseReport>;
-
-	/**
 	Inspect generation metadata without provisioning a backend.
 	*/
 	readonly status: (context: SandboxContext) => Promise<SandboxStatus>;

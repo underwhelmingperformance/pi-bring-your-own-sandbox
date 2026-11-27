@@ -173,8 +173,8 @@ export function bindFactory(pi: SandboxHost, extensionSource: string): void {
 		const participants = roster.map((member) =>
 			connectParticipant(pi, member, owner, election)
 		);
-		const hosts = participants.flatMap(({ hostOptions }) =>
-			hostOptions === undefined ? [] : [hostOptions]
+		const hosts = participants.flatMap(({ host }) =>
+			host === undefined ? [] : [host]
 		);
 
 		if (hosts.length > 1) {
@@ -183,7 +183,7 @@ export function bindFactory(pi: SandboxHost, extensionSource: string): void {
 
 		let declared: readonly RuntimeProvider[] | undefined;
 		const providers = () => (declared ??= providerList(pi, participants));
-		const settings = createRuntimeSettings(providers, hosts[0]);
+		const settings = createRuntimeSettings(providers, hosts[0]?.options);
 
 		const shellSettings = Object.freeze({
 			lifetime: settings.lifetime,
@@ -231,11 +231,12 @@ export function bindFactory(pi: SandboxHost, extensionSource: string): void {
 		}
 
 		pi.on('session_shutdown', async (_event, shutdownContext) => {
-			reportCleanup(pi, shutdownContext, await broker.close(shutdownContext));
+			reportCleanup(pi, shutdownContext, await broker.close());
 		});
 
 		publishBroker(pi.events, candidateId, () => broker, brokerId);
 		bindings.owner = broker;
+		hosts[0]?.receive(broker.close.bind(broker));
 
 		for (const participant of participants) {
 			participant.commit(shellSettings);
@@ -324,9 +325,7 @@ export function bindFactory(pi: SandboxHost, extensionSource: string): void {
 				Object.freeze<RuntimeParticipant>({
 					providers: Object.freeze([...bindings.providers]),
 					shellRoutes: Object.freeze([...bindings.shellRoutes]),
-					...(bindings.hostOptions !== undefined && {
-						hostOptions: bindings.hostOptions
-					}),
+					...(bindings.host !== undefined && { host: bindings.host }),
 					commit(settings) {
 						if (bindings.pin !== undefined) {
 							throw invalidBootstrap();

@@ -9,7 +9,6 @@ import {
 } from '@earendil-works/pi-ai';
 import type {
 	CreateAgentSessionRuntimeFactory,
-	ExtensionAPI,
 	ExtensionContext
 } from '@earendil-works/pi-coding-agent';
 import {
@@ -30,7 +29,7 @@ import {
 	isSandboxError
 } from 'pi-bring-your-own-sandbox/consumer';
 import {
-	closeSandboxSession,
+	initialiseSandboxHost,
 	registerSandboxDiagnostics
 } from 'pi-bring-your-own-sandbox/host';
 import { SandboxOperationError } from 'pi-bring-your-own-sandbox/provider';
@@ -134,7 +133,7 @@ if (vertex !== undefined) {
 }
 
 const live: {
-	pi?: ExtensionAPI;
+	host?: ReturnType<typeof initialiseSandboxHost>;
 	context?: ExtensionContext;
 	clients?: [SandboxClient, SandboxClient];
 } = {};
@@ -159,7 +158,7 @@ const create: CreateAgentSessionRuntimeFactory = async (options) => {
 					name: 'capture',
 					factory(pi) {
 						registerSandboxDiagnostics(pi, import.meta.filename);
-						live.pi = pi;
+						live.host = initialiseSandboxHost(pi, import.meta.filename, {});
 						live.clients = [
 							createSandboxClient(pi, import.meta.filename),
 							peer.createSandboxClient(pi, import.meta.filename)
@@ -223,7 +222,7 @@ try {
 		}
 	});
 	assert.deepEqual(errors, []);
-	assert.ok(live.pi);
+	assert.ok(live.host);
 	assert.ok(live.context);
 
 	assert.ok(live.clients);
@@ -272,7 +271,7 @@ try {
 		}))
 	);
 
-	assert.deepEqual(await closeSandboxSession(live.pi, live.context), {
+	assert.deepEqual(await live.host.close(), {
 		confirmed: true,
 		failures: [],
 		recoveries: []

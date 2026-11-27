@@ -134,6 +134,6 @@ export async function fixtureBroker<Config>(
 
 			return sandbox;
 		},
-		close: () => broker.close(context)
+		close: () => broker.close()
 	};
 }

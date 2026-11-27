@@ -1,7 +1,7 @@
-export { closeSandboxSession } from './client.js';
 export type {
 	SandboxDiagnostic,
 	SandboxHost,
+	SandboxHostHandle,
 	SandboxHostOptions
 } from './contracts.js';
 export { registerSandboxDiagnostics } from './diagnostic-registration.js';

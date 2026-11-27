@@ -81,17 +81,19 @@ it('accepts an independent broker service and preserves its method receiver', as
 	respond(events, 'pi-byos:runtime', reply);
 
 	const service = discoverBroker(events);
+	const status = await service?.status({
+		cwd: '/fixture',
+		sessionManager: SessionManager.inMemory('/fixture')
+	});
 
 	expect({
 		id: service?.id,
-		report: await service?.close({
-			cwd: '/fixture',
-
-			sessionManager: SessionManager.inMemory('/fixture')
-		})
+		generationId: status?.generationId,
+		state: status?.state
 	}).toStrictEqual({
 		id: 'independent',
-		report: { confirmed: true, recoveries: [], failures: [] }
+		generationId: 'independent',
+		state: 'idle'
 	});
 });
 

@@ -54,6 +54,14 @@ export interface SandboxHostOptions {
 	readonly cleanup?: Partial<SandboxCleanupBudgets>;
 }
 /**
+Closes the embedded runtime's sandbox session after startup. Repeated calls
+return the cleanup report from the same shutdown operation.
+*/
+export interface SandboxHostHandle {
+	readonly close: () => Promise<SandboxCloseReport>;
+}
+
+/**
 Live Pi context required for generation identity and workspace paths. Pass the
 context supplied by Pi so its runtime validity checks remain active.
 */

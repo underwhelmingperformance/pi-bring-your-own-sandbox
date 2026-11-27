@@ -30,8 +30,8 @@ value sandboxRipgrepArguments (ripgrep-arguments.d.ts)
 pi-bring-your-own-sandbox/host
 type SandboxDiagnostic (contracts.d.ts)
 type SandboxHost (contracts.d.ts)
+type SandboxHostHandle (contracts.d.ts)
 type SandboxHostOptions (contracts.d.ts)
-value closeSandboxSession (client.d.ts)
 value initialiseSandboxHost (host.d.ts)
 value registerSandboxDiagnostics (diagnostic-registration.d.ts)
 
@@ -132,9 +132,6 @@ Declarations referenced by the public entry points
 
 // cleanup-budgets.d.ts
 export declare function resolveCleanupBudgets(input?: Partial<SandboxCleanupBudgets>): SandboxCleanupBudgets;
-
-// client.d.ts
-export declare function closeSandboxSession(pi: SandboxHost, context: SandboxContext): Promise<SandboxCloseReport>;
 
 // client.d.ts
 export declare function createSandboxClient(pi: SandboxHost, extensionSource: string): SandboxClient;
@@ -375,6 +372,11 @@ export interface SandboxFiles {
     readonly stat: (path: string, options?: SandboxOperationOptions) => Promise<FileStat>;
     readonly listDirectory: (path: string, options?: SandboxOperationOptions) => Promise<readonly DirectoryEntry[]>;
     readonly updateText: (path: string, transform: (text: string) => string, options?: SandboxOperationOptions) => Promise<TextUpdate>;
+}
+
+// contracts.d.ts
+export interface SandboxHostHandle {
+    readonly close: () => Promise<SandboxCloseReport>;
 }
 
 // contracts.d.ts
@@ -1272,7 +1274,7 @@ export interface ProcessSignals {
 declare const hostSystemRoots: Readonly<Record<'darwin' | 'linux', readonly string[]>>;
 
 // host.d.ts
-export declare function initialiseSandboxHost(pi: SandboxHost, extensionSource: string, options: SandboxHostOptions): void;
+export declare function initialiseSandboxHost(pi: SandboxHost, extensionSource: string, options: SandboxHostOptions): SandboxHostHandle;
 
 // launch-frames.d.ts
 export declare class SandboxLaunchFrames {

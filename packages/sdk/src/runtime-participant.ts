@@ -3,6 +3,7 @@ import type {
 	SandboxConfigResolver,
 	SandboxContext,
 	SandboxHost,
+	SandboxHostHandle,
 	SandboxHostOptions,
 	SandboxProviderConfig
 } from './contracts.js';
@@ -27,9 +28,14 @@ export interface ShellSettings {
 	}>;
 }
 
+interface HostRegistration {
+	readonly options: SandboxHostOptions;
+	readonly receive: (close: SandboxHostHandle['close']) => void;
+}
+
 export interface RuntimeParticipant {
 	readonly providers: readonly RuntimeProvider[];
-	readonly hostOptions?: SandboxHostOptions;
+	readonly host?: HostRegistration;
 	readonly shellRoutes: readonly ShellRouteRegistration[];
 	readonly commit: (settings: ShellSettings) => void;
 }
@@ -38,7 +44,7 @@ interface RuntimeBindings {
 	readonly providers: RuntimeProvider[];
 	readonly shellRoutes: ShellRouteRegistration[];
 	owner?: SandboxBroker;
-	hostOptions?: SandboxHostOptions;
+	host?: HostRegistration;
 	wantsShellSettings?: true;
 	shellSettings?: ShellSettings;
 	pin?: BrokerPin;
@@ -75,17 +81,21 @@ export function localRuntimeBindings(pi: SandboxHost): RuntimeBindings {
 
 export function registerHostOptions(
 	pi: SandboxHost,
-	options: SandboxHostOptions
+	options: SandboxHostOptions,
+	receive: HostRegistration['receive']
 ): void {
 	const local = localRuntimeBindings(pi);
 
-	if (local.hostOptions !== undefined || local.pin !== undefined) {
+	if (local.host !== undefined || local.pin !== undefined) {
 		throw new InvalidSandboxRequestError({ operation: 'configure' });
 	}
 
-	local.hostOptions = Object.freeze({
-		...(options.cleanup !== undefined && {
-			cleanup: Object.freeze({ ...options.cleanup })
+	local.host = Object.freeze({
+		receive,
+		options: Object.freeze({
+			...(options.cleanup !== undefined && {
+				cleanup: Object.freeze({ ...options.cleanup })
+			})
 		})
 	});
 }

@@ -1511,6 +1511,7 @@ export interface SandboxProviderTestFixture<Config = unknown> {
         readonly after?: SandboxProcessProbe;
     };
     readonly verifyPolicy?: (backend: SandboxBackend, context: SandboxOperationContext) => Promise<void>;
+    readonly armOpenFailure?: (mode: 'open' | 'copy') => Promise<void>;
     readonly verifyDisposed: (backend?: SandboxBackend, recovery?: RecoveryDescriptor) => Promise<void>;
     readonly verifyAllocationDisposed?: (backend: SandboxBackend) => Promise<void>;
     readonly cleanup: () => Promise<void>;

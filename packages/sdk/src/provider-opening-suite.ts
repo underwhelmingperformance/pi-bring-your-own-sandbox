@@ -1,7 +1,7 @@
 import { expect } from 'vitest';
 
 import { snapshotBackend } from './backend-snapshot.js';
-import type { SandboxBackend } from './contracts.js';
+import type { SandboxBackend, SandboxCloseReport } from './contracts.js';
 import { SandboxCleanupError } from './errors.js';
 import type { FixtureAttempt } from './provider-test-broker.js';
 import { fixtureBroker } from './provider-test-broker.js';
@@ -12,6 +12,61 @@ import type {
 import { bounded } from './provider-test-harness.js';
 
 export type OpeningCase = 'cancelled' | 'invalid' | 'unconfirmed';
+
+export async function verifyProviderOpeningFailure<Config>(
+	options: SandboxProviderTestOptions<Config>,
+	mode: 'open' | 'copy',
+	selection?: SandboxProviderTestSelection
+): Promise<void> {
+	const fixture = await options.createFixture(selection);
+
+	try {
+		const arm = fixture.armOpenFailure?.bind(fixture);
+
+		if (arm === undefined) {
+			throw new Error('Supply an opening-failure hook for this fixture.');
+		}
+
+		const provider = fixture.provider ?? options.provider;
+		const attempt: FixtureAttempt = {};
+		const runtime = await fixtureBroker(
+			provider,
+			fixture.hostWorkspace,
+			fixture.configuration,
+			{
+				policy: fixture.policy,
+				...(options.cleanup !== undefined && { cleanup: options.cleanup })
+			},
+			attempt
+		);
+
+		let close: SandboxCloseReport;
+
+		try {
+			await bounded(options, () => arm(mode), 'open');
+			await expect(
+				runtime.acquire({ timeoutMs: options.timeoutMs ?? 10_000 }, mode)
+			).rejects.toBeInstanceOf(Error);
+		} finally {
+			try {
+				close = await runtime.close();
+			} finally {
+				await bounded(
+					options,
+					() => fixture.verifyDisposed(attempt.backend, attempt.recovery),
+					'dispose'
+				);
+			}
+		}
+
+		expect({ backend: attempt.backend, close }).toStrictEqual({
+			backend: undefined,
+			close: { confirmed: true, failures: [], recoveries: [] }
+		});
+	} finally {
+		await bounded(options, () => fixture.cleanup());
+	}
+}
 
 export async function verifyOpeningCase<Config>(
 	options: SandboxProviderTestOptions<Config>,

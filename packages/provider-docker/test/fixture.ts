@@ -127,6 +127,9 @@ export class DockerFixture {
 	readonly #client: NodeDockerClient;
 	#localListener: Server | undefined;
 	#socketDirectory: string | undefined;
+	#openingFault:
+		| { readonly mode: 'open' | 'copy'; created?: string; fired: boolean }
+		| undefined;
 	readonly allocations = new Set<string>();
 	readonly workspace: string;
 	readonly outside: string;
@@ -268,12 +271,42 @@ server.listen(8080, '0.0.0.0');`
 
 	providerClient(): DockerClient {
 		return {
-			command: (command) => {
+			command: async (command) => {
 				if (command.recovery.kind === 'allocation') {
 					this.allocations.add(command.recovery.id);
 				}
 
-				return this.#client.command(command);
+				const fault = this.#openingFault;
+				const [subcommand, flag, name] = command.args;
+
+				if (
+					subcommand === 'start' &&
+					flag === '--attach' &&
+					command.operation === 'open' &&
+					fault?.created !== undefined &&
+					name === fault.created
+				) {
+					fault.fired = true;
+
+					throw new Error(
+						`Injected Docker ${fault.mode} failure before attach.`
+					);
+				}
+
+				const result = await this.#client.command(command);
+
+				if (
+					subcommand === 'create' &&
+					flag === '--name' &&
+					name !== undefined &&
+					fault !== undefined &&
+					command.operation === 'open' &&
+					result.status === 0
+				) {
+					fault.created = name;
+				}
+
+				return result;
 			}
 		};
 	}
@@ -331,6 +364,13 @@ server.listen(8080, '0.0.0.0');`
 					'{{.Name}}'
 				])
 			).toBe('');
+		}
+
+		if (this.#openingFault !== undefined) {
+			expect(
+				this.#openingFault.fired,
+				`Docker ${this.#openingFault.mode} did not reach the injected failure.`
+			).toBe(true);
 		}
 	}
 
@@ -723,6 +763,11 @@ process.stdout.write(readFileSync("/tmp/response"));`
 				}
 			},
 			verifyPolicy: (backend, context) => this.policyChecks(backend, context),
+			armOpenFailure: (mode) => {
+				this.#openingFault = { mode, fired: false };
+
+				return Promise.resolve();
+			},
 			verifyDisposed: () => this.verifyDisposed(),
 			cleanup: () => this.cleanup()
 		};

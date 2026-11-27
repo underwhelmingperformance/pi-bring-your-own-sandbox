@@ -349,6 +349,12 @@ export interface SandboxProviderTestFixture<Config = unknown> {
 		context: SandboxOperationContext
 	) => Promise<void>;
 	/**
+	Arrange for the next open or copy to fail after real provider resources
+	exist and before the provider returns a backend. Verify that the fault
+	fired when inspecting the allocation inventory in `verifyDisposed`.
+	*/
+	readonly armOpenFailure?: (mode: 'open' | 'copy') => Promise<void>;
+	/**
 	Independently verify resource release after disposal or a failed open.
 	The backend is undefined if opening failed before returning a backend.
 	*/

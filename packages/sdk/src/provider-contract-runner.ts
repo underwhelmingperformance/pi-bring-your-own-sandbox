@@ -11,7 +11,10 @@ import {
 	verifyCredentialExclusion,
 	verifyCredentialGrant
 } from './provider-credential-suite.js';
-import { verifyOpeningCase } from './provider-opening-suite.js';
+import {
+	verifyOpeningCase,
+	verifyProviderOpeningFailure
+} from './provider-opening-suite.js';
 import {
 	invalidSharedSettings,
 	verifyFixtureSettings
@@ -56,6 +59,7 @@ export function defineSandboxProviderTests<Config>(
 			'provider' in options ? options.provider : fixture.provider;
 		const canRegister = fixture.register !== undefined;
 		const canStageSettings = fixture.stageSettings !== undefined;
+		const canInjectOpenFailure = fixture.armOpenFailure !== undefined;
 
 		await bounded(options, () => fixture.cleanup());
 
@@ -116,6 +120,15 @@ export function defineSandboxProviderTests<Config>(
 					testTimeout
 				);
 			}
+
+			it.skipIf(!canInjectOpenFailure)(
+				label +
+					(canInjectOpenFailure
+						? `releases allocations when provider ${mode} fails before publication`
+						: `partial run: supply armOpenFailure to check provider ${mode} failure`),
+				() => verifyProviderOpeningFailure(registered, mode, selection),
+				testTimeout
+			);
 
 			if (selection?.mode === 'open') {
 				for (const kind of ['read', 'write'] as const) {

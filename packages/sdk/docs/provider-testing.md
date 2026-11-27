@@ -81,6 +81,14 @@ special-file refusal for every live-checkout profile on hosts with FIFOs. Omit
 declaration. Use `workspaceVisibility` to focus a suite on shared or copied
 checkout behaviour. The test runner labels focused suites as partial.
 
+Supply `armOpenFailure(mode)` to test failed allocation in both open and copy.
+The hook arranges a failure after the provider allocates resources and before
+the provider returns a backend. Docker and MXC are the intended callers. The
+Docker fixture injects the fault after the daemon creates the allocation. Check
+the provider's independent inventory in `verifyDisposed`, even if the suite
+passes neither a backend nor a recovery descriptor. Verify that the injected
+fault fired. The test runner reports partial coverage if the hook is absent.
+
 ## Default configured policy
 
 Omit the policy and check the SDK defaults for live checkout writes, host user

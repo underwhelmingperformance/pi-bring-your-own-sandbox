@@ -22,6 +22,7 @@ import {
 	usingProviderFixture as usingBrokerProviderFixture
 } from './provider-contract-suite.js';
 import { verifyCredentialGrant } from './provider-credential-suite.js';
+import { verifyProviderOpeningFailure } from './provider-opening-suite.js';
 import { registerSandboxProvider } from './provider-registration.js';
 import { verifyFixtureSettings } from './provider-settings-suite.js';
 import type { SandboxProviderTestOptions } from './provider-test-contracts.js';
@@ -33,6 +34,79 @@ defineSandboxProviderTests({
 	...memoryContract,
 	capabilities: firstOpenProfile(memoryContract.provider)
 });
+
+it.each(['open', 'copy'] as const)(
+	'checks allocation inventory after %s fails before reporting recovery',
+	async (mode) => {
+		const scenario = contractScenario();
+		const original = scenario.provider;
+		const profile = firstOpenProfile(original);
+		const copyProfile = {
+			...profile,
+			policy: { ...profile.policy, hostWorkspaceWrites: false }
+		};
+		const inventory = new Set<string>();
+		let armed: typeof mode | undefined;
+		const order: string[] = [];
+
+		function allocate(operation: typeof mode): Promise<never> {
+			expect(armed).toBe(operation);
+			inventory.add(operation);
+			order.push('allocation');
+			inventory.delete(operation);
+
+			return Promise.reject(new SandboxOperationError({ operation: 'open' }));
+		}
+
+		await verifyProviderOpeningFailure(
+			{
+				...scenario,
+				provider: {
+					...original,
+					profiles: { open: [profile], copy: [copyProfile] },
+					create: () => ({
+						...original.create(),
+						open: () => allocate('open'),
+						copy: () => allocate('copy')
+					})
+				},
+				async createFixture() {
+					const fixture = await scenario.createFixture();
+
+					return {
+						...fixture,
+						armOpenFailure(operation: typeof mode) {
+							armed = operation;
+
+							return Promise.resolve();
+						},
+						verifyDisposed(
+							backend?: SandboxBackend,
+							recovery?: RecoveryDescriptor
+						) {
+							expect({ backend, recovery, inventory }).toStrictEqual({
+								backend: undefined,
+								recovery: undefined,
+								inventory: new Set()
+							});
+							order.push('verify');
+
+							return Promise.resolve();
+						},
+						async cleanup() {
+							order.push('cleanup');
+							await fixture.cleanup();
+						}
+					};
+				}
+			},
+			mode,
+			{ mode, profile: mode === 'open' ? profile : copyProfile }
+		);
+
+		expect(order).toStrictEqual(['allocation', 'verify', 'cleanup']);
+	}
+);
 
 it('stages defaults and invokes the real registration for settings tests', async () => {
 	const options = contractScenario();

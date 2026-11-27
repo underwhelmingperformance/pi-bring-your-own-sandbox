@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { acquireOptions } from './acquire-options.js';
 import { snapshotBackend } from './backend-snapshot.js';
 import type { SandboxConfig } from './config.js';
+import { resolveSandboxConfig } from './config.js';
 import type {
 	SandboxBackend,
 	SandboxCleanupBudgets,
@@ -16,6 +17,7 @@ import { MemoryBackend } from './fixtures/memory-backend.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
 import { SandboxGeneration } from './generation.js';
 import { observe } from './lifecycle.js';
+import { defaultPolicy } from './policy-model.js';
 import type { ProviderServiceV1 } from './protocol.js';
 
 afterEach(() => {
@@ -88,6 +90,57 @@ it('records bounded provider warnings separately from process output and cleanup
 		dropped: undefined
 	});
 });
+
+it.each([
+	{ label: 'implicit', settings: undefined },
+	{ label: 'explicit default', settings: { policy: defaultPolicy } }
+])(
+	'keeps the effective ordinary policy for a network escalation with $label settings',
+	async ({ settings }) => {
+		const workspace = process.cwd();
+		const context: SandboxContext = {
+			cwd: workspace,
+			sessionManager: SessionManager.inMemory(workspace)
+		};
+		const ordinary = new MemoryBackend('exec').profile;
+		const withNetwork = {
+			...ordinary,
+			policy: { ...ordinary.policy, network: true }
+		};
+		const provider: ProviderServiceV1 = {
+			id: 'fixture.network',
+			label: 'Network fixture',
+			profiles: { open: [ordinary, withNetwork], copy: [] },
+			prepare: () => ({
+				open: () =>
+					Promise.reject(new Error('Planning must precede allocation.'))
+			})
+		};
+		const generation = new SandboxGeneration(context, {
+			providers: () => [provider],
+			readConfig: () =>
+				Promise.resolve(resolveSandboxConfig(provider, settings, 'extension'))
+		});
+
+		try {
+			const negotiated = await generation.negotiate(context);
+			const { destination } = await generation.planEscalation(context, {
+				access: { network: 'needed' }
+			});
+
+			expect({ negotiated, destination }).toMatchObject({
+				negotiated: { ok: true, profile: ordinary },
+				destination: {
+					kind: 'provider',
+					providerId: provider.id,
+					policy: withNetwork.policy
+				}
+			});
+		} finally {
+			await generation.close();
+		}
+	}
+);
 
 it('attributes a provider preparation failure to its extension', async () => {
 	const { generation, context, backend } = fixture(() =>

@@ -204,11 +204,18 @@ it.each(['read-only', 'read-write'] as const)(
 				paths: [requested],
 				isEscalated: true
 			}),
-			host: selectProfile({
+			hostOrdinary: selectProfile({
 				profiles: [ordinary],
 				limit: policy,
 				paths: [requested],
 				isUnrestrictedHost: true
+			}),
+			hostEscalation: selectProfile({
+				profiles: [ordinary],
+				limit: policy,
+				paths: [requested],
+				isUnrestrictedHost: true,
+				isEscalated: true
 			})
 		}).toStrictEqual({
 			ordinary: { ok: false, detail: { ...detail, reason: 'limit' } },
@@ -226,7 +233,8 @@ it.each(['read-only', 'read-write'] as const)(
 						},
 			unsupportedGrant: { ok: false, detail: { ...detail, reason: 'profile' } },
 			explicitGrant: { ok: true, profile: granting },
-			host: { ok: true, profile: ordinary }
+			hostOrdinary: { ok: false, detail: { ...detail, reason: 'limit' } },
+			hostEscalation: { ok: true, profile: ordinary }
 		});
 	}
 );

@@ -977,6 +977,7 @@ export class SandboxGeneration {
 			profiles: provider.profiles.open,
 			limit: unrestrictedPolicy,
 			isUnrestrictedHost: true,
+			isEscalated: true,
 			requirements,
 			paths
 		});
@@ -1165,7 +1166,7 @@ export class SandboxGeneration {
 			});
 		}
 
-		const limit = this.#selection?.policy;
+		const limit = this.#defaultProfile?.policy;
 
 		if (limit === undefined) {
 			throw new SandboxInitialisationError({ operation: 'acquire' });

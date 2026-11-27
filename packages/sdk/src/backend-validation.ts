@@ -217,7 +217,7 @@ export async function verifyGrantedPaths(
 			matches.length !== 1 ||
 			!flavor.isAbsolute(grant.targetPath) ||
 			(isWorkspace &&
-				flavor.normalize(grant.targetPath) !==
+				grant.targetPath !==
 					workspaceTarget(request.path, hostWorkspace, backend.workspace)) ||
 			(hostHome !== undefined &&
 				!isWorkspace &&

@@ -121,7 +121,7 @@ function canGrantPath(
 	policy: Policy,
 	path: ResolvedPath,
 	mode: ProfileMode,
-	isUnrestrictedHost: boolean,
+	canGrantCredential: boolean,
 	isWithinScope: boolean
 ): boolean {
 	if (path.location === 'workspace') {
@@ -132,7 +132,7 @@ function canGrantPath(
 
 	if (
 		!isWithinScope ||
-		(!isUnrestrictedHost && path.isCredential === true) ||
+		(!canGrantCredential && path.isCredential === true) ||
 		(mode === 'copy' && path.kind === 'write')
 	) {
 		return false;
@@ -253,6 +253,8 @@ export function selectProfile({
 		}
 	}
 
+	const canGrantCredential = isUnrestrictedHost && isEscalated;
+
 	for (const path of paths) {
 		const isWithinScope =
 			isUnrestrictedHost ||
@@ -261,7 +263,7 @@ export function selectProfile({
 
 		if (
 			!isEscalated &&
-			!canGrantPath(limit, path, mode, isUnrestrictedHost, isWithinScope)
+			!canGrantPath(limit, path, mode, canGrantCredential, isWithinScope)
 		) {
 			return {
 				ok: false,
@@ -283,7 +285,7 @@ export function selectProfile({
 					profile.policy,
 					path,
 					mode,
-					isUnrestrictedHost,
+					canGrantCredential,
 					isWithinScope
 				) ||
 					(isEscalated &&

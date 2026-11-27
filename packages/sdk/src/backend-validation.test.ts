@@ -90,6 +90,13 @@ it.each([
 		isReachable: false
 	},
 	{
+		case: 'refuses a workspace grant with noncanonical target placement',
+		flavor: 'posix',
+		file: 'other/../requested.txt',
+		supportsRead: true,
+		isReachable: false
+	},
+	{
 		case: 'refuses a workspace grant without a probe',
 		flavor: 'posix',
 		file: 'requested.txt',
@@ -108,7 +115,8 @@ it.each([
 	const hostPath = path.join(checkout, 'nested', 'requested.txt');
 	const backend = new MemoryBackend(supportsRead ? 'files' : 'exec');
 	const root = flavor === 'posix' ? backend.workspace.root : 'C:\\fixture';
-	const targetPath = path[flavor].join(root, 'nested', file);
+	const directory = path[flavor].join(root, 'nested');
+	const targetPath = directory + path[flavor].sep + file;
 	const scope = new OperationScope(
 		{ operation: 'open' },
 		new AbortController().signal,

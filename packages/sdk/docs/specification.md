@@ -396,12 +396,12 @@ with a typed reason before prompting or allocating.
 
 The broker first seeks a provider profile that supplies the requested access
 within the full-access limit. The profile must keep unlisted properties at the
-ordinary configured policy and expose only the requested extra paths. Among
-eligible profiles, the broker chooses the least extra access that satisfies the
-request. If none can supply it, the broker selects the host before asking for a
-decision. The host enforces no restrictions. This destination is an explicit
-exception to preserving unlisted properties. A failure at a selected destination
-does not trigger another attempt.
+values of the effective ordinary profile and expose only the requested extra
+paths. Among eligible profiles, the broker chooses the least extra access that
+satisfies the request. If none can supply it, the broker selects the host before
+asking for a decision. The host enforces no restrictions. This destination is an
+explicit exception to preserving unlisted properties. A failure at a selected
+destination does not trigger another attempt.
 
 A `hostUserData: needed` escalation selects only read-only provider profiles.
 The property grants reads within the host user data roots. Request an explicit

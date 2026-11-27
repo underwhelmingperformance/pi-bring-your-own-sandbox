@@ -156,7 +156,7 @@ export interface BackendDirectoryReader {
 
 // contracts.d.ts
 export interface BackendFileReader {
-    readonly readFile: (path: string, context: SandboxOperationContext) => Promise<Uint8Array>;
+    readonly readFile: (path: string, context: SandboxOperationContext, maxBytes?: number) => Promise<Uint8Array>;
     readonly access: (path: string, context: SandboxOperationContext) => Promise<void>;
     readonly stat: (path: string, context: SandboxOperationContext) => Promise<FileStat>;
 }
@@ -361,7 +361,9 @@ export interface SandboxErrorContext {
 
 // contracts.d.ts
 export interface SandboxFiles {
-    readonly readFile: (path: string, options?: SandboxOperationOptions) => Promise<Uint8Array>;
+    readonly readFile: (path: string, options?: SandboxOperationOptions & {
+        readonly maxBytes?: number;
+    }) => Promise<Uint8Array>;
     readonly writeFile: (path: string, content: Uint8Array, options?: SandboxOperationOptions) => Promise<void>;
     readonly mkdir: (path: string, options?: SandboxOperationOptions) => Promise<void>;
     readonly access: (path: string, mode: 'read' | 'write', options?: SandboxOperationOptions) => Promise<void>;
@@ -677,6 +679,10 @@ declare const errorDetailSchema: Type.TUnion<[
     }>,
     Type.TObject<{
         kind: Type.TLiteral<"copy-unavailable">;
+    }>,
+    Type.TObject<{
+        kind: Type.TLiteral<"read-limit">;
+        maxBytes: Type.TInteger;
     }>,
     Type.TObject<{
         kind: Type.TLiteral<"policy">;
@@ -1684,4 +1690,4 @@ export interface TargetFileOperations {
 export type TargetFileOperation = 'access' | 'find' | 'grep' | 'listDirectory' | 'mkdir' | 'readFile' | 'stat' | 'writeFile';
 
 // target-operations.d.ts
-export type TargetFileTransport = (operation: TargetFileOperation, filename: string, context: SandboxOperationContext, input?: Uint8Array, requiresWrite?: boolean) => Promise<Uint8Array>;
+export type TargetFileTransport = (operation: TargetFileOperation, filename: string, context: SandboxOperationContext, input?: Uint8Array, requiresWrite?: boolean, maxBytes?: number) => Promise<Uint8Array>;

@@ -77,8 +77,15 @@ export class DockerFileWorker implements TargetFileOperations {
 		this.#lifetime = lifetime;
 
 		const { files, search } = createTargetFileOperations(
-			(operation, filename, context, input, requiresWrite) =>
-				this.#request(operation, filename, context, input, requiresWrite),
+			(operation, filename, context, input, requiresWrite, maxBytes) =>
+				this.#request(
+					operation,
+					filename,
+					context,
+					input,
+					requiresWrite,
+					maxBytes
+				),
 			{
 				providerId: 'example.docker',
 				backendId: resources.volume,
@@ -233,7 +240,8 @@ export class DockerFileWorker implements TargetFileOperations {
 		context: SandboxOperationContext,
 		onDispatch: () => void,
 		input?: Uint8Array,
-		requiresWrite = false
+		requiresWrite = false,
+		maxBytes?: number
 	): Promise<Uint8Array> {
 		const identity = this.#identity(operation);
 
@@ -254,7 +262,11 @@ export class DockerFileWorker implements TargetFileOperations {
 		const chunks: Uint8Array[] = [];
 		let bytes = 0;
 		let errorBytes = 0;
-		let limitFailure: RangeError | undefined;
+		const responseLimit = Math.min(
+			sandboxTargetTransferLimit,
+			maxBytes ?? sandboxTargetTransferLimit
+		);
+		let limitFailure: SandboxOperationError | undefined;
 		let removal: Promise<void> | undefined;
 		let hasDispatched = false;
 		const cancel = () => {
@@ -304,7 +316,8 @@ export class DockerFileWorker implements TargetFileOperations {
 						? '/workspace'
 						: requiresWrite
 							? 'write'
-							: String(input?.byteLength ?? 0)
+							: String(input?.byteLength ?? 0),
+					...(maxBytes === undefined ? [] : [String(maxBytes)])
 				],
 				context,
 				...(input !== undefined && { input }),
@@ -315,9 +328,11 @@ export class DockerFileWorker implements TargetFileOperations {
 						errorBytes += output.data.byteLength;
 
 						if (errorBytes > 64 * 1024) {
-							limitFailure = new RangeError(
-								'Docker helper diagnostics exceeded 64 KiB.'
-							);
+							limitFailure = new SandboxOperationError(identity, {
+								cause: new RangeError(
+									'Docker helper diagnostics exceeded 64 KiB.'
+								)
+							});
 
 							throw limitFailure;
 						}
@@ -327,9 +342,20 @@ export class DockerFileWorker implements TargetFileOperations {
 
 					bytes += output.data.byteLength;
 
-					if (bytes > sandboxTargetTransferLimit) {
-						limitFailure = new RangeError(
-							'The file response exceeded the transfer limit.'
+					if (bytes > responseLimit) {
+						limitFailure = new SandboxOperationError(
+							{
+								...identity,
+								...(maxBytes !== undefined &&
+									maxBytes <= sandboxTargetTransferLimit && {
+										detail: { kind: 'read-limit', maxBytes }
+									})
+							},
+							{
+								cause: new RangeError(
+									'The file response exceeded the byte limit.'
+								)
+							}
 						);
 
 						throw limitFailure;
@@ -341,7 +367,13 @@ export class DockerFileWorker implements TargetFileOperations {
 
 			signal.throwIfAborted();
 
-			checkSandboxTargetStatus(result.status, identity);
+			checkSandboxTargetStatus(result.status, {
+				...identity,
+				...(result.status === 44 &&
+					maxBytes !== undefined && {
+						detail: { kind: 'read-limit', maxBytes }
+					})
+			});
 
 			return new Uint8Array(Buffer.concat(chunks));
 		} catch (error) {
@@ -363,7 +395,7 @@ export class DockerFileWorker implements TargetFileOperations {
 				cancel();
 				await removal;
 
-				throw new SandboxOperationError(identity, { cause: limitFailure });
+				throw limitFailure;
 			}
 
 			if (!(
@@ -387,7 +419,8 @@ export class DockerFileWorker implements TargetFileOperations {
 		filename: string,
 		context: SandboxOperationContext,
 		input?: Uint8Array,
-		requiresWrite = false
+		requiresWrite = false,
+		maxBytes?: number
 	): Promise<Uint8Array> {
 		if (this.#lifetime.aborted) {
 			return Promise.reject(new SandboxSessionClosingError({ operation }));
@@ -440,7 +473,8 @@ export class DockerFileWorker implements TargetFileOperations {
 					context,
 					onDispatch,
 					input,
-					requiresWrite
+					requiresWrite,
+					maxBytes
 				);
 			} finally {
 				onDispatch();

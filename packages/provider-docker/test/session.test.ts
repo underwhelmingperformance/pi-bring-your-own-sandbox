@@ -1232,6 +1232,23 @@ socket.on('error', error => {
 			30_000
 		);
 
+		it('limits a real file worker read and leaves the worker available', async () => {
+			await withDockerSession(async ({ sandbox }) => {
+				const filename = 'source.txt';
+
+				await expect(
+					sandbox.files.readFile(filename, { maxBytes: 7 })
+				).rejects.toMatchObject({
+					name: 'SandboxOperationError',
+					operation: 'readFile',
+					detail: { kind: 'read-limit', maxBytes: 7 }
+				});
+				expect(
+					await sandbox.files.readFile(filename, { maxBytes: 8 })
+				).toStrictEqual(new TextEncoder().encode('original'));
+			});
+		}, 30_000);
+
 		it('rejects backreferences and keeps the grep worker usable', async () => {
 			await withDockerSession(async ({ sandbox }) => {
 				const path = 'source.txt';

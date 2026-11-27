@@ -80,6 +80,14 @@ export const operationOptionsSchema = Type.Object(
 	{ additionalProperties: false }
 );
 
+export const readOptionsSchema = Type.Object(
+	{
+		...operationOptionsSchema.properties,
+		maxBytes: Type.Optional(nonNegativeIntegerSchema)
+	},
+	{ additionalProperties: false }
+);
+
 export const processOptionsSchema = Type.Object(
 	{
 		...operationOptionsSchema.properties,

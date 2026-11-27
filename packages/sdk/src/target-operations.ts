@@ -43,7 +43,8 @@ export type TargetFileTransport = (
 	filename: string,
 	context: SandboxOperationContext,
 	input?: Uint8Array,
-	requiresWrite?: boolean
+	requiresWrite?: boolean,
+	maxBytes?: number
 ) => Promise<Uint8Array>;
 
 export interface TargetFileOperations {
@@ -137,6 +138,14 @@ export function checkSandboxTargetStatus(
 			throw new UnsupportedSandboxCapabilityError(context);
 		}
 
+		case 44: {
+			if (context.detail?.kind === 'read-limit') {
+				throw new SandboxOperationError(context);
+			}
+
+			throw new SandboxTransportError(context);
+		}
+
 		default: {
 			throw new SandboxTransportError(context);
 		}
@@ -199,7 +208,26 @@ export function createTargetFileOperations(
 	return {
 		files: {
 			read: {
-				readFile: (filename, context) => run('readFile', filename, context),
+				async readFile(filename, context, maxBytes) {
+					const bytes = await run(
+						'readFile',
+						filename,
+						context,
+						undefined,
+						undefined,
+						maxBytes
+					);
+
+					if (maxBytes !== undefined && bytes.byteLength > maxBytes) {
+						throw new SandboxOperationError({
+							...identity,
+							operation: 'readFile',
+							detail: { kind: 'read-limit', maxBytes }
+						});
+					}
+
+					return bytes;
+				},
 				async access(filename, context) {
 					await run('access', filename, context);
 				},

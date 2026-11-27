@@ -10,11 +10,13 @@ import {
 	accessModeSchema,
 	findRequestSchema,
 	grepRequestSchema,
-	operationOptionsSchema
+	operationOptionsSchema,
+	readOptionsSchema
 } from './request-schemas.js';
 import { checker } from './schemas.js';
 
 const isOperationOptions = checker(operationOptionsSchema);
+const isReadOptions = checker(readOptionsSchema);
 const isFindRequest = checker(findRequestSchema);
 const isGrepRequest = checker(grepRequestSchema);
 const isAccessMode = checker(accessModeSchema);
@@ -38,6 +40,16 @@ export function operationOptions(
 
 	if (!isOperationOptions(value)) {
 		throw new InvalidSandboxRequestError({ operation });
+	}
+
+	return Object.freeze({ ...value });
+}
+
+export function readOptions(input: unknown) {
+	const value = input === undefined ? {} : input;
+
+	if (!isReadOptions(value)) {
+		throw new InvalidSandboxRequestError({ operation: 'readFile' });
 	}
 
 	return Object.freeze({ ...value });

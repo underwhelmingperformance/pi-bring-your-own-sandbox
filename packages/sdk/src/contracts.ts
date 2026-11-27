@@ -515,12 +515,14 @@ Read operations required together for the `files.read` capability.
 */
 export interface BackendFileReader {
 	/**
-	Read the complete file as bytes, resolving links within the effective
-	policy boundary.
+	Read the complete file as bytes within the effective policy boundary.
+	When a byte limit is supplied, stop after the first excess byte and
+	reject the read.
 	*/
 	readonly readFile: (
 		path: string,
-		context: SandboxOperationContext
+		context: SandboxOperationContext,
+		maxBytes?: number
 	) => Promise<Uint8Array>;
 
 	/**
@@ -1034,11 +1036,12 @@ queue; commands execute outside it.
 */
 export interface SandboxFiles {
 	/**
-	Read complete target bytes. Defaults to a 30,000 ms deadline.
+	Read complete target bytes. Defaults to a 30,000 ms deadline. A non-negative
+	safe integer in maxBytes limits the number of bytes read from the file.
 	*/
 	readonly readFile: (
 		path: string,
-		options?: SandboxOperationOptions
+		options?: SandboxOperationOptions & { readonly maxBytes?: number }
 	) => Promise<Uint8Array>;
 
 	/**

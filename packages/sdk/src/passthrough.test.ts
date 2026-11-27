@@ -300,6 +300,28 @@ it('shares host files, preserves byte ownership and follows filesystem links', a
 	);
 });
 
+it('returns exact bounded reads and rejects the first excess byte', async () => {
+	const { directory, sandbox } = await fixture();
+	const content = Uint8Array.of(1, 2, 3);
+
+	await writeFile(path.join(directory, 'content'), content);
+	await writeFile(path.join(directory, 'empty'), '');
+
+	const result = {
+		exact: await sandbox.files.readFile('content', { maxBytes: 3 }),
+		empty: await sandbox.files.readFile('empty', { maxBytes: 0 })
+	};
+
+	expect(result).toStrictEqual({ exact: content, empty: new Uint8Array() });
+	await expect(
+		sandbox.files.readFile('content', { maxBytes: 2 })
+	).rejects.toMatchObject({
+		name: 'SandboxOperationError',
+		operation: 'readFile',
+		detail: { kind: 'read-limit', maxBytes: 2 }
+	});
+});
+
 it.each(['file', 'directory'] as const)(
 	'resolves relative PATH entries from the workspace and requires an executable %s',
 	async (entry) => {

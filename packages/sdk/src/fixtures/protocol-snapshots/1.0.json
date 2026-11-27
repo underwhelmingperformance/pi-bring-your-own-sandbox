@@ -2081,6 +2081,24 @@
 										{
 											"properties": {
 												"kind": {
+													"const": "read-limit",
+													"type": "string",
+													"~kind": "Literal"
+												},
+												"maxBytes": {
+													"maximum": 9007199254740991,
+													"minimum": 0,
+													"type": "integer",
+													"~kind": "Integer"
+												}
+											},
+											"required": ["kind", "maxBytes"],
+											"type": "object",
+											"~kind": "Object"
+										},
+										{
+											"properties": {
+												"kind": {
 													"const": "policy",
 													"type": "string",
 													"~kind": "Literal"
@@ -6040,6 +6058,24 @@
 										{
 											"properties": {
 												"kind": {
+													"const": "read-limit",
+													"type": "string",
+													"~kind": "Literal"
+												},
+												"maxBytes": {
+													"maximum": 9007199254740991,
+													"minimum": 0,
+													"type": "integer",
+													"~kind": "Integer"
+												}
+											},
+											"required": ["kind", "maxBytes"],
+											"type": "object",
+											"~kind": "Object"
+										},
+										{
+											"properties": {
+												"kind": {
 													"const": "policy",
 													"type": "string",
 													"~kind": "Literal"
@@ -7650,6 +7686,86 @@
 					}
 				}
 			]
+		},
+		"sandbox.readOptions": {
+			"additionalProperties": false,
+			"properties": {
+				"maxBytes": {
+					"maximum": 9007199254740991,
+					"minimum": 0,
+					"type": "integer",
+					"~kind": "Integer",
+					"~optional": true
+				},
+				"signal": {
+					"properties": {
+						"aborted": {
+							"type": "boolean",
+							"~kind": "Boolean"
+						},
+						"addEventListener": {
+							"parameters": [],
+							"returnType": {
+								"~kind": "Unknown"
+							},
+							"type": "function",
+							"~kind": "Function",
+							"~unsafe": null
+						},
+						"dispatchEvent": {
+							"parameters": [],
+							"returnType": {
+								"~kind": "Unknown"
+							},
+							"type": "function",
+							"~kind": "Function",
+							"~unsafe": null
+						},
+						"reason": {
+							"~kind": "Unknown"
+						},
+						"removeEventListener": {
+							"parameters": [],
+							"returnType": {
+								"~kind": "Unknown"
+							},
+							"type": "function",
+							"~kind": "Function",
+							"~unsafe": null
+						},
+						"throwIfAborted": {
+							"parameters": [],
+							"returnType": {
+								"~kind": "Unknown"
+							},
+							"type": "function",
+							"~kind": "Function",
+							"~unsafe": null
+						}
+					},
+					"required": [
+						"aborted",
+						"addEventListener",
+						"removeEventListener",
+						"dispatchEvent",
+						"throwIfAborted",
+						"reason"
+					],
+					"type": "object",
+					"~kind": "Object",
+					"~optional": true,
+					"~unsafe": null
+				},
+				"timeoutMs": {
+					"exclusiveMinimum": 0,
+					"maximum": 1.7976931348623157e308,
+					"type": "number",
+					"~kind": "Number",
+					"~optional": true
+				}
+			},
+			"type": "object",
+			"~kind": "Object"
 		},
 		"sandbox.recovery": {
 			"anyOf": [

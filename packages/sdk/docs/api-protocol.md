@@ -526,6 +526,19 @@ serialises writes and directory creation in the same queue. A read followed by a
 write can interleave with another mutation. `readFile` and process captures
 return consumer-owned bytes.
 
+`files.readFile` accepts an optional `maxBytes` as a non-negative safe integer.
+The provider checks the bytes read from the opened file, including changes in
+length after opening. It returns the complete file when the bytes fit and
+rejects on the first excess byte. An overflow raises `SandboxOperationError`
+with `detail: { kind: 'read-limit', maxBytes }`.
+
+The provider kit passes `maxBytes` as the final argument to
+`TargetFileTransport`. For `readFile`, pass the bound to `targetFileHelper`
+after its mode argument and cap the response before buffering it. The helper
+reports status `44` if the requested bound is exceeded. Pass the corresponding
+`read-limit` detail to `checkSandboxTargetStatus`. The helper also enforces the
+hard transfer limit.
+
 Find and grep results contain target-relative paths and `truncated: boolean`.
 Find defaults to 1,000 paths. Grep defaults to 100 matching lines, regex
 matching, case-sensitive matching and zero lines of context. Limits are positive

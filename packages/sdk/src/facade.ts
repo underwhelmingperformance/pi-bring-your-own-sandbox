@@ -20,6 +20,7 @@ import type {
 import {
 	InvalidSandboxDeclarationError,
 	InvalidSandboxRequestError,
+	SandboxOperationError,
 	UnsupportedSandboxCapabilityError
 } from './errors.js';
 import type { BackendOwner } from './execution.js';
@@ -29,6 +30,7 @@ import {
 	findRequest,
 	grepRequest,
 	operationOptions,
+	readOptions,
 	requirePath
 } from './file-input.js';
 import {
@@ -108,18 +110,28 @@ class Files implements SandboxFiles {
 
 	async readFile(
 		filename: string,
-		input?: SandboxOperationOptions
+		input?: Parameters<SandboxFiles['readFile']>[1]
 	): Promise<Uint8Array> {
 		const group = this.#read('readFile');
 		const target = requirePath(filename, 'readFile');
-		const options = operationOptions(input, 'readFile');
+		const { maxBytes, ...options } = readOptions(input);
 
 		return runOperation(this.#owner, 'readFile', options, async (context) => {
-			const bytes: unknown = await group.readFile(target, context);
+			const bytes: unknown = await group.readFile(target, context, maxBytes);
 
-			return bytes instanceof Uint8Array
-				? new Uint8Array(bytes)
-				: this.#invalid('readFile');
+			if (!(bytes instanceof Uint8Array)) {
+				return this.#invalid('readFile');
+			}
+
+			if (maxBytes !== undefined && bytes.byteLength > maxBytes) {
+				throw new SandboxOperationError({
+					...this.#owner.identity,
+					operation: 'readFile',
+					detail: { kind: 'read-limit', maxBytes }
+				});
+			}
+
+			return new Uint8Array(bytes);
 		});
 	}
 

@@ -2,18 +2,24 @@ import { isUtf8 } from 'node:buffer';
 import { constants } from 'node:fs';
 import { access, mkdir, open, readdir, stat } from 'node:fs/promises';
 
-const [operation, filename, limit, mode] = process.argv.slice(1);
+const [operation, filename, limit, mode, readLimit] = process.argv.slice(1);
 
-async function read(filename: string, limit: number): Promise<void> {
+class ReadLimitError extends Error {}
+
+async function read(
+	filename: string,
+	transferLimit: number,
+	maxBytes: number | undefined
+): Promise<void> {
+	const limit = Math.min(transferLimit, maxBytes ?? transferLimit);
+
 	const file = await open(filename, constants.O_RDONLY | constants.O_NONBLOCK);
 
 	try {
 		const metadata = await file.stat();
 
-		if (!metadata.isFile() || metadata.size > limit) {
-			throw new RangeError(
-				'The target must be a regular file within the transfer limit.'
-			);
+		if (!metadata.isFile()) {
+			throw new TypeError('The target must be a regular file.');
 		}
 
 		let size = 0;
@@ -21,7 +27,8 @@ async function read(filename: string, limit: number): Promise<void> {
 		const buffer = Buffer.alloc(64 * 1024);
 
 		for (;;) {
-			const { bytesRead } = await file.read(buffer);
+			const length = Math.min(buffer.length, limit - size + 1);
+			const { bytesRead } = await file.read(buffer, 0, length);
 
 			if (bytesRead === 0) {
 				break;
@@ -32,9 +39,13 @@ async function read(filename: string, limit: number): Promise<void> {
 			size += chunk.byteLength;
 
 			if (size > limit) {
-				throw new RangeError(
-					'The file exceeded the transfer limit during the read.'
-				);
+				if (maxBytes !== undefined && maxBytes <= transferLimit) {
+					throw new ReadLimitError(
+						'The file exceeded the requested byte limit.'
+					);
+				}
+
+				throw new RangeError('The file exceeded the transfer limit.');
 			}
 
 			await new Promise<void>((resolve, reject) => {
@@ -154,7 +165,11 @@ try {
 		}
 
 		case 'readFile': {
-			await read(filename, Number(limit));
+			await read(
+				filename,
+				Number(limit),
+				readLimit === undefined ? undefined : Number(readLimit)
+			);
 			break;
 		}
 
@@ -166,10 +181,16 @@ try {
 	const code =
 		error instanceof Error && 'code' in error ? error.code : undefined;
 
-	process.exitCode =
-		code === 'ENOENT' || code === 'ENOTDIR'
-			? 40
-			: typeof code === 'string' && ['EPERM', 'EACCES', 'EROFS'].includes(code)
-				? 41
-				: 42;
+	if (error instanceof ReadLimitError) {
+		process.exitCode = 44;
+	} else if (code === 'ENOENT' || code === 'ENOTDIR') {
+		process.exitCode = 40;
+	} else if (
+		typeof code === 'string' &&
+		['EPERM', 'EACCES', 'EROFS'].includes(code)
+	) {
+		process.exitCode = 41;
+	} else {
+		process.exitCode = 42;
+	}
 }

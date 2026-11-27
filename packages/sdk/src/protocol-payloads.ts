@@ -24,7 +24,8 @@ import {
 	grepRequestSchema,
 	operationOptionsSchema,
 	processOptionsSchema,
-	processRequestSchema
+	processRequestSchema,
+	readOptionsSchema
 } from './request-schemas.js';
 import {
 	fileStatSchema,
@@ -226,6 +227,7 @@ export const protocolSchemas = {
 	'sandbox.processOutcome': processOutcomeSchema,
 	'sandbox.fileStat': fileStatSchema,
 	'sandbox.operationOptions': operationOptionsSchema,
+	'sandbox.readOptions': readOptionsSchema,
 	'sandbox.findRequest': findRequestSchema,
 	'sandbox.grepRequest': grepRequestSchema,
 	'sandbox.closeReport': closeReportSchema,

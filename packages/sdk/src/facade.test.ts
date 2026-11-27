@@ -80,6 +80,21 @@ it('uses target-only files and owns returned metadata and bytes', async () => {
 	);
 });
 
+it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+	'rejects the invalid read limit %s before dispatch',
+	async (maxBytes) => {
+		const { owner, backend } = fixture();
+
+		await expect(
+			createSandbox(owner).files.readFile('file', { maxBytes })
+		).rejects.toMatchObject({
+			name: 'InvalidSandboxRequestError',
+			operation: 'readFile'
+		});
+		expect(backend.calls).toStrictEqual([]);
+	}
+);
+
 it('rejects a retired file option without invoking the provider', async () => {
 	const { owner, backend } = fixture();
 	const sandbox = createSandbox(owner);

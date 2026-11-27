@@ -18,7 +18,7 @@ import {
 	seedRipgrepParityCorpus
 } from '../../../test-support/ripgrep-parity.js';
 
-import type { GrepRequest } from './contracts.js';
+import type { FindRequest, GrepRequest } from './contracts.js';
 import { GrepOutput } from './grep-output.js';
 import { sandboxRipgrepArguments } from './ripgrep-arguments.js';
 import { encodePosixArgv } from './shell-transport.js';
@@ -45,10 +45,11 @@ async function withWorkspace(
 	}
 }
 
-async function grep(
+async function search(
 	helper: string,
 	workspace: string,
-	request: GrepRequest
+	request: FindRequest | GrepRequest,
+	operation: 'find' | 'grep' = 'grep'
 ): Promise<unknown> {
 	const options = new URLSearchParams();
 
@@ -63,7 +64,7 @@ async function grep(
 			'--eval',
 			helper,
 			'--',
-			'grep',
+			operation,
 			options.toString(),
 			String(sandboxTargetTransferLimit),
 			workspace
@@ -119,10 +120,36 @@ it.skipIf(!hasRipgrep)(
 
 				output.write(Buffer.from(stdout));
 				expect(
-					await grep(helper, workspace, request),
+					await search(helper, workspace, request),
 					JSON.stringify({ root, glob })
 				).toStrictEqual(output.finish());
 			}
+		});
+	}
+);
+
+it.skipIf(process.platform === 'win32')(
+	'applies portable find ignore files outside a Git checkout',
+	async () => {
+		await withWorkspace(async (workspace) => {
+			await Promise.all([
+				writeFile(path.join(workspace, '.gitignore'), 'git-ignored.txt\n'),
+				writeFile(path.join(workspace, '.fdignore'), 'fd-ignored.txt\n'),
+				writeFile(path.join(workspace, 'git-ignored.txt'), ''),
+				writeFile(path.join(workspace, 'fd-ignored.txt'), ''),
+				writeFile(path.join(workspace, 'visible.txt'), '')
+			]);
+
+			const helper = await targetSearchHelper({
+				sameConfinementAsCommands: true
+			});
+
+			expect(
+				await search(helper, workspace, { pattern: '*.txt' }, 'find')
+			).toStrictEqual({
+				paths: ['visible.txt'],
+				truncated: false
+			});
 		});
 	}
 );
@@ -202,7 +229,7 @@ it.skipIf(!isDarwin)(
 	async () => {
 		await withWorkspace(async (workspace) => {
 			await expect(
-				grep(await targetSearchHelper(), workspace, { pattern: 'needle' })
+				search(await targetSearchHelper(), workspace, { pattern: 'needle' })
 			).rejects.toMatchObject({
 				code: 43
 			});
@@ -228,8 +255,8 @@ it.skipIf(!isDarwin)(
 			});
 
 			expect({
-				fromWorkspace: await grep(helper, workspace, { pattern: 'needle' }),
-				throughAlias: await grep(helper, workspace, {
+				fromWorkspace: await search(helper, workspace, { pattern: 'needle' }),
+				throughAlias: await search(helper, workspace, {
 					path: '.git/info/marker',
 					pattern: 'alias-only'
 				})

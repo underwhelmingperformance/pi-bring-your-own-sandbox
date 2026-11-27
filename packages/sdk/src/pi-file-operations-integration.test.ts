@@ -246,6 +246,69 @@ it.each([
 	}
 );
 
+it('resolves read filename variants in the target when the host has the literal path', async () => {
+	const memory = new MemoryBackend();
+	const input = "Capture d'écran.txt";
+	const variant = 'Capture d’écran.txt';
+
+	memory.seed(variant, Buffer.from(targetText));
+
+	await withPiRuntime(
+		[fileProvider(memory), extension],
+		async (runtime, errors) => {
+			const output = await executeTool(runtime, 'read', { path: input });
+
+			expect({
+				errors,
+				content: output.content,
+				calls: memory.calls
+			}).toStrictEqual({
+				errors: [],
+				content: [{ type: 'text', text: targetText }],
+				calls: [{ operation: 'readFile', path: '/remote/project/' + variant }]
+			});
+		},
+		{ prepare: (cwd) => writeFile(path.join(cwd, input), hostText) }
+	);
+});
+
+it('normalises Pi path spelling before sending grep to the target', async () => {
+	const memory = new MemoryBackend();
+	const paths: (string | undefined)[] = [];
+	const backend: SandboxBackend = {
+		id: memory.id,
+		workspace: memory.workspace,
+		profile: { ...memory.profile, capabilities: ['search.grep'] },
+		policyDescription: memory.policyDescription,
+		recovery: memory.recovery,
+		exec: memory.exec.bind(memory),
+		dispose: memory.dispose.bind(memory),
+		search: {
+			grep(request) {
+				paths.push(request.path);
+
+				return Promise.resolve({ matches: [], truncated: false });
+			}
+		}
+	};
+
+	await withPiRuntime(
+		[fileProvider(backend), extension],
+		async (runtime, errors) => {
+			const output = await executeTool(runtime, 'grep', {
+				pattern: 'needle',
+				path: '@folder\u{00A0}name'
+			});
+
+			expect({ errors, content: output.content, paths }).toStrictEqual({
+				errors: [],
+				content: [{ type: 'text', text: 'No matches found' }],
+				paths: ['/remote/project/folder name']
+			});
+		}
+	);
+});
+
 it('refuses to route a read to a copied workspace', async () => {
 	const memory = new MemoryBackend();
 	const backend: SandboxBackend = {

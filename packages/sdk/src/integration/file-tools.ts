@@ -1,5 +1,6 @@
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 
 import {
@@ -222,15 +223,79 @@ class FileToolWorkspace {
 	}
 }
 
-function grepPath(filename: string, cwd: string): string {
-	const expanded =
-		filename === '~'
-			? homedir()
-			: filename.startsWith('~/')
-				? path.join(homedir(), filename.slice(2))
-				: filename;
+function resolvePiPath(filename: string, cwd: string): string {
+	let name = filename.replaceAll(
+		/[\u{00A0}\u{2000}-\u{200A}\u{202F}\u{205F}\u{3000}]/gu,
+		' '
+	);
 
-	return path.resolve(cwd, expanded);
+	name = name.replace(/^@/u, '');
+
+	if (process.platform === 'win32' && !name.includes('\\')) {
+		const drive = /^\/(?:mnt\/|cygdrive\/)?([a-z])(?:\/(.*))?$/iu.exec(name);
+
+		if (drive?.[1] !== undefined) {
+			name = path.win32.join(drive[1].toUpperCase() + ':\\', drive[2] ?? '');
+		}
+	}
+
+	if (name === '~') {
+		return homedir();
+	}
+
+	if (
+		name.startsWith('~/') ||
+		(process.platform === 'win32' && name.startsWith('~\\'))
+	) {
+		return path.join(homedir(), name.slice(2));
+	}
+
+	return path.resolve(
+		cwd,
+		name.startsWith('file://') ? fileURLToPath(name) : name
+	);
+}
+
+async function readablePath(
+	workspace: FileToolWorkspace,
+	filename: string
+): Promise<string> {
+	const resolved = resolvePiPath(filename, workspace.cwd);
+	const nfd = resolved.normalize('NFD');
+	const variants = new Set([
+		resolved,
+		resolved.replaceAll(/ (AM|PM)\./giu, '\u{202F}$1.'),
+		nfd,
+		resolved.replaceAll("'", '\u{2019}'),
+		nfd.replaceAll("'", '\u{2019}')
+	]);
+	let missing: SandboxErrorInfo | undefined;
+
+	for (const variant of variants) {
+		try {
+			await workspace.sandbox.files.access(
+				workspace.targetPath(variant),
+				'read',
+				workspace.options
+			);
+
+			return variant;
+		} catch (error) {
+			if (!isSandboxError(error, SandboxPathNotFoundError)) {
+				throw error;
+			}
+
+			missing ??= error;
+		}
+	}
+
+	throw (
+		missing ??
+		new SandboxPathNotFoundError({
+			operation: 'access',
+			providerId: workspace.sandbox.providerId
+		})
+	);
 }
 
 type RipgrepRequest = (
@@ -456,7 +521,7 @@ function grepRequest(
 ): GrepRequest {
 	return {
 		pattern: input.pattern,
-		path: workspace.targetPath(grepPath(input.path ?? '.', workspace.cwd)),
+		path: workspace.targetPath(resolvePiPath(input.path ?? '.', workspace.cwd)),
 		...(input.glob && { glob: input.glob }),
 		...(input.ignoreCase !== undefined && { ignoreCase: input.ignoreCase }),
 		...(input.literal !== undefined && { literal: input.literal }),
@@ -876,25 +941,32 @@ export function registerSandboxFileTools(
 	route(
 		createReadToolDefinition(cwd),
 		[{ capabilities: ['files.read'] }],
-		(workspace) => {
-			const autoResizeImages = pi.getSettings().images?.autoResize;
-
-			return createReadToolDefinition(workspace.cwd, {
-				...(autoResizeImages !== undefined && { autoResizeImages }),
-				operations: {
-					readFile: workspace.readSnapshot,
-					access: (file) =>
-						workspace.sandbox.files.access(
-							workspace.targetPath(file),
-							'read',
-							workspace.options
-						),
-					async detectImageMimeType(file) {
-						return detectImageMimeType(await workspace.readSnapshot(file));
+		(workspace) => ({
+			async execute(id, input, signal, update, context) {
+				const filename = await readablePath(workspace, input.path);
+				const autoResizeImages = pi.getSettings().images?.autoResize;
+				const tool = createReadToolDefinition(workspace.cwd, {
+					...(autoResizeImages !== undefined && { autoResizeImages }),
+					operations: {
+						readFile: () => workspace.readSnapshot(filename),
+						access: () => Promise.resolve(),
+						async detectImageMimeType() {
+							return detectImageMimeType(
+								await workspace.readSnapshot(filename)
+							);
+						}
 					}
-				}
-			});
-		}
+				});
+
+				return tool.execute(
+					id,
+					{ ...input, path: filename },
+					signal,
+					update,
+					context
+				);
+			}
+		})
 	);
 	route(
 		createWriteToolDefinition(cwd),

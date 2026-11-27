@@ -103,7 +103,7 @@ async function directoryEntries(directory: FileHandle, filename: string) {
 async function* walk(
 	filename: string,
 	relative: string,
-	parent?: IgnoreStack
+	parent: IgnoreStack
 ): AsyncGenerator<Entry> {
 	const directory = await open(
 		filename,
@@ -112,10 +112,7 @@ async function* walk(
 
 	try {
 		const base = directoryPath(directory, filename);
-		const ignored =
-			parent === undefined
-				? undefined
-				: await ignoreAt(base, path.join(root, relative), parent);
+		const ignored = await ignoreAt(base, path.join(root, relative), parent);
 		const entries = await directoryEntries(directory, base);
 		const sorted = entries.toSorted((left, right) =>
 			left.name.compare(right.name)
@@ -130,13 +127,14 @@ async function* walk(
 
 			const child = path.join(relative, name);
 
-			if (ignored === undefined) {
-				if (name === '.git' || name === 'node_modules') {
-					continue;
-				}
-			} else if (
-				!isGrepEntryIncluded(child, entry.isDirectory(), ignored.rules)
-			) {
+			const isInclude =
+				operation === 'find'
+					? name !== '.git' &&
+						name !== 'node_modules' &&
+						isIncludedByIgnoreRules(child, entry.isDirectory(), ignored.rules)
+					: isGrepEntryIncluded(child, entry.isDirectory(), ignored.rules);
+
+			if (!isInclude) {
 				continue;
 			}
 
@@ -177,7 +175,7 @@ async function* candidates(): AsyncGenerator<Entry> {
 	const stat = pinned === undefined ? await lstat(root) : await pinned.stat();
 
 	if (stat.isDirectory()) {
-		const parent = operation === 'grep' ? await inheritedIgnores() : undefined;
+		const parent = await inheritedIgnores();
 
 		yield* walk(pinned === undefined ? filename : filename + '/.', '', parent);
 
@@ -249,7 +247,7 @@ interface IgnoreStack {
 }
 
 const ignoreNames = [
-	{ filename: '.rgignore', priority: 0 },
+	{ filename: operation === 'find' ? '.fdignore' : '.rgignore', priority: 0 },
 	{ filename: '.ignore', priority: 1 },
 	{ filename: '.gitignore', priority: 2 }
 ] as const;
@@ -350,10 +348,11 @@ async function ignoreAt(
 		isWorkspaceDirectory && (await isRepositoryRoot(descriptor));
 	const isInRepository =
 		isWorkspaceDirectory && (isGitRoot || parent.inRepository);
+	const isReadsGitIgnore = operation === 'find' || isInRepository;
 	const local: IgnoreRule[] = [];
 
 	for (const { filename, priority } of ignoreNames) {
-		if (priority === 2 && !isInRepository) {
+		if (priority === 2 && !isReadsGitIgnore) {
 			continue;
 		}
 
@@ -377,7 +376,7 @@ async function ignoreAt(
 	}
 
 	const inherited =
-		isGitRoot || !isInRepository
+		isGitRoot || !isReadsGitIgnore
 			? parent.rules.filter((rule) => rule.priority < 2)
 			: parent.rules;
 
@@ -453,6 +452,14 @@ function isGrepEntryIncluded(
 		return false;
 	}
 
+	return isIncludedByIgnoreRules(relative, isDirectory, rules);
+}
+
+function isIncludedByIgnoreRules(
+	relative: string,
+	isDirectory: boolean,
+	rules: readonly IgnoreRule[]
+): boolean {
 	const filename = path.join(root, relative);
 
 	for (const rule of rules) {

@@ -18,8 +18,11 @@ Paths outside the checkout keep their absolute host locations. A leading `~`
 expands against the host home directory. The selected provider applies its
 policy when the facade passes the resulting path to it.
 
-Pi's file tools require a live checkout. Pi resolves filename variants in the
-host checkout and keys its mutation queue by host path.
+Pi's file tools require a live checkout. For reads, BYOS checks filename
+variants through the target before it invokes Pi's read definition. The
+definition still probes host metadata for the chosen spelling. BYOS uses the
+target result for each read. Pi's mutation queue still uses host paths for its
+keys and resolves those paths with `realpath`.
 
 BYOS reads target bytes through the facade for the edit preview. It runs Pi's
 edit algorithm in memory and escapes display-unsafe characters in the diff. If
@@ -29,11 +32,13 @@ tool execution.
 
 ## Search
 
-`find` uses the facade's glob operation. `grep` uses Pi's schema, display format
-and output truncation. BYOS probes for `rg` inside the target and runs it with
-Pi's flags. If the target lacks `rg`, BYOS uses the facade's portable search.
-Target `rg` emits matches and context in the same stream. The SDK refuses
-records larger than 1 MiB and limits retained match and context data to 8 MiB.
-The [specification][grep] describes the fallback scope.
+`find` uses the facade's glob operation. BYOS's portable helper reads
+`.fdignore`, `.ignore` and `.gitignore` for `find`. `grep` uses Pi's schema,
+display format and output truncation. It strips a leading `@` and normalises
+Unicode spaces in paths as Pi does. BYOS probes for `rg` inside the target and
+runs it with Pi's flags. If the target lacks `rg`, BYOS uses the facade's
+portable search. Target `rg` emits matches and context in the same stream. The
+SDK refuses records larger than 1 MiB and limits retained match and context data
+to 8 MiB. The [specification][grep] describes the fallback scope.
 
 [grep]: specification.md#grep

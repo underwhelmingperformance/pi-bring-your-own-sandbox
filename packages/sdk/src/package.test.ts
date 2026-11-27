@@ -121,6 +121,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 				'pi-tools',
 				'provider',
 				'provider-kit',
+				'review',
 				'testing'
 			]) {
 				const entry = subpath === 'host' ? 'embedding-host' : subpath;
@@ -313,9 +314,11 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
 				path.join(consumer, 'consumer.ts'),
 				[
 					"export { createSandboxClient } from 'pi-bring-your-own-sandbox/consumer';",
-					"export type { DestinationDescription, EscalationDestination, ReviewUnavailableReason, SandboxErrorInfo, SandboxNegotiation, SandboxRequirements } from 'pi-bring-your-own-sandbox/consumer';",
+					"export type { SandboxErrorInfo, SandboxNegotiation, SandboxRequirements } from 'pi-bring-your-own-sandbox/consumer';",
+					"export type { DestinationDescription, EscalationDestination, ReviewUnavailableReason } from 'pi-bring-your-own-sandbox/review';",
 					"export { initialiseSandboxHost } from 'pi-bring-your-own-sandbox/host';",
 					"export { registerSandboxProvider } from 'pi-bring-your-own-sandbox/provider';",
+					"export { ShellTransportRunner } from 'pi-bring-your-own-sandbox/provider-kit';",
 					"export { default as sandboxTools } from 'pi-bring-your-own-sandbox/pi-tools';",
 					"export { defineSandboxProviderTests } from 'pi-bring-your-own-sandbox/testing';"
 				].join('\n')
@@ -328,6 +331,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
 				'pi-tools',
 				'provider',
 				'provider-kit',
+				'review',
 				'testing'
 			]
 				.map((entry) =>

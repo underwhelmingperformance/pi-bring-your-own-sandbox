@@ -1,3 +1,4 @@
+import type { TObject } from 'typebox';
 import { Type } from 'typebox';
 
 import { builtinProviders } from './builtin-providers.js';
@@ -14,19 +15,21 @@ import type { BrokerService, ConfiguredProviderV1 } from './protocol.js';
 import { sharedSettingsSchema } from './request-schemas.js';
 import { callable, nonEmptyStringSchema } from './schemas.js';
 
-const brokerServiceShape = Type.Object({
-	acquire: callable<BrokerService['acquire']>(),
-	negotiate: callable<BrokerService['negotiate']>(),
-	resolveReviewSource: callable<BrokerService['resolveReviewSource']>(),
-	status: callable<BrokerService['status']>(),
-	providers: callable<BrokerService['providers']>()
-});
-
 // TypeBox counts own keys for compiled closed objects. Services can inherit methods.
-export const brokerServiceSchema = Type.Refine(brokerServiceShape, (service) =>
-	Object.keys(service).every((key) =>
-		Object.hasOwn(brokerServiceShape.properties, key)
-	)
+function withKnownOwnFields<Schema extends TObject>(shape: Schema) {
+	return Type.Refine(shape, (value) =>
+		Object.keys(value).every((key) => Object.hasOwn(shape.properties, key))
+	);
+}
+
+export const brokerServiceSchema = withKnownOwnFields(
+	Type.Object({
+		acquire: callable<BrokerService['acquire']>(),
+		negotiate: callable<BrokerService['negotiate']>(),
+		resolveReviewSource: callable<BrokerService['resolveReviewSource']>(),
+		status: callable<BrokerService['status']>(),
+		providers: callable<BrokerService['providers']>()
+	})
 );
 
 const providerIdSchema = Type.Refine(
@@ -34,14 +37,13 @@ const providerIdSchema = Type.Refine(
 	(value) => !builtinProviders.has(value)
 );
 
-export const providerDeclarationSchema = Type.Object(
-	{
+export const providerDeclarationSchema = withKnownOwnFields(
+	Type.Object({
 		id: providerIdSchema,
 		label: nonEmptyStringSchema,
 		profiles: providerInfoSchema.properties.profiles,
 		create: callable<AvailableSandboxProvider<unknown>['create']>()
-	},
-	{ additionalProperties: false }
+	})
 );
 
 type Implementation = SandboxProviderImplementation<unknown>;
@@ -71,13 +73,12 @@ export const configuredProviderSchema = Type.Object(
 	{ additionalProperties: false }
 );
 
-export const unavailableProviderDeclarationSchema = Type.Object(
-	{
+export const unavailableProviderDeclarationSchema = withKnownOwnFields(
+	Type.Object({
 		id: providerIdSchema,
 		label: nonEmptyStringSchema,
 		unavailable: providerUnavailabilitySchema
-	},
-	{ additionalProperties: false }
+	})
 );
 
 export const hostOptionsSchema = Type.Object(

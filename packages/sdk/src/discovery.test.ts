@@ -283,12 +283,17 @@ it('captures typed provider configuration without allocating during discovery', 
 		open: imageProvider.open
 	}));
 
-	registerSandboxProvider(pi, import.meta.filename, {
-		id: imageProvider.id,
-		label: imageProvider.label,
-		profiles: imageProvider.profiles,
-		create
-	});
+	class Declaration {
+		readonly id = imageProvider.id;
+		readonly label = imageProvider.label;
+		readonly profiles = imageProvider.profiles;
+
+		create() {
+			return create();
+		}
+	}
+
+	registerSandboxProvider(pi, import.meta.filename, new Declaration());
 
 	const [service] = localRuntimeBindings(pi).providers;
 

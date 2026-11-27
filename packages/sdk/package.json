@@ -76,6 +76,7 @@
 	},
 	"dependencies": {
 		"ignore": "7.0.14",
+		"picomatch": "4.0.7",
 		"re2js": "2.10.0"
 	}
 }

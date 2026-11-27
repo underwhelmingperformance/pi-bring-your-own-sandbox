@@ -265,6 +265,9 @@ importers:
       ignore:
         specifier: 7.0.14
         version: 7.0.14
+      picomatch:
+        specifier: 4.0.7
+        version: 4.0.7
       re2js:
         specifier: 2.10.0
         version: 2.10.0

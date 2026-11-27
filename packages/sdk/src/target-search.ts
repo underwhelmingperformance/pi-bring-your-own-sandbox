@@ -17,6 +17,17 @@ import type ignore from 'ignore';
 import type { GrepMatch } from './contracts.js';
 
 declare const createIgnore: typeof ignore;
+declare const loadPortableGlob: () => Promise<
+	(
+		glob: string,
+		options: {
+			readonly dot: boolean;
+			readonly nonegate: boolean;
+			readonly noext: boolean;
+			readonly windows: boolean;
+		}
+	) => (filename: string) => boolean
+>;
 declare const hasCommandConfinement: boolean;
 declare const loadEmbeddedMatcher:
 	(() => Promise<typeof import('re2js')>) | undefined;
@@ -35,6 +46,20 @@ const limit = Number(
 );
 const maxBytes = Number(maximum);
 const glob = options.get(operation === 'find' ? 'pattern' : 'glob');
+const isNegativeGlob = glob?.startsWith('!') === true;
+const grepPattern = (isNegativeGlob ? glob.slice(1) : glob)?.replace(
+	/^\//u,
+	''
+);
+const grepGlob =
+	operation === 'grep' && grepPattern
+		? (await loadPortableGlob())(grepPattern, {
+				dot: true,
+				nonegate: true,
+				noext: true,
+				windows: false
+			})
+		: undefined;
 
 interface Entry {
 	readonly relative: string;
@@ -404,15 +429,13 @@ async function inheritedIgnores(): Promise<IgnoreStack> {
 }
 
 function globOverride(relative: string): boolean | undefined {
-	if (glob === null) {
-		return undefined;
+	if (glob === null || grepGlob === undefined) {
+		return;
 	}
 
-	const isNegative = glob.startsWith('!');
-	const pattern = (isNegative ? glob.slice(1) : glob).replace(/^\//u, '');
 	const filename = glob.includes('/') ? relative : path.basename(relative);
 
-	return path.matchesGlob(filename, pattern) ? !isNegative : undefined;
+	return grepGlob(filename) ? !isNegativeGlob : undefined;
 }
 
 function isGrepEntryIncluded(

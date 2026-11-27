@@ -9,6 +9,10 @@ const corpus = {
 	'.rgignore': '!ignore-wins.txt\nrg-omits.txt\n',
 	'.git/info/exclude': 'git-excluded.txt\n',
 	'.hidden.txt': 'needle\n',
+	'.hidden.ts': 'needle\n',
+	'nested/.hidden.ts': 'needle\n',
+	'nested/visible.js': 'needle\n',
+	'visible.ts': 'needle\n',
 	'node_modules/pkg/index.txt': 'needle\n',
 	'omitted.txt': 'needle\n',
 	'pruned/deep.txt': 'needle\n',
@@ -21,6 +25,9 @@ const corpus = {
 export const ripgrepParityCases = [
 	['.', undefined],
 	['.', 'omitted.txt'],
+	['.', '*.ts'],
+	['.', '**/*.{ts,js}'],
+	['.', '[.v]*.ts'],
 	['.', '!node_modules'],
 	['omitted.txt', '*.md'],
 	['pruned', undefined]

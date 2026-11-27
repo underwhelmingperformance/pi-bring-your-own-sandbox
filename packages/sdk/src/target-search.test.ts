@@ -127,6 +127,12 @@ it.skipIf(!hasRipgrep)(
 	}
 );
 
+it('includes the bundled glob matcher licence in the target helper', async () => {
+	expect(await targetSearchHelper()).toContain(
+		'Copyright (c) 2017-present, Jon Schlinkert.'
+	);
+});
+
 it('bounds incomplete grep records before a newline arrives', () => {
 	const output = new GrepOutput(0, 100, 'fixture.search');
 	const segment = new Uint8Array(524_288).fill(0x20);

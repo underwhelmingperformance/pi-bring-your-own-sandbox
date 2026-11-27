@@ -75,10 +75,11 @@ export async function targetSearchHelper(
 		: 'target-search.js';
 
 	const ignore = new URL(import.meta.resolve('ignore'));
-	const [helper, ignoreSource, license] = await Promise.all([
+	const [helper, ignoreSource, ignoreLicense, globMatcher] = await Promise.all([
 		readFile(new URL(filename, import.meta.url), 'utf8'),
 		readFile(ignore, 'utf8'),
-		readFile(new URL('LICENSE-MIT', ignore), 'utf8')
+		readFile(new URL('LICENSE-MIT', ignore), 'utf8'),
+		embeddedGlobMatcher()
 	]);
 
 	const isSameConfinementAsCommands =
@@ -89,11 +90,51 @@ export async function targetSearchHelper(
 
 	return `const hasCommandConfinement = ${String(isSameConfinementAsCommands)};
 ${matcher}
-/*\n${license}\n*/\nconst createIgnore = (() => {
+${globMatcher}
+/*\n${ignoreLicense}\n*/\nconst createIgnore = (() => {
 const module = { exports: {} };
 ${ignoreSource}
 return module.exports;
 })();\n${helper}`;
+}
+
+async function embeddedGlobMatcher(): Promise<string> {
+	const entry = new URL(import.meta.resolve('picomatch'));
+	const files = ['constants', 'utils', 'scan', 'parse', 'picomatch'];
+	const sources = files.map(async (file) => {
+		const text = await readFile(
+			new URL('./lib/' + file + '.js', entry),
+			'utf8'
+		);
+
+		return `['./${file}', (module, exports, require) => {\n${text}\n}]`;
+	});
+	const [license, factories] = await Promise.all([
+		readFile(new URL('LICENSE', entry), 'utf8'),
+		Promise.all(sources)
+	]);
+	const moduleSource = `
+const modules = new Map();
+function require(id) {
+	if (!modules.has(id)) throw new Error('Unknown bundled glob module ' + id);
+	return modules.get(id);
+}
+for (const [id, load] of [${factories.join(',\n')}]) {
+	const module = { exports: {} };
+	load(module, module.exports, require);
+	modules.set(id, module.exports);
+}
+export default require('./picomatch');
+`;
+	const compressed = gzipSync(moduleSource).toString('base64');
+
+	return `/*\n${license}\n*/
+import { gunzipSync as unpackGlobMatcher } from 'node:zlib';
+const loadPortableGlob = async () => {
+	const module = await import('data:text/javascript;base64,' +
+		unpackGlobMatcher(Buffer.from('${compressed}', 'base64')).toString('base64'));
+	return module.default;
+};`;
 }
 
 async function embeddedSearchMatcher(): Promise<string> {

@@ -143,6 +143,10 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 				host,
 				'node_modules/pi-bring-your-own-sandbox'
 			);
+			const license = await readFile(path.join(installed, 'LICENSE'), 'utf8');
+
+			expect(license).toContain('Copyright (c) 2017-present, Jon Schlinkert.');
+
 			const manifest: unknown = JSON.parse(
 				await readFile(path.join(installed, 'package.json'), 'utf8')
 			);
@@ -160,7 +164,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 				pi: manifest['pi'],
 				exports: manifest['exports']
 			}).toStrictEqual({
-				dependencies: { ignore: '7.0.14', re2js: '2.10.0' },
+				dependencies: { ignore: '7.0.14', picomatch: '4.0.7', re2js: '2.10.0' },
 				peers: {
 					'@earendil-works/pi-ai': '1.5.0',
 					'@earendil-works/pi-coding-agent': '1.5.0',

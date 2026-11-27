@@ -12,6 +12,7 @@ import path from 'node:path';
 
 import { expect } from 'vitest';
 
+import { isSandboxError, UnsupportedSandboxCapabilityError } from './errors.js';
 import type { FixtureAttempt } from './provider-test-broker.js';
 import { fixtureBroker } from './provider-test-broker.js';
 import type {
@@ -105,21 +106,41 @@ export async function verifyCredentialExclusion<Config>(
 
 				expect(Buffer.from(read).toString('utf8')).toBe('ordinary');
 
-				for (const entry of [relative, 'alias.txt']) {
-					const target = flavor.join(hostUserDataRoot, entry);
+				const excluded = [relative, 'alias.txt'].map((entry) =>
+					flavor.join(hostUserDataRoot, entry)
+				);
 
+				for (const target of excluded) {
 					await expect(sandbox.files.readFile(target)).rejects.toSatisfy(
 						isAccessDenied
 					);
-
-					if (selection.profile.policy.hostUserData === 'read-write') {
-						await expect(
-							sandbox.files.writeFile(target, Buffer.from('changed'))
-						).rejects.toSatisfy(isAccessDenied);
-					}
 				}
 
-				expect(await readFile(credential, 'utf8')).toBe('synthetic credential');
+				const isReadOnly =
+					selection.profile.policy.hostUserData === 'read-only';
+				const canWriteFiles =
+					sandbox.capabilities.operations.includes('files.write');
+				const isWriteRefused =
+					isReadOnly && !canWriteFiles
+						? (error: unknown) =>
+								isSandboxError(error, UnsupportedSandboxCapabilityError)
+						: isAccessDenied;
+
+				const writeTargets = isReadOnly ? [allowed, ...excluded] : excluded;
+
+				for (const target of writeTargets) {
+					await expect(
+						sandbox.files.writeFile(target, Buffer.from('changed'))
+					).rejects.toSatisfy(isWriteRefused);
+				}
+
+				expect(
+					await Promise.all([
+						readFile(ordinary, 'utf8'),
+						readFile(credential, 'utf8')
+					]),
+					'The host markers must keep their original contents.'
+				).toStrictEqual(['ordinary', 'synthetic credential']);
 			} finally {
 				expect(await runtime.close()).toStrictEqual({
 					confirmed: true,

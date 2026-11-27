@@ -1,4 +1,4 @@
-import { realpath } from 'node:fs/promises';
+import { realpath, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -12,7 +12,11 @@ import type {
 	SandboxClient,
 	SandboxContext
 } from './contracts.js';
-import { isSandboxError, UnsupportedSandboxPolicyError } from './errors.js';
+import {
+	isSandboxError,
+	SandboxPermissionDeniedError,
+	UnsupportedSandboxPolicyError
+} from './errors.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { contractScenario } from './fixtures/provider-contract.js';
@@ -260,7 +264,38 @@ it('publishes separate target home and host user data roots', async () => {
 	);
 });
 
-it('uses the declared host data root for credential conformance', async () => {
+it.each([
+	[
+		'uses the declared host data root for credential conformance',
+		true,
+		undefined,
+		undefined
+	],
+	[
+		'accepts capability refusal without a file writer',
+		false,
+		undefined,
+		undefined
+	],
+	[
+		'rejects a provider that accepts writes to ordinary user data',
+		true,
+		'ordinary.txt',
+		'accepted'
+	],
+	[
+		'rejects a provider that accepts writes to credentials',
+		true,
+		'.ssh',
+		'accepted'
+	],
+	[
+		'rejects a provider that changes a host marker before refusing the write',
+		true,
+		'.ssh',
+		'changed'
+	]
+] as const)('%s', async (_label, hasWriter, affected, failure) => {
 	const backend = new MemoryBackend();
 	const hostUserDataRoot = '/mounted/home';
 	const original = contractScenario();
@@ -272,7 +307,21 @@ it('uses the declared host data root for credential conformance', async () => {
 	});
 	backend.seed(hostUserDataRoot + '/ordinary.txt', Buffer.from('ordinary'));
 
-	await verifyCredentialExclusion(
+	if (!hasWriter && backend.files !== undefined) {
+		const { write: _write, ...files } = backend.files;
+
+		Object.assign(backend, {
+			capabilities: {
+				...backend.capabilities,
+				operations: backend.capabilities.operations.filter(
+					(operation) => operation !== 'files.write'
+				)
+			},
+			files
+		});
+	}
+
+	const verification = verifyCredentialExclusion(
 		{
 			...original,
 			provider: {
@@ -282,6 +331,22 @@ it('uses the declared host data root for credential conformance', async () => {
 			},
 			async createFixture(selection) {
 				const selected = await original.createFixture(selection);
+				const home = homedir();
+
+				backend.beforeWrite = async (target, bytes) => {
+					if (
+						affected !== undefined &&
+						target === hostUserDataRoot + '/' + affected
+					) {
+						await writeFile(path.join(home, affected), bytes);
+
+						if (failure === 'accepted') {
+							return;
+						}
+					}
+
+					throw new SandboxPermissionDeniedError({ operation: 'writeFile' });
+				};
 
 				return {
 					...selected,
@@ -301,10 +366,29 @@ it('uses the declared host data root for credential conformance', async () => {
 		'~/.ssh'
 	);
 
+	if (failure !== undefined) {
+		await expect(verification).rejects.toThrow(
+			failure === 'accepted'
+				? 'instead of rejecting'
+				: 'The host markers must keep their original contents.'
+		);
+
+		return;
+	}
+
+	await verification;
+
 	expect(backend.calls).toStrictEqual([
 		{ operation: 'readFile', path: hostUserDataRoot + '/ordinary.txt' },
 		{ operation: 'readFile', path: hostUserDataRoot + '/.ssh' },
-		{ operation: 'readFile', path: hostUserDataRoot + '/alias.txt' }
+		{ operation: 'readFile', path: hostUserDataRoot + '/alias.txt' },
+		...(hasWriter
+			? [
+					{ operation: 'writeFile', path: hostUserDataRoot + '/ordinary.txt' },
+					{ operation: 'writeFile', path: hostUserDataRoot + '/.ssh' },
+					{ operation: 'writeFile', path: hostUserDataRoot + '/alias.txt' }
+				]
+			: [])
 	]);
 });
 

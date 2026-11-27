@@ -90,10 +90,15 @@ configured policy.
 For every profile that permits host user data reads, create one case per
 [credential location][credentials]. Use a disposable host home with synthetic
 markers outside the checkout. Verify that the profile permits reads of ordinary
-user data and denies reads of each credential marker. A read-write profile must
-also deny writes to each credential marker. Check for unchanged markers and for
-access through path aliases. Keep the fixture independent of real credentials.
-The suite locates the markers under `workspace.hostUserDataRoot`.
+user data and denies reads of each credential marker and its aliases. A
+read-write profile must also refuse writes to credential markers and their
+aliases. The suite locates the markers under `workspace.hostUserDataRoot`.
+
+For a read-only profile, attempt writes to the ordinary marker and the
+credential marker through the file API. If the profile omits `files.write`, the
+SDK must refuse the writes with `UnsupportedSandboxCapabilityError`. Otherwise,
+the provider must refuse access to both paths. Check the host files directly to
+confirm that both retain their original contents.
 
 Check that an ordinary path request for each marker fails before allocation. A
 property-only escalation keeps the exclusion in the provider. Exercise a

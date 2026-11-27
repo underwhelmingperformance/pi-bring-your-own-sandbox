@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { realpath, writeFile } from 'node:fs/promises';
+import { readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -16,7 +16,7 @@ import { bounded } from './provider-test-harness.js';
 
 export async function verifyWorkspaceCase<Config>(
 	options: SandboxProviderTestOptions<Config>,
-	scenario: 'special' | 'read-grant',
+	scenario: 'special' | 'read-grant' | 'write-grant',
 	selection?: SandboxProviderTestSelection
 ): Promise<void> {
 	const fixture = await options.createFixture(selection);
@@ -65,28 +65,34 @@ export async function verifyWorkspaceCase<Config>(
 				return;
 			}
 
-			const filename = '.byos-conformance-read-grant';
+			const kind = scenario === 'write-grant' ? 'write' : 'read';
+			const filename = `.byos-conformance-${kind}-grant`;
 			const contents = new TextEncoder().encode('workspace grant');
 			const hostPath = path.join(fixture.hostWorkspace, filename);
 
 			await writeFile(hostPath, contents, { flag: 'wx' });
 
 			const canonical = await realpath(hostPath);
-			const request = { timeoutMs, access: { paths: { read: [hostPath] } } };
+			const request = {
+				timeoutMs,
+				access: { paths: { [kind]: [kind === 'write' ? filename : hostPath] } }
+			};
+			const canGrant = kind === 'read' || fixture.policy.hostWorkspaceWrites;
 			const hasProbe = openProfiles.some(
 				({ capabilities, policy }) =>
+					(kind === 'read' || policy.hostWorkspaceWrites) &&
 					isWithinLimit(policy, fixture.policy) &&
-					capabilities.includes('files.read')
+					capabilities.includes(`files.${kind}`)
 			);
 
-			if (!hasProbe) {
+			if (!canGrant || !hasProbe) {
 				await expect(runtime.acquire(request, 'open')).rejects.toMatchObject({
 					name: 'UnsupportedSandboxPolicyError',
 					detail: {
 						kind: 'path',
-						access: 'read',
+						access: kind,
 						path: canonical,
-						reason: 'profile'
+						reason: canGrant ? 'profile' : 'limit'
 					}
 				});
 				expect(attempt).toStrictEqual({});
@@ -105,10 +111,19 @@ export async function verifyWorkspaceCase<Config>(
 			}
 
 			expect(sandbox.grantedPaths).toStrictEqual([
-				{ kind: 'read', hostPath: canonical, targetPath: target }
+				{ kind, hostPath: canonical, targetPath: target }
 			]);
 
-			expect(await sandbox.files.readFile(target)).toStrictEqual(contents);
+			if (kind === 'read') {
+				expect(await sandbox.files.readFile(target)).toStrictEqual(contents);
+
+				return;
+			}
+
+			const replacement = 'updated through workspace write grant';
+
+			await sandbox.files.writeFile(target, Buffer.from(replacement));
+			expect(await readFile(hostPath, 'utf8')).toBe(replacement);
 		} finally {
 			expect(await runtime.close()).toStrictEqual({
 				confirmed: true,

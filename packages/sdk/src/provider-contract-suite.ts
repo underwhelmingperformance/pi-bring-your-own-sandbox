@@ -26,7 +26,7 @@ import {
 	isGrepResult
 } from './file-result.js';
 import { OperationScope, settleOperation } from './lifecycle.js';
-import type { AccessProperty, Policy } from './policy-model.js';
+import type { AccessProperty, Policy, Profile } from './policy-model.js';
 import { accessOrder } from './policy-model.js';
 import type { FixtureAttempt } from './provider-test-broker.js';
 import { fixtureBroker } from './provider-test-broker.js';
@@ -697,6 +697,153 @@ const restrictionChecks = {
 	hostSystemFiles: (policy: Policy) => policy.hostSystemFiles !== 'read-write'
 } satisfies Record<AccessProperty, (policy: Policy) => boolean>;
 
+const capabilityCases = {
+	'files.read': {
+		label: 'file reading',
+		run: async (fixture, backend, context) => {
+			const probe = fixture.read;
+			const reader = backend.files?.read;
+
+			expect(probe, 'Supply a seeded file for reading.').toBeDefined();
+
+			if (probe === undefined || reader === undefined) {
+				return;
+			}
+
+			await reader.access(probe.path, context);
+			expect({
+				bytes: await reader.readFile(probe.path, context),
+				stat: await reader.stat(probe.path, context)
+			}).toStrictEqual({
+				bytes: probe.bytes,
+				stat: { kind: 'file', size: probe.bytes.byteLength }
+			});
+			await expect(async () =>
+				reader.readFile(probe.missingPath, context)
+			).rejects.toSatisfy((error: unknown) =>
+				isSandboxError(error, SandboxPathNotFoundError)
+			);
+		}
+	},
+	'files.write': {
+		label: 'file mutation',
+		run: async (fixture, backend, context) => {
+			const probe = fixture.write;
+			const writer = backend.files?.write;
+
+			expect(
+				probe,
+				'Supply a writable target and independent read callback.'
+			).toBeDefined();
+
+			if (probe === undefined || writer === undefined) {
+				return;
+			}
+
+			if (
+				backend.workspace.relationship === 'shared' &&
+				!backend.profile.policy.hostWorkspaceWrites
+			) {
+				await expect(async () =>
+					writer.writeFile(probe.path, new Uint8Array([42]), context)
+				).rejects.toSatisfy((error: unknown) =>
+					isSandboxError(error, SandboxPermissionDeniedError)
+				);
+
+				return;
+			}
+
+			await writer.mkdir(probe.directory, context);
+			await writer.mkdir(probe.directory, context);
+
+			for (const bytes of [
+				new Uint8Array([0, 255, 13, 10]),
+				new Uint8Array([42])
+			]) {
+				await writer.writeFile(probe.path, bytes, context);
+				await writer.access(probe.path, context);
+				expect(await probe.read()).toStrictEqual(bytes);
+			}
+		}
+	},
+	'files.list': {
+		label: 'directory listing',
+		run: async (fixture, backend, context) => {
+			const probe = fixture.list;
+			const reader = backend.files?.list;
+
+			expect(probe, 'Supply a seeded directory for listing.').toBeDefined();
+
+			if (probe === undefined || reader === undefined) {
+				return;
+			}
+
+			const entries = await reader.listDirectory(probe.path, context);
+
+			expect(isDirectoryEntries(entries, backend.workspace.pathFlavor)).toBe(
+				true
+			);
+			expect({
+				stat: await reader.stat(probe.path, context),
+				entries: entries.toSorted(compareEntries)
+			}).toStrictEqual({
+				stat:
+					typeof probe.stat === 'function' ? await probe.stat() : probe.stat,
+				entries: probe.entries.toSorted(compareEntries)
+			});
+		}
+	},
+	'search.find': {
+		label: 'glob search',
+		run: async (fixture, backend, context) => {
+			expect(
+				fixture.find?.length,
+				'Supply at least one glob query.'
+			).toBeGreaterThan(0);
+
+			const probes = fixture.find ?? [];
+
+			for (const probe of probes) {
+				const result = await backend.search?.find?.(probe.request, context);
+
+				expect(
+					isFindResult(
+						result,
+						backend.workspace.pathFlavor,
+						probe.request.limit ?? 1000
+					)
+				).toBe(true);
+				expect(result).toStrictEqual(probe.result);
+			}
+		}
+	},
+	'search.grep': {
+		label: 'line search',
+		run: async (fixture, backend, context) => {
+			expect(
+				fixture.grep?.length,
+				'Supply at least one line query.'
+			).toBeGreaterThan(0);
+
+			const probes = fixture.grep ?? [];
+
+			for (const probe of probes) {
+				const result = await backend.search?.grep?.(probe.request, context);
+
+				expect(
+					isGrepResult(
+						result,
+						backend.workspace.pathFlavor,
+						probe.request.limit ?? 100,
+						probe.request.context ?? 0
+					)
+				).toBe(true);
+				expect(result).toStrictEqual(probe.result);
+			}
+		}
+	}
+} satisfies Record<Profile['capabilities'][number], ContractCase>;
+
 export function providerContractCases<Config>(
 	options: SandboxProviderTestOptions<Config>,
 	selection?: SandboxProviderTestSelection
@@ -916,164 +1063,7 @@ export function providerContractCases<Config>(
 		});
 	}
 
-	if (capabilities.capabilities.includes('files.read')) {
-		cases.push({
-			label: 'file reading',
-			run: async (fixture, backend, context) => {
-				const probe = fixture.read;
-				const reader = backend.files?.read;
-
-				expect(probe, 'Supply a seeded file for reading.').toBeDefined();
-
-				if (probe === undefined || reader === undefined) {
-					return;
-				}
-
-				await reader.access(probe.path, context);
-				expect({
-					bytes: await reader.readFile(probe.path, context),
-					stat: await reader.stat(probe.path, context)
-				}).toStrictEqual({
-					bytes: probe.bytes,
-					stat: { kind: 'file', size: probe.bytes.byteLength }
-				});
-				await expect(async () =>
-					reader.readFile(probe.missingPath, context)
-				).rejects.toSatisfy((error: unknown) =>
-					isSandboxError(error, SandboxPathNotFoundError)
-				);
-			}
-		});
-	}
-
-	if (capabilities.capabilities.includes('files.write')) {
-		cases.push({
-			label: 'file mutation',
-			run: async (fixture, backend, context) => {
-				const probe = fixture.write;
-				const writer = backend.files?.write;
-
-				expect(
-					probe,
-					'Supply a writable target and independent read callback.'
-				).toBeDefined();
-
-				if (probe === undefined || writer === undefined) {
-					return;
-				}
-
-				if (
-					backend.workspace.relationship === 'shared' &&
-					!backend.profile.policy.hostWorkspaceWrites
-				) {
-					await expect(async () =>
-						writer.writeFile(probe.path, new Uint8Array([42]), context)
-					).rejects.toSatisfy((error: unknown) =>
-						isSandboxError(error, SandboxPermissionDeniedError)
-					);
-
-					return;
-				}
-
-				await writer.mkdir(probe.directory, context);
-				await writer.mkdir(probe.directory, context);
-
-				for (const bytes of [
-					new Uint8Array([0, 255, 13, 10]),
-					new Uint8Array([42])
-				]) {
-					await writer.writeFile(probe.path, bytes, context);
-					await writer.access(probe.path, context);
-					expect(await probe.read()).toStrictEqual(bytes);
-				}
-			}
-		});
-	}
-
-	if (capabilities.capabilities.includes('files.list')) {
-		cases.push({
-			label: 'directory listing',
-			run: async (fixture, backend, context) => {
-				const probe = fixture.list;
-				const reader = backend.files?.list;
-
-				expect(probe, 'Supply a seeded directory for listing.').toBeDefined();
-
-				if (probe === undefined || reader === undefined) {
-					return;
-				}
-
-				const entries = await reader.listDirectory(probe.path, context);
-
-				expect(isDirectoryEntries(entries, backend.workspace.pathFlavor)).toBe(
-					true
-				);
-				expect({
-					stat: await reader.stat(probe.path, context),
-					entries: entries.toSorted(compareEntries)
-				}).toStrictEqual({
-					stat:
-						typeof probe.stat === 'function' ? await probe.stat() : probe.stat,
-					entries: probe.entries.toSorted(compareEntries)
-				});
-			}
-		});
-	}
-
-	if (capabilities.capabilities.includes('search.find')) {
-		cases.push({
-			label: 'glob search',
-			run: async (fixture, backend, context) => {
-				expect(
-					fixture.find?.length,
-					'Supply at least one glob query.'
-				).toBeGreaterThan(0);
-
-				const probes = fixture.find ?? [];
-
-				for (const probe of probes) {
-					const result = await backend.search?.find?.(probe.request, context);
-
-					expect(
-						isFindResult(
-							result,
-							backend.workspace.pathFlavor,
-							probe.request.limit ?? 1000
-						)
-					).toBe(true);
-					expect(result).toStrictEqual(probe.result);
-				}
-			}
-		});
-	}
-
-	if (capabilities.capabilities.includes('search.grep')) {
-		cases.push({
-			label: 'line search',
-			run: async (fixture, backend, context) => {
-				expect(
-					fixture.grep?.length,
-					'Supply at least one line query.'
-				).toBeGreaterThan(0);
-
-				const probes = fixture.grep ?? [];
-
-				for (const probe of probes) {
-					const result = await backend.search?.grep?.(probe.request, context);
-
-					expect(
-						isGrepResult(
-							result,
-							backend.workspace.pathFlavor,
-							probe.request.limit ?? 100,
-							probe.request.context ?? 0
-						)
-					).toBe(true);
-					expect(result).toStrictEqual(probe.result);
-				}
-			}
-		});
-	}
+	cases.push(...capabilities.capabilities.map((key) => capabilityCases[key]));
 
 	return selection === undefined
 		? cases

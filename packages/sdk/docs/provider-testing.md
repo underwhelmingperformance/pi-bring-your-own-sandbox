@@ -72,9 +72,10 @@ capability lacks cases. Run each case against an isolated fixture. Use
 independent observations of target effects, live files, processes and provider
 resources. A backend's own declaration cannot prove enforcement.
 
-The suite checks workspace visibility and read-grant eligibility for each live
-checkout profile. It checks placement and reads the granted file when the
-profile offers file reads. Otherwise the grant must fail before allocation.
+The suite checks workspace visibility and read and write grants for each live
+checkout profile. It checks placement and performs the granted operation when
+the profile permits it. The write case reads the result on the host. A grant
+without a matching file service or permission must fail before allocation.
 Supply `fixture.visibility` for each open profile. The suite also checks
 special-file refusal for every live-checkout profile on hosts with FIFOs. Omit
 `workspaceVisibility` and `capabilities` to generate the full suite from the

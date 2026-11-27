@@ -26,6 +26,7 @@ import { verifyProviderOpeningFailure } from './provider-opening-suite.js';
 import { registerSandboxProvider } from './provider-registration.js';
 import { verifyFixtureSettings } from './provider-settings-suite.js';
 import type { SandboxProviderTestOptions } from './provider-test-contracts.js';
+import { verifyWorkspaceCase } from './provider-workspace-suite.js';
 import { defineSandboxProviderTests } from './testing.js';
 
 const memoryContract = contractScenario();
@@ -140,6 +141,20 @@ it('checks undeclared credential grant kinds without opening a backend', async (
 	};
 
 	await verifyCredentialGrant(scenario, { mode: 'open', profile }, 'write');
+});
+
+it('rejects a writable provider that omits the workspace write grant', async () => {
+	const scenario = contractScenario();
+
+	await expect(
+		verifyWorkspaceCase(scenario, 'write-grant', {
+			mode: 'open',
+			profile: firstOpenProfile(scenario.provider)
+		})
+	).rejects.toMatchObject({
+		name: 'UnsupportedSandboxPolicyError',
+		detail: { kind: 'path', access: 'write', reason: 'unreachable' }
+	});
 });
 
 it('opens the fixture provider through the broker and verifies the backend allocation', async () => {

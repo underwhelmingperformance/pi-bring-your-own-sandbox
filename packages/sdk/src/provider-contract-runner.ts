@@ -171,11 +171,13 @@ export function defineSandboxProviderTests<Config>(
 				);
 			}
 
-			it(
-				label + 'checks a workspace read grant',
-				() => verifyWorkspaceCase(registered, 'read-grant', selection),
-				testTimeout
-			);
+			for (const kind of ['read', 'write'] as const) {
+				it(
+					label + `checks a workspace ${kind} grant`,
+					() => verifyWorkspaceCase(registered, `${kind}-grant`, selection),
+					testTimeout
+				);
+			}
 		}
 
 		if (

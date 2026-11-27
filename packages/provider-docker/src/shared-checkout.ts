@@ -8,11 +8,11 @@ import type {
 	SandboxOperation,
 	SandboxOperationContext
 } from 'pi-bring-your-own-sandbox/provider';
+import { UnsupportedSandboxPolicyError } from 'pi-bring-your-own-sandbox/provider';
 import {
 	defaultProtectedWorkspacePaths,
-	isProtectedWorkspacePath,
-	UnsupportedSandboxPolicyError
-} from 'pi-bring-your-own-sandbox/provider';
+	isProtectedWorkspacePath
+} from 'pi-bring-your-own-sandbox/provider-kit';
 
 import type { DockerClient } from './contracts.js';
 import { findHostExecutable } from './host-executable.js';

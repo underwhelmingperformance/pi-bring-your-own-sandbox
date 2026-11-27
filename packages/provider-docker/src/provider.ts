@@ -19,20 +19,22 @@ import type {
 } from 'pi-bring-your-own-sandbox/provider';
 import {
 	isSandboxError,
-	resolveSandboxCopySource,
 	SandboxCancelledError,
 	SandboxCleanupError,
-	SandboxLaunchFrames,
 	SandboxOperationError,
 	SandboxPathNotFoundError,
 	SandboxPermissionDeniedError,
 	SandboxSessionClosingError,
 	SandboxTransportError,
-	targetFileHelper,
-	targetSearchHelper,
 	UnsupportedSandboxCapabilityError,
 	UnsupportedSandboxPolicyError
 } from 'pi-bring-your-own-sandbox/provider';
+import {
+	resolveSandboxCopySource,
+	SandboxLaunchFrames,
+	targetFileHelper,
+	targetSearchHelper
+} from 'pi-bring-your-own-sandbox/provider-kit';
 
 import { NodeDockerClient } from './client.js';
 import { dockerConfig } from './config.js';

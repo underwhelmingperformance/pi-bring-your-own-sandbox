@@ -8,17 +8,22 @@ contract. Runtime schemas define the types.
 
 ## Public entry points
 
-| Entry point | Operations and types                                                                        |
-| ----------- | ------------------------------------------------------------------------------------------- |
-| `/consumer` | `createSandboxClient`, sandbox handles, requirements and error checks                       |
-| `/review`   | `createShellReviewClient`, pending shell review and escalation decisions                    |
-| `/provider` | `registerSandboxProvider`, provider and backend contracts, errors and display helpers       |
-| `/host`     | `initialiseSandboxHost`, `SandboxHostHandle`, host options and `registerSandboxDiagnostics` |
-| `/pi-tools` | Pi shell integration factory and `registerShellOnlyTools`                                   |
-| `/testing`  | `defineSandboxProviderTests` and `SandboxProviderTestFixture`                               |
+| Entry point     | Operations and types                                                                        |
+| --------------- | ------------------------------------------------------------------------------------------- |
+| `/consumer`     | `createSandboxClient`, sandbox handles, requirements and error checks                       |
+| `/review`       | `createShellReviewClient`, pending shell review and escalation decisions                    |
+| `/provider`     | `registerSandboxProvider`, provider and backend contracts, and errors                       |
+| `/provider-kit` | Shell transport, target file and search operations, cleanup, path and display helpers       |
+| `/host`         | `initialiseSandboxHost`, `SandboxHostHandle`, host options and `registerSandboxDiagnostics` |
+| `/pi-tools`     | Pi shell integration factory and `registerShellOnlyTools`                                   |
+| `/testing`      | `defineSandboxProviderTests` and `SandboxProviderTestFixture`                               |
 
 The package prefix is `pi-bring-your-own-sandbox`. Wire schemas, channel
 constants, broker objects and identity constructors are internal.
+
+Providers can use `/provider-kit` to implement parts of the backend contract.
+`ShellTransportRunner` requires a carrier that runs the helper in the provider's
+target and supervises its descendants.
 
 The [public API report][report] lists the exact exports and the declarations
 that their signatures reference. Run `pnpm api:report` after an intended API

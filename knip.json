@@ -13,6 +13,7 @@
 				"src/embedding-host.ts!",
 				"src/pi-tools.ts!",
 				"src/provider.ts!",
+				"src/provider-kit.ts!",
 				"src/review.ts!",
 				"src/testing.ts!",
 				"src/target-file.ts!",

@@ -30,6 +30,7 @@ async function assertNodeEntryPoints(directory: string): Promise<void> {
 		'host',
 		'pi-tools',
 		'provider',
+		'provider-kit',
 		'review',
 		'testing'
 	];
@@ -119,6 +120,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 				'host',
 				'pi-tools',
 				'provider',
+				'provider-kit',
 				'testing'
 			]) {
 				const entry = subpath === 'host' ? 'embedding-host' : subpath;
@@ -166,15 +168,21 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 				optional: { vitest: { optional: true } },
 				pi: undefined,
 				exports: Object.fromEntries(
-					['consumer', 'host', 'pi-tools', 'provider', 'review', 'testing'].map(
-						(entry) => [
-							`./${entry}`,
-							{
-								types: `./dist/${entry === 'host' ? 'embedding-host' : entry}.d.ts`,
-								import: `./dist/${entry === 'host' ? 'embedding-host' : entry}.js`
-							}
-						]
-					)
+					[
+						'consumer',
+						'host',
+						'pi-tools',
+						'provider',
+						'provider-kit',
+						'review',
+						'testing'
+					].map((entry) => [
+						`./${entry}`,
+						{
+							types: `./dist/${entry === 'host' ? 'embedding-host' : entry}.d.ts`,
+							import: `./dist/${entry === 'host' ? 'embedding-host' : entry}.js`
+						}
+					])
 				)
 			});
 
@@ -319,6 +327,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
 				'host',
 				'pi-tools',
 				'provider',
+				'provider-kit',
 				'testing'
 			]
 				.map((entry) =>

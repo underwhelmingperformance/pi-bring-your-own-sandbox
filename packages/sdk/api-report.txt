@@ -33,7 +33,9 @@ value default (pi-tools.d.ts)
 value registerShellOnlyTools (pi-tools.d.ts)
 
 pi-bring-your-own-sandbox/provider
+type BackendDirectoryReader (contracts.d.ts)
 type BackendFileReader (contracts.d.ts)
+type BackendFileWriter (contracts.d.ts)
 type BackendFiles (contracts.d.ts)
 type BackendProcessContext (contracts.d.ts)
 type BackendProcessOutcome (contracts.d.ts)
@@ -41,11 +43,11 @@ type BackendSearch (contracts.d.ts)
 type DirectoryEntry (contracts.d.ts)
 type FileStat (contracts.d.ts)
 type FindRequest (contracts.d.ts)
+type FindResult (contracts.d.ts)
 type GrantedPath (contracts.d.ts)
 type GrepMatch (contracts.d.ts)
 type GrepRequest (contracts.d.ts)
-type PosixProcessInvocation (host-process.d.ts)
-type PosixProcessRunnerOptions (host-process.d.ts)
+type GrepResult (contracts.d.ts)
 type ProcessEnvironment (contracts.d.ts)
 type ProcessExit (contracts.d.ts)
 type ProcessOutput (contracts.d.ts)
@@ -72,43 +74,40 @@ type SandboxReadRootPersistence (contracts.d.ts)
 type SandboxSharedSettings (contracts.d.ts)
 type SandboxWorkspace (contracts.d.ts)
 type ShellDialect (contracts.d.ts)
-type ShellTransportOptions (shell-transport.d.ts)
-type TargetFileOperation (target-operations.d.ts)
-type TargetFileOperations (target-operations.d.ts)
-type TargetFileTransport (target-operations.d.ts)
 value InvalidSandboxConfigError (errors.d.ts)
 value InvalidSandboxRequestError (errors.d.ts)
-value PosixProcessRunner (host-process.d.ts)
 value SandboxCancelledError (errors.d.ts)
 value SandboxCleanupError (errors.d.ts)
-value SandboxLaunchFrames (launch-frames.d.ts)
 value SandboxOperationError (errors.d.ts)
 value SandboxPathNotFoundError (errors.d.ts)
 value SandboxPermissionDeniedError (errors.d.ts)
 value SandboxSessionClosingError (errors.d.ts)
 value SandboxStartupError (errors.d.ts)
 value SandboxTransportError (errors.d.ts)
-value ShellTransportRunner (shell-transport.d.ts)
 value StaleSandboxHandleError (errors.d.ts)
 value UnsupportedSandboxCapabilityError (errors.d.ts)
 value UnsupportedSandboxPolicyError (errors.d.ts)
+value isSandboxError (errors.d.ts)
+value registerSandboxProvider (provider-registration.d.ts)
+value registerSandboxProviderFactory (provider-registration.d.ts)
+value registerUnavailableSandboxProvider (provider-registration.d.ts)
+
+pi-bring-your-own-sandbox/provider-kit
+type ShellTransportOptions (shell-transport.d.ts)
+type TargetFileOperation (target-operations.d.ts)
+type TargetFileOperations (target-operations.d.ts)
+type TargetFileTransport (target-operations.d.ts)
+value SandboxLaunchFrames (launch-frames.d.ts)
+value ShellTransportRunner (shell-transport.d.ts)
 value checkSandboxTargetStatus (target-operations.d.ts)
 value cleanDisplayText (display-text.d.ts)
 value createSandboxCleanupContext (provider-cleanup.d.ts)
 value createTargetFileOperations (target-operations.d.ts)
-value credentialLocations (credential-locations.d.ts)
 value defaultProtectedWorkspacePaths (protected-workspace-paths.d.ts)
 value encodePosixArgv (shell-transport.d.ts)
 value hostSystemRoots (host-system-roots.d.ts)
-value hostToolchainRoots (host-toolchain-roots.d.ts)
 value isProtectedWorkspacePath (protected-workspace-paths.d.ts)
-value isSandboxError (errors.d.ts)
 value mapSandboxErrno (host-error.d.ts)
-value registerSandboxProvider (provider-registration.d.ts)
-value registerSandboxProviderFactory (provider-registration.d.ts)
-value registerUnavailableSandboxProvider (provider-registration.d.ts)
-value resolveCleanupBudgets as resolveSandboxCleanupBudgets (cleanup-budgets.d.ts)
-value resolveCredentialLocations (credential-locations.d.ts)
 value resolveSandboxCopySource (provider-copy.d.ts)
 value sandboxTargetTransferLimit (target-operations.d.ts)
 value sendDisplayMessage (display-ui.d.ts)
@@ -139,9 +138,6 @@ value createSandboxOperationContext (provider-test-contexts.d.ts)
 value defineSandboxProviderTests (provider-contract-runner.d.ts)
 
 Declarations referenced by the public entry points
-
-// cleanup-budgets.d.ts
-export declare function resolveCleanupBudgets(input?: Partial<SandboxCleanupBudgets>): SandboxCleanupBudgets;
 
 // client.d.ts
 export declare function createSandboxClient(pi: SandboxHost, extensionSource: string): SandboxClient;
@@ -659,12 +655,6 @@ type SandboxCapability = Static<typeof capabilitySchema>;
 
 // contracts.d.ts
 type SandboxViolation = Readonly<Static<typeof violationsSchema>[number]>;
-
-// credential-locations.d.ts
-declare const credentialLocations: readonly string[];
-
-// credential-locations.d.ts
-export declare function resolveCredentialLocations(): readonly string[];
 
 // diagnostic-registration.d.ts
 export declare function registerSandboxDiagnostics(pi: ExtensionAPI, extensionSource: string): void;
@@ -1287,41 +1277,12 @@ export declare function mapSandboxErrno(cause: unknown, context: SandboxErrorCon
 });
 
 // host-process.d.ts
-export declare class PosixProcessRunner implements HostProcessRunner {
-    #private;
-    constructor(workspace: string, environment: NodeJS.ProcessEnv, shells: ReadonlyMap<ShellDialect, string>, options?: PosixProcessRunnerOptions, signals?: ProcessSignals);
-    run(request: ProcessRequest, context: BackendProcessContext): Promise<BackendProcessOutcome>;
-}
-
-// host-process.d.ts
 export interface HostProcessRunner {
     readonly run: (request: ProcessRequest, context: BackendProcessContext) => Promise<BackendProcessOutcome>;
 }
 
-// host-process.d.ts
-export interface PosixProcessInvocation {
-    readonly executable: string;
-    readonly args: readonly string[];
-    readonly cwd: string;
-    readonly env: Readonly<NodeJS.ProcessEnv>;
-}
-
-// host-process.d.ts
-export interface PosixProcessRunnerOptions {
-    readonly providerId?: string;
-    readonly wrap?: (invocation: PosixProcessInvocation) => PosixProcessInvocation;
-}
-
-// host-process.d.ts
-export interface ProcessSignals {
-    readonly kill: (id: number, signal: NodeJS.Signals | 0) => void;
-}
-
 // host-system-roots.d.ts
 declare const hostSystemRoots: Readonly<Record<'darwin' | 'linux', readonly string[]>>;
-
-// host-toolchain-roots.d.ts
-declare const hostToolchainRoots: Readonly<Record<'darwin' | 'linux', readonly string[]>>;
 
 // host.d.ts
 export declare function initialiseSandboxHost(pi: SandboxHost, extensionSource: string, options: SandboxHostOptions): SandboxHostHandle;
@@ -1798,7 +1759,7 @@ export interface SearchOutput<Result> {
 // shell-transport.d.ts
 export declare class ShellTransportRunner implements HostProcessRunner {
     #private;
-    constructor(workspace: string, environment: NodeJS.ProcessEnv, options?: ShellTransportOptions);
+    constructor(workspace: string, environment: NodeJS.ProcessEnv, options: ShellTransportOptions);
     run(request: ProcessRequest, context: BackendProcessContext): Promise<BackendProcessOutcome>;
 }
 
@@ -1807,7 +1768,7 @@ export declare function encodePosixArgv(argv: readonly string[]): string;
 
 // shell-transport.d.ts
 export interface ShellTransportOptions {
-    readonly carrier?: HostProcessRunner;
+    readonly carrier: HostProcessRunner;
     readonly dialect?: 'bash' | 'sh';
     readonly nodeExecutable?: string;
     readonly providerId?: string;

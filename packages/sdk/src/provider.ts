@@ -1,16 +1,19 @@
-export { resolveCleanupBudgets as resolveSandboxCleanupBudgets } from './cleanup-budgets.js';
 export type {
+	BackendDirectoryReader,
 	BackendFileReader,
 	BackendFiles,
+	BackendFileWriter,
 	BackendProcessContext,
 	BackendProcessOutcome,
 	BackendSearch,
 	DirectoryEntry,
 	FileStat,
 	FindRequest,
+	FindResult,
 	GrantedPath,
 	GrepMatch,
 	GrepRequest,
+	GrepResult,
 	ProcessEnvironment,
 	ProcessExit,
 	ProcessOutput,
@@ -38,12 +41,6 @@ export type {
 	ShellDialect
 } from './contracts.js';
 export {
-	credentialLocations,
-	resolveCredentialLocations
-} from './credential-locations.js';
-export { cleanDisplayText } from './display-text.js';
-export { sendDisplayMessage } from './display-ui.js';
-export {
 	InvalidSandboxConfigError,
 	InvalidSandboxRequestError,
 	isSandboxError,
@@ -59,38 +56,9 @@ export {
 	UnsupportedSandboxCapabilityError,
 	UnsupportedSandboxPolicyError
 } from './errors.js';
-export { mapSandboxErrno } from './host-error.js';
-export type {
-	PosixProcessInvocation,
-	PosixProcessRunnerOptions
-} from './host-process.js';
-export { PosixProcessRunner } from './host-process.js';
-export { hostSystemRoots } from './host-system-roots.js';
-export { hostToolchainRoots } from './host-toolchain-roots.js';
-export { SandboxLaunchFrames } from './launch-frames.js';
 export type { SandboxProviderUnavailability } from './policy-model.js';
-export {
-	defaultProtectedWorkspacePaths,
-	isProtectedWorkspacePath
-} from './protected-workspace-paths.js';
-export { createSandboxCleanupContext } from './provider-cleanup.js';
-export { resolveSandboxCopySource } from './provider-copy.js';
 export {
 	registerSandboxProvider,
 	registerSandboxProviderFactory,
 	registerUnavailableSandboxProvider
 } from './provider-registration.js';
-export type { ShellTransportOptions } from './shell-transport.js';
-export { encodePosixArgv, ShellTransportRunner } from './shell-transport.js';
-export type {
-	TargetFileOperation,
-	TargetFileOperations,
-	TargetFileTransport
-} from './target-operations.js';
-export {
-	checkSandboxTargetStatus,
-	createTargetFileOperations,
-	sandboxTargetTransferLimit,
-	targetFileHelper,
-	targetSearchHelper
-} from './target-operations.js';

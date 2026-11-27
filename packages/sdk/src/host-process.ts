@@ -62,14 +62,14 @@ export interface HostProcessRunner {
 	) => Promise<BackendProcessOutcome>;
 }
 
-export interface PosixProcessInvocation {
+interface PosixProcessInvocation {
 	readonly executable: string;
 	readonly args: readonly string[];
 	readonly cwd: string;
 	readonly env: Readonly<NodeJS.ProcessEnv>;
 }
 
-export interface PosixProcessRunnerOptions {
+interface PosixProcessRunnerOptions {
 	readonly providerId?: string;
 	/**
 	Wrap the final invocation before starting it in a new process group.

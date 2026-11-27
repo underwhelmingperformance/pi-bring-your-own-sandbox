@@ -17,6 +17,7 @@ import { initialiseSandboxHost } from './host.js';
 import { registerShellOnlyTools } from './pi-tools.js';
 import { protocolAddress } from './protocol-address.js';
 import * as provider from './provider.js';
+import * as providerKit from './provider-kit.js';
 import * as review from './review.js';
 
 it('rejects acquisition during factory loading and client creation after loading', async () => {
@@ -137,7 +138,6 @@ it('reports a provider factory failure as configuration before opening', async (
 
 const nonFactoryFunctions = new Set([
 	'GrepOutput',
-	'PosixProcessRunner',
 	'SandboxLaunchFrames',
 	'ShellTransportRunner',
 	'checkSandboxTargetStatus',
@@ -148,8 +148,6 @@ const nonFactoryFunctions = new Set([
 	'isSandboxError',
 	'mapSandboxErrno',
 	'isProtectedWorkspacePath',
-	'resolveCredentialLocations',
-	'resolveSandboxCleanupBudgets',
 	'resolveSandboxCopySource',
 	'sandboxRipgrepArguments',
 	'sendDisplayMessage',
@@ -191,6 +189,7 @@ const factoryExports = Object.entries<unknown>({
 	...consumer,
 	...host,
 	...provider,
+	...providerKit,
 	...review,
 	registerShellOnlyTools
 }).filter(

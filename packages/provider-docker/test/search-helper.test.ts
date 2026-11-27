@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
-import { targetSearchHelper } from 'pi-bring-your-own-sandbox/provider';
+import { targetSearchHelper } from 'pi-bring-your-own-sandbox/provider-kit';
 import { expect, it } from 'vitest';
 
 it.skipIf(process.platform !== 'linux')(

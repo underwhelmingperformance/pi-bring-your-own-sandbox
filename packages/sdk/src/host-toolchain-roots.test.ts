@@ -1,8 +1,8 @@
 import { expect, it } from 'vitest';
 
-import { hostToolchainRoots } from './provider.js';
+import { hostToolchainRoots } from './host-toolchain-roots.js';
 
-it('publishes the default toolchain roots for Linux and macOS', () => {
+it('defines the default toolchain roots for Linux and macOS', () => {
 	const common = [
 		'~/.cargo',
 		'~/.rustup',

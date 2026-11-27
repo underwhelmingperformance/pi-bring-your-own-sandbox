@@ -28,15 +28,21 @@ it('loads a consumer with the built workspace package through Pi', async () => {
 
 		expect(manifest['exports']).toStrictEqual(
 			Object.fromEntries(
-				['consumer', 'host', 'pi-tools', 'provider', 'review', 'testing'].map(
-					(entry) => [
-						`./${entry}`,
-						{
-							types: `./dist/${entry === 'host' ? 'embedding-host' : entry}.d.ts`,
-							import: `./dist/${entry === 'host' ? 'embedding-host' : entry}.js`
-						}
-					]
-				)
+				[
+					'consumer',
+					'host',
+					'pi-tools',
+					'provider',
+					'provider-kit',
+					'review',
+					'testing'
+				].map((entry) => [
+					`./${entry}`,
+					{
+						types: `./dist/${entry === 'host' ? 'embedding-host' : entry}.d.ts`,
+						import: `./dist/${entry === 'host' ? 'embedding-host' : entry}.js`
+					}
+				])
 			)
 		);
 

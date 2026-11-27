@@ -1,22 +1,24 @@
 import { randomUUID } from 'node:crypto';
 
-import type {
-	SandboxOperationContext,
-	TargetFileOperation,
-	TargetFileOperations
-} from 'pi-bring-your-own-sandbox/provider';
+import type { SandboxOperationContext } from 'pi-bring-your-own-sandbox/provider';
 import {
-	checkSandboxTargetStatus,
-	createTargetFileOperations,
 	SandboxCancelledError,
 	SandboxCleanupError,
 	SandboxOperationError,
 	SandboxPathNotFoundError,
 	SandboxPermissionDeniedError,
 	SandboxSessionClosingError,
-	sandboxTargetTransferLimit,
 	UnsupportedSandboxCapabilityError
 } from 'pi-bring-your-own-sandbox/provider';
+import type {
+	TargetFileOperation,
+	TargetFileOperations
+} from 'pi-bring-your-own-sandbox/provider-kit';
+import {
+	checkSandboxTargetStatus,
+	createTargetFileOperations,
+	sandboxTargetTransferLimit
+} from 'pi-bring-your-own-sandbox/provider-kit';
 
 import type { DockerClient } from './contracts.js';
 import { DOCKER_IMAGE } from './image.js';

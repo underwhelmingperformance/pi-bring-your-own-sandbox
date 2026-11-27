@@ -16,6 +16,10 @@
 			"types": "./dist/provider.d.ts",
 			"import": "./dist/provider.js"
 		},
+		"./provider-kit": {
+			"types": "./dist/provider-kit.d.ts",
+			"import": "./dist/provider-kit.js"
+		},
 		"./review": {
 			"types": "./dist/review.d.ts",
 			"import": "./dist/review.js"

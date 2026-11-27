@@ -26,11 +26,12 @@ The provider extension calls `/pi-tools` from its factory to route Pi's Bash,
 PowerShell and user-shell operations to the selected workspace. The [Pi
 integration guide][pi] describes how provider authors enable the integration.
 
-Provider authors use `/provider` and run the [conformance suite][testing] from
-`/testing`. The [Docker example][docker] shows provider setup. Embedding hosts
-use `/host` to manage the session. Permission extensions use the consumer client
-to review pending calls and record escalation decisions. Providers can ship
-separate entry points with stricter default policies.
+Provider authors register through `/provider`, can use implementation helpers
+from `/provider-kit` and run the [conformance suite][testing] from `/testing`.
+The [Docker example][docker] shows provider setup. Embedding hosts use `/host`
+to manage the session. Permission extensions use `/review` to review pending
+calls and record escalation decisions. Providers can ship separate entry points
+with stricter default policies.
 
 [consumer]: examples/consumer/README.md
 [pi]: docs/pi-integration.md

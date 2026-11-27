@@ -117,6 +117,12 @@ it('rejects NUL bytes before encoding argv for a shell', () => {
 	);
 });
 
+it('rejects constructing a shell transport without a carrier', () => {
+	expect(() => {
+		Reflect.construct(ShellTransportRunner, [tmpdir(), {}]);
+	}).toThrow(expect.objectContaining({ name: 'InvalidSandboxRequestError' }));
+});
+
 describe.each(['direct', 'shell transport'] as const)(
 	'%s argv conformance',
 	(mode) => {
@@ -128,10 +134,16 @@ describe.each(['direct', 'shell transport'] as const)(
 			await mkdir(path.join(directory, 'cwd'));
 			await mkdir(path.join(directory, 'bin'));
 
-			const runner: HostProcessRunner =
+			const runner =
 				mode === 'direct'
 					? new PosixProcessRunner(directory, environment, new Map())
-					: new ShellTransportRunner(directory, environment);
+					: new ShellTransportRunner(directory, environment, {
+							carrier: new PosixProcessRunner(
+								directory,
+								{},
+								new Map([['bash', '/bin/bash']])
+							)
+						});
 
 			return { directory, runner };
 		}

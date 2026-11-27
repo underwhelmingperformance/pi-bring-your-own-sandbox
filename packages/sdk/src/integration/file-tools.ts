@@ -38,13 +38,15 @@ import type {
 	ProcessRequest
 } from 'pi-bring-your-own-sandbox/provider';
 import {
-	cleanDisplayText,
-	encodePosixArgv,
 	isSandboxError,
 	SandboxOperationError,
 	SandboxPathNotFoundError,
 	UnsupportedSandboxCapabilityError
 } from 'pi-bring-your-own-sandbox/provider';
+import {
+	cleanDisplayText,
+	encodePosixArgv
+} from 'pi-bring-your-own-sandbox/provider-kit';
 import type { TSchema } from 'typebox';
 import { Value } from 'typebox/value';
 

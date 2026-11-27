@@ -9,8 +9,8 @@ import {
 	UnsupportedSandboxCapabilityError
 } from './errors.js';
 import type { HostProcessRunner } from './host-process.js';
-import { PosixProcessRunner } from './host-process.js';
 import { SandboxLaunchFrames } from './launch-frames.js';
+import { isRecord } from './validation.js';
 
 /**
 Encodes literal POSIX shell words. The caller selects the trusted command
@@ -82,7 +82,7 @@ child.on('close', (code, signal) => {
 `;
 
 export interface ShellTransportOptions {
-	readonly carrier?: HostProcessRunner;
+	readonly carrier: HostProcessRunner;
 	readonly dialect?: 'bash' | 'sh';
 	readonly nodeExecutable?: string;
 	readonly providerId?: string;
@@ -102,21 +102,23 @@ export class ShellTransportRunner implements HostProcessRunner {
 	constructor(
 		workspace: string,
 		environment: NodeJS.ProcessEnv,
-		options: ShellTransportOptions = {}
+		options: ShellTransportOptions
 	) {
+		if (
+			!isRecord(options) ||
+			!isRecord(options.carrier) ||
+			typeof options.carrier.run !== 'function'
+		) {
+			throw new InvalidSandboxRequestError({
+				operation: 'exec',
+				detail: { kind: 'request', field: 'carrier' }
+			});
+		}
+
 		this.#workspace = workspace;
 		this.#environment = { ...environment };
 		this.#options = { ...options };
-		this.#carrier =
-			options.carrier ??
-			new PosixProcessRunner(
-				workspace,
-				{},
-				new Map([
-					['bash', '/bin/bash'],
-					['sh', '/bin/sh']
-				])
-			);
+		this.#carrier = options.carrier;
 	}
 
 	async run(

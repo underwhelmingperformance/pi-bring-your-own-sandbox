@@ -7,13 +7,13 @@ import type {
 	SandboxOperationContext
 } from 'pi-bring-your-own-sandbox/provider';
 import {
-	createSandboxCleanupContext,
 	isSandboxError,
 	SandboxCancelledError,
 	SandboxCleanupError,
 	SandboxOperationError,
 	SandboxTransportError
 } from 'pi-bring-your-own-sandbox/provider';
+import { createSandboxCleanupContext } from 'pi-bring-your-own-sandbox/provider-kit';
 import { Compile } from 'typebox/compile';
 
 import type {

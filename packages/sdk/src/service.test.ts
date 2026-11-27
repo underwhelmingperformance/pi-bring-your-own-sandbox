@@ -86,7 +86,7 @@ it('does not construct a replacement for an incompatible advertisement', () => {
 
 	respond(events, 'pi-byos:runtime', {
 		...brokerReply(),
-		major: 2
+		major: 1
 	});
 	expect(() =>
 		ensureBroker(events, () => {

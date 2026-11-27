@@ -20,6 +20,7 @@ import type * as discovery from './discovery.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
+import { PROTOCOL_MAJOR } from './protocol-envelope.js';
 import type * as provider from './provider.js';
 import { isRecord } from './validation.js';
 
@@ -56,7 +57,7 @@ async function loadBuild(
 	root: string,
 	name: string,
 	featureLevel: 0 | 1,
-	major = 1
+	major = PROTOCOL_MAJOR
 ) {
 	const directory = path.join(root, name);
 	const distribution = path.join(directory, 'dist');
@@ -89,10 +90,10 @@ async function loadBuild(
 		);
 	}
 
-	if (major !== 1) {
+	if (major !== PROTOCOL_MAJOR) {
 		await rewrite(
 			envelope,
-			'PROTOCOL_MAJOR = 1',
+			`PROTOCOL_MAJOR = ${String(PROTOCOL_MAJOR)}`,
 			`PROTOCOL_MAJOR = ${String(major)}`
 		);
 	}
@@ -225,7 +226,7 @@ it.each([
 						packageVersion: current.packageVersion,
 						extensionSource: current.name,
 						featureLevel: 1,
-						major: 1
+						major: PROTOCOL_MAJOR
 					};
 
 					expect({
@@ -272,7 +273,7 @@ it('reports both compiled builds when their protocol majors disagree', async () 
 	try {
 		const [first, second] = await Promise.all([
 			loadBuild(root, 'first', 0),
-			loadBuild(root, 'second', 0, 2)
+			loadBuild(root, 'second', 0, 1)
 		]);
 		const identities = [first, second];
 

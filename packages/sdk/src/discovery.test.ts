@@ -17,6 +17,7 @@ import {
 } from './fixtures/protocol-peer.js';
 import {
 	onProtocolRequest,
+	PROTOCOL_MAJOR,
 	PROVIDER_CHANNEL,
 	RUNTIME_CHANNEL
 } from './protocol-envelope.js';
@@ -400,7 +401,7 @@ it.each([
 				events,
 				channel,
 				{
-					major: 1,
+					major: PROTOCOL_MAJOR,
 					featureLevel: 0,
 					packageVersion: '1.0.0',
 					buildId: `fixture-${String(index)}\u{200B}`,

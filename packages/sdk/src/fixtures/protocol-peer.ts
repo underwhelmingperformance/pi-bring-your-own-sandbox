@@ -3,7 +3,7 @@ import { createEventBus } from '@earendil-works/pi-coding-agent';
 
 import { UnsupportedSandboxCapabilityError } from '../errors.js';
 import { bindProtocolAddress } from '../protocol-address.js';
-import { PROVIDER_CHANNEL } from '../protocol-envelope.js';
+import { PROTOCOL_MAJOR, PROVIDER_CHANNEL } from '../protocol-envelope.js';
 import { isRecord } from '../validation.js';
 
 import { fixtureProfiles } from './profile-fixture.js';
@@ -122,7 +122,7 @@ export function respond(
 
 			events.emit(channel, {
 				kind,
-				major: Object.hasOwn(fields, 'major') ? major : 1,
+				major: Object.hasOwn(fields, 'major') ? major : PROTOCOL_MAJOR,
 				featureLevel,
 				requestId: request['requestId'],
 				packageVersion: '1.0.0',

@@ -8,12 +8,13 @@ import { ScriptedModel } from '../../../test-support/scripted-model.js';
 
 import { snapshotBackend } from './backend-snapshot.js';
 import { SandboxBroker } from './broker.js';
+import { createSandboxClient } from './client.js';
 import type {
 	Sandbox,
 	SandboxAcquireOptions,
 	SandboxContext
 } from './contracts.js';
-import { discoverProviders } from './discovery.js';
+import { bindFactory, ensureSandboxService } from './default-broker.js';
 import { InvalidSandboxConfigError } from './errors.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
@@ -23,7 +24,6 @@ import { loadSdkInstance } from './fixtures/sdk-instance.js';
 import type { BrokerService } from './protocol.js';
 import { bindProtocolAddress } from './protocol-address.js';
 import { registerSandboxProvider } from './provider-registration.js';
-import { ensureBroker } from './service.js';
 import { isRecord } from './validation.js';
 
 it('keeps model catalog refreshes in memory in the Pi fixture', async () => {
@@ -55,28 +55,11 @@ function fixture(
 		factory(pi) {
 			bindProtocolAddress(pi.events, import.meta.filename);
 
-			const service = () =>
-				ensureBroker(pi.events, (id) => {
-					const broker = new SandboxBroker(id, pi, {
-						providers: () => discoverProviders(pi.events),
-						readConfig: () =>
-							Promise.resolve({
-								selection: {
-									providerId: 'fixture',
-									source: 'extension',
-									policy: template.policy
-								},
-								providerConfig: {}
-							})
-					});
-
-					services.push(broker);
-
-					return broker;
-				});
-
 			if (role === 'broker') {
-				service();
+				bindFactory(pi, import.meta.filename);
+				pi.on('session_start', () => {
+					services.push(ensureSandboxService(pi));
+				});
 
 				return;
 			}
@@ -127,13 +110,13 @@ function fixture(
 				return;
 			}
 
+			const client = (
+				clients?.consumer.createSandboxClient ?? createSandboxClient
+			)(pi, import.meta.filename);
 			const acquire = (
 				context: SandboxContext,
 				options?: SandboxAcquireOptions
-			) =>
-				bound === undefined
-					? service().acquire(context, options)
-					: bound.get(context, options);
+			) => client.get(context, options);
 
 			pi.registerTool({
 				name: 'sandbox_read',
@@ -162,11 +145,6 @@ function fixture(
 					return { ...result.result, isError: result.isError, details: {} };
 				}
 			});
-
-			const bound = clients?.consumer.createSandboxClient(
-				pi,
-				import.meta.filename
-			);
 
 			pi.on('session_start', async (_event, context) => {
 				contexts.push(context);

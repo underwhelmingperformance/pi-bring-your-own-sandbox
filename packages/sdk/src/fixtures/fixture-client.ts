@@ -9,24 +9,63 @@ import type {
 	SandboxCopyOptions,
 	SandboxHost
 } from '../contracts.js';
-import { ensureSandboxService } from '../default-broker.js';
+import {
+	ensureSandboxService,
+	startSandboxRuntime
+} from '../default-broker.js';
 import { protocolAddress } from '../protocol-address.js';
 import { checkedCopy, copyOptions } from '../sandbox-copy.js';
 
-const ready = new WeakSet<SandboxHost>();
-
-export function isFixtureReady(pi: SandboxHost): boolean {
-	return ready.has(pi);
+interface FixtureSession {
+	readonly context: SandboxContext;
+	starting?: Promise<void>;
+	isReady?: true;
 }
 
-export function getSandbox(...parameters: Parameters<typeof acquire>) {
-	ready.add(parameters[0]);
+const sessions = new WeakMap<SandboxHost, FixtureSession>();
+
+export function setFixtureSession(
+	pi: SandboxHost,
+	context: SandboxContext
+): void {
+	sessions.set(pi, { context });
+}
+
+function startFixture(pi: SandboxHost): Promise<void> | undefined {
+	const session = sessions.get(pi);
+
+	if (session === undefined) {
+		return;
+	}
+
+	session.isReady = true;
+	session.starting ??= startSandboxRuntime(pi, session.context);
+
+	return session.starting;
+}
+
+export function isFixtureReady(pi: SandboxHost): boolean {
+	return sessions.get(pi)?.isReady === true;
+}
+
+export async function getSandbox(...parameters: Parameters<typeof acquire>) {
+	const starting = startFixture(parameters[0]);
+
+	if (starting !== undefined) {
+		await starting;
+	}
 
 	return acquire(...parameters);
 }
 
-export function negotiateSandbox(...parameters: Parameters<typeof negotiate>) {
-	ready.add(parameters[0]);
+export async function negotiateSandbox(
+	...parameters: Parameters<typeof negotiate>
+) {
+	const starting = startFixture(parameters[0]);
+
+	if (starting !== undefined) {
+		await starting;
+	}
 
 	return negotiate(...parameters);
 }
@@ -36,7 +75,12 @@ export async function copyHostWorkspace(
 	context: SandboxContext,
 	options?: SandboxCopyOptions
 ) {
-	ready.add(pi);
+	const starting = startFixture(pi);
+
+	if (starting !== undefined) {
+		await starting;
+	}
+
 	inspectContext(context, 'acquire');
 
 	const source = protocolAddress(pi.events).extensionSource;
@@ -50,8 +94,14 @@ export async function copyHostWorkspace(
 	return checkedCopy(copy, settings, source);
 }
 
-export function closeSandboxSession(...parameters: Parameters<typeof close>) {
-	ready.add(parameters[0]);
+export async function closeSandboxSession(
+	...parameters: Parameters<typeof close>
+) {
+	const starting = startFixture(parameters[0]);
+
+	if (starting !== undefined) {
+		await starting;
+	}
 
 	return close(...parameters);
 }

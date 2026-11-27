@@ -18,7 +18,7 @@ it('reports a loaded integration without allocating or verifying tool ownership'
 	});
 });
 
-it.each([{ type: 'shell-integration', major: 2 }, { type: 'unexpected' }])(
+it.each([{ type: 'shell-integration', major: 1 }, { type: 'unexpected' }])(
 	'reports an unrecognised diagnostic reply as unavailable: %j',
 	(reply) => {
 		const events = fixtureEvents(import.meta.filename);

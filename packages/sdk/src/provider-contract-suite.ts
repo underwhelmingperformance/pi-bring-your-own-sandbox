@@ -188,7 +188,7 @@ export async function usingProviderFixture<Config>(
 
 		async function open() {
 			const attempt: FixtureAttempt = {};
-			const runtime = fixtureBroker(
+			const runtime = await fixtureBroker(
 				provider,
 				fixture.hostWorkspace,
 				fixture.configuration,

@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 import { ScriptedModel } from '../../../test-support/scripted-model.js';
 
+import { createSandboxClient } from './consumer.js';
 import type { SandboxNegotiation, ShellReviewSource } from './contracts.js';
 import { ensureSandboxService } from './default-broker.js';
 import { UnsupportedSandboxCapabilityError } from './errors.js';
@@ -26,6 +27,8 @@ it('rejects review registration with extension callbacks before issuing an ident
 			{
 				name: 'forged-route',
 				factory(pi) {
+					createSandboxClient(pi, import.meta.filename);
+
 					pi.on('session_start', async (_event, context) => {
 						const broker = ensureSandboxService(pi);
 

@@ -12,8 +12,7 @@ import {
 import { failedCloseReport, settleSandboxClose } from './cleanup-report.js';
 import type { SandboxConfig } from './config.js';
 import { selectProvider } from './config.js';
-import type { SessionIdentity } from './context.js';
-import { inspectContext } from './context.js';
+import { SandboxSession } from './context.js';
 import type {
 	RecoveryDescriptor,
 	Sandbox,
@@ -148,8 +147,7 @@ const isDisposable = checker(
 export class SandboxGeneration {
 	readonly #diagnostics: DiagnosticStore;
 	#cleanup = DEFAULT_CLEANUP_BUDGETS;
-	readonly #context: SandboxContext;
-	readonly #session: SessionIdentity;
+	readonly #session: SandboxSession;
 	readonly #dependencies: GenerationDependencies;
 	readonly #lifetime = new AbortController();
 	readonly #operations = new OperationRegistry();
@@ -168,25 +166,18 @@ export class SandboxGeneration {
 	#closing: Promise<SandboxCloseReport> | undefined;
 	readonly #cleanupFailures: SandboxErrorInfo[] = [];
 
-	constructor(context: SandboxContext, dependencies: GenerationDependencies) {
-		this.#context = context;
-		this.#session = inspectContext(context, 'acquire');
+	constructor(
+		context: SandboxContext | SandboxSession,
+		dependencies: GenerationDependencies
+	) {
+		this.#session =
+			context instanceof SandboxSession ? context : new SandboxSession(context);
 		this.#dependencies = dependencies;
 		this.#diagnostics = dependencies.diagnostics ?? new ProviderDiagnostics();
 	}
 
 	#assertContext(context: SandboxContext, operation: SandboxOperation): void {
-		const actual = inspectContext(context, operation);
-		const original = inspectContext(this.#context, operation);
-
-		if (
-			actual.sessionId !== this.#session.sessionId ||
-			actual.workspace !== this.#session.workspace ||
-			original.sessionId !== this.#session.sessionId ||
-			original.workspace !== this.#session.workspace
-		) {
-			throw new StaleSandboxHandleError({ operation });
-		}
+		this.#session.check(context, operation);
 	}
 
 	#assertOpen(operation: SandboxOperation, slot?: BackendSlot): void {
@@ -273,7 +264,9 @@ export class SandboxGeneration {
 
 	async #load(pending: PromiseWithResolvers<Prepared>): Promise<void> {
 		try {
-			const declarations = await this.#dependencies.providers(this.#context);
+			const declarations = await this.#dependencies.providers(
+				this.#session.context
+			);
 			const providers = Object.freeze(
 				declarations.map((provider) =>
 					Object.freeze({
@@ -290,7 +283,7 @@ export class SandboxGeneration {
 				providers.map((provider) => snapshotProviderInfo(provider))
 			);
 
-			const config = await this.#dependencies.readConfig(this.#context);
+			const config = await this.#dependencies.readConfig(this.#session.context);
 
 			this.#allowsEscalation = config.allowEscalation ?? true;
 			this.#cleanup = resolveCleanupBudgets(config.cleanup);
@@ -979,7 +972,7 @@ export class SandboxGeneration {
 		options: SandboxOperationOptions = {}
 	): Promise<EscalatedSandbox> {
 		const { provider, configured, profile } = chosen;
-		const generation = new SandboxGeneration(context, {
+		const generation = new SandboxGeneration(this.#session, {
 			...this.#dependencies,
 			isEscalated: true,
 			providers: () => [
@@ -1302,7 +1295,7 @@ export class SandboxGeneration {
 				request: Parameters<typeof copy>[0],
 				opening: SandboxOpenContext
 			) => copy.call(configured, request, opening);
-			const generation = new SandboxGeneration(context, {
+			const generation = new SandboxGeneration(this.#session, {
 				diagnostics: this.#diagnostics,
 				...(this.#dependencies.protocol !== undefined && {
 					protocol: this.#dependencies.protocol

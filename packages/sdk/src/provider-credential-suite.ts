@@ -58,7 +58,7 @@ export async function verifyCredentialExclusion<Config>(
 		try {
 			const provider = fixture.provider ?? options.provider;
 			const attempt: FixtureAttempt = {};
-			const runtime = fixtureBroker(
+			const runtime = await fixtureBroker(
 				provider,
 				fixture.hostWorkspace,
 				fixture.configuration,

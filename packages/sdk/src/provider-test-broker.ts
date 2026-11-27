@@ -14,7 +14,7 @@ import type {
 	SandboxProvider,
 	SandboxSharedSettings
 } from './contracts.js';
-import { ensureSandboxService } from './default-broker.js';
+import { ensureSandboxService, startSandboxRuntime } from './default-broker.js';
 import { initialiseSandboxHost } from './host.js';
 import { registerSandboxProvider } from './provider-registration.js';
 
@@ -30,7 +30,7 @@ export interface FixtureAttempt {
 	followups?: FixtureAttempt[];
 }
 
-export function fixtureBroker<Config>(
+export async function fixtureBroker<Config>(
 	provider: SandboxProvider<Config>,
 	workspace: string,
 	config: unknown,
@@ -108,6 +108,7 @@ export function fixtureBroker<Config>(
 	const client = createSandboxClient(pi, fixtureSource);
 
 	isReady = true;
+	await startSandboxRuntime(pi, context);
 
 	const broker = ensureSandboxService(pi);
 	const planEscalation = broker.planEscalation?.bind(broker);

@@ -33,7 +33,7 @@ export async function verifyWorkspaceCase<Config>(
 			await promisify(execFile)('mkfifo', [filename]);
 		}
 
-		const runtime = fixtureBroker(
+		const runtime = await fixtureBroker(
 			provider,
 			fixture.hostWorkspace,
 			fixture.configuration,

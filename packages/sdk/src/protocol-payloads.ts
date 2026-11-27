@@ -1,6 +1,7 @@
 import { Type } from 'typebox';
 
 import { backendSchema, workspaceSchema } from './backend-schemas.js';
+import type { SandboxContext } from './contracts.js';
 import { closeReportSchema, errorSchema } from './error-schema.js';
 import {
 	accessPolicySchema as policySchema,
@@ -8,6 +9,7 @@ import {
 	profileSchema,
 	providerInfoSchema
 } from './policy-model.js';
+import type { ProtocolIdentity } from './protocol-envelope.js';
 import { protocolEnvelopeSchema } from './protocol-envelope.js';
 import {
 	acquireOptionsSchema,
@@ -44,7 +46,19 @@ const buildRequest = Type.Object(
 );
 
 export const buildAdvertisement = Type.Object(
-	{ type: Type.Literal('build'), activate: callable<() => void>() },
+	{ type: Type.Literal('build'), candidateId: nonEmptyStringSchema },
+	{ additionalProperties: false }
+);
+
+export type BrokerStarter = (context: SandboxContext) => Promise<void>;
+
+export const startBrokerRequest = Type.Object(
+	{
+		type: Type.Literal('start-broker'),
+		candidateId: nonEmptyStringSchema,
+		receive:
+			callable<(identity: ProtocolIdentity, start: BrokerStarter) => void>()
+	},
 	{ additionalProperties: false }
 );
 
@@ -162,6 +176,7 @@ export const protocolSchemas = {
 	),
 	'runtime.get-builds': buildRequest,
 	'runtime.build': buildAdvertisement,
+	'runtime.start-broker': startBrokerRequest,
 	'runtime.get-broker': brokerRequest,
 	'runtime.broker': brokerReply,
 	'runtime.get-settings': message('get-settings'),

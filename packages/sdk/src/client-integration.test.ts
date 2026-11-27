@@ -1,11 +1,14 @@
-import { access, readFile, writeFile } from 'node:fs/promises';
+import { access, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type {
 	AgentSessionRuntime,
 	InlineExtension
 } from '@earendil-works/pi-coding-agent';
-import { createReadTool } from '@earendil-works/pi-coding-agent';
+import {
+	createReadTool,
+	SessionManager
+} from '@earendil-works/pi-coding-agent';
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { ScriptedModel } from '../../../test-support/scripted-model.js';
@@ -94,6 +97,29 @@ function provider(open: () => Promise<MemoryBackend>): InlineExtension {
 		}
 	};
 }
+
+it('captures the Pi session checkout before the first client call', async () => {
+	await fixture(async ({ pi, context, errors }) => {
+		const checkout = await realpath(context.cwd);
+
+		await expect(
+			getSandbox(pi, { ...context, cwd: path.dirname(checkout) })
+		).rejects.toMatchObject({ name: 'StaleSandboxHandleError' });
+		await expect(
+			getSandbox(pi, {
+				...context,
+				sessionManager: SessionManager.inMemory(checkout)
+			})
+		).rejects.toMatchObject({ name: 'StaleSandboxHandleError' });
+
+		const sandbox = await getSandbox(pi, context);
+
+		expect({ workspace: sandbox.workspace.root, errors }).toStrictEqual({
+			workspace: checkout,
+			errors: []
+		});
+	});
+});
 
 it('provides a shared host backend with only a consumer and no configuration', async () => {
 	await fixture(async ({ pi, context, errors }) => {

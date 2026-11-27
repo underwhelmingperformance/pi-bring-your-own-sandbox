@@ -5,6 +5,7 @@ import type { EventBus } from '@earendil-works/pi-coding-agent';
 import { discoverBroker, isBrokerService } from './discovery.js';
 import {
 	InvalidSandboxDeclarationError,
+	isSandboxError,
 	SandboxInitialisationError,
 	UnsupportedSandboxCapabilityError
 } from './errors.js';
@@ -42,6 +43,10 @@ export function ensureBroker(
 		try {
 			return operation(target);
 		} catch (error) {
+			if (isSandboxError(error)) {
+				return Promise.reject(error);
+			}
+
 			return Promise.reject(
 				new SandboxInitialisationError(
 					{

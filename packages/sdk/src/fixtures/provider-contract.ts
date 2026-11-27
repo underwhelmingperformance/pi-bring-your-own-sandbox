@@ -180,7 +180,7 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 
 			return {
 				configuration: undefined,
-				hostWorkspace: workspace ?? '/host',
+				hostWorkspace: workspace ?? tmpdir(),
 				policy: unrestrictedPolicy,
 				visibility: visibility.probe(selection?.profile.processKinds[0]),
 				processes: [

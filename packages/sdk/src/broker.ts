@@ -6,15 +6,17 @@ import {
 	ReviewState
 } from './broker-review.js';
 import { reportCleanup } from './cleanup-report.js';
-import { inspectContext } from './context.js';
+import { SandboxSession } from './context.js';
 import type {
 	ReviewedToolCall,
 	SandboxAcquireOptions,
 	SandboxCloseReport,
 	SandboxContext,
 	SandboxCopyOptions,
-	SandboxHost
+	SandboxHost,
+	SandboxOperation
 } from './contracts.js';
+import { SandboxInitialisationError } from './errors.js';
 import type { GenerationDependencies } from './generation.js';
 import { SandboxGeneration } from './generation.js';
 import type {
@@ -34,7 +36,12 @@ export class SandboxBroker implements BrokerService {
 	readonly #dependencies: GenerationDependencies;
 	readonly #reviewIdentities = new ReviewIdentities<RegisteredReview>();
 	readonly #liveReviewCalls = new Set<string>();
-	#generation: SandboxGeneration | undefined;
+	#current:
+		| {
+				readonly session: SandboxSession;
+				readonly generation: SandboxGeneration;
+		  }
+		| undefined;
 	#isClosing = false;
 	readonly id: string;
 
@@ -42,18 +49,18 @@ export class SandboxBroker implements BrokerService {
 		id: string,
 		pi: SandboxHost,
 		dependencies: GenerationDependencies,
-		lifecycle: 'session' | 'owner' = 'session'
+		session?: SandboxSession
 	) {
 		this.id = id;
 		this.#dependencies = dependencies;
 
 		pi.on('tool_execution_start', (event, context) => {
-			const session = inspectContext(context, 'acquire');
+			const { session } = this.#resolve(context);
 
 			this.#liveReviewCalls.add(reviewCallKey(session.sessionId, event));
 		});
 		pi.on('tool_result', (event, context) => {
-			const session = inspectContext(context, 'acquire');
+			const { session } = this.#resolve(context);
 
 			this.#liveReviewCalls.delete(reviewCallKey(session.sessionId, event));
 		});
@@ -61,7 +68,9 @@ export class SandboxBroker implements BrokerService {
 			this.#liveReviewCalls.clear();
 		});
 
-		if (lifecycle === 'owner') {
+		if (session !== undefined) {
+			this.#start(session);
+
 			return;
 		}
 
@@ -70,7 +79,9 @@ export class SandboxBroker implements BrokerService {
 				return;
 			}
 
-			await this.#resolve(context).initialize();
+			const session = await SandboxSession.capture(context);
+
+			await this.#start(session).initialize();
 		});
 		pi.on('session_shutdown', async (_event, context) => {
 			const report = await this.close(context);
@@ -79,19 +90,28 @@ export class SandboxBroker implements BrokerService {
 		});
 	}
 
-	#resolve(context: SandboxContext): SandboxGeneration {
-		inspectContext(context, 'acquire');
-		this.#generation ??= new SandboxGeneration(context, this.#dependencies);
+	#start(session: SandboxSession): SandboxGeneration {
+		const generation = new SandboxGeneration(session, this.#dependencies);
 
-		if (this.#isClosing) {
-			void this.#generation.close();
+		this.#current = { session, generation };
+
+		return generation;
+	}
+
+	#resolve(context: SandboxContext, operation: SandboxOperation = 'acquire') {
+		const current = this.#current;
+
+		if (current === undefined) {
+			throw new SandboxInitialisationError({ operation });
 		}
 
-		return this.#generation;
+		current.session.check(context, operation);
+
+		return current;
 	}
 
 	acquire(context: SandboxContext, options?: SandboxAcquireOptions) {
-		return this.#resolve(context).acquire(context, options);
+		return this.#resolve(context).generation.acquire(context, options);
 	}
 
 	copy(
@@ -99,24 +119,23 @@ export class SandboxBroker implements BrokerService {
 		source: CopySourceIdentity,
 		options?: SandboxCopyOptions
 	) {
-		return this.#resolve(context).copy(context, source, options);
+		return this.#resolve(context).generation.copy(context, source, options);
 	}
 
 	negotiate(context: SandboxContext, options?: SandboxAcquireOptions) {
-		return this.#resolve(context).negotiate(context, options);
+		return this.#resolve(context).generation.negotiate(context, options);
 	}
 
 	planEscalation(context: SandboxContext, options: SandboxAcquireOptions) {
-		return this.#resolve(context).planEscalation(context, options);
+		return this.#resolve(context).generation.planEscalation(context, options);
 	}
 
 	async prepareReview(context: SandboxContext, input: unknown) {
 		const route = reviewRegistrationInput(input);
-		const session = inspectContext(context, 'acquire');
-		const generation = this.#resolve(context);
+		const { session, generation } = this.#resolve(context);
 		const target = await describeReviewDestination(
 			generation,
-			context,
+			session.context,
 			route.escalation
 		);
 		const state = new ReviewState(route.decisionDeadline);
@@ -146,7 +165,7 @@ export class SandboxBroker implements BrokerService {
 			return;
 		}
 
-		const session = inspectContext(context, 'acquire');
+		const { session } = this.#resolve(context);
 		const key = reviewCallKey(session.sessionId, query);
 
 		if (!this.#liveReviewCalls.has(key)) {
@@ -171,18 +190,20 @@ export class SandboxBroker implements BrokerService {
 	}
 
 	close(context: SandboxContext): Promise<SandboxCloseReport> {
+		const { generation } = this.#resolve(context, 'dispose');
+
 		this.#isClosing = true;
 		this.#reviewIdentities.close();
 		this.#liveReviewCalls.clear();
 
-		return this.#resolve(context).close();
+		return generation.close();
 	}
 
 	status(context: SandboxContext): Promise<SandboxStatus> {
-		return this.#resolve(context).status();
+		return this.#resolve(context).generation.status();
 	}
 
 	providers(context: SandboxContext): Promise<readonly ProviderInfo[]> {
-		return this.#resolve(context).providers();
+		return this.#resolve(context).generation.providers();
 	}
 }

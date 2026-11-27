@@ -27,7 +27,8 @@ import {
 } from './errors.js';
 import {
 	closeSandboxSession,
-	fixtureTools
+	fixtureTools,
+	setFixtureSession
 } from './fixtures/fixture-client.js';
 import { getSandbox } from './fixtures/fixture-client.js';
 import { copyHostWorkspace } from './fixtures/fixture-client.js';
@@ -80,6 +81,8 @@ async function fixture(
 		cwd: directory,
 		sessionManager: SessionManager.inMemory(directory)
 	};
+
+	setFixtureSession(pi, context);
 
 	try {
 		await run(pi, context);

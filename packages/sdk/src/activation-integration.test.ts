@@ -19,7 +19,8 @@ import { discoverBroker } from './discovery.js';
 import { connectionProvider } from './fixtures/connection-provider.js';
 import {
 	closeSandboxSession,
-	fixtureTools
+	fixtureTools,
+	setFixtureSession
 } from './fixtures/fixture-client.js';
 import { getSandbox } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
@@ -35,7 +36,8 @@ async function fixture(
 	run: (
 		pi: SandboxHost,
 		context: { cwd: string; sessionManager: SessionManager }
-	) => Promise<void>
+	) => Promise<void>,
+	isTrusted?: boolean
 ) {
 	const directory = await mkdtemp(path.join(tmpdir(), 'byos-activation-'));
 
@@ -53,8 +55,11 @@ async function fixture(
 
 	const context = {
 		cwd: directory,
-		sessionManager: SessionManager.inMemory(directory)
+		sessionManager: SessionManager.inMemory(directory),
+		...(isTrusted !== undefined && { isProjectTrusted: () => isTrusted })
 	};
+
+	setFixtureSession(pi, context);
 
 	try {
 		await run(pi, context);
@@ -127,12 +132,9 @@ it.each([true, false, undefined])(
 					}
 				}
 			);
-			await getSandbox(pi, {
-				...context,
-				...(trusted !== undefined && { isProjectTrusted: () => trusted })
-			});
+			await getSandbox(pi, context);
 			expect(decisions).toStrictEqual([trusted]);
-		});
+		}, trusted);
 	}
 );
 

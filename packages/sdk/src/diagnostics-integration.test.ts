@@ -197,7 +197,7 @@ it('reports default status in a headless Pi session without opening a backend or
 				{
 					display: true,
 					content:
-						'Provider: passthrough (default)\nState: idle\nGeneration: <generation>\nSDK build: <build>\nProtocol: major 1, feature level 0\nTarget: not opened\nRequested policy: workspace read-write, network allowed, host user data read-write, host system files read-write\nUser shell: provider default (not opened)\nProvider description: Host execution without isolation\nPi shell integration: not requested; routing unverified.'
+						'Provider: passthrough (default)\nState: idle\nGeneration: <generation>\nSDK build: <build>\nProtocol: major 2, feature level 0\nTarget: not opened\nRequested policy: workspace read-write, network allowed, host user data read-write, host system files read-write\nUser shell: provider default (not opened)\nProvider description: Host execution without isolation\nPi shell integration: not requested; routing unverified.'
 				}
 			]
 		});
@@ -250,7 +250,7 @@ it('reports the target and effective policy after acquisition', async () => {
 					{
 						display: true,
 						content:
-							'Provider: fixture (extension)\nState: ready\nGeneration: <generation>\nSDK build: <build>\nProtocol: major 1, feature level 0\nBackend: memory\nTarget: /remote/project (shared)\nEffective policy: workspace read-write (shared), network denied, host user data denied, host system files read-only\nOperations: exec, files.read, files.write, files.list\nTermination scope: workload\nShells: none\nUser shell: unavailable\nProvider description: In-memory fixture; no OS isolation.\nBoundary: In-memory test fixture; no OS isolation.\nPi shell integration: not requested; routing unverified.'
+							'Provider: fixture (extension)\nState: ready\nGeneration: <generation>\nSDK build: <build>\nProtocol: major 2, feature level 0\nBackend: memory\nTarget: /remote/project (shared)\nEffective policy: workspace read-write (shared), network denied, host user data denied, host system files read-only\nOperations: exec, files.read, files.write, files.list\nTermination scope: workload\nShells: none\nUser shell: unavailable\nProvider description: In-memory fixture; no OS isolation.\nBoundary: In-memory test fixture; no OS isolation.\nPi shell integration: not requested; routing unverified.'
 					}
 				]
 			});

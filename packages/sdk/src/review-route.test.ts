@@ -110,7 +110,7 @@ it.each([
 		reason: 'invalid-source'
 	},
 	{
-		reply: { type: 'incompatible-major', major: 2 },
+		reply: { type: 'incompatible-major', major: 1 },
 		reason: 'incompatible-protocol'
 	}
 ] as const)('returns the typed reason $reason', ({ reply, reason }) => {

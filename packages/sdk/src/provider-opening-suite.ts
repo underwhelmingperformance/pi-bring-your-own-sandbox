@@ -62,7 +62,7 @@ export async function verifyOpeningCase<Config>(
 			};
 		}
 
-		const runtime = fixtureBroker(
+		const runtime = await fixtureBroker(
 			provider,
 			fixture.hostWorkspace,
 			fixture.configuration,

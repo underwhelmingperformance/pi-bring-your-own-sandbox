@@ -32,22 +32,21 @@ export async function verifyFixtureSettings<Config>(
 				cleanup: { cancellationGraceMs: 4000, disposalTimeoutMs: 8000 }
 			})
 		};
-		const runtime =
-			typeof scenario === 'string'
-				? fixtureBroker(
-						provider,
-						fixture.hostWorkspace,
-						fixture.configuration,
-						supplied,
-						attempt
-					)
-				: (Reflect.apply(fixtureBroker<Config>, undefined, [
-						provider,
-						fixture.hostWorkspace,
-						fixture.configuration,
-						scenario.settings,
-						attempt
-					]) as ReturnType<typeof fixtureBroker<Config>>);
+		const runtime = await (typeof scenario === 'string'
+			? fixtureBroker(
+					provider,
+					fixture.hostWorkspace,
+					fixture.configuration,
+					supplied,
+					attempt
+				)
+			: (Reflect.apply(fixtureBroker<Config>, undefined, [
+					provider,
+					fixture.hostWorkspace,
+					fixture.configuration,
+					scenario.settings,
+					attempt
+				]) as ReturnType<typeof fixtureBroker<Config>>));
 
 		try {
 			if (typeof scenario !== 'string') {

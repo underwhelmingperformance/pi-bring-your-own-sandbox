@@ -1,7 +1,6 @@
 import type { BashOperations } from '@earendil-works/pi-coding-agent';
 
 import type {
-	ProcessResult,
 	Sandbox,
 	SandboxAcquireOptions,
 	SandboxContext,
@@ -32,12 +31,10 @@ export function createShellOperations(
 			options?: SandboxAcquireOptions
 		) => Promise<Sandbox>;
 		readonly onSandbox?: (sandbox: Sandbox) => void;
-		readonly onResult?: (result: ProcessResult) => void;
 	}
 ): BashOperations {
 	const acquire = options?.getSandbox;
 	const onSandbox = options?.onSandbox;
-	const onResult = options?.onResult;
 
 	return {
 		async exec(command, _cwd, options) {
@@ -66,8 +63,6 @@ export function createShellOperations(
 						output.write(data);
 					}
 				});
-
-				onResult?.(result);
 
 				return piProcessResult(result.exit);
 			} catch (error) {

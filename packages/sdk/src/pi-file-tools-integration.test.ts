@@ -32,10 +32,21 @@ it.each([
 		const providerId = 'fixture.pi-file-tools';
 		const profile: Profile = {
 			...memory.profile,
-			capabilities: [...memory.profile.capabilities, 'search.grep'],
+			policy: { ...memory.profile.policy, hostWorkspaceWrites: false },
+			capabilities: [
+				...memory.profile.capabilities,
+				...(probe === 'available' ? [] : (['search.grep'] as const))
+			],
 			processKinds: dialect === undefined ? ['argv'] : ['shell'],
 			shells: dialect === undefined ? [] : [dialect]
 		};
+		const preferred: Profile = {
+			...memory.profile,
+			capabilities: [],
+			processKinds: ['shell'],
+			shells: ['powershell']
+		};
+
 		const file = 'marker.txt';
 		const pattern = "needle's $value";
 		const hasNativeGrep = probe === 'available';
@@ -75,9 +86,10 @@ it.each([
 				registerFixtureProvider(pi, '<inline:file-provider>', {
 					id: providerId,
 					label: 'File provider',
-					profiles: { open: [profile], copy: [] },
+					profiles: { open: [preferred, profile], copy: [] },
 					validateConfig: () => ({}),
-					open() {
+					open(request) {
+						expect(request.profile).toStrictEqual(profile);
 						memory.seed(file, Buffer.from(pattern + '\n'));
 
 						return Promise.resolve({
@@ -121,24 +133,26 @@ it.each([
 									}
 								} as const);
 							},
-							search: {
-								grep(request) {
-									portable.push(request);
+							...(probe !== 'available' && {
+								search: {
+									grep(request) {
+										portable.push(request);
 
-									return Promise.resolve({
-										matches: [
-											{
-												path: file,
-												line: 1,
-												text: pattern,
-												before: [],
-												after: []
-											}
-										],
-										truncated: false
-									});
+										return Promise.resolve({
+											matches: [
+												{
+													path: file,
+													line: 1,
+													text: pattern,
+													before: [],
+													after: []
+												}
+											],
+											truncated: false
+										});
+									}
 								}
-							},
+							}),
 							dispose: memory.dispose.bind(memory)
 						});
 					}

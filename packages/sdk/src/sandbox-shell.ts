@@ -15,6 +15,7 @@ import {
 } from './errors.js';
 import { OperationScope } from './lifecycle.js';
 import { isSafeText, snapshotProcessRequest } from './process-input.js';
+import { shellRequirements } from './profile-negotiation.js';
 import { isShell } from './validation.js';
 
 export interface ShellInvocation {
@@ -86,11 +87,12 @@ export class SandboxShell {
 			scope?.check();
 			checkCaller(signal);
 
-			const sandbox = await this.#client.getSandbox(
-				pi,
-				context,
-				signal === undefined ? {} : { signal }
-			);
+			const sandbox = await this.#client.getSandbox(pi, context, {
+				...shellRequirements(
+					typeof dialect === 'function' ? undefined : dialect
+				),
+				...(signal !== undefined && { signal })
+			});
 
 			invocation.onSandbox?.(sandbox);
 

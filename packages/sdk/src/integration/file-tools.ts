@@ -27,7 +27,12 @@ import {
 	truncateLine,
 	truncateToVisualLines
 } from '@earendil-works/pi-coding-agent';
-import type { Sandbox } from 'pi-bring-your-own-sandbox/consumer';
+import type {
+	Sandbox,
+	SandboxAcquireOptions,
+	SandboxErrorInfo,
+	SandboxRequirements
+} from 'pi-bring-your-own-sandbox/consumer';
 import { createSandboxClient } from 'pi-bring-your-own-sandbox/consumer';
 import type {
 	GrepRequest,
@@ -43,13 +48,22 @@ import {
 	cleanDisplayText,
 	encodePosixArgv
 } from 'pi-bring-your-own-sandbox/provider-kit';
-import type { TSchema } from 'typebox';
+import type { Static, TSchema } from 'typebox';
 import { Value } from 'typebox/value';
 
 import { GrepOutput } from '../grep-output.js';
 import { sandboxRipgrepArguments } from '../ripgrep-arguments.js';
 
 type GrepResult = Awaited<ReturnType<Sandbox['search']['grep']>>;
+
+type FileRequirements = readonly [
+	SandboxRequirements,
+	...SandboxRequirements[]
+];
+
+const editRequirements = [
+	{ capabilities: ['files.read', 'files.write'] }
+] as const satisfies FileRequirements;
 
 const pngSignature = Buffer.from([
 	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a
@@ -288,7 +302,11 @@ async function targetGrep(
 	ripgrepAvailability: Map<string, boolean>
 ): Promise<GrepResult> {
 	const { sandbox, options } = workspace;
-	const ripgrep = ripgrepRequest(sandbox);
+	const { capabilities } = sandbox.profile;
+	const canUseRipgrep =
+		capabilities.includes('files.read') ||
+		((request.context ?? 0) === 0 && capabilities.includes('files.list'));
+	const ripgrep = canUseRipgrep ? ripgrepRequest(sandbox) : undefined;
 
 	if (ripgrep === undefined) {
 		return sandbox.search.grep(request, options);
@@ -459,6 +477,20 @@ function grepResult(result: GrepResult, limit: number) {
 		content: [{ type: 'text' as const, text }],
 		details: notices.length === 0 ? undefined : details
 	};
+}
+
+function grepRequirements(input: GrepToolInput): FileRequirements {
+	const stat =
+		Math.floor(input.context ?? 0) > 0
+			? (['files.read'] as const)
+			: (['files.list', 'files.read'] as const);
+	const ripgrep = stat.flatMap((capability): SandboxRequirements[] => [
+		{ capabilities: [capability], processKinds: ['argv'] },
+		{ capabilities: [capability], shells: ['sh'] },
+		{ capabilities: [capability], shells: ['bash'] }
+	]);
+
+	return [{ capabilities: ['search.grep'] }, ...ripgrep];
 }
 
 function grepRequest(
@@ -674,11 +706,45 @@ export function registerSandboxFileTools(
 		ripgrepAvailability.clear();
 	});
 
+	async function fileAcquisition(
+		context: ExtensionContext,
+		candidates: FileRequirements,
+		signal?: AbortSignal
+	): Promise<SandboxAcquireOptions> {
+		const operation = signal === undefined ? {} : { signal };
+
+		if (candidates.length === 1) {
+			return { ...candidates[0], ...operation };
+		}
+
+		let refusal: SandboxErrorInfo | undefined;
+
+		for (const requirements of candidates) {
+			const request = { ...requirements, ...operation };
+			const result = await client.negotiate(context, request);
+
+			if (result.ok) {
+				return request;
+			}
+
+			if (!isSandboxError(result.error, UnsupportedSandboxCapabilityError)) {
+				throw result.error;
+			}
+
+			refusal ??= result.error;
+		}
+
+		throw (
+			refusal ?? new UnsupportedSandboxCapabilityError({ operation: 'acquire' })
+		);
+	}
+
 	async function getWorkspace(
 		context: ExtensionContext,
+		requirements: FileRequirements,
 		signal?: AbortSignal
 	): Promise<FileToolWorkspace> {
-		const options = signal === undefined ? {} : { signal };
+		const options = await fileAcquisition(context, requirements, signal);
 		const sandbox = await client.get(context, options);
 
 		if (sandbox.workspace.relationship !== 'shared') {
@@ -693,6 +759,8 @@ export function registerSandboxFileTools(
 
 	function route<Parameters extends TSchema, Details, State>(
 		base: ToolDefinition<Parameters, Details, State>,
+		requirements:
+			FileRequirements | ((input: Static<Parameters>) => FileRequirements),
 		create: (
 			workspace: FileToolWorkspace
 		) => Pick<ToolDefinition<Parameters, Details, State>, 'execute'>
@@ -702,7 +770,11 @@ export function registerSandboxFileTools(
 				...base,
 				defaultActive: false,
 				async execute(id, input, signal, update, context) {
-					const workspace = await getWorkspace(context, signal);
+					const needed =
+						typeof requirements === 'function'
+							? requirements(input)
+							: requirements;
+					const workspace = await getWorkspace(context, needed, signal);
 					const tool = create(workspace);
 
 					return tool.execute(id, input, signal, update, context);
@@ -713,29 +785,36 @@ export function registerSandboxFileTools(
 
 	const cwd = '/unused';
 
-	route(createReadToolDefinition(cwd), (workspace) => {
-		const autoResizeImages = pi.getSettings().images?.autoResize;
+	route(
+		createReadToolDefinition(cwd),
+		[{ capabilities: ['files.read'] }],
+		(workspace) => {
+			const autoResizeImages = pi.getSettings().images?.autoResize;
 
-		return createReadToolDefinition(workspace.cwd, {
-			...(autoResizeImages !== undefined && { autoResizeImages }),
-			operations: {
-				readFile: workspace.readSnapshot,
-				access: (file) =>
-					workspace.sandbox.files.access(
-						workspace.targetPath(file),
-						'read',
-						workspace.options
-					),
-				async detectImageMimeType(file) {
-					return detectImageMimeType(await workspace.readSnapshot(file));
+			return createReadToolDefinition(workspace.cwd, {
+				...(autoResizeImages !== undefined && { autoResizeImages }),
+				operations: {
+					readFile: workspace.readSnapshot,
+					access: (file) =>
+						workspace.sandbox.files.access(
+							workspace.targetPath(file),
+							'read',
+							workspace.options
+						),
+					async detectImageMimeType(file) {
+						return detectImageMimeType(await workspace.readSnapshot(file));
+					}
 				}
-			}
-		});
-	});
-	route(createWriteToolDefinition(cwd), (workspace) =>
-		createWriteToolDefinition(workspace.cwd, {
-			operations: { writeFile: workspace.write, mkdir: workspace.mkdir }
-		})
+			});
+		}
+	);
+	route(
+		createWriteToolDefinition(cwd),
+		[{ capabilities: ['files.write'] }],
+		(workspace) =>
+			createWriteToolDefinition(workspace.cwd, {
+				operations: { writeFile: workspace.write, mkdir: workspace.mkdir }
+			})
 	);
 
 	const edit = routedEditDefinition(
@@ -748,13 +827,17 @@ export function registerSandboxFileTools(
 			}
 
 			const signal = current.abort.signal;
-			const workspace = await getWorkspace(current.context, signal);
+			const workspace = await getWorkspace(
+				current.context,
+				editRequirements,
+				signal
+			);
 
 			return previewEdit(workspace, id, input, signal);
 		}
 	);
 
-	route(edit, (workspace) =>
+	route(edit, editRequirements, (workspace) =>
 		createEditToolDefinition(workspace.cwd, {
 			operations: {
 				readFile: workspace.read,
@@ -776,52 +859,61 @@ export function registerSandboxFileTools(
 			}
 		})
 	);
-	route(createLsToolDefinition(cwd), (workspace) =>
-		createLsToolDefinition(workspace.cwd, {
-			operations: {
-				exists: (file) => workspace.hasFile(file),
-				async stat(file) {
-					const result = await workspace.sandbox.files.stat(
-						workspace.targetPath(file),
-						workspace.options
-					);
+	route(
+		createLsToolDefinition(cwd),
+		[{ capabilities: ['files.list'] }],
+		(workspace) =>
+			createLsToolDefinition(workspace.cwd, {
+				operations: {
+					exists: (file) => workspace.hasFile(file),
+					async stat(file) {
+						const result = await workspace.sandbox.files.stat(
+							workspace.targetPath(file),
+							workspace.options
+						);
 
-					return { isDirectory: () => result.kind === 'directory' };
-				},
-				async readdir(file) {
-					const entries = await workspace.sandbox.files.listDirectory(
-						workspace.targetPath(file),
-						workspace.options
-					);
+						return { isDirectory: () => result.kind === 'directory' };
+					},
+					async readdir(file) {
+						const entries = await workspace.sandbox.files.listDirectory(
+							workspace.targetPath(file),
+							workspace.options
+						);
 
-					return entries.map((entry) => entry.name);
+						return entries.map((entry) => entry.name);
+					}
 				}
-			}
-		})
+			})
 	);
-	route(createFindToolDefinition(cwd), (workspace) =>
-		createFindToolDefinition(workspace.cwd, {
-			operations: {
-				exists: (file) => workspace.hasFile(file),
-				async glob(pattern, directory, { limit }) {
-					const result = await workspace.sandbox.search.find(
-						{
-							pattern,
-							path: workspace.targetPath(directory),
-							limit
-						},
-						workspace.options
-					);
+	route(
+		createFindToolDefinition(cwd),
+		[
+			{ capabilities: ['search.find', 'files.list'] },
+			{ capabilities: ['search.find', 'files.read'] }
+		],
+		(workspace) =>
+			createFindToolDefinition(workspace.cwd, {
+				operations: {
+					exists: (file) => workspace.hasFile(file),
+					async glob(pattern, directory, { limit }) {
+						const result = await workspace.sandbox.search.find(
+							{
+								pattern,
+								path: workspace.targetPath(directory),
+								limit
+							},
+							workspace.options
+						);
 
-					return [...result.paths];
+						return [...result.paths];
+					}
 				}
-			}
-		})
+			})
 	);
 
 	const grep = createGrepToolDefinition(cwd);
 
-	route(grep, (workspace) => ({
+	route(grep, grepRequirements, (workspace) => ({
 		...grep,
 		async execute(_id, input) {
 			const request = grepRequest(input, workspace);

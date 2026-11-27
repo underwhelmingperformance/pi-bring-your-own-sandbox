@@ -21,6 +21,15 @@ export interface ProfileRequirements {
 	readonly terminationScope?: Profile['terminationScope'];
 }
 
+export function shellRequirements(
+	dialect?: Profile['shells'][number]
+): Pick<ProfileRequirements, 'processKinds' | 'shells'> {
+	return {
+		processKinds: ['shell'],
+		...(dialect !== undefined && { shells: [dialect] })
+	};
+}
+
 export interface ResolvedPath {
 	readonly path: string;
 	readonly kind: 'read' | 'write';

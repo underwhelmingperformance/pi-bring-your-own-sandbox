@@ -10,6 +10,7 @@ import type {
 	ProcessOutput,
 	ProcessRequest,
 	Sandbox,
+	SandboxAcquireOptions,
 	SandboxContext,
 	SandboxHost
 } from './contracts.js';
@@ -31,6 +32,7 @@ class FakeClient {
 	readonly #acquire:
 		((signal: AbortSignal | undefined) => Promise<void>) | undefined;
 	readonly signals: (AbortSignal | undefined)[] = [];
+	readonly acquisitions: (SandboxAcquireOptions | undefined)[] = [];
 
 	constructor(
 		sandbox: Sandbox,
@@ -43,9 +45,10 @@ class FakeClient {
 	async getSandbox(
 		_pi: SandboxHost,
 		_context: SandboxContext,
-		options?: import('./contracts.js').SandboxAcquireOptions
+		options?: SandboxAcquireOptions
 	): Promise<Sandbox> {
 		this.signals.push(options?.signal);
+		this.acquisitions.push(options);
 		await this.#acquire?.(options?.signal);
 
 		return this.#sandbox;
@@ -123,15 +126,17 @@ function fixture(
 }
 
 it('routes shell text to the target root without inheriting host cwd or environment', async () => {
-	const { shell, pi, context, invocation, calls, output } = fixture();
+	const { shell, pi, context, invocation, calls, output, client } = fixture();
 	const result = await shell.execute(pi, context, invocation);
 
 	expect({
+		acquisitions: client.acquisitions,
 		calls,
 		output,
 		exit: result.exit,
 		stdout: result.stdout
 	}).toStrictEqual({
+		acquisitions: [{ processKinds: ['shell'], shells: ['bash'] }],
 		calls: [
 			{ kind: 'shell', dialect: 'bash', command: 'printf target', cwd: '/work' }
 		],

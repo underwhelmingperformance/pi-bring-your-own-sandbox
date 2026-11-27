@@ -26,6 +26,7 @@ import { appendLedgerEntry } from './escalation-ledger.js';
 import type { EscalatedSandbox, EscalationPlan } from './escalation-plan.js';
 import { observe, OperationScope } from './lifecycle.js';
 import { accessPolicySchema, pathGrantsSchema } from './policy-model.js';
+import { shellRequirements } from './profile-negotiation.js';
 import type { ShellSettings } from './runtime-participant.js';
 import { checker, denseArray, safeTextSchema } from './schemas.js';
 
@@ -182,8 +183,7 @@ export class PendingEscalation {
 
 		const plan = await this.#broker.planEscalation(this.#context, {
 			access: this.#input.access,
-			processKinds: ['shell'],
-			shells: [dialect]
+			...shellRequirements(dialect)
 		});
 
 		this.#scope.check();

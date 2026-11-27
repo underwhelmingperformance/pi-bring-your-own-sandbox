@@ -4,6 +4,7 @@ import { acquireOptions } from './acquire-options.js';
 import type {
 	ReviewedToolCall,
 	SandboxContext,
+	ShellDialect,
 	ShellReviewSource
 } from './contracts.js';
 import {
@@ -20,6 +21,7 @@ import type {
 } from './escalation-ledger.js';
 import type { SandboxGeneration } from './generation.js';
 import { passthroughProvider } from './passthrough-provider.js';
+import { shellRequirements } from './profile-negotiation.js';
 import type { CopySourceIdentity } from './protocol.js';
 import type { ReviewRegistration } from './review-identities.js';
 import { checkCopiedSandbox, rethrowCopyError } from './sandbox-copy.js';
@@ -113,6 +115,7 @@ export interface RegisteredReview {
 export async function describeReviewDestination(
 	generation: SandboxGeneration,
 	context: SandboxContext,
+	dialect: ShellDialect,
 	escalation: EscalationRequest | undefined
 ): Promise<ReviewDestination> {
 	const status = await generation.status();
@@ -131,19 +134,20 @@ export async function describeReviewDestination(
 
 	const proposed = escalation?.destination;
 	let policy = proposed?.policy;
+	let backend: ReturnType<SandboxGeneration['readyBackend']>;
 
 	if (policy === undefined) {
-		if (status.failure !== undefined) {
-			throw status.failure;
-		}
-
-		const ordinary = await generation.negotiate(context);
+		const ordinary = await generation.negotiate(
+			context,
+			shellRequirements(dialect)
+		);
 
 		if (!ordinary.ok) {
 			throw ordinary.error;
 		}
 
 		policy = ordinary.profile.policy;
+		backend = generation.readyBackend(ordinary.profile);
 	}
 
 	const isHost = proposed?.kind === 'host' || selection.source === 'default';
@@ -151,11 +155,8 @@ export async function describeReviewDestination(
 	const label = isHost
 		? passthroughProvider.label
 		: (status.providerLabel ?? providerId);
-	const backendId =
-		escalation === undefined && status.state === 'ready'
-			? status.backendId
-			: undefined;
-	const workspace = backendId === undefined ? undefined : status.workspace;
+	const backendId = backend?.id;
+	const workspace = backend?.workspace;
 	const location =
 		workspace ??
 		(isHost

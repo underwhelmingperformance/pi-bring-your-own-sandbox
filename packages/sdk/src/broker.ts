@@ -11,7 +11,8 @@ import type {
 	SandboxAcquireOptions,
 	SandboxCloseReport,
 	SandboxContext,
-	SandboxHost
+	SandboxHost,
+	ShellDialect
 } from './contracts.js';
 import {
 	InvalidSandboxRequestError,
@@ -177,7 +178,7 @@ export class SandboxBroker implements BrokerService {
 
 	async prepareReview(
 		context: SandboxContext,
-		call: ReviewedToolCall,
+		call: ReviewedToolCall & { readonly toolName: ShellDialect },
 		command: string,
 		pending?: PendingEscalation
 	) {
@@ -191,6 +192,7 @@ export class SandboxBroker implements BrokerService {
 		const target = await describeReviewDestination(
 			generation,
 			session.context,
+			call.toolName,
 			escalation
 		);
 		const state = new ReviewState(

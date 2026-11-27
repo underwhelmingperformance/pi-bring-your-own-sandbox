@@ -8,7 +8,6 @@ import type { TSchema } from 'typebox';
 import { Type } from 'typebox';
 
 import { reportCleanup } from '../cleanup-report.js';
-import type { ProcessExit } from '../contracts.js';
 import { bindFactory } from '../default-broker.js';
 import { cleanDisplayText } from '../display-text.js';
 import {
@@ -79,7 +78,6 @@ async function verifyPendingCall(
 	}
 
 	const feedback: { type: 'text'; text: string }[] = [];
-	const execution: { exit?: ProcessExit } = {};
 	let allocation: EscalatedSandbox | undefined;
 	let hostUserDataRoots: readonly string[] = [];
 	const open = dispatch.open;
@@ -112,9 +110,6 @@ async function verifyPendingCall(
 				type: 'text',
 				text: cleanDisplayText('Effective restrictions: ' + restrictions)
 			});
-		},
-		onResult: (result) => {
-			execution.exit = result.exit;
 		}
 	});
 
@@ -129,7 +124,7 @@ async function verifyPendingCall(
 			? result
 			: { ...result, content: [...result.content, ...feedback] };
 	} catch (error) {
-		if (execution.exit?.kind !== 'unavailable' || !(error instanceof Error)) {
+		if (feedback.length === 0 || !(error instanceof Error)) {
 			throw error;
 		}
 

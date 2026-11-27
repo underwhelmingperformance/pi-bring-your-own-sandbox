@@ -4,13 +4,16 @@ import type {
 } from '@earendil-works/pi-coding-agent';
 
 import { negotiateSandbox } from './client.js';
+import type { ShellDialect } from './contracts.js';
 import type { DisplayText } from './display-text.js';
 import { cleanDisplayText, joinDisplayLines } from './display-text.js';
 import { isSandboxError } from './errors.js';
 import { describeRestrictions } from './escalation-plan.js';
 import { passthroughProvider } from './passthrough-provider.js';
 import { accessOrder } from './policy-model.js';
+import { shellRequirements } from './profile-negotiation.js';
 import { shellSettings } from './runtime-participant.js';
+import { isShell } from './validation.js';
 
 const section = 'byos_shell_restrictions';
 const escalationGuidance = [
@@ -22,10 +25,17 @@ const escalationGuidance = [
 
 async function describeShellPolicy(
 	pi: ExtensionAPI,
-	context: ExtensionContext
-): Promise<DisplayText> {
+	context: ExtensionContext,
+	dialect: ShellDialect
+): Promise<{ readonly text: DisplayText; readonly allowEscalation?: boolean }> {
+	const label = { sh: 'sh', bash: 'Bash', powershell: 'PowerShell' }[dialect];
+
 	try {
-		const result = await negotiateSandbox(pi, context);
+		const result = await negotiateSandbox(
+			pi,
+			context,
+			shellRequirements(dialect)
+		);
 
 		if (!result.ok) {
 			throw result.error;
@@ -38,24 +48,23 @@ async function describeShellPolicy(
 				hostUserDataRoots: config.hostUserDataRoots
 			})
 		});
-		const escalation = config.allowEscalation
-			? escalationGuidance
-			: 'allowEscalation is false, so BYOS will refuse escalations.';
 
-		return joinDisplayLines([
-			cleanDisplayText(
-				`Effective restrictions for ordinary BYOS shell commands: ${restrictions}`
+		return {
+			text: cleanDisplayText(
+				`Effective restrictions for ordinary BYOS ${label} commands: ${restrictions}`
 			),
-			cleanDisplayText(escalation)
-		]);
+			allowEscalation: config.allowEscalation
+		};
 	} catch (error) {
 		if (!isSandboxError(error)) {
 			throw error;
 		}
 
-		return cleanDisplayText(
-			`BYOS shell execution is unavailable. ${error.message}`
-		);
+		return {
+			text: cleanDisplayText(
+				`BYOS ${label} execution is unavailable. ${error.message}`
+			)
+		};
 	}
 }
 
@@ -64,13 +73,33 @@ export function registerShellSystemPrompt(
 	isRoutedShell: (name: string) => boolean
 ): void {
 	pi.on('before_agent_start', async ({ systemPromptOptions }, context) => {
-		if (
-			systemPromptOptions.selectedTools.every((name) => !isRoutedShell(name))
-		) {
+		const dialects = systemPromptOptions.selectedTools.filter(
+			(name): name is ShellDialect => isShell(name) && isRoutedShell(name)
+		);
+
+		if (dialects.length === 0) {
 			return;
 		}
 
-		const text = await describeShellPolicy(pi, context);
+		const policies = await Promise.all(
+			dialects.map((dialect) => describeShellPolicy(pi, context, dialect))
+		);
+		const lines = policies.map(({ text }) => text);
+		const allowsEscalation = policies.find(
+			({ allowEscalation }) => allowEscalation !== undefined
+		)?.allowEscalation;
+
+		if (allowsEscalation !== undefined) {
+			lines.push(
+				cleanDisplayText(
+					allowsEscalation
+						? escalationGuidance
+						: 'allowEscalation is false, so BYOS will refuse escalations.'
+				)
+			);
+		}
+
+		const text = joinDisplayLines(lines);
 
 		systemPromptOptions.sections[section] = text;
 

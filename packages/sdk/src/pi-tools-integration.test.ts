@@ -201,7 +201,8 @@ it.each(['confirmed', 'unconfirmed'] as const)(
 									termination === 'confirmed'
 										? 'valuable diagnostic\n\n\nCommand timed out after 0.05 seconds'
 										: 'The sandbox did not confirm termination. Operation completion is unknown.'
-							}
+							},
+							fixtureRestrictions
 						],
 						isError: true
 					}
@@ -697,7 +698,8 @@ it('returns a selected-provider transport failure without local execution', asyn
 							{
 								type: 'text',
 								text: 'The sandbox transport failed. Operation completion is unknown.'
-							}
+							},
+							fixtureRestrictions
 						],
 						isError: true
 					}
@@ -788,6 +790,12 @@ it.each([
 		profile: 'read-write',
 		allowEscalation: true,
 		hasForcedPrompt: false
+	},
+	{
+		route: 'shells',
+		profile: 'bash-only',
+		allowEscalation: true,
+		hasForcedPrompt: false
 	}
 ] as const)(
 	'describes the negotiated $profile policy before the model runs with $route and escalation $allowEscalation',
@@ -796,7 +804,12 @@ it.each([
 		const policy =
 			profile === 'read-write' ? unrestrictedPolicy : backend.profile.policy;
 		const readRoots = ['~/.byos-prompt-fixture'];
-		const selectedProfile = { ...backend.profile, policy };
+		const tool = profile === 'bash-only' ? 'powershell' : 'bash';
+		const selectedProfile = {
+			...backend.profile,
+			policy,
+			...(profile === 'bash-only' && { shells: ['bash'] as const })
+		};
 		const open = vi.fn(() =>
 			Promise.resolve({ ...backend, profile: selectedProfile })
 		);
@@ -859,7 +872,7 @@ it.each([
 				}
 
 				await runtime.session.setModel(selected);
-				runtime.session.setActiveToolsByName(['bash']);
+				runtime.session.setActiveToolsByName([tool]);
 				await runtime.session.prompt('Respond without running a command.');
 				runtime.session.setActiveToolsByName([]);
 				await runtime.session.prompt('Respond after the shell is inactive.');
@@ -877,7 +890,7 @@ it.each([
 						'Host workspace writes allowed, network allowed, host user data read-write (credential locations excluded), host system files read-write, ' +
 						'host user data roots ' +
 						JSON.stringify(await resolveHostUserDataRoots(readRoots))
-				}[profile];
+				}[profile === 'bash-only' ? 'restricted' : profile];
 				const escalation = allowEscalation
 					? 'Use escalate with a justification to request extra access for one command. You can request hostWorkspaceWrites, network, hostUserData, hostSystemFiles, or specific read and write paths. BYOS selects the destination before the decision. The host has no sandbox restrictions.'
 					: 'allowEscalation is false, so BYOS will refuse escalations.';
@@ -899,7 +912,9 @@ it.each([
 					opens: [],
 					sections: [
 						[
-							`Effective restrictions for ordinary BYOS shell commands: ${restrictions}\n${escalation}`
+							profile === 'bash-only'
+								? 'BYOS PowerShell execution is unavailable. The selected sandbox does not support the required capability.'
+								: `Effective restrictions for ordinary BYOS Bash commands: ${restrictions}\n${escalation}`
 						],
 						[]
 					],

@@ -152,9 +152,9 @@ it('refuses a shell command changed after Pi reports the pending call', async ()
 	);
 });
 
-it.each([false, true])(
-	'resolves and negotiates a private review copy through another SDK without opening a destination (already open: %s)',
-	async (isAlreadyOpen) => {
+it.each(['none', 'shell', 'argv'] as const)(
+	'uses the shell profile for review and execution with an existing %s backend',
+	async (existing) => {
 		const sdk = await loadSdkInstance();
 		const { backend, requests } = shellBackend();
 		const prefix = 'export REVIEW_FIXTURE=sample';
@@ -165,8 +165,17 @@ it.each([false, true])(
 		const location = { ...backend.workspace, relationship: 'copied' as const };
 		const openProfile = {
 			...backend.profile,
-			capabilities: [...backend.profile.capabilities]
+			policy: { ...backend.profile.policy, hostWorkspaceWrites: false }
 		};
+		const argvProfile = {
+			...backend.profile,
+			processKinds: ['argv'] as const,
+			shells: []
+		};
+		const argvId = 'argv-backend';
+		const initial =
+			existing === 'none' ? [] : [existing === 'shell' ? backend.id : argvId];
+		const hasShell = existing === 'shell';
 		const copyProfile = {
 			...backend.profile,
 			policy: { ...backend.profile.policy, hostWorkspaceWrites: false }
@@ -184,12 +193,20 @@ it.each([false, true])(
 				registerFixtureProvider(pi, '<inline:review-fixture>', {
 					id: 'fixture.review',
 					label: 'Review fixture',
-					profiles: { open: [openProfile], copy: [copyProfile] },
+					profiles: { open: [argvProfile, openProfile], copy: [copyProfile] },
 					validateConfig: () => ({}),
 					open(request) {
-						opens.push(backend.id);
+						const id = request.profile.processKinds.includes('shell')
+							? backend.id
+							: argvId;
 
-						return Promise.resolve({ ...backend, profile: request.profile });
+						opens.push(id);
+
+						return Promise.resolve({
+							...backend,
+							id,
+							profile: request.profile
+						});
 					},
 					copy(request) {
 						copies.push(
@@ -228,11 +245,11 @@ it.each([false, true])(
 				const reviewer = sdk.createShellReviewClient(pi, '<inline:reviewer>');
 				let resolved: ShellReviewSource | undefined;
 
-				if (isAlreadyOpen) {
+				if (existing !== 'none') {
 					const client = sdk.createSandboxClient(pi, '<inline:reviewer>');
 
 					pi.on('session_start', async (_event, context) => {
-						await client.get(context);
+						await client.get(context, hasShell ? { shells: ['bash'] } : {});
 					});
 				}
 
@@ -348,7 +365,7 @@ it.each([false, true])(
 					providerId: 'fixture.review',
 					label: 'Review fixture',
 					policy: openProfile.policy,
-					...(isAlreadyOpen && { workspace: backend.workspace })
+					...(hasShell && { workspace: backend.workspace })
 				};
 
 				expect({
@@ -366,12 +383,12 @@ it.each([false, true])(
 							command: effective,
 							destination,
 							negotiation: { ok: true, profile: copyProfile },
-							opens: isAlreadyOpen ? [backend.id] : [],
+							opens: initial,
 							copies: []
 						}
 					],
-					opens: [backend.id],
-					copies: [isAlreadyOpen ? backend.id : 'host'],
+					opens: hasShell ? initial : [...initial, backend.id],
+					copies: [hasShell ? backend.id : 'host'],
 					disposals: ['copy'],
 					requests: [
 						{

@@ -366,6 +366,20 @@ export class SandboxGeneration {
 		}
 	}
 
+	#ordinarySlot(profile: Profile | undefined): BackendSlot | undefined {
+		if (profile === undefined) {
+			return;
+		}
+
+		const key = profileKey(profile);
+
+		return this.#slots
+			.values()
+			.find(
+				(slot) => slot.paths.length === 0 && profileKey(slot.profile) === key
+			);
+	}
+
 	#slot(profile: Profile, paths: readonly ResolvedPath[]): BackendSlot {
 		const key = JSON.stringify([
 			profileKey(profile),
@@ -1146,6 +1160,18 @@ export class SandboxGeneration {
 		await this.#prepare();
 	}
 
+	readyBackend(
+		profile: Profile
+	): Pick<SandboxBackend, 'id' | 'workspace'> | undefined {
+		const slot = this.#ordinarySlot(profile);
+
+		if (slot?.failure !== undefined) {
+			throw slot.failure;
+		}
+
+		return slot?.state === 'ready' ? slot.backend : undefined;
+	}
+
 	async planEscalation(
 		context: SandboxContext,
 		options: SandboxAcquireOptions
@@ -1509,16 +1535,7 @@ export class SandboxGeneration {
 			await observe(this.#prepare());
 		}
 
-		const defaultKey =
-			this.#defaultProfile === undefined
-				? undefined
-				: profileKey(this.#defaultProfile);
-		const personal = this.#slots
-			.values()
-			.find(
-				(slot) =>
-					slot.paths.length === 0 && profileKey(slot.profile) === defaultKey
-			);
+		const personal = this.#ordinarySlot(this.#defaultProfile);
 		const backend = personal?.backend;
 		const failure = this.#failure ?? personal?.failure;
 		const backends = this.#slots

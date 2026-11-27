@@ -139,6 +139,37 @@ The SDK exports the fixed `hostSystemRoots` map from `/provider`. The macOS list
 includes `/private/etc`, the canonical path of `/etc`. Providers document any
 extra runtime resources that their launchers need.
 
+The macOS system roots under `/System` are `Applications`, `Cryptexes`,
+`Developer`, `DriverKit`, `KernelKit`, `Library`, `iOSSupport` and `x86Support`.
+These are OS-managed directories. The wider tree includes the writable Data
+volume. [APFS firmlinks][apfs-firmlinks] can expose the same file through an
+ordinary path and a path under `/System/Volumes/Data`. The broker removes that
+prefix when it compares paths for workspace, system and credential checks. The
+provider receives the path that the filesystem resolved.
+
+Other paths under `/System/Volumes` outside the checkout are host user data.
+Cryptex targets in Preboot, including the dyld shared cache, are launcher
+runtime resources that providers document when they need them.
+
+[apfs-firmlinks]:
+  https://developer.apple.com/documentation/system/fileflags/firmlink
+
+Both lists include `/nix/store` and `/nix/var/nix/profiles`. The Nix store is
+world-readable and uses [hash-based path names][nix-store-paths]. In a
+[multi-user installation][nix-daemon], a privileged daemon manages store writes.
+In a single-user Nix installation, the user owns the store. The canonical-path
+rule still classifies the store as system files.
+
+On NixOS, shells and system commands resolve into the store, often through
+`/run/current-system`. A profile that permits system reads can therefore run
+these commands while denying host user data. The same rule applies to
+Nix-installed tools on macOS. The Linux list includes the `/run/current-system`
+symlink for providers that bind that path directly.
+
+[nix-store-paths]:
+  https://nix.dev/manual/nix/2.25/command-ref/new-cli/nix3-store-make-content-addressed
+[nix-daemon]: https://nix.dev/manual/nix/2.34/installation/multi-user
+
 A provider that exposes the live checkout refuses sockets, FIFOs and device
 files in the checkout when it opens. A host process can add entries after open,
 which falls outside this contract. The host classes apply only to host files. A

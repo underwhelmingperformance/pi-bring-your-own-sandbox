@@ -8,6 +8,8 @@ import { hostSystemRoots } from './host-system-roots.js';
 import type { PathGrants } from './policy-model.js';
 import type { ResolvedPath } from './profile-negotiation.js';
 
+const darwinDataVolume = '/System/Volumes/Data';
+
 function isWithin(root: string, candidate: string): boolean {
 	const relative = path.relative(root, candidate);
 
@@ -57,10 +59,15 @@ export async function resolvePathGrants(
 		return [];
 	}
 
-	const root = await canonicalPath(workspace);
 	const host = platform();
 	const systemRoots =
 		host === 'darwin' || host === 'linux' ? hostSystemRoots[host] : [];
+	// realpath preserves the Data volume spelling across APFS firmlinks.
+	const comparisonPath = (candidate: string) =>
+		host === 'darwin' && candidate.startsWith(darwinDataVolume + '/')
+			? candidate.slice(darwinDataVolume.length)
+			: candidate;
+	const root = comparisonPath(await canonicalPath(workspace));
 	const home = homedir();
 	const excluded = credentialLocations.map((location) =>
 		path.join(home, location.slice(2))
@@ -68,12 +75,13 @@ export async function resolvePathGrants(
 	const excludedResolved = await Promise.all(
 		excluded.map(async (location) => {
 			try {
-				return await canonicalPath(location);
+				return comparisonPath(await canonicalPath(location));
 			} catch {
-				return location;
+				return comparisonPath(location);
 			}
 		})
 	);
+	const excludedLexical = excluded.map((location) => comparisonPath(location));
 	const resolved: ResolvedPath[] = [];
 
 	for (const kind of ['read', 'write'] as const) {
@@ -85,12 +93,14 @@ export async function resolvePathGrants(
 
 			try {
 				const candidate = await canonicalPath(absolute);
+				const lexical = comparisonPath(absolute);
+				const canonical = comparisonPath(candidate);
 
 				paths.set(
 					candidate,
 					paths.get(candidate) === true ||
-						excluded.some((location) => isWithin(location, absolute)) ||
-						excludedResolved.some((location) => isWithin(location, candidate))
+						excludedLexical.some((location) => isWithin(location, lexical)) ||
+						excludedResolved.some((location) => isWithin(location, canonical))
 				);
 			} catch (error) {
 				throw new UnsupportedSandboxPolicyError(
@@ -115,9 +125,10 @@ export async function resolvePathGrants(
 
 		for (const candidate of ordered) {
 			const isCredential = paths.get(candidate) === true;
-			const location = isWithin(root, candidate)
+			const file = comparisonPath(candidate);
+			const location = isWithin(root, file)
 				? 'workspace'
-				: systemRoots.some((directory) => isWithin(directory, candidate))
+				: systemRoots.some((directory) => isWithin(directory, file))
 					? 'host-system-files'
 					: 'host-user-data';
 

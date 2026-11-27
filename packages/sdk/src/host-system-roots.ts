@@ -1,5 +1,7 @@
 const commonRoots = [
 	'/bin',
+	'/nix/store',
+	'/nix/var/nix/profiles',
 	'/sbin',
 	'/usr/bin',
 	'/usr/sbin',
@@ -20,10 +22,24 @@ export const hostSystemRoots: Readonly<
 	darwin: Object.freeze([
 		...commonRoots,
 		'/private/etc',
-		'/System',
+		'/System/Applications',
+		'/System/Cryptexes',
+		'/System/Developer',
+		'/System/DriverKit',
+		'/System/KernelKit',
+		'/System/Library',
+		'/System/iOSSupport',
+		'/System/x86Support',
 		'/Library/Apple/System',
 		'/Library/Developer/CommandLineTools',
 		'/Applications/Xcode.app/Contents/Developer'
 	]),
-	linux: Object.freeze([...commonRoots, '/etc', '/lib', '/lib64', '/usr/lib64'])
+	linux: Object.freeze([
+		...commonRoots,
+		'/etc',
+		'/lib',
+		'/lib64',
+		'/run/current-system',
+		'/usr/lib64'
+	])
 });

@@ -11,8 +11,9 @@ import path from 'node:path';
 
 import type { SandboxReadRootPersistence } from './contracts.js';
 import { InvalidSandboxConfigError } from './errors.js';
+import { isWithinHostRoots } from './host-paths.js';
 import { observe } from './lifecycle.js';
-import { isWithinHostRoots, resolveReadRoot } from './path-grants.js';
+import { resolveReadRoot } from './path-grants.js';
 import type { ConfiguredProviderV1, ProviderServiceV1 } from './protocol.js';
 import { sharedSettingsSchema } from './request-schemas.js';
 import { checker } from './schemas.js';

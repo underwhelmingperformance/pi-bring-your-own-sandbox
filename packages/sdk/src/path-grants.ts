@@ -1,52 +1,16 @@
-import { realpath } from 'node:fs/promises';
 import { homedir, platform } from 'node:os';
 import path from 'node:path';
 
-import { resolveCredentialLocations } from './credential-locations.js';
+import { resolveCredentialExclusions } from './credential-locations.js';
 import { UnsupportedSandboxPolicyError } from './errors.js';
-import { hostSystemRoots } from './host-system-roots.js';
+import {
+	canonicalHostPath,
+	classifyHostPath,
+	isWithinHostRoots
+} from './host-paths.js';
 import { hostToolchainRoots } from './host-toolchain-roots.js';
 import type { PathGrants } from './policy-model.js';
 import type { ResolvedPath } from './profile-negotiation.js';
-
-const darwinDataVolume = '/System/Volumes/Data';
-
-function comparisonPath(candidate: string, host = platform()): string {
-	// realpath preserves the Data volume spelling across APFS firmlinks.
-	return host === 'darwin' && candidate.startsWith(darwinDataVolume + '/')
-		? candidate.slice(darwinDataVolume.length)
-		: candidate;
-}
-
-function isWithin(root: string, candidate: string): boolean {
-	const relative = path.relative(root, candidate);
-
-	return (
-		relative !== '..' &&
-		!relative.startsWith(`..${path.sep}`) &&
-		!path.isAbsolute(relative)
-	);
-}
-
-async function canonicalPath(candidate: string): Promise<string> {
-	try {
-		return await realpath(candidate);
-	} catch (error) {
-		if (
-			!(error instanceof Error) ||
-			!('code' in error) ||
-			error.code !== 'ENOENT'
-		) {
-			throw error;
-		}
-
-		const parent = path.dirname(candidate);
-
-		return parent === candidate
-			? candidate
-			: path.join(await canonicalPath(parent), path.basename(candidate));
-	}
-}
 
 function isHomeRelative(input: string): boolean {
 	return (
@@ -57,9 +21,15 @@ function isHomeRelative(input: string): boolean {
 }
 
 function hostPath(workspace: string, input: string): string {
-	return isHomeRelative(input)
-		? path.resolve(homedir(), input.slice(2))
-		: path.resolve(workspace, input);
+	if (isHomeRelative(input)) {
+		return input === '~' ? homedir() : homedir() + path.sep + input.slice(2);
+	}
+
+	if (path.sep === '\\') {
+		return path.resolve(workspace, input);
+	}
+
+	return path.isAbsolute(input) ? input : workspace + path.sep + input;
 }
 
 export async function resolveHostUserDataRoots(
@@ -78,70 +48,57 @@ export async function resolveHostUserDataRoots(
 
 export async function resolveReadRoot(root: string): Promise<string> {
 	if (isHomeRelative(root)) {
-		return canonicalPath(path.resolve(homedir(), root.slice(2)));
+		return canonicalHostPath(hostPath(homedir(), root));
 	}
 
 	if (!path.isAbsolute(root)) {
 		throw new TypeError('Read roots must be absolute or start with ~/.');
 	}
 
-	return canonicalPath(path.normalize(root));
-}
-
-export function isWithinHostRoots(
-	candidate: string,
-	roots: readonly string[]
-): boolean {
-	const compared = comparisonPath(candidate);
-
-	return roots.some((root) => isWithin(comparisonPath(root), compared));
+	return canonicalHostPath(root);
 }
 
 export async function resolvePathGrants(
 	workspace: string,
-	grants: PathGrants | undefined
+	grants: PathGrants | undefined,
+	getExclusions: () => Promise<readonly string[]> = resolveCredentialExclusions
 ): Promise<readonly ResolvedPath[]> {
 	if (grants === undefined) {
 		return [];
 	}
 
-	const host = platform();
-	const systemRoots =
-		host === 'darwin' || host === 'linux' ? hostSystemRoots[host] : [];
-	const root = comparisonPath(await canonicalPath(workspace), host);
-	const excluded = resolveCredentialLocations();
-	const excludedResolved = await Promise.all(
-		excluded.map(async (location) => {
-			try {
-				return comparisonPath(await canonicalPath(location), host);
-			} catch {
-				return comparisonPath(location, host);
-			}
-		})
-	);
-	const excludedLexical = excluded.map((location) =>
-		comparisonPath(location, host)
-	);
+	const checkout = await canonicalHostPath(workspace);
+	let excluded: Promise<readonly string[]> | undefined;
 	const resolved: ResolvedPath[] = [];
 
 	for (const kind of ['read', 'write'] as const) {
 		const inputs = grants[kind] ?? [];
-		const paths = new Map<string, boolean>();
+		const paths = new Map<string, ResolvedPath>();
 
 		for (const input of inputs) {
 			const absolute = hostPath(workspace, input);
 
 			try {
-				const candidate = await canonicalPath(absolute);
-				const lexical = comparisonPath(absolute, host);
-				const canonical = comparisonPath(candidate, host);
+				const candidate = await canonicalHostPath(absolute);
+				const location = classifyHostPath(candidate, checkout);
+				let isCredential = paths.get(candidate)?.isCredential === true;
 
-				paths.set(
-					candidate,
-					paths.get(candidate) === true ||
-						excludedLexical.some((location) => isWithin(location, lexical)) ||
-						excludedResolved.some((location) => isWithin(location, canonical))
-				);
+				if (!isCredential && location !== 'workspace') {
+					excluded ??= getExclusions();
+
+					const roots = await excluded;
+
+					isCredential =
+						isWithinHostRoots(absolute, roots) ||
+						isWithinHostRoots(candidate, roots);
+				}
+
+				paths.set(candidate, {
+					kind,
+					path: candidate,
+					location,
+					...(isCredential && { isCredential: true })
+				});
 			} catch (error) {
 				throw new UnsupportedSandboxPolicyError(
 					{
@@ -159,26 +116,14 @@ export async function resolvePathGrants(
 		}
 
 		const ordered = paths
-			.keys()
+			.values()
 			.toArray()
-			.toSorted((left, right) => Number(left > right) - Number(left < right));
+			.toSorted(
+				(left, right) =>
+					Number(left.path > right.path) - Number(left.path < right.path)
+			);
 
-		for (const candidate of ordered) {
-			const isCredential = paths.get(candidate) === true;
-			const file = comparisonPath(candidate, host);
-			const location = isWithin(root, file)
-				? 'workspace'
-				: systemRoots.some((directory) => isWithin(directory, file))
-					? 'host-system-files'
-					: 'host-user-data';
-
-			resolved.push({
-				kind,
-				path: candidate,
-				location,
-				...(isCredential && location !== 'workspace' && { isCredential: true })
-			});
-		}
+		resolved.push(...ordered);
 	}
 
 	return resolved;

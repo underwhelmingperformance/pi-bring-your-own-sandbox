@@ -157,7 +157,8 @@ const providerOpenRequest = Type.Object({
 	hostWorkspace: nonEmptyStringSchema,
 	profile: profileSchema,
 	paths: Type.Optional(pathGrantsSchema),
-	hostUserDataRoots: Type.Optional(hostUserDataRootsSchema)
+	hostUserDataRoots: Type.Optional(hostUserDataRootsSchema),
+	credentialExclusions: Type.Optional(hostUserDataRootsSchema)
 });
 
 const providerCopySource = Type.Union([

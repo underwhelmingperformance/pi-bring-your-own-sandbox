@@ -3,6 +3,8 @@ import path from 'node:path';
 
 import { getAgentDir } from '@earendil-works/pi-coding-agent';
 
+import { canonicalHostPath } from './host-paths.js';
+
 /**
 Home-relative paths that readable provider profiles must exclude from host
 user data. Each entry applies to the path and its descendants outside the
@@ -39,21 +41,25 @@ export const credentialLocations: readonly string[] = Object.freeze([
 ]);
 
 /**
-Expands the home-relative exclusions and adds both credential files in Pi's
-effective agent directory. Compare the absolute paths and their aliases when
-enforcing the exclusions.
+Resolve both spellings of credential exclusions, including the two files in
+Pi's effective agent directory.
 */
-export function resolveCredentialLocations(): readonly string[] {
+export async function resolveCredentialExclusions(
+	agentDirectory = getAgentDir()
+): Promise<readonly string[]> {
 	const home = homedir();
-	const agentDirectory = getAgentDir();
-
-	return Object.freeze([
+	const lexical = [
 		...credentialLocations.map((location) =>
 			path.join(home, location.slice(2))
 		),
 		path.resolve(agentDirectory, 'auth.json'),
 		path.resolve(agentDirectory, 'mcp-auth.json')
-	]);
+	];
+	const canonical = await Promise.all(
+		lexical.map((location) => canonicalHostPath(location))
+	);
+
+	return Object.freeze([...new Set([...lexical, ...canonical])]);
 }
 
 export function describeHostUserData(

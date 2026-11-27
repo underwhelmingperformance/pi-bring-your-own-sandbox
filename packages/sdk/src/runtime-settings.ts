@@ -11,6 +11,7 @@ import type {
 	SandboxContext,
 	SandboxHostOptions
 } from './contracts.js';
+import { resolveCredentialExclusions } from './credential-locations.js';
 import {
 	ConflictingSandboxProviderError,
 	InvalidSandboxConfigError,
@@ -49,6 +50,7 @@ export function createRuntimeSettings(
 	});
 	const lifetime = new AbortController();
 	let config: Promise<SandboxConfig> | undefined;
+	let exclusions: Promise<readonly string[]> | undefined;
 
 	async function configured(context: SandboxContext): Promise<SandboxConfig> {
 		const scope = new OperationScope(
@@ -162,6 +164,8 @@ export function createRuntimeSettings(
 
 					return Object.freeze({
 						...value,
+						resolveCredentialExclusions: () =>
+							(exclusions ??= resolveCredentialExclusions(agentDirectory)),
 						...(provided !== undefined && { configured: provided }),
 						...(hostUserDataRoots !== undefined && { hostUserDataRoots }),
 						...(saveReadRoots !== undefined && { saveReadRoots }),

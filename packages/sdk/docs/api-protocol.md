@@ -238,6 +238,7 @@ interface SandboxOpenRequest<Config> {
   readonly profile: Profile;
   readonly paths?: PathGrants;
   readonly hostUserDataRoots?: readonly string[];
+  readonly credentialExclusions?: readonly string[];
 }
 
 type SandboxCopySource =
@@ -312,8 +313,20 @@ appears in the target.
 For a provider profile that permits host user data access, both allocation
 methods receive canonical host paths in `hostUserDataRoots`. The backend reports
 the same set of roots, including an empty set if supplied. It enforces the
-selected mode and credential exclusions within the roots. A backend for a
-profile that denies host user data omits the field.
+selected mode within the roots. A profile that denies ordinary host user data
+omits the roots.
+
+When the profile permits host user data or a grant reaches host user data
+outside the checkout, the allocation request includes `credentialExclusions`.
+The list contains absolute paths and their resolved aliases, including the two
+credential files in the effective Pi agent directory. Providers enforce the
+exclusions for directory grants. An approved credential grant exempts the
+specified path and access kind.
+
+The provider kit's `canonicalHostPath` resolves an absolute path. It follows
+symbolic links even if their targets are missing and rejects cycles or failed
+traversal. `isWithinHostRoots` compares canonical paths using platform aliases.
+Providers use the filesystem path for mounts and enforce confinement separately.
 
 `reportRecovery` supplies one aggregate descriptor before allocation. Updates
 describe all outstanding allocations. The final backend's `recovery` matches the

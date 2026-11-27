@@ -429,8 +429,11 @@ omits the field. Docker omits it because its profiles deny host user data.
 For both permitted host user data modes, the broker sends `hostUserDataRoots` to
 provider `open` and `copy`. The backend reports the same set of canonical host
 roots in `hostUserDataRoots`. The broker rejects and disposes a backend if the
-set is absent or different. The provider enforces credential exclusions within
-each root. The unrestricted host destination uses no root list.
+set is absent or different. The provider also receives `credentialExclusions`
+for either permitted mode and for grants that reach host user data outside the
+checkout. The broker includes the original paths and their resolved aliases.
+Both Pi credential paths come from the effective agent directory. The
+unrestricted host destination uses no root list.
 
 The elected broker prepares each shell call from Pi's `tool_execution_start`
 event. It checks the active tool's source path and the identity of its parameter

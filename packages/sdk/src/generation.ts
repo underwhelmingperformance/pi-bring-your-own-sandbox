@@ -30,6 +30,7 @@ import type {
 	SandboxOperationOptions,
 	SandboxPolicy
 } from './contracts.js';
+import { resolveCredentialExclusions } from './credential-locations.js';
 import {
 	InvalidSandboxConfigError,
 	InvalidSandboxDeclarationError,
@@ -156,6 +157,7 @@ export class SandboxGeneration {
 	#selection: ProviderSelection | undefined;
 	#allowsEscalation = true;
 	#hostUserDataRoots: readonly string[] = Object.freeze([]);
+	#resolveCredentialExclusions = resolveCredentialExclusions;
 	#saveReadRoots: SaveReadRoots | undefined;
 	#providerExtensionSource: string | undefined;
 	#prepared: Promise<Prepared> | undefined;
@@ -298,6 +300,8 @@ export class SandboxGeneration {
 			this.#cleanup = resolveCleanupBudgets(config.cleanup);
 			this.#hostUserDataRoots =
 				config.hostUserDataRoots ?? this.#hostUserDataRoots;
+			this.#resolveCredentialExclusions =
+				config.resolveCredentialExclusions ?? this.#resolveCredentialExclusions;
 			this.#saveReadRoots = config.saveReadRoots;
 
 			if (this.#lifetime.signal.aborted) {
@@ -438,18 +442,24 @@ export class SandboxGeneration {
 			);
 		}
 
+		const paths = requestedPathGrants(slot.paths);
+		const isConstrained = prepared.provider.id !== passthroughProvider.id;
+		const canAccessUserData = slot.profile.policy.hostUserData !== 'denied';
+		const hostUserDataRoots =
+			isConstrained && canAccessUserData ? this.#hostUserDataRoots : undefined;
+		const credentialExclusions =
+			isConstrained &&
+			(canAccessUserData ||
+				slot.paths.some(({ location }) => location === 'host-user-data'))
+				? await this.#resolveCredentialExclusions()
+				: undefined;
+
 		scope.check();
 		scope.setCleanupBudgets(this.#cleanup);
 		slot.hasInvokedOpen = true;
 
 		let isOpening = true;
 		let candidate: unknown;
-		const paths = requestedPathGrants(slot.paths);
-		const hostUserDataRoots =
-			prepared.provider.id === passthroughProvider.id ||
-			slot.profile.policy.hostUserData === 'denied'
-				? undefined
-				: this.#hostUserDataRoots;
 
 		try {
 			candidate = await prepared.configured.open(
@@ -458,8 +468,8 @@ export class SandboxGeneration {
 					sessionId: this.#session.sessionId,
 					hostWorkspace: this.#session.workspace,
 					profile: slot.profile,
-					cleanupBudgets: this.#cleanup,
 					...(hostUserDataRoots !== undefined && { hostUserDataRoots }),
+					...(credentialExclusions !== undefined && { credentialExclusions }),
 					...(paths !== undefined && { paths })
 				},
 				{
@@ -905,7 +915,8 @@ export class SandboxGeneration {
 
 		const paths = await resolvePathGrants(
 			this.#session.workspace,
-			options.access?.paths
+			options.access?.paths,
+			this.#resolveCredentialExclusions
 		);
 		const result = selectProfile({
 			profiles,
@@ -1004,6 +1015,7 @@ export class SandboxGeneration {
 						policy: profile.policy
 					},
 					hostUserDataRoots: this.#hostUserDataRoots,
+					resolveCredentialExclusions: this.#resolveCredentialExclusions,
 					cleanup: this.#cleanup
 				})
 		});
@@ -1157,7 +1169,8 @@ export class SandboxGeneration {
 
 		const paths = await resolvePathGrants(
 			this.#session.workspace,
-			options.access?.paths
+			options.access?.paths,
+			this.#resolveCredentialExclusions
 		);
 		const choice = selectProfile({
 			profiles: prepared.provider.profiles.open,
@@ -1366,6 +1379,7 @@ export class SandboxGeneration {
 					Promise.resolve({
 						selection: { source: 'extension', providerId: provider.id, policy },
 						hostUserDataRoots: this.#hostUserDataRoots,
+						resolveCredentialExclusions: this.#resolveCredentialExclusions,
 						cleanup: this.#cleanup
 					})
 			});

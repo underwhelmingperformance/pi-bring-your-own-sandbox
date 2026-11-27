@@ -1,5 +1,4 @@
-import { realpath } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { homedir, platform } from 'node:os';
 import path from 'node:path';
 
 import { backendSchema, isAbsoluteWorkspacePath } from './backend-schemas.js';
@@ -12,6 +11,7 @@ import {
 	InvalidSandboxDeclarationError,
 	UnsupportedSandboxPolicyError
 } from './errors.js';
+import { canonicalHostPath, hostPathComparisonKey } from './host-paths.js';
 import type { Profile } from './policy-model.js';
 import { profileKey } from './policy-model.js';
 import type { ProfileMode, ResolvedPath } from './profile-negotiation.js';
@@ -127,8 +127,11 @@ function extraTarget(
 	workspace: SandboxWorkspace
 ): string | undefined {
 	const flavor = path[workspace.pathFlavor];
+	const host = platform();
+	const comparedHome = hostPathComparisonKey(hostHome, host);
+	const comparedPath = hostPathComparisonKey(hostPath, host);
 
-	if (!isWithinTarget(hostHome, hostPath, path)) {
+	if (!isWithinTarget(comparedHome, comparedPath, path)) {
 		return flavor.isAbsolute(hostPath) ? flavor.normalize(hostPath) : undefined;
 	}
 
@@ -136,19 +139,9 @@ function extraTarget(
 		return undefined;
 	}
 
-	const relative = path.relative(hostHome, hostPath);
+	const relative = path.relative(comparedHome, comparedPath);
 
 	return flavor.resolve(workspace.home, ...relative.split(path.sep));
-}
-
-async function canonicalHostHome(): Promise<string> {
-	const home = homedir();
-
-	try {
-		return await realpath(home);
-	} catch {
-		return home;
-	}
 }
 
 export async function verifyGrantedPaths(
@@ -169,7 +162,7 @@ export async function verifyGrantedPaths(
 	const flavor = path[backend.workspace.pathFlavor];
 	const hostHome =
 		isEscalated && requested.some(({ location }) => location !== 'workspace')
-			? await canonicalHostHome()
+			? await canonicalHostPath(homedir())
 			: undefined;
 
 	for (const request of requested) {

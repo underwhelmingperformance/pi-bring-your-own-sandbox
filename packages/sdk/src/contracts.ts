@@ -797,9 +797,11 @@ export interface SandboxOpenRequest<Config = unknown> {
 	readonly hostUserDataRoots?: readonly string[];
 
 	/**
-	Resolved durations for the new allocation. Older brokers can omit them.
+	Absolute credential paths and their resolved aliases. The provider excludes
+	them from ordinary host user data and from grants outside the checkout,
+	except for a separately approved grant for the exact credential path.
 	*/
-	readonly cleanupBudgets?: SandboxCleanupBudgets;
+	readonly credentialExclusions?: readonly string[];
 
 	/**
 	Provider-specific validated value; never include it in routine

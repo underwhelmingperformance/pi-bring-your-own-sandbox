@@ -300,6 +300,45 @@ it('classifies resolved credential paths without changing the checkout boundary'
 });
 
 it.skipIf(path.sep !== '/')(
+	'uses the target of a dangling credential symlink for path grants',
+	async () => {
+		const temporary = await mkdtemp(
+			path.join(tmpdir(), 'byos-dangling-grant-')
+		);
+
+		try {
+			const root = await realpath(temporary);
+			const home = path.join(root, 'home');
+			const checkout = path.join(root, 'checkout');
+			const target = path.join(root, 'elsewhere', 'excluded');
+			const marker = path.join(target, 'marker');
+
+			vi.stubEnv('HOME', home);
+			await Promise.all([
+				mkdir(home),
+				mkdir(checkout),
+				mkdir(path.dirname(target))
+			]);
+			await symlink('../elsewhere/excluded', path.join(home, '.ssh'));
+
+			expect(
+				await resolvePathGrants(checkout, { read: ['~/.ssh/marker', marker] })
+			).toStrictEqual([
+				{
+					kind: 'read',
+					path: marker,
+					location: 'host-user-data',
+					isCredential: true
+				}
+			]);
+		} finally {
+			vi.unstubAllEnvs();
+			await rm(temporary, { recursive: true, force: true });
+		}
+	}
+);
+
+it.skipIf(path.sep !== '/')(
 	'treats package credentials and both Pi stores as credential paths',
 	async () => {
 		const directory = await mkdtemp(

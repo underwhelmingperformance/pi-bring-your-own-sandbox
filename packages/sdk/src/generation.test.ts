@@ -255,18 +255,16 @@ it('preserves the extension source when recording a typed initialisation failure
 	await generation.close();
 });
 
-it('supplies the resolved cleanup budgets in the open request and operation contexts', async () => {
+it('supplies the resolved cleanup budgets in the operation contexts', async () => {
 	const budgets = { cancellationGraceMs: 1200, disposalTimeoutMs: 3400 };
 	const observed: {
-		request?: SandboxCleanupBudgets;
 		open?: SandboxCleanupBudgets;
 		exec?: SandboxCleanupBudgets;
 		dispose?: SandboxCleanupBudgets;
 	} = {};
 	const { generation, context, backend } = fixture(
-		(opening, request) => {
+		(opening) => {
 			Object.assign(observed, {
-				request: request.cleanupBudgets,
 				open: opening.cleanupBudgets
 			});
 
@@ -298,7 +296,6 @@ it('supplies the resolved cleanup budgets in the open request and operation cont
 	}
 
 	expect(observed).toStrictEqual({
-		request: budgets,
 		open: budgets,
 		exec: budgets,
 		dispose: budgets

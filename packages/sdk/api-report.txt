@@ -92,6 +92,7 @@ type TargetFileOperations (target-operations.d.ts)
 type TargetFileTransport (target-operations.d.ts)
 value SandboxLaunchFrames (launch-frames.d.ts)
 value ShellTransportRunner (shell-transport.d.ts)
+value canonicalHostPath (host-paths.d.ts)
 value checkSandboxTargetStatus (target-operations.d.ts)
 value cleanDisplayText (display-text.d.ts)
 value createSandboxCleanupContext (provider-cleanup.d.ts)
@@ -100,6 +101,7 @@ value defaultProtectedWorkspacePaths (protected-workspace-paths.d.ts)
 value encodePosixArgv (shell-transport.d.ts)
 value hostSystemRoots (host-system-roots.d.ts)
 value isProtectedWorkspacePath (protected-workspace-paths.d.ts)
+value isWithinHostRoots (host-paths.d.ts)
 value mapSandboxErrno (host-error.d.ts)
 value resolveSandboxCopySource (provider-copy.d.ts)
 value sandboxTargetTransferLimit (target-operations.d.ts)
@@ -392,7 +394,7 @@ export interface SandboxOpenRequest<Config = unknown> {
     readonly profile: Profile;
     readonly paths?: PathGrants;
     readonly hostUserDataRoots?: readonly string[];
-    readonly cleanupBudgets?: SandboxCleanupBudgets;
+    readonly credentialExclusions?: readonly string[];
     readonly configuration: Config;
 }
 
@@ -1198,6 +1200,12 @@ export declare function mapSandboxErrno(cause: unknown, context: SandboxErrorCon
     readonly reason: 'output';
     readonly completion: import("./contracts.js").OperationCompletion;
 });
+
+// host-paths.d.ts
+export declare function canonicalHostPath(absolutePath: string): Promise<string>;
+
+// host-paths.d.ts
+export declare function isWithinHostRoots(canonicalPath: string, roots: readonly string[]): boolean;
 
 // host-process.d.ts
 export interface HostProcessRunner {

@@ -22,6 +22,7 @@ export interface SandboxConfig {
 	readonly selection: ProviderSelection;
 	readonly allowEscalation?: boolean;
 	readonly hostUserDataRoots?: readonly string[];
+	readonly resolveCredentialExclusions?: () => Promise<readonly string[]>;
 	readonly saveReadRoots?: SaveReadRoots;
 	readonly configured?: ConfiguredProviderV1;
 }

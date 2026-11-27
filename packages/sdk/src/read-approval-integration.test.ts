@@ -47,12 +47,15 @@ it.each([
 		const agentDirectory = path.join(directory, 'agent');
 		const file = path.join(agentDirectory, filename);
 		const root = path.join(directory, 'approved');
+		const auth = path.join(agentDirectory, 'auth.json');
+		const relocatedAuth = path.join(directory, 'relocated-auth');
 		const existing = path.join(directory, 'existing');
 		const initialRoots =
 			scenario === 'duplicate' ? [root, existing] : [existing];
 		const wrote: (readonly string[])[] = [];
 		const prompts: string[][] = [];
 		const notices: string[] = [];
+		const allocatedExclusions: (readonly string[] | undefined)[] = [];
 		const { backend, requests } = shellBackend();
 		const hostUserData =
 			scenario === 'read-write' || scenario === 'denied'
@@ -140,6 +143,8 @@ it.each([
 						profiles: { open: [profile], copy: [] },
 						validateConfig: () => ({}),
 						open(request) {
+							allocatedExclusions.push(request.credentialExclusions);
+
 							return Promise.resolve({
 								...backend,
 								profile: request.profile,
@@ -189,6 +194,7 @@ it.each([
 		try {
 			await mkdir(agentDirectory);
 			await mkdir(root);
+			await symlink(relocatedAuth, auth);
 			vi.stubEnv(
 				'PI_CODING_AGENT_DIR',
 				scenario === 'embedded'
@@ -261,6 +267,16 @@ it.each([
 					}
 				}
 			);
+
+			if (scenario === 'embedded' || scenario === 'denied') {
+				expect(
+					allocatedExclusions.map((paths) =>
+						paths?.filter((entry) => entry.startsWith(directory + path.sep))
+					)
+				).toStrictEqual([
+					[auth, path.join(agentDirectory, 'mcp-auth.json'), relocatedAuth]
+				]);
+			}
 
 			const isSucceeded =
 				scenario === 'missing' ||

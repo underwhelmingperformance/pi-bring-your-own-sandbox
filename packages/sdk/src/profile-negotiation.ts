@@ -1,4 +1,5 @@
-import { isWithinHostRoots } from './path-grants.js';
+import type { HostPathLocation } from './host-paths.js';
+import { isWithinHostRoots } from './host-paths.js';
 import type {
 	Access,
 	AccessProperty,
@@ -23,7 +24,7 @@ export interface ProfileRequirements {
 export interface ResolvedPath {
 	readonly path: string;
 	readonly kind: 'read' | 'write';
-	readonly location: 'workspace' | 'host-user-data' | 'host-system-files';
+	readonly location: HostPathLocation;
 	readonly isCredential?: true;
 }
 

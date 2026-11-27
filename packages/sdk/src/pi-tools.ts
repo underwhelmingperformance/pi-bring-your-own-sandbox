@@ -6,7 +6,10 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 
-import { registerSandboxFileTools } from './integration/file-tools.js';
+import {
+	displayArguments,
+	registerSandboxFileTools
+} from './integration/file-tools.js';
 import { bindShellIntegration } from './integration/privileged.js';
 
 export { registerSandboxDiagnostics } from './integration/diagnostics.js';
@@ -47,8 +50,18 @@ function shellDefinition(
 			);
 	const execute = integration.registerRoute(dialect, parameters);
 
+	const { renderCall } = base;
+	const renderSafeCall: typeof renderCall =
+		renderCall === undefined
+			? undefined
+			: (input, theme, context) =>
+					renderCall(displayArguments(input), theme, {
+						...context,
+						args: displayArguments(context.args)
+					});
 	const tool = defineTool({
 		...base,
+		...(renderSafeCall !== undefined && { renderCall: renderSafeCall }),
 		defaultActive: false,
 		parameters,
 		promptGuidelines: [

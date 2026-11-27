@@ -63,6 +63,16 @@ export function cleanDisplayText(text: string): DisplayText {
 	return limitDisplayText(escapeControls(text));
 }
 
+export function displayJson(value: object | string): DisplayText {
+	const encoded = JSON.stringify(value).replaceAll(
+		unsafeShellOutputCharacters,
+		(character) =>
+			String.raw`\u${(character.codePointAt(0) ?? 0).toString(16).padStart(4, '0')}`
+	);
+
+	return cleanFullDisplayText(encoded);
+}
+
 export function cleanFullDisplayText(text: string): DisplayText {
 	return [...escapeControls(text)].join('') as DisplayText;
 }

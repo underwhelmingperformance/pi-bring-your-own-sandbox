@@ -430,6 +430,92 @@ async function renderedEditPreview(
 	return component.render(120).join('\n');
 }
 
+it.each([
+	{
+		name: 'bash',
+		input: { command: 'printf heading\u{202E}' },
+		row: undefined
+	},
+	{ name: 'ls', input: { path: 'heading\u{202E}' }, row: 'entry\u{202E}' },
+	{
+		name: 'grep',
+		input: { pattern: 'heading\u{202E}' },
+		row: 'file.txt:1: entry\u{202E}'
+	}
+])(
+	'cleans $name headings and rows without changing tool data',
+	async ({ name, input, row }) => {
+		await withPiRuntime([extension], (runtime, errors) => {
+			const runner = runtime.session.extensionRunner;
+			const tool = runner
+				.getAllRegisteredTools()
+				.find(({ definition }) => definition.name === name)?.definition;
+
+			if (tool?.renderCall === undefined) {
+				throw new Error('The tool call renderer was not registered.');
+			}
+
+			initTheme('dark', false);
+
+			const theme = runner.getUIContext().theme;
+			const context = {
+				args: input,
+				toolCallId: 'checked-display',
+				invalidate() {
+					return;
+				},
+				lastComponent: undefined,
+				state: {},
+				cwd: runtime.services.cwd,
+				executionStarted: true,
+				argsComplete: true,
+				isPartial: false,
+				expanded: true,
+				showImages: false,
+				isError: false,
+				durationMs: undefined,
+				outputPad: 0,
+				keyText: () => '',
+				keyHint: () => ''
+			} satisfies Parameters<typeof tool.renderCall>[2];
+
+			const heading = tool
+				.renderCall(input, theme, context)
+				.render(120)
+				.join('\n');
+			const content =
+				row === undefined ? [] : [{ type: 'text' as const, text: row }];
+			const result = tool
+				.renderResult?.(
+					{ content, details: undefined },
+					{ expanded: true, isPartial: false },
+					theme,
+					context
+				)
+				.render(120)
+				.join('\n');
+
+			expect({
+				errors,
+				showsSafeHeading: heading.includes(String.raw`heading\u{202e}`),
+				hasUnsafeHeading: heading.includes('\u{202E}'),
+				showsSafeRow: result?.includes(String.raw`entry\u{202e}`) ?? false,
+				hasUnsafeRow: result?.includes('\u{202E}') ?? false,
+				content
+			}).toStrictEqual({
+				errors: [],
+				showsSafeHeading: true,
+				hasUnsafeHeading: false,
+				showsSafeRow: row !== undefined,
+				hasUnsafeRow: false,
+				content: row === undefined ? [] : [{ type: 'text', text: row }]
+			});
+
+			return Promise.resolve();
+		});
+	}
+);
+
 it('does not render the contents of an excluded credential file', async () => {
 	await withCredentialFixture(async (runtime, fixture) => {
 		const text = await renderedEditPreview(runtime, {

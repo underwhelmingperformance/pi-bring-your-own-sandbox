@@ -455,13 +455,16 @@ schema. The broker keeps the command, arguments and plan in a pending record for
 that call. Review and confirmation use that record.
 
 The broker presents the effective command, justification, requested access,
-chosen destination and effective restrictions before a decision. For the host,
-the effective restrictions are `none`. Any installed extension can allow or deny
-a pending escalation through a review source and its consumer client. Installing
-a permission extension delegates that choice to it. Conflicting decisions fail
-closed. If extra access still requires approval, BYOS asks the user for
-confirmation and shows the provider label. A matching remembered read grant or a
-decision from a permission extension removes the need for a second prompt.
+chosen destination and effective restrictions before a decision. The
+confirmation displays the command and justification as quoted JSON strings.
+Control characters and literal escape sequences have distinct representations.
+For the host, the effective restrictions are `none`. Any installed extension can
+allow or deny a pending escalation through a review source and its consumer
+client. Installing a permission extension delegates that choice to it.
+Conflicting decisions fail closed. If extra access still requires approval, BYOS
+asks the user for confirmation and shows the provider label. A matching
+remembered read grant or a decision from a permission extension removes the need
+for a second prompt.
 
 Before dispatch, the broker checks the selected tool and arguments against the
 pending record, consumes the decision once and records the outcome. An allow

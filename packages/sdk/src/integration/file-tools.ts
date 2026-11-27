@@ -691,6 +691,71 @@ function routedEditDefinition(
 	};
 }
 
+export function displayArguments<Arguments>(input: Arguments): Arguments {
+	if (typeof input !== 'object' || input === null) {
+		return input;
+	}
+
+	return {
+		...input,
+		...('command' in input &&
+			typeof input.command === 'string' && {
+				command: cleanDisplayText(input.command)
+			}),
+		...('path' in input &&
+			typeof input.path === 'string' && { path: cleanDisplayText(input.path) }),
+		...('pattern' in input &&
+			typeof input.pattern === 'string' && {
+				pattern: cleanDisplayText(input.pattern)
+			}),
+		...('glob' in input &&
+			typeof input.glob === 'string' && { glob: cleanDisplayText(input.glob) }),
+		...('content' in input &&
+			typeof input.content === 'string' && {
+				content: displayLines(input.content)
+			})
+	};
+}
+
+type Renderers<Parameters extends TSchema, Details, State> = Pick<
+	ToolDefinition<Parameters, Details, State>,
+	'renderCall' | 'renderResult'
+>;
+
+function displayFileTool<Parameters extends TSchema, Details, State>({
+	renderCall,
+	renderResult
+}: Renderers<Parameters, Details, State>): Renderers<
+	Parameters,
+	Details,
+	State
+> {
+	return {
+		...(renderCall !== undefined && {
+			renderCall(input, theme, context) {
+				return renderCall(displayArguments(input), theme, {
+					...context,
+					args: displayArguments(context.args)
+				});
+			}
+		}),
+		...(renderResult !== undefined && {
+			renderResult(result, options, theme, context) {
+				const content = result.content.map((block) =>
+					block.type === 'text'
+						? { ...block, text: displayLines(block.text) }
+						: block
+				);
+
+				return renderResult({ ...result, content }, options, theme, {
+					...context,
+					args: displayArguments(context.args)
+				});
+			}
+		})
+	};
+}
+
 export function registerSandboxFileTools(
 	pi: ExtensionAPI,
 	extensionPath: string
@@ -824,6 +889,7 @@ export function registerSandboxFileTools(
 		pi.registerTool(
 			defineTool({
 				...base,
+				...(base.name !== 'edit' && displayFileTool(base)),
 				defaultActive: false,
 				async execute(id, input, signal, update, context) {
 					const snapshot = inputs.get(id);

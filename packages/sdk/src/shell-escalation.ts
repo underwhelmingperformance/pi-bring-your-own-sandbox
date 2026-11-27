@@ -11,7 +11,11 @@ import type {
 	AccessProperty,
 	SandboxOperationOptions
 } from './contracts.js';
-import { cleanDisplayText, cleanFullDisplayText } from './display-text.js';
+import {
+	cleanDisplayText,
+	cleanFullDisplayText,
+	displayJson
+} from './display-text.js';
 import { chooseDisplayOption, notifyDisplay } from './display-ui.js';
 import {
 	InvalidSandboxRequestError,
@@ -221,12 +225,12 @@ export class PendingEscalation {
 		const { signal } = this.#scope.context;
 		const display = [
 			cleanDisplayText('Allow sandbox escalation?'),
-			cleanFullDisplayText('Command: ' + request.command),
-			cleanFullDisplayText('Justification: ' + request.justification),
+			cleanFullDisplayText('Command: ' + displayJson(request.command)),
 			cleanFullDisplayText(
-				'Requested access: ' + JSON.stringify(request.access)
+				'Justification: ' + displayJson(request.justification)
 			),
-			cleanFullDisplayText('Destination: ' + plan.label),
+			cleanFullDisplayText('Requested access: ' + displayJson(request.access)),
+			cleanFullDisplayText('Destination: ' + displayJson(plan.label)),
 			cleanFullDisplayText(
 				'Effective restrictions: ' + request.destination.effectiveRestrictions
 			)
@@ -250,7 +254,7 @@ export class PendingEscalation {
 			choices.push(alwaysChoice);
 			display.push(
 				cleanFullDisplayText(
-					'Read roots to save: ' + JSON.stringify(persistence.paths)
+					'Read roots to save: ' + displayJson(persistence.paths)
 				)
 			);
 		}

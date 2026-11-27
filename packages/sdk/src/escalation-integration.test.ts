@@ -70,10 +70,11 @@ it.each([
 	const refusals: unknown[] = [];
 	const confirmations: {
 		roots: boolean;
+		showsQuotedCommand: boolean;
 		unrestricted: boolean;
 		choices: readonly string[];
 	}[] = [];
-	const command = 'printf fixture';
+	const command = "printf 'literal \\x0a\nline \u{202E}'";
 	const model = new ScriptedModel([
 		{
 			type: 'toolCall',
@@ -308,6 +309,7 @@ it.each([
 							? [
 									{
 										roots: !isHostFallback,
+										showsQuotedCommand: true,
 										unrestricted: isHostFallback,
 										choices: ['Deny', 'Allow']
 									}
@@ -330,6 +332,10 @@ it.each([
 				select(text, choices) {
 					confirmations.push({
 						roots: text.includes(scopeDescription),
+						showsQuotedCommand: text.includes(
+							'Command: ' +
+								JSON.stringify(command).replace('\u{202E}', String.raw`\u202e`)
+						),
 						unrestricted: text.includes('Effective restrictions: none'),
 						choices
 					});
@@ -860,10 +866,10 @@ it.each([
 					const access = { network: 'needed', paths: { read: [home] } };
 					const text = [
 						'Allow sandbox escalation?',
-						String.raw`Command: ${prefix}\x0a${command}`,
-						String.raw`Justification: Read the fixture\x1b[31m path.`,
+						'Command: ' + JSON.stringify(prefix + '\n' + command),
+						'Justification: ' + JSON.stringify(justification),
 						'Requested access: ' + JSON.stringify(access),
-						'Destination: Host execution without isolation',
+						'Destination: "Host execution without isolation"',
 						'Effective restrictions: none'
 					].join('\n');
 

@@ -172,6 +172,63 @@ it('waits for process-group disappearance after a denied existence probe', async
 	});
 });
 
+it('ends local process monitoring at the cancellation cleanup deadline', async () => {
+	const { directory } = await fixture();
+	const controller = new AbortController();
+	const output: string[] = [];
+	let cleanupProbes = 0;
+	const runner = new PosixProcessRunner(
+		directory,
+		process.env,
+		new Map(),
+		{},
+		{
+			kill(id, signal) {
+				if (!controller.signal.aborted) {
+					process.kill(id, signal);
+
+					return;
+				}
+
+				if (signal === 0 && ++cleanupProbes > 2) {
+					throw Object.assign(new Error('The fixture group has disappeared.'), {
+						code: 'ESRCH'
+					});
+				}
+			}
+		}
+	);
+
+	const result = await runner.run(
+		{
+			kind: 'argv',
+			executable: process.execPath,
+			args: ['-e', 'process.stdout.write("ready")']
+		},
+		{
+			operationId: 'exec',
+			signal: controller.signal,
+			deadline: Date.now() + 5000,
+			remainingMs: remainingBudget(5000),
+			reportWarning: vi.fn(),
+			cleanup: {
+				deadline: undefined,
+				remainingMs: () => (controller.signal.aborted ? 0 : undefined)
+			},
+			onOutput(chunk) {
+				output.push(new TextDecoder().decode(chunk.data));
+				controller.abort();
+			}
+		}
+	);
+
+	expect({ result, output, cleanupProbes }).toStrictEqual({
+		result: { kind: 'cancelled', termination: 'unconfirmed' },
+		output: ['ready'],
+		cleanupProbes: 1
+	});
+});
+
 afterEach(async () => {
 	vi.unstubAllEnvs();
 

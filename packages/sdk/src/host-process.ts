@@ -3,6 +3,7 @@ import { constants as osConstants } from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
+import { DEFAULT_CLEANUP_BUDGETS } from './cleanup-budgets.js';
 import type {
 	BackendProcessContext,
 	BackendProcessOutcome,
@@ -12,6 +13,7 @@ import type {
 } from './contracts.js';
 import {
 	SandboxOperationError,
+	UnconfirmedSandboxTerminationError,
 	UnsupportedSandboxCapabilityError
 } from './errors.js';
 import { mapSandboxErrno } from './host-error.js';
@@ -260,18 +262,42 @@ export class PosixProcessRunner implements HostProcessRunner {
 					return { kind: 'exited', exit: completion.exit };
 				}
 
-				if (
-					hasGroup &&
-					cancellation.startedAt !== undefined &&
-					performance.now() - cancellation.startedAt >= 250
-				) {
-					signalGroup(child.pid, 'SIGKILL', this.#signals);
+				const startedAt = cancellation.startedAt;
+				let delayMs = 20;
+
+				if (startedAt !== undefined) {
+					const elapsed = performance.now() - startedAt;
+					const grace = (context.cleanupBudgets ?? DEFAULT_CLEANUP_BUDGETS)
+						.cancellationGraceMs;
+					const remaining = context.cleanup.remainingMs() ?? grace - elapsed;
+
+					if (hasGroup && (elapsed >= 250 || remaining <= 0)) {
+						signalGroup(child.pid, 'SIGKILL', this.#signals);
+					}
+
+					if (remaining <= 0) {
+						if (context.signal.aborted) {
+							return { kind: 'cancelled', termination: 'unconfirmed' };
+						}
+
+						throw new UnconfirmedSandboxTerminationError(this.#identity(), {
+							cause: completion.error
+						});
+					}
+
+					delayMs = Math.min(delayMs, remaining);
 				}
 
-				await delay(20);
+				await delay(delayMs);
 			}
 		} finally {
 			context.signal.removeEventListener('abort', cancel);
+
+			if (!completion.isClosed) {
+				child.stdout.destroy();
+				child.stderr.destroy();
+				child.unref();
+			}
 		}
 	}
 }

@@ -15,6 +15,7 @@ import { imageProvider } from './fixtures/image-provider.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfile } from './fixtures/profile-fixture.js';
+import { fixtureProvider } from './fixtures/register-provider.js';
 import { loadSdkInstance } from './fixtures/sdk-instance.js';
 import { initialiseSandboxHost } from './host.js';
 import { bindProtocolAddress, protocolAddress } from './protocol-address.js';
@@ -259,19 +260,27 @@ it('interoperates across independent SDK instances and removes failed-factory re
 				{
 					name: 'first',
 					factory: (pi) => {
-						first.registerSandboxProvider(pi, import.meta.filename, {
-							...imageProvider,
-							id: 'first'
-						});
+						first.registerSandboxProvider(
+							pi,
+							import.meta.filename,
+							fixtureProvider({
+								...imageProvider,
+								id: 'first'
+							})
+						);
 					}
 				},
 				{
 					name: 'failed',
 					factory: (pi) => {
-						second.registerSandboxProvider(pi, import.meta.filename, {
-							...imageProvider,
-							id: 'failed'
-						});
+						second.registerSandboxProvider(
+							pi,
+							import.meta.filename,
+							fixtureProvider({
+								...imageProvider,
+								id: 'failed'
+							})
+						);
 
 						throw new Error('deliberate factory failure');
 					}
@@ -279,10 +288,14 @@ it('interoperates across independent SDK instances and removes failed-factory re
 				{
 					name: 'second',
 					factory: (pi) => {
-						second.registerSandboxProvider(pi, import.meta.filename, {
-							...imageProvider,
-							id: 'second'
-						});
+						second.registerSandboxProvider(
+							pi,
+							import.meta.filename,
+							fixtureProvider({
+								...imageProvider,
+								id: 'second'
+							})
+						);
 					}
 				}
 			]

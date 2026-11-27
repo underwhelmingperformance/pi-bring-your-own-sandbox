@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -9,11 +9,7 @@ import {
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { createSandboxClient } from './client.js';
-import type {
-	SandboxConfigContext,
-	SandboxHost,
-	SandboxProvider
-} from './contracts.js';
+import type { SandboxConfigContext, SandboxHost } from './contracts.js';
 import { formatStatus } from './diagnostics.js';
 import { discoverBroker } from './discovery.js';
 import { connectionProvider } from './fixtures/connection-provider.js';
@@ -25,8 +21,9 @@ import {
 import { getSandbox } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
+import type { FixtureProvider } from './fixtures/register-provider.js';
+import { registerFixtureProvider } from './fixtures/register-provider.js';
 import { initialiseSandboxHost } from './host.js';
-import { registerSandboxProvider } from './provider-registration.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -69,7 +66,7 @@ async function fixture(
 	}
 }
 
-function provider(id: string, backend: MemoryBackend): SandboxProvider<object> {
+function provider(id: string, backend: MemoryBackend): FixtureProvider<object> {
 	return {
 		id,
 		label: id,
@@ -94,7 +91,7 @@ it('activates a provider without a configuration file and shares lazy resolution
 			settings: { policy: backend.policy }
 		}));
 
-		registerSandboxProvider(
+		registerFixtureProvider(
 			pi,
 			import.meta.filename,
 			provider('active', backend),
@@ -114,26 +111,34 @@ it('activates a provider without a configuration file and shares lazy resolution
 });
 
 it.each([true, false, undefined])(
-	'passes project trust %s to the provider configuration resolver',
+	'uses the same provider context with project trust %s',
 	async (trusted) => {
 		await fixture(async (pi, context) => {
 			const backend = new MemoryBackend();
-			const decisions: (boolean | undefined)[] = [];
+			const contexts: SandboxConfigContext['pi'][] = [];
 
-			registerSandboxProvider(
+			registerFixtureProvider(
 				pi,
 				import.meta.filename,
 				provider('active', backend),
 				{
 					configure({ pi: session }) {
-						decisions.push(session.isProjectTrusted?.());
+						contexts.push(session);
 
 						return { configuration: {} };
 					}
 				}
 			);
 			await getSandbox(pi, context);
-			expect(decisions).toStrictEqual([trusted]);
+
+			const getSessionId: unknown = expect.any(Function);
+
+			expect(contexts).toStrictEqual([
+				{
+					cwd: await realpath(context.cwd),
+					sessionManager: { getSessionId }
+				}
+			]);
 		}, trusted);
 	}
 );
@@ -144,7 +149,7 @@ it('rejects distinct activated providers before configuration or allocation', as
 		const configure = vi.fn(() => ({ configuration: {} }));
 
 		for (const id of ['first', 'second']) {
-			registerSandboxProvider(pi, import.meta.filename, provider(id, backend), {
+			registerFixtureProvider(pi, import.meta.filename, provider(id, backend), {
 				configure
 			});
 		}
@@ -164,7 +169,7 @@ it('retains configuration failure without opening or selecting passthrough', asy
 			throw new Error('private extension setting');
 		});
 
-		registerSandboxProvider(
+		registerFixtureProvider(
 			pi,
 			import.meta.filename,
 			{ ...provider('failed', backend), open },
@@ -190,7 +195,7 @@ it('rejects registration after configuration has started', async () => {
 	await fixture(async (pi, context) => {
 		await getSandbox(pi, context);
 		expect(() => {
-			registerSandboxProvider(
+			registerFixtureProvider(
 				pi,
 				import.meta.filename,
 				provider('late', new MemoryBackend())
@@ -205,7 +210,7 @@ it('keeps shared configuration running when one caller cancels', async () => {
 		const entered = Promise.withResolvers<AbortSignal>();
 		const configured = Promise.withResolvers<{ configuration: object }>();
 
-		registerSandboxProvider(
+		registerFixtureProvider(
 			pi,
 			import.meta.filename,
 			provider('active', backend),
@@ -243,7 +248,7 @@ it('applies provider cleanup overrides to host defaults', async () => {
 		initialiseSandboxHost(pi, import.meta.filename, {
 			cleanup: { cancellationGraceMs: 200, disposalTimeoutMs: 400 }
 		});
-		registerSandboxProvider(
+		registerFixtureProvider(
 			pi,
 			import.meta.filename,
 			provider('active', new MemoryBackend()),
@@ -271,7 +276,7 @@ it('cancels shared configuration on shutdown and ignores its late result', async
 		const started = Promise.withResolvers<AbortSignal>();
 		const configured = Promise.withResolvers<{ configuration: object }>();
 
-		registerSandboxProvider(
+		registerFixtureProvider(
 			pi,
 			import.meta.filename,
 			{ ...provider('active', backend), open },
@@ -324,7 +329,7 @@ it.each(['success', 'failure'] as const)(
 				return { configuration: {} };
 			});
 
-			registerSandboxProvider(
+			registerFixtureProvider(
 				pi,
 				import.meta.filename,
 				provider('active', backend),
@@ -391,7 +396,7 @@ it.each(['success', 'failure'] as const)(
 
 it('keeps raw registration input separate from transformed provider configuration', async () => {
 	await fixture(async (pi, context) => {
-		registerSandboxProvider<{ endpoint: URL }, { endpoint: string }>(
+		registerFixtureProvider<{ endpoint: URL }, { endpoint: string }>(
 			pi,
 			import.meta.filename,
 			connectionProvider,
@@ -437,7 +442,7 @@ it('shares one diagnostic allowance between configuration and execution', async 
 			});
 		};
 
-		registerSandboxProvider(
+		registerFixtureProvider(
 			pi,
 			import.meta.filename,
 			provider('active', backend),
@@ -474,32 +479,12 @@ it('shares one diagnostic allowance between configuration and execution', async 
 	});
 });
 
-it('rejects a non-callable resolver at registration', async () => {
-	await fixture((pi) => {
-		expect(() => {
-			Reflect.apply(registerSandboxProvider, undefined, [
-				pi,
-				import.meta.filename,
-				provider('active', new MemoryBackend()),
-				{ configure: false }
-			]);
-		}).toThrow(
-			expect.objectContaining({
-				name: 'InvalidSandboxRequestError',
-				operation: 'configure'
-			})
-		);
-
-		return Promise.resolve();
-	});
-});
-
 it('attributes an invalid shared setting to the extension', async () => {
 	await fixture(async (pi, context) => {
 		const backend = new MemoryBackend();
 		const invalid: unknown = 'PRIVATE_CONFIGURATION_VALUE';
 
-		registerSandboxProvider(
+		registerFixtureProvider(
 			pi,
 			import.meta.filename,
 			provider('active', backend),

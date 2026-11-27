@@ -1,31 +1,37 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import type { SandboxSharedSettings } from 'pi-bring-your-own-sandbox/provider';
-import { registerSandboxProviderFactory } from 'pi-bring-your-own-sandbox/provider';
+import { registerSandboxProvider } from 'pi-bring-your-own-sandbox/provider';
 import {
 	cleanDisplayText,
 	sendDisplayMessage
 } from 'pi-bring-your-own-sandbox/provider-kit';
 
-import { resolveDockerConfig } from './config.js';
-import type { DockerConfig } from './contracts.js';
-import { createDockerProvider, dockerProviderDeclaration } from './provider.js';
+import { dockerProvider } from './provider.js';
 
 export function registerDockerProvider(
 	pi: ExtensionAPI,
 	extensionSource: string,
 	settings?: SandboxSharedSettings
 ): void {
-	registerSandboxProviderFactory<DockerConfig>(
-		pi,
-		extensionSource,
-		dockerProviderDeclaration(),
-		() => {
-			const provider = createDockerProvider();
+	const declaration = dockerProvider();
+
+	registerSandboxProvider(pi, extensionSource, {
+		...declaration,
+		create() {
+			const implementation = declaration.create();
 
 			return {
-				...provider,
+				...implementation,
+				async configure(context, schema) {
+					const configured = await implementation.configure(context, schema);
+
+					return {
+						...configured,
+						...(settings !== undefined && { settings })
+					};
+				},
 				open(request, context) {
-					return provider.open(request, {
+					return implementation.open(request, {
 						...context,
 						reportWarning(warning) {
 							context.reportWarning(warning);
@@ -39,17 +45,6 @@ export function registerDockerProvider(
 					});
 				}
 			};
-		},
-		{
-			async configure({ pi: session, signal, reportWarning }) {
-				return {
-					configuration: await resolveDockerConfig(
-						{},
-						{ workspace: session.cwd, signal, reportWarning }
-					),
-					...(settings !== undefined && { settings })
-				};
-			}
 		}
-	);
+	});
 }

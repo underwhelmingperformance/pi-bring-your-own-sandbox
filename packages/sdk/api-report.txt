@@ -73,6 +73,7 @@ type SandboxProviderUnavailability (policy-model.d.ts)
 type SandboxReadRootPersistence (contracts.d.ts)
 type SandboxSharedSettings (contracts.d.ts)
 type SandboxWorkspace (contracts.d.ts)
+type SharedSettingsSchema (contracts.d.ts)
 type ShellDialect (contracts.d.ts)
 value InvalidSandboxConfigError (errors.d.ts)
 value InvalidSandboxRequestError (errors.d.ts)
@@ -89,8 +90,6 @@ value UnsupportedSandboxCapabilityError (errors.d.ts)
 value UnsupportedSandboxPolicyError (errors.d.ts)
 value isSandboxError (errors.d.ts)
 value registerSandboxProvider (provider-registration.d.ts)
-value registerSandboxProviderFactory (provider-registration.d.ts)
-value registerUnavailableSandboxProvider (provider-registration.d.ts)
 
 pi-bring-your-own-sandbox/provider-kit
 type ShellTransportOptions (shell-transport.d.ts)
@@ -141,6 +140,17 @@ Declarations referenced by the public entry points
 
 // client.d.ts
 export declare function createSandboxClient(pi: SandboxHost, extensionSource: string): SandboxClient;
+
+// contracts.d.ts
+export interface AvailableSandboxProvider<Config> {
+    readonly id: string;
+    readonly label: string;
+    readonly profiles: {
+        readonly open: readonly Profile[];
+        readonly copy: readonly Profile[];
+    };
+    readonly create: () => SandboxProviderImplementation<Config>;
+}
 
 // contracts.d.ts
 export interface BackendDirectoryReader {
@@ -345,6 +355,12 @@ export interface SandboxConfigContext extends SandboxOperationContext {
 }
 
 // contracts.d.ts
+export interface SandboxContext {
+    readonly cwd: string;
+    readonly sessionManager: Pick<ExtensionContext['sessionManager'], 'getSessionId'>;
+}
+
+// contracts.d.ts
 export interface SandboxCopy {
     readonly sandbox: Sandbox;
     readonly close: () => Promise<SandboxCloseReport>;
@@ -418,30 +434,19 @@ export interface SandboxOperationOptions {
 }
 
 // contracts.d.ts
-export interface SandboxProvider<Config> {
-    readonly id: string;
-    readonly label: string;
-    readonly profiles: {
-        readonly open: readonly Profile[];
-        readonly copy: readonly Profile[];
-    };
-    readonly validateConfig: (input: unknown) => Config;
-    readonly copy?: (request: SandboxOpenRequest<Config> & {
-        readonly source: SandboxCopySource;
-    }, context: SandboxOpenContext) => Promise<SandboxBackend>;
-    readonly open: (request: SandboxOpenRequest<Config>, context: SandboxOpenContext) => Promise<SandboxBackend>;
-}
-
-// contracts.d.ts
 export interface SandboxProviderConfig<Config> {
     readonly configuration: Config;
     readonly settings?: SandboxSharedSettings;
 }
 
 // contracts.d.ts
-export interface SandboxProviderRegistration<Input> {
-    readonly configure: (context: SandboxConfigContext, schema: typeof sharedSettingsSchema) => SandboxProviderConfig<Input> | Promise<SandboxProviderConfig<Input>>;
-    readonly persistReadRoot?: (context: SandboxReadRootPersistence, schema: typeof sharedSettingsSchema) => Promise<void>;
+export interface SandboxProviderImplementation<Config> {
+    readonly configure: (context: SandboxConfigContext, schema: SharedSettingsSchema) => SandboxProviderConfig<Config> | Promise<SandboxProviderConfig<Config>>;
+    readonly open: (request: SandboxOpenRequest<Config>, context: SandboxOpenContext) => Promise<SandboxBackend>;
+    readonly copy?: (request: SandboxOpenRequest<Config> & {
+        readonly source: SandboxCopySource;
+    }, context: SandboxOpenContext) => Promise<SandboxBackend>;
+    readonly persistReadRoot?: (context: SandboxReadRootPersistence, schema: SharedSettingsSchema) => Promise<void>;
 }
 
 // contracts.d.ts
@@ -546,9 +551,6 @@ export type RecoveryDescriptor = {
 };
 
 // contracts.d.ts
-export type SandboxContext = Pick<ExtensionContext, 'cwd' | 'sessionManager'> & Partial<Pick<ExtensionContext, 'isProjectTrusted'>>;
-
-// contracts.d.ts
 export type SandboxCopyOptions = SandboxAcquireOptions;
 
 // contracts.d.ts
@@ -612,10 +614,16 @@ export type SandboxOperation = Static<typeof operationSchema>;
 export type SandboxPolicy = Policy;
 
 // contracts.d.ts
+export type SandboxProvider<Config> = AvailableSandboxProvider<Config> | UnavailableSandboxProvider;
+
+// contracts.d.ts
 export type SandboxRequirements = ProfileRequirements;
 
 // contracts.d.ts
-export type SandboxSharedSettings = Readonly<Static<typeof sharedSettingsSchema>>;
+export type SandboxSharedSettings = Readonly<Static<SharedSettingsSchema>>;
+
+// contracts.d.ts
+export type SharedSettingsSchema = typeof sharedSettingsSchema;
 
 // contracts.d.ts
 export type ShellDialect = Static<typeof shellSchema>;
@@ -636,6 +644,13 @@ export type TerminationScope = Static<typeof terminationScopeSchema>;
 interface ProcessLocation {
     readonly cwd?: string;
     readonly env?: ProcessEnvironment;
+}
+
+// contracts.d.ts
+interface UnavailableSandboxProvider {
+    readonly id: string;
+    readonly label: string;
+    readonly unavailable: SandboxProviderUnavailability;
 }
 
 // contracts.d.ts
@@ -1456,17 +1471,7 @@ export declare function defineSandboxProviderTests<Config>(options: SandboxProvi
 export declare function resolveSandboxCopySource<Backend extends SandboxBackend>(source: SandboxCopySource, isValidSource: (backend: SandboxBackend) => backend is Backend): Backend | undefined;
 
 // provider-registration.d.ts
-export declare function registerSandboxProvider<Config, Input = Config>(pi: SandboxHost, extensionSource: string, provider: SandboxProvider<Config>, options?: NoInfer<SandboxProviderRegistration<Input>>): void;
-
-// provider-registration.d.ts
-export declare function registerSandboxProviderFactory<Config, Input = Config>(pi: SandboxHost, extensionSource: string, declaration: Pick<SandboxProvider<Config>, 'id' | 'label' | 'profiles'>, create: () => SandboxProvider<Config>, options?: NoInfer<SandboxProviderRegistration<Input>>): void;
-
-// provider-registration.d.ts
-export declare function registerUnavailableSandboxProvider(pi: SandboxHost, extensionSource: string, declaration: {
-    readonly id: string;
-    readonly label: string;
-    readonly unavailable: SandboxProviderUnavailability;
-}): void;
+export declare function registerSandboxProvider<Config>(pi: SandboxHost, extensionSource: string, declaration: SandboxProvider<Config>): void;
 
 // provider-test-contexts.d.ts
 export declare function createBackendProcessContext(options?: SandboxTestContextOptions & {
@@ -1501,13 +1506,13 @@ export interface SandboxProcessProbe {
 
 // provider-test-contracts.d.ts
 export interface SandboxProviderFixtureOptions<Config> extends Omit<SandboxProviderTestOptions<Config>, 'provider' | 'createFixture'> {
-    readonly createFixture: (selection?: SandboxProviderTestSelection) => Promise<SandboxProviderTestFixture & {
-        readonly provider: SandboxProvider<Config>;
+    readonly createFixture: (selection?: SandboxProviderTestSelection) => Promise<SandboxProviderTestFixture<Config> & {
+        readonly provider: AvailableSandboxProvider<Config>;
     }>;
 }
 
 // provider-test-contracts.d.ts
-export interface SandboxProviderTestFixture {
+export interface SandboxProviderTestFixture<Config = unknown> {
     readonly policyEffects?: Partial<Readonly<Record<SandboxPolicyScenario, (backend: SandboxBackend) => Promise<SandboxPolicyProbe>>>>;
     readonly visibility?: {
         readonly targetPath: string;
@@ -1532,7 +1537,7 @@ export interface SandboxProviderTestFixture {
         }>>;
         readonly waitForReplacement?: (bytes: Uint8Array, replacement: Uint8Array) => ProcessRequest;
     };
-    readonly configuration: unknown;
+    readonly configuration: Config;
     readonly hostWorkspace: string;
     readonly policy: SandboxPolicy;
     readonly processes?: readonly SandboxProcessProbe[];
@@ -1586,10 +1591,10 @@ export interface SandboxProviderTestOptions<Config> {
     readonly verifyRecoveryAfterCancellation?: boolean;
     readonly workspaceVisibility?: 'shared' | 'copied';
     readonly label: string;
-    readonly provider: SandboxProvider<Config>;
+    readonly provider: AvailableSandboxProvider<Config>;
     readonly capabilities?: SandboxCapabilities;
-    readonly createFixture: (selection?: SandboxProviderTestSelection) => Promise<SandboxProviderTestFixture & {
-        readonly provider?: SandboxProvider<Config>;
+    readonly createFixture: (selection?: SandboxProviderTestSelection) => Promise<SandboxProviderTestFixture<Config> & {
+        readonly provider?: AvailableSandboxProvider<Config>;
     }>;
     readonly timeoutMs?: number;
     readonly cleanup?: Partial<SandboxCleanupBudgets>;

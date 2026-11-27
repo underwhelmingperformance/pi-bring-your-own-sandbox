@@ -21,9 +21,9 @@ import type { SandboxBackend, SandboxOperation } from './contracts.js';
 import { SandboxPermissionDeniedError } from './errors.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { registerFixtureProvider } from './fixtures/register-provider.js';
 import sandboxTools from './pi-tools.js';
 import { defaultPolicy } from './policy-model.js';
-import { registerSandboxProvider } from './provider-registration.js';
 
 const filename = 'route.txt';
 const hostText = 'host fixture\n';
@@ -42,7 +42,7 @@ function fileProvider(backend: SandboxBackend): InlineExtension {
 	return {
 		name: 'file-provider',
 		factory(pi) {
-			registerSandboxProvider(pi, '<inline:file-provider>', {
+			registerFixtureProvider(pi, '<inline:file-provider>', {
 				id: 'fixture.pi-file-operations',
 				label: 'File operation fixture',
 				profiles: { open: [backend.profile], copy: [] },

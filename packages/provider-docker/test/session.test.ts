@@ -58,7 +58,7 @@ import {
 } from '../../../test-support/ripgrep-parity.js';
 import { ScriptedModel } from '../../../test-support/scripted-model.js';
 import { findHostExecutable } from '../src/host-executable.js';
-import { createDockerProvider } from '../src/provider.js';
+import { createDockerProvider, dockerProvider } from '../src/provider.js';
 
 import { expectVisibleReplacement } from './checkout-visibility.js';
 import {
@@ -125,10 +125,10 @@ async function withDockerSession(
 						registerSandboxProvider(
 							pi,
 							import.meta.filename,
-							createDockerProvider(() => prepared.providerClient()),
-							{
-								configure: () => ({ configuration: prepared.config, settings })
-							}
+							dockerProvider(
+								() => prepared.providerClient(),
+								() => ({ configuration: prepared.config, settings })
+							)
 						);
 						current.pi = pi;
 						current.host = initialiseSandboxHost(pi, import.meta.filename, {});

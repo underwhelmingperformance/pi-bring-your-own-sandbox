@@ -4,8 +4,9 @@ import path from 'node:path';
 
 import { afterEach, expect, it, vi } from 'vitest';
 
-import { dockerConfig, resolveDockerConfig } from '../src/config.js';
+import { resolveDockerConfig } from '../src/config.js';
 import type { DockerConfig } from '../src/contracts.js';
+import { dockerConfig } from '../src/schemas.js';
 
 import { writeFakeDockerCli } from './fixtures/fake-cli.js';
 

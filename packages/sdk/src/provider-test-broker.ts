@@ -5,13 +5,13 @@ import {
 
 import { createSandboxClient } from './client.js';
 import type {
+	AvailableSandboxProvider,
 	RecoveryDescriptor,
 	SandboxAcquireOptions,
 	SandboxBackend,
 	SandboxContext,
 	SandboxHost,
 	SandboxOpenContext,
-	SandboxProvider,
 	SandboxSharedSettings
 } from './contracts.js';
 import { startSandboxRuntime } from './default-broker.js';
@@ -32,9 +32,9 @@ export interface FixtureAttempt {
 }
 
 export async function fixtureBroker<Config>(
-	provider: SandboxProvider<Config>,
+	provider: AvailableSandboxProvider<Config>,
 	workspace: string,
-	config: unknown,
+	config: Config,
 	settings: SandboxSharedSettings,
 	attempt: FixtureAttempt,
 	intercept?: (backend: SandboxBackend) => SandboxBackend
@@ -87,24 +87,24 @@ export async function fixtureBroker<Config>(
 		return intercept?.(backend) ?? backend;
 	}
 
-	const copy = provider.copy?.bind(provider);
+	initialiseSandboxHost(pi, fixtureSource);
+	registerSandboxProvider<Config>(pi, fixtureSource, {
+		...provider,
+		create() {
+			const implementation = provider.create();
+			const copy = implementation.copy?.bind(implementation);
 
-	initialiseSandboxHost(pi, fixtureSource, {});
-	registerSandboxProvider<Config, unknown>(
-		pi,
-		fixtureSource,
-		{
-			...provider,
-			validateConfig: provider.validateConfig.bind(provider),
-			open: (request, running) =>
-				open((active) => provider.open(request, active), running),
-			...(copy !== undefined && {
-				copy: (request, running) =>
-					open((active) => copy(request, active), running)
-			})
-		},
-		{ configure: () => ({ configuration: config, settings }) }
-	);
+			return {
+				configure: () => ({ configuration: config, settings }),
+				open: (request, running) =>
+					open((active) => implementation.open(request, active), running),
+				...(copy !== undefined && {
+					copy: (request, running) =>
+						open((active) => copy(request, active), running)
+				})
+			};
+		}
+	});
 
 	const client = createSandboxClient(pi, fixtureSource);
 

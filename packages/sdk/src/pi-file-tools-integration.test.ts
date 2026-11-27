@@ -14,8 +14,8 @@ import {
 } from './errors.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { registerFixtureProvider } from './fixtures/register-provider.js';
 import sandboxTools from './pi-tools.js';
-import { registerSandboxProvider } from './provider-registration.js';
 
 it.each([
 	{ dialect: undefined, probe: 'available' },
@@ -72,7 +72,7 @@ it.each([
 		const fixture: InlineExtension = {
 			name: 'file-provider',
 			factory(pi) {
-				registerSandboxProvider(pi, '<inline:file-provider>', {
+				registerFixtureProvider(pi, '<inline:file-provider>', {
 					id: providerId,
 					label: 'File provider',
 					profiles: { open: [profile], copy: [] },

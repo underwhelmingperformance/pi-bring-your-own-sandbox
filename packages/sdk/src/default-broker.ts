@@ -22,6 +22,7 @@ import type { ProtocolIdentity } from './protocol-envelope.js';
 import {
 	collectProtocolReplies,
 	onProtocolRequest,
+	protocolIdentitySchema,
 	RUNTIME_CHANNEL
 } from './protocol-envelope.js';
 import type {
@@ -47,9 +48,11 @@ import { createRuntimeSettings } from './runtime-settings.js';
 import { checker } from './schemas.js';
 import { publishBroker } from './service.js';
 import { ShellReviewRoutes } from './shell-review-routes.js';
+import { snapshotProviderInfo } from './validation.js';
 
 const isBuildAdvertisement = checker(buildAdvertisement);
 const isConnectRuntimeRequest = checker(connectRuntimeRequest);
+const isProtocolIdentity = checker(protocolIdentitySchema);
 const isStartBrokerRequest = checker(startBrokerRequest);
 const candidates = new WeakSet<SandboxHost>();
 
@@ -123,18 +126,19 @@ function providerList(
 			const provider = contributions.find(({ id }) => id === info.id);
 
 			if (
-				provider?.protocol === undefined ||
-				!areProtocolIdentitiesEqual(provider.protocol, info.protocol)
+				provider === undefined ||
+				!isProtocolIdentity(provider.protocol) ||
+				!areProtocolIdentitiesEqual(provider.protocol, info.protocol) ||
+				(typeof provider.configure === 'function') !==
+					(info.unavailable === undefined)
 			) {
 				throw invalidBootstrap();
 			}
 
 			return Object.freeze({
 				...info,
-				configure: provider.configure,
-				resolve: provider.resolve,
-				...(provider.persistReadRoot !== undefined && {
-					persistReadRoot: provider.persistReadRoot
+				...(provider.configure !== undefined && {
+					configure: provider.configure.bind(provider)
 				})
 			});
 		})
@@ -215,7 +219,10 @@ export function bindFactory(pi: SandboxHost, extensionSource: string): void {
 				protocol: identity,
 				providers: async (configContext) => [
 					await createPassthroughProvider(configContext.cwd),
-					...providers()
+					...providers().map((provider) => ({
+						...snapshotProviderInfo(provider),
+						protocol: provider.protocol
+					}))
 				],
 				readConfig: (configContext) => settings.read(configContext)
 			},

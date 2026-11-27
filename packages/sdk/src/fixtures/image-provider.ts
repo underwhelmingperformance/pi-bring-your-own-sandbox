@@ -1,12 +1,11 @@
-import type { SandboxProvider } from '../contracts.js';
-
 import { fixtureProfile, fixtureProfiles } from './profile-fixture.js';
+import type { FixtureProvider } from './register-provider.js';
 
 interface ImageConfig {
 	readonly image: string;
 }
 
-export const imageProvider: SandboxProvider<ImageConfig> = {
+export const imageProvider: FixtureProvider<ImageConfig> = {
 	id: 'fixture.image',
 	label: 'Image protocol fixture',
 	profiles: fixtureProfiles(

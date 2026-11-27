@@ -4,13 +4,14 @@ import path from 'node:path';
 
 import { expect } from 'vitest';
 
-import type { SandboxBackend, SandboxProvider } from '../contracts.js';
+import type { SandboxBackend } from '../contracts.js';
 import { SandboxCancelledError } from '../errors.js';
 import { unrestrictedPolicy } from '../policy-model.js';
 import type { SandboxProviderTestOptions } from '../provider-test-contracts.js';
 
 import { MemoryBackend } from './memory-backend.js';
 import { fixtureProfiles } from './profile-fixture.js';
+import { fixtureProvider } from './register-provider.js';
 import { visibilityFixture } from './visibility-fixture.js';
 
 const encode = (text: string) => new TextEncoder().encode(text);
@@ -24,7 +25,7 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 		() => memory?.bytes('seed') ?? new Uint8Array(),
 		(bytes) => memory?.seed('seed', bytes)
 	);
-	const provider: SandboxProvider<undefined> = {
+	const provider = fixtureProvider<undefined>({
 		id: 'fixture.memory',
 		label: 'Contract test double without OS isolation',
 		profiles: fixtureProfiles(
@@ -163,7 +164,7 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 
 			return backend;
 		}
-	};
+	});
 	const probe = {
 		exit: { kind: 'code', code: 7 },
 		stdout: new Uint8Array([0, 255, 10]),

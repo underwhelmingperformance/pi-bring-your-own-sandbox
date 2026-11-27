@@ -28,45 +28,48 @@ defineSandboxProviderTests({
 				(profile) => !profile.policy.hostWorkspaceWrites
 			)
 		},
-		async open(request, context) {
-			const entries = await readdir(request.hostWorkspace, {
-				withFileTypes: true
-			});
+		create: () => ({
+			...provider.create(),
+			async open(request, context) {
+				const entries = await readdir(request.hostWorkspace, {
+					withFileTypes: true
+				});
 
-			if (entries.some((entry) => entry.isFIFO())) {
-				throw new UnsupportedSandboxPolicyError({ operation: 'open' });
-			}
-
-			const backend = await provider.open(request, context);
-			const grantedPaths = request.paths?.read?.map((hostPath) => ({
-				kind: 'read' as const,
-				hostPath,
-				targetPath: path.posix.join(
-					backend.workspace.root,
-					path.basename(hostPath)
-				)
-			}));
-
-			return {
-				...backend,
-				...(grantedPaths !== undefined && { grantedPaths }),
-				async exec(invocation, execution) {
-					if (
-						invocation.kind !== 'argv' ||
-						invocation.executable !== 'read-source'
-					) {
-						return backend.exec(invocation, execution);
-					}
-
-					execution.onOutput({
-						stream: 'stdout',
-						data: await readFile(path.join(request.hostWorkspace, 'source'))
-					});
-
-					return { kind: 'exited', exit: { kind: 'code', code: 0 } };
+				if (entries.some((entry) => entry.isFIFO())) {
+					throw new UnsupportedSandboxPolicyError({ operation: 'open' });
 				}
-			};
-		}
+
+				const backend = await provider.create().open(request, context);
+				const grantedPaths = request.paths?.read?.map((hostPath) => ({
+					kind: 'read' as const,
+					hostPath,
+					targetPath: path.posix.join(
+						backend.workspace.root,
+						path.basename(hostPath)
+					)
+				}));
+
+				return {
+					...backend,
+					...(grantedPaths !== undefined && { grantedPaths }),
+					async exec(invocation, execution) {
+						if (
+							invocation.kind !== 'argv' ||
+							invocation.executable !== 'read-source'
+						) {
+							return backend.exec(invocation, execution);
+						}
+
+						execution.onOutput({
+							stream: 'stdout',
+							data: await readFile(path.join(request.hostWorkspace, 'source'))
+						});
+
+						return { kind: 'exited', exit: { kind: 'code', code: 0 } };
+					}
+				};
+			}
+		})
 	},
 	async createFixture() {
 		assert.equal(state.isRunning, false);
@@ -85,7 +88,7 @@ defineSandboxProviderTests({
 		await writeFile(source, 'original');
 
 		return {
-			configuration: {},
+			configuration: undefined,
 			hostWorkspace: workspace,
 			policy: {
 				hostWorkspaceWrites: false,

@@ -5,16 +5,13 @@ import { promisify } from 'node:util';
 
 import type { SandboxConfigContext } from 'pi-bring-your-own-sandbox/provider';
 import { InvalidSandboxConfigError } from 'pi-bring-your-own-sandbox/provider';
-import { Compile } from 'typebox/compile';
 
 import type { DockerConfig } from './contracts.js';
 import { findHostExecutable } from './host-executable.js';
-import { dockerConfigSchema } from './schemas.js';
+import { ABSOLUTE_PATHS, dockerConfig } from './schemas.js';
 
-const configValidator = Compile(dockerConfigSchema);
 const runDocker = promisify(execFile);
 const UNIX_ENDPOINT = 'unix://';
-const ABSOLUTE_PATHS = 'Set executable and socketPath to absolute local paths.';
 
 /**
 Where to look for the host's Docker installation, and where to report a failed
@@ -109,23 +106,12 @@ class DockerDiscovery {
 			socketPath: input.socketPath ?? (await this.#socket(executable))
 		};
 
-		if (!configValidator.Check(config)) {
-			throw this.#fail(ABSOLUTE_PATHS);
+		try {
+			return dockerConfig(config);
+		} catch (error) {
+			throw this.#fail(ABSOLUTE_PATHS, error);
 		}
-
-		return config;
 	}
-}
-
-/**
-Validates local connection settings without contacting Docker or allocating resources.
-*/
-export function dockerConfig(input: unknown): DockerConfig {
-	if (!configValidator.Check(input)) {
-		throw invalid(ABSOLUTE_PATHS);
-	}
-
-	return { socketPath: input.socketPath, executable: input.executable };
 }
 
 /**

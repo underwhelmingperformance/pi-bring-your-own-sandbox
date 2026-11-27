@@ -2,10 +2,7 @@ import { SessionManager } from '@earendil-works/pi-coding-agent';
 import { expect, it, vi } from 'vitest';
 
 import { discoverBroker, discoverProviders } from './discovery.js';
-import {
-	InvalidSandboxConfigError,
-	InvalidSandboxDeclarationError
-} from './errors.js';
+import { InvalidSandboxDeclarationError } from './errors.js';
 import { rehydrateSandboxError } from './errors.js';
 import { imageProvider } from './fixtures/image-provider.js';
 import { fixtureEvents } from './fixtures/protocol-peer.js';
@@ -22,6 +19,7 @@ import {
 	RUNTIME_CHANNEL
 } from './protocol-envelope.js';
 import { registerSandboxProvider } from './provider-registration.js';
+import { createSandboxOperationContext } from './provider-test-contexts.js';
 import { localRuntimeBindings } from './runtime-participant.js';
 
 it('reads an independent provider declaration on the actual Pi event bus', () => {
@@ -245,12 +243,9 @@ it('rejects a repeated provider callback', () => {
 	);
 });
 
-it('registers a typed provider without allocating or validating configuration', () => {
-	const events = fixtureEvents(import.meta.filename);
-	let opens = 0;
-
-	const pi = {
-		events,
+function providerHost() {
+	return {
+		events: fixtureEvents(import.meta.filename),
 		getActiveTools() {
 			throw new Error('Factory loading.');
 		},
@@ -262,106 +257,86 @@ it('registers a typed provider without allocating or validating configuration', 
 		},
 		on: vi.fn(() => vi.fn())
 	};
+}
 
-	registerSandboxProvider(pi, import.meta.filename, {
-		...imageProvider,
-		open(request, context) {
-			opens++;
-
-			return imageProvider.open(request, context);
+function configContext() {
+	return {
+		...createSandboxOperationContext(),
+		pi: {
+			cwd: '/workspace',
+			sessionManager: SessionManager.inMemory('/workspace')
 		}
-	});
-
-	const [service] = localRuntimeBindings(pi).providers;
-
-	expect({ id: service?.id, opens }).toStrictEqual({
-		id: 'fixture.image',
-		opens: 0
-	});
-	expect(() => service?.configure({ image: 3 })).toThrow(
-		expect.objectContaining({ name: 'InvalidSandboxConfigError' })
-	);
-});
-
-it('preserves explicit provider configuration provenance through registration', () => {
-	const events = fixtureEvents(import.meta.filename);
-
-	const pi = {
-		events,
-		getActiveTools() {
-			throw new Error('Factory loading.');
-		},
-		sendMessage() {
-			throw new Error('Unexpected diagnostic message.');
-		},
-		appendEntry() {
-			throw new Error('Unexpected diagnostic entry.');
-		},
-		on: vi.fn(() => vi.fn())
 	};
+}
+
+it('captures typed provider configuration without allocating during discovery', async () => {
+	const pi = providerHost();
+	const config = { image: 'fixture' };
+	const settings = { readRoots: ['/readable'] };
+	const create = vi.fn(() => ({
+		configure: () => Promise.resolve({ configuration: config, settings }),
+		open: imageProvider.open
+	}));
 
 	registerSandboxProvider(pi, import.meta.filename, {
-		...imageProvider,
-		validateConfig() {
-			throw new InvalidSandboxConfigError({
-				operation: 'configure',
-				configurationSource: 'extension'
-			});
-		}
+		id: imageProvider.id,
+		label: imageProvider.label,
+		profiles: imageProvider.profiles,
+		create
 	});
 
 	const [service] = localRuntimeBindings(pi).providers;
 
-	expect(() => service?.configure({})).toThrow(
-		expect.objectContaining({
-			name: 'InvalidSandboxConfigError',
-			configurationSource: 'extension'
-		})
-	);
+	expect({ id: service?.id, creates: create.mock.calls.length }).toStrictEqual({
+		id: imageProvider.id,
+		creates: 0
+	});
+
+	const configured = await service?.configure?.(configContext());
+	const open: unknown = expect.any(Function);
+
+	settings.readRoots.push('/later');
+	expect({ configured, creates: create.mock.calls.length }).toStrictEqual({
+		configured: { open, settings: { readRoots: ['/readable'] } },
+		creates: 1
+	});
 });
 
 it.each([
 	{
-		outcome: 'fulfilled',
-		validateConfig: () => Promise.resolve({ image: 'unexpected' })
+		outcome: 'malformed',
+		configure: () => Promise.resolve({ image: 'unexpected' })
 	},
 	{
 		outcome: 'rejected',
-		validateConfig: () => Promise.reject(new Error('Invalid async settings.'))
+		configure: () => Promise.reject(new Error('Invalid async settings.'))
 	}
 ])(
-	'rejects $outcome asynchronous validation before opening',
-	({ validateConfig }) => {
-		const events = fixtureEvents(import.meta.filename);
+	'rejects $outcome asynchronous configuration before opening',
+	async ({ configure }) => {
+		const pi = providerHost();
 
-		const pi = {
-			events,
-			getActiveTools() {
-				throw new Error('Factory loading.');
-			},
-			sendMessage() {
-				throw new Error('Unexpected diagnostic message.');
-			},
-			appendEntry() {
-				throw new Error('Unexpected diagnostic entry.');
-			},
-			on: vi.fn(() => vi.fn())
-		};
-
-		registerSandboxProvider(pi, import.meta.filename, {
-			id: imageProvider.id,
-			label: imageProvider.label,
-			profiles: imageProvider.profiles,
-
-			validateConfig,
-			open: () => Promise.reject(new Error('Opening must not occur.'))
-		});
+		Reflect.apply(registerSandboxProvider, undefined, [
+			pi,
+			import.meta.filename,
+			{
+				id: imageProvider.id,
+				label: imageProvider.label,
+				profiles: imageProvider.profiles,
+				create: () => ({
+					configure,
+					open: () => Promise.reject(new Error('Opening must not occur.'))
+				})
+			}
+		]);
 
 		const [service] = localRuntimeBindings(pi).providers;
 
-		expect(() => service?.configure({})).toThrow(
-			expect.objectContaining({ name: 'InvalidSandboxConfigError' })
-		);
+		await expect(service?.configure?.(configContext())).rejects.toMatchObject({
+			name: 'InvalidSandboxConfigError',
+			providerId: imageProvider.id,
+			extensionSource: import.meta.filename
+		});
 	}
 );
 

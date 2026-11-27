@@ -15,8 +15,8 @@ import type { SandboxReadRootPersistence } from './contracts.js';
 import { InvalidSandboxConfigError } from './errors.js';
 import { observe } from './lifecycle.js';
 import { isWithinHostRoots, resolveReadRoot } from './path-grants.js';
+import type { ConfiguredProviderV1, ProviderServiceV1 } from './protocol.js';
 import { sharedSettingsSchema } from './request-schemas.js';
-import type { RuntimeProvider } from './runtime-participant.js';
 import { checker } from './schemas.js';
 import { isPolicy, isRecord } from './validation.js';
 
@@ -148,14 +148,9 @@ async function updateSettings(
 }
 
 export function bindReadRootPersistence(
-	provider: RuntimeProvider
-): SaveReadRoots | undefined {
-	const persist = provider.persistReadRoot;
-
-	if (persist === undefined) {
-		return;
-	}
-
+	provider: ProviderServiceV1,
+	persist: NonNullable<ConfiguredProviderV1['persistReadRoot']>
+): SaveReadRoots {
 	const agentDirectory = path.resolve(getAgentDir());
 
 	return async (paths, checkout, signal) => {

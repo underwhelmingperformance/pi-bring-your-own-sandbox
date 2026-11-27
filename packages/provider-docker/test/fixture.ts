@@ -427,7 +427,7 @@ server.listen(8080, '0.0.0.0');`
 		]);
 	}
 
-	contract(policy: SandboxPolicy): SandboxProviderTestFixture {
+	contract(policy: SandboxPolicy): SandboxProviderTestFixture<DockerConfig> {
 		const cwd = '/workspace/nested';
 
 		return {

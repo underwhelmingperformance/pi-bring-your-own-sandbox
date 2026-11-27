@@ -1,6 +1,6 @@
 import type {
 	SandboxCleanupBudgets,
-	SandboxProviderConfig
+	SandboxSharedSettings
 } from './contracts.js';
 import {
 	InvalidSandboxConfigError,
@@ -9,7 +9,11 @@ import {
 } from './errors.js';
 import { defaultPolicy, unrestrictedPolicy } from './policy-model.js';
 import { selectProfile } from './profile-negotiation.js';
-import type { ProviderSelection, ProviderServiceV1 } from './protocol.js';
+import type {
+	ConfiguredProviderV1,
+	ProviderSelection,
+	ProviderServiceV1
+} from './protocol.js';
 import type { SaveReadRoots } from './read-root-persistence.js';
 import { isPolicy, snapshotPolicy } from './validation.js';
 
@@ -19,17 +23,16 @@ export interface SandboxConfig {
 	readonly allowEscalation?: boolean;
 	readonly hostUserDataRoots?: readonly string[];
 	readonly saveReadRoots?: SaveReadRoots;
-	readonly providerConfig: unknown;
+	readonly configured?: ConfiguredProviderV1;
 	readonly providerConfigSource?: 'extension';
 	readonly policySource?: 'extension';
 }
 
 export function resolveSandboxConfig(
 	provider: ProviderServiceV1,
-	configured: SandboxProviderConfig<unknown>,
+	settings: SandboxSharedSettings | undefined,
 	source: ProviderSelection['source']
 ): SandboxConfig {
-	const settings = configured.settings;
 	const explicit = settings?.policy;
 	const extensionSource = provider.protocol?.extensionSource;
 	const limit =
@@ -69,7 +72,6 @@ export function resolveSandboxConfig(
 				userShell: settings.userShell
 			})
 		}),
-		providerConfig: configured.configuration,
 		...(source === 'extension' && {
 			providerConfigSource: 'extension' as const
 		}),

@@ -1,7 +1,7 @@
 import { defineSandboxProviderTests } from 'pi-bring-your-own-sandbox/testing';
 import { describe } from 'vitest';
 
-import { createDockerProvider } from '../src/provider.js';
+import { dockerProvider } from '../src/provider.js';
 
 import { DockerFixture } from './fixture.js';
 
@@ -28,7 +28,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				verifyIndependentAllocations: true,
 				verifyConcurrentCancellation: true,
 				label: `Docker ${relationship} with host writes ${String(hostWorkspaceWrites)}`,
-				provider: createDockerProvider(),
+				provider: dockerProvider(),
 				timeoutMs: 30_000,
 				createFixture: async () => {
 					const fixture = await DockerFixture.create();
@@ -41,7 +41,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 
 					return {
 						...contract,
-						provider: createDockerProvider(() => fixture.providerClient())
+						provider: dockerProvider(() => fixture.providerClient())
 					};
 				}
 			});
@@ -53,7 +53,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 			return;
 		}
 
-		const provider = createDockerProvider({ powerShellImage });
+		const provider = dockerProvider({ powerShellImage });
 		const [profile] = provider.profiles.open;
 
 		if (profile === undefined) {
@@ -83,7 +83,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 
 				return {
 					...base,
-					provider: createDockerProvider({
+					provider: dockerProvider({
 						powerShellImage,
 						createClient: () => fixture.providerClient()
 					}),

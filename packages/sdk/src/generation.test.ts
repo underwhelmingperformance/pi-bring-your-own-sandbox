@@ -113,7 +113,6 @@ it.each(['providerConfig', 'policy'] as const)(
 									}
 								: backend.policy
 					},
-					providerConfig: {},
 					providerConfigSource: 'extension',
 					policySource: 'extension'
 				}),
@@ -128,7 +127,7 @@ it.each(['providerConfig', 'policy'] as const)(
 						network: [false]
 					}),
 
-					configure() {
+					prepare() {
 						throw new InvalidSandboxConfigError({ operation: 'configure' });
 					}
 				}
@@ -351,7 +350,7 @@ function fixture(
 			network: [false]
 		}),
 
-		configure: () => {
+		prepare: () => {
 			configure?.();
 
 			return {
@@ -383,7 +382,6 @@ function fixture(
 					source: 'extension',
 					policy: backend.policy
 				},
-				providerConfig: {},
 				...(cleanup !== undefined && { cleanup })
 			});
 		}
@@ -653,7 +651,7 @@ it('freezes provider services before asynchronous configuration completes', asyn
 				network: [false]
 			}),
 
-			configure: () => ({ open: () => Promise.resolve(backend) })
+			prepare: () => ({ open: () => Promise.resolve(backend) })
 		}
 	];
 	const context: SandboxContext = {
@@ -678,8 +676,7 @@ it('freezes provider services before asynchronous configuration completes', asyn
 			providerId: 'fixture',
 			source: 'extension',
 			policy: backend.policy
-		},
-		providerConfig: {}
+		}
 	});
 
 	const sandbox = await acquisition;
@@ -711,7 +708,7 @@ it('closes before configuration completes without starting a provider afterwards
 			network: [false]
 		}),
 
-		configure: () => ({
+		prepare: () => ({
 			open: () => {
 				opens++;
 
@@ -760,8 +757,7 @@ it('closes before configuration completes without starting a provider afterwards
 			providerId: 'fixture',
 			source: 'extension',
 			policy: backend.policy
-		},
-		providerConfig: {}
+		}
 	});
 	await recorded;
 	await rejected;

@@ -15,13 +15,11 @@ import { getSandbox } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
+import { registerFixtureProvider } from './fixtures/register-provider.js';
 import { initialiseSandboxHost } from './host.js';
 import sandboxTools from './pi-tools.js';
 import { registerSandboxDiagnostics as sandboxExtension } from './pi-tools.js';
-import {
-	registerSandboxProvider,
-	registerUnavailableSandboxProvider
-} from './provider-registration.js';
+import { registerSandboxProvider } from './provider-registration.js';
 import { isRecord } from './validation.js';
 
 afterEach(() => {
@@ -508,7 +506,7 @@ it('displays resolver diagnostics after configuration fails without exposing its
 			{
 				name: 'provider',
 				factory(pi) {
-					registerSandboxProvider(
+					registerFixtureProvider(
 						pi,
 						import.meta.filename,
 						{
@@ -582,15 +580,11 @@ it('reports a declared unavailable provider without allocating a backend', async
 			{
 				name: 'unavailable-provider',
 				factory(pi) {
-					registerUnavailableSandboxProvider(
-						pi,
-						'<inline:unavailable-provider>',
-						{
-							id: providerId,
-							label,
-							unavailable
-						}
-					);
+					registerSandboxProvider(pi, '<inline:unavailable-provider>', {
+						id: providerId,
+						label,
+						unavailable
+					});
 				}
 			},
 			{

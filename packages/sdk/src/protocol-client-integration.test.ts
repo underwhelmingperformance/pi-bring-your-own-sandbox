@@ -4,6 +4,7 @@ import { expect, it } from 'vitest';
 
 import { createSandboxClient } from './client.js';
 import * as consumer from './consumer.js';
+import { discoverBroker, discoverProviders } from './discovery.js';
 import * as host from './embedding-host.js';
 import {
 	InvalidSandboxConfigError,
@@ -13,6 +14,7 @@ import {
 } from './errors.js';
 import { imageProvider } from './fixtures/image-provider.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { fixtureProvider } from './fixtures/register-provider.js';
 import { initialiseSandboxHost } from './host.js';
 import {
 	registerSandboxDiagnostics,
@@ -78,29 +80,51 @@ it('rejects acquisition during factory loading and client creation after loading
 	);
 });
 
-it('reports a provider factory failure as configuration before opening', async () => {
+it('keeps a lazy provider discoverable and retains its factory failure', async () => {
 	const cause = new Error('Fixture factory failure.');
 	const findings: unknown[] = [];
 	const extensionSource = '<inline:factory-failure>';
+	let creates = 0;
+	const loaded: unknown[] = [];
 
 	await withPiRuntime(
 		[
 			{
 				name: 'factory-failure',
 				factory(pi) {
-					provider.registerSandboxProviderFactory(
-						pi,
-						extensionSource,
-						imageProvider,
-						() => {
+					const { id, label, profiles } = imageProvider;
+
+					provider.registerSandboxProvider(pi, extensionSource, {
+						id,
+						label,
+						profiles,
+						create() {
+							creates++;
+
 							throw cause;
 						}
-					);
+					});
+					loaded.push({
+						ids: discoverProviders(pi.events).map((entry) => entry.id),
+						creates
+					});
 
 					const client = createSandboxClient(pi, extensionSource);
 
 					pi.on('session_start', async (_event, context) => {
+						const broker = discoverBroker(pi.events);
+
+						if (broker === undefined) {
+							throw new Error('The broker did not publish its provider list.');
+						}
+
+						const providers = await broker.providers(context);
+
+						loaded.push({ ids: providers.map((entry) => entry.id), creates });
+
 						const result = await client.negotiate(context);
+
+						expect(await client.negotiate(context)).toStrictEqual(result);
 
 						if (
 							result.ok ||
@@ -117,19 +141,41 @@ it('reports a provider factory failure as configuration before opening', async (
 							providerId: result.error.providerId,
 							extensionSource: result.error.extensionSource
 						});
+
+						const after = await broker.providers(context);
+						const status = await broker.status(context);
+
+						findings.push({
+							ids: after.map((entry) => entry.id),
+							state: status.state,
+							failure: status.failure?.name,
+							creates
+						});
+						expect(after).toStrictEqual(providers);
 					});
 				}
 			}
 		],
 		(_runtime, errors) => {
-			expect({ errors, findings }).toStrictEqual({
+			expect({ errors, findings, loaded, creates }).toStrictEqual({
 				errors: [],
+				loaded: [
+					{ ids: [imageProvider.id], creates: 0 },
+					{ ids: ['passthrough', imageProvider.id], creates: 0 }
+				],
+				creates: 1,
 				findings: [
 					{
 						name: 'InvalidSandboxConfigError',
 						operation: 'configure',
 						providerId: imageProvider.id,
 						extensionSource
+					},
+					{
+						ids: ['passthrough', imageProvider.id],
+						state: 'failed',
+						failure: 'InvalidSandboxConfigError',
+						creates: 1
 					}
 				]
 			});
@@ -163,28 +209,7 @@ const factoryArguments = new Map<string, readonly unknown[]>([
 	['createShellReviewClient', []],
 	['initialiseSandboxHost', []],
 	['registerSandboxDiagnostics', []],
-	[
-		'registerSandboxProvider',
-		[
-			imageProvider,
-			{ configure: () => ({ configuration: { image: 'fixture' } }) }
-		]
-	],
-	['registerSandboxProviderFactory', [imageProvider, () => imageProvider]],
-	[
-		'registerUnavailableSandboxProvider',
-		[
-			{
-				id: 'fixture.unavailable',
-				label: 'Unavailable fixture',
-				unavailable: {
-					kind: 'unsupported-platform',
-					platform: 'fixture-system',
-					message: 'Native sandbox runtime unavailable.'
-				}
-			}
-		]
-	],
+	['registerSandboxProvider', [fixtureProvider(imageProvider)]],
 	['registerShellOnlyTools', []]
 ]);
 

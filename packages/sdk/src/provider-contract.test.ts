@@ -50,24 +50,33 @@ it('opens the fixture provider through the broker and verifies the backend alloc
 	}[] = [];
 	const opened: SandboxBackend[] = [];
 	const original = scenario.provider;
+	const originalOpen = original.create().open;
 	const provider = {
 		...original,
-		async open(
-			request: Parameters<typeof original.open>[0],
-			context: Parameters<typeof original.open>[1]
-		) {
-			const backend = await original.open(request, context);
+		create: () => ({
+			...original.create(),
+			async open(
+				request: Parameters<typeof originalOpen>[0],
+				context: Parameters<typeof originalOpen>[1]
+			) {
+				const backend = await originalOpen(request, context);
 
-			opened.push(backend);
+				opened.push(backend);
 
-			return backend;
-		}
+				return backend;
+			}
+		})
 	};
 	const unused = {
 		...original,
-		open() {
-			throw new Error('The declaration must not open a backend for a fixture.');
-		}
+		create: () => ({
+			...original.create(),
+			open() {
+				throw new Error(
+					'The declaration must not open a backend for a fixture.'
+				);
+			}
+		})
 	};
 
 	await usingBrokerProviderFixture(
@@ -110,7 +119,7 @@ it('opens the fixture provider through the broker and verifies the backend alloc
 });
 
 const shellOnly = contractScenario();
-const openShellOnly = shellOnly.provider.open;
+const openShellOnly = shellOnly.provider.create().open;
 
 defineSandboxProviderTests({
 	...shellOnly,
@@ -130,27 +139,30 @@ defineSandboxProviderTests({
 			],
 			copy: []
 		},
-		async open(request, context) {
-			const backend = await openShellOnly(request, context);
-			const { files: _files, ...executionOnly } = backend;
+		create: () => ({
+			...shellOnly.provider.create(),
+			async open(request, context) {
+				const backend = await openShellOnly(request, context);
+				const { files: _files, ...executionOnly } = backend;
 
-			return {
-				...executionOnly,
-				profile: request.profile,
-				async exec(process, execution) {
-					if (process.kind === 'shell' && process.command === 'wait') {
-						return backend.exec(
-							{ kind: 'argv', executable: 'wait', args: [] },
-							execution
-						);
+				return {
+					...executionOnly,
+					profile: request.profile,
+					async exec(process, execution) {
+						if (process.kind === 'shell' && process.command === 'wait') {
+							return backend.exec(
+								{ kind: 'argv', executable: 'wait', args: [] },
+								execution
+							);
+						}
+
+						await backend.exec(process, execution);
+
+						return { kind: 'exited', exit: { kind: 'unavailable' } };
 					}
-
-					await backend.exec(process, execution);
-
-					return { kind: 'exited', exit: { kind: 'unavailable' } };
-				}
-			};
-		}
+				};
+			}
+		})
 	},
 	async createFixture(selection) {
 		const { processes: _processes, ...fixture } =
@@ -173,7 +185,7 @@ defineSandboxProviderTests({
 });
 
 const unmanaged = contractScenario();
-const unmanagedOpen = unmanaged.provider.open;
+const unmanagedOpen = unmanaged.provider.create().open;
 
 defineSandboxProviderTests({
 	...unmanaged,
@@ -189,26 +201,29 @@ defineSandboxProviderTests({
 			],
 			copy: []
 		},
-		async open(request, context) {
-			const backend = await unmanagedOpen(request, context);
+		create: () => ({
+			...unmanaged.provider.create(),
+			async open(request, context) {
+				const backend = await unmanagedOpen(request, context);
 
-			return {
-				...backend,
-				profile: request.profile,
-				exec(request, execution) {
-					if (request.kind === 'argv' && request.executable === 'wait') {
-						execution.onOutput({
-							stream: 'stdout',
-							data: new TextEncoder().encode('ready')
-						});
+				return {
+					...backend,
+					profile: request.profile,
+					exec(request, execution) {
+						if (request.kind === 'argv' && request.executable === 'wait') {
+							execution.onOutput({
+								stream: 'stdout',
+								data: new TextEncoder().encode('ready')
+							});
 
-						return Promise.withResolvers<never>().promise;
+							return Promise.withResolvers<never>().promise;
+						}
+
+						return backend.exec(request, execution);
 					}
-
-					return backend.exec(request, execution);
-				}
-			};
-		}
+				};
+			}
+		})
 	},
 	async createFixture(selection) {
 		const fixture = await unmanaged.createFixture(selection);
@@ -240,7 +255,7 @@ it.each([
 	'rejects $label and still releases the allocation',
 	async ({ change, error }) => {
 		const options = contractScenario();
-		const open = options.provider.open;
+		const open = options.provider.create().open;
 		let isCleaned = false;
 
 		await expect(
@@ -249,8 +264,11 @@ it.each([
 					...options,
 					provider: {
 						...options.provider,
-						open: async (request, context) =>
-							change(await open(request, context))
+						create: () => ({
+							...options.provider.create(),
+							open: async (request, context) =>
+								change(await open(request, context))
+						})
 					},
 					createFixture: async () => ({
 						...(await options.createFixture()),
@@ -333,13 +351,16 @@ it.each([
 	}
 ])('detects $label', async ({ change, caseName }) => {
 	const options = contractScenario();
-	const open = options.provider.open;
+	const open = options.provider.create().open;
 	const broken = {
 		...options,
 		provider: {
 			...options.provider,
-			open: async (...arguments_: Parameters<typeof open>) =>
-				change(await open(...arguments_))
+			create: () => ({
+				...options.provider.create(),
+				open: async (...arguments_: Parameters<typeof open>) =>
+					change(await open(...arguments_))
+			})
 		}
 	};
 	const selected = providerContractCases(options).find(
@@ -372,7 +393,7 @@ it.each(
 	'rejects a restrictive %s policy without successful independent checks',
 	async (property, denied, verification) => {
 		const options = contractScenario();
-		const open = options.provider.open;
+		const open = options.provider.create().open;
 		const base = firstOpenProfile(options.provider);
 		const policy = { ...base.policy, [property]: denied };
 		const profile = { ...base, policy };
@@ -382,9 +403,12 @@ it.each(
 			provider: {
 				...options.provider,
 				profiles: { open: [profile], copy: [] },
-				open: async (...arguments_: Parameters<typeof open>) => ({
-					...(await open(...arguments_)),
-					profile
+				create: () => ({
+					...options.provider.create(),
+					open: async (...arguments_: Parameters<typeof open>) => ({
+						...(await open(...arguments_)),
+						profile
+					})
 				})
 			},
 			createFixture: async () => {
@@ -450,7 +474,7 @@ it('checks target termination independently of the cancellation acknowledgement'
 
 it('preserves a failed assertion and a disposal failure while still running cleanup', async () => {
 	const options = contractScenario();
-	const open = options.provider.open;
+	const open = options.provider.create().open;
 	const assertion = new Error('The target result was incorrect.');
 	const disposal = new Error('The target could not be released.');
 	let isCleaned = false;
@@ -461,9 +485,12 @@ it('preserves a failed assertion and a disposal failure while still running clea
 				...options,
 				provider: {
 					...options.provider,
-					open: async (...arguments_: Parameters<typeof open>) => ({
-						...(await open(...arguments_)),
-						dispose: () => Promise.reject(disposal)
+					create: () => ({
+						...options.provider.create(),
+						open: async (...arguments_: Parameters<typeof open>) => ({
+							...(await open(...arguments_)),
+							dispose: () => Promise.reject(disposal)
+						})
 					})
 				},
 				createFixture: async () => ({
@@ -500,20 +527,23 @@ it('bounds an opening that ignores its deadline and runs independent cleanup', a
 				cleanup: { cancellationGraceMs: 8000 },
 				provider: {
 					...options.provider,
-					open: (_request, context) => {
-						context.signal.addEventListener(
-							'abort',
-							() => {
-								isAborted = true;
-								cleanupMs = (context.cleanup.deadline ?? NaN) - Date.now();
-							},
-							{ once: true }
-						);
+					create: () => ({
+						...options.provider.create(),
+						open: (_request, context) => {
+							context.signal.addEventListener(
+								'abort',
+								() => {
+									isAborted = true;
+									cleanupMs = (context.cleanup.deadline ?? NaN) - Date.now();
+								},
+								{ once: true }
+							);
 
-						return new Promise(() => {
-							return;
-						});
-					}
+							return new Promise(() => {
+								return;
+							});
+						}
+					})
 				},
 				createFixture: async () => ({
 					...(await options.createFixture()),
@@ -546,7 +576,7 @@ it.each(['confirmed cancellation', 'idempotent disposal'])(
 		vi.useFakeTimers();
 
 		const options = contractScenario();
-		const open = options.provider.open;
+		const open = options.provider.create().open;
 		const observed: { operation: string; budgetMs: number | undefined }[] = [];
 		const scenario = {
 			...options,
@@ -554,31 +584,34 @@ it.each(['confirmed cancellation', 'idempotent disposal'])(
 			cleanup: { cancellationGraceMs: 12_000, disposalTimeoutMs: 15_000 },
 			provider: {
 				...options.provider,
-				async open(request, context) {
-					const backend = await open(request, context);
+				create: () => ({
+					...options.provider.create(),
+					async open(request, context) {
+						const backend = await open(request, context);
 
-					return {
-						...backend,
-						async exec(request, execution) {
-							try {
-								return await backend.exec(request, execution);
-							} finally {
+						return {
+							...backend,
+							async exec(request, execution) {
+								try {
+									return await backend.exec(request, execution);
+								} finally {
+									observed.push({
+										operation: 'cancellation',
+										budgetMs: (execution.cleanup.deadline ?? NaN) - Date.now()
+									});
+								}
+							},
+							dispose(disposal) {
 								observed.push({
-									operation: 'cancellation',
-									budgetMs: (execution.cleanup.deadline ?? NaN) - Date.now()
+									operation: 'disposal',
+									budgetMs: (disposal.cleanup.deadline ?? NaN) - Date.now()
 								});
-							}
-						},
-						dispose(disposal) {
-							observed.push({
-								operation: 'disposal',
-								budgetMs: (disposal.cleanup.deadline ?? NaN) - Date.now()
-							});
 
-							return backend.dispose(disposal);
-						}
-					};
-				}
+								return backend.dispose(disposal);
+							}
+						};
+					}
+				})
 			}
 		} satisfies SandboxProviderTestOptions<undefined>;
 		const selected = providerContractCases(scenario).find(
@@ -677,7 +710,7 @@ it.each([
 	}
 ] as const)('checks $defect', async ({ defect, relationship, expected }) => {
 	const base = contractScenario();
-	const open = base.provider.open;
+	const open = base.provider.create().open;
 	const initialBytes = Buffer.from('seed');
 	let source = Buffer.from(initialBytes);
 	let target = Buffer.from(source);
@@ -785,8 +818,11 @@ it.each([
 		provider: {
 			...base.provider,
 			profiles: { open: [baseProfile], copy: [copyProfile] },
-			open: openWithVisibility,
-			copy: openWithVisibility
+			create: () => ({
+				...base.provider.create(),
+				open: openWithVisibility,
+				copy: openWithVisibility
+			})
 		},
 		async createFixture() {
 			return {
@@ -976,31 +1012,37 @@ it('rejects a recovery scenario without a termination guarantee before opening',
 
 it('detects disposal that also closes a second allocation from the same source', async () => {
 	const base = contractScenario();
-	const { open } = base.provider;
+	const { open } = base.provider.create();
 	let isClosed = false;
 	const options = {
 		...base,
 		verifyIndependentAllocations: true,
 		provider: {
 			...base.provider,
-			async open(...arguments_: Parameters<typeof open>) {
-				const backend = await open(...arguments_);
+			create: () => ({
+				...base.provider.create(),
+				async open(...arguments_: Parameters<typeof open>) {
+					const backend = await open(...arguments_);
 
-				return {
-					...backend,
-					async exec(request: ProcessRequest, context: BackendProcessContext) {
-						if (isClosed) {
-							throw new Error('The peer is closed.');
+					return {
+						...backend,
+						async exec(
+							request: ProcessRequest,
+							context: BackendProcessContext
+						) {
+							if (isClosed) {
+								throw new Error('The peer is closed.');
+							}
+
+							return backend.exec(request, context);
+						},
+						async dispose(context: SandboxOperationContext) {
+							isClosed = true;
+							await backend.dispose(context);
 						}
-
-						return backend.exec(request, context);
-					},
-					async dispose(context: SandboxOperationContext) {
-						isClosed = true;
-						await backend.dispose(context);
-					}
-				};
-			}
+					};
+				}
+			})
 		},
 		async createFixture() {
 			const fixture = await base.createFixture();
@@ -1055,7 +1097,7 @@ it.each(['survives', 'exits early', 'cancelled', 'leaks job'] as const)(
 	'checks whether a concurrent job survives cancellation (%s)',
 	async (mode) => {
 		const base = contractScenario();
-		const open = base.provider.open;
+		const open = base.provider.create().open;
 		const gate = Promise.withResolvers<Uint8Array>();
 		const ready = Buffer.from('waiting');
 		const request = { kind: 'argv', executable: 'peer', args: [] } as const;
@@ -1090,56 +1132,59 @@ it.each(['survives', 'exits early', 'cancelled', 'leaks job'] as const)(
 			},
 			provider: {
 				...base.provider,
-				async open(...arguments_: Parameters<typeof open>) {
-					const backend = await open(...arguments_);
+				create: () => ({
+					...base.provider.create(),
+					async open(...arguments_: Parameters<typeof open>) {
+						const backend = await open(...arguments_);
 
-					return {
-						...backend,
-						async exec(
-							process: ProcessRequest,
-							context: BackendProcessContext
-						) {
-							if (process.kind !== 'argv' || process.executable !== 'peer') {
-								if (mode === 'cancelled' || mode === 'exits early') {
-									context.signal.addEventListener(
-										'abort',
-										() => {
-											gate.resolve(new Uint8Array());
-										},
-										{ once: true }
-									);
+						return {
+							...backend,
+							async exec(
+								process: ProcessRequest,
+								context: BackendProcessContext
+							) {
+								if (process.kind !== 'argv' || process.executable !== 'peer') {
+									if (mode === 'cancelled' || mode === 'exits early') {
+										context.signal.addEventListener(
+											'abort',
+											() => {
+												gate.resolve(new Uint8Array());
+											},
+											{ once: true }
+										);
+									}
+
+									return backend.exec(process, context);
 								}
 
-								return backend.exec(process, context);
-							}
+								context.signal.addEventListener(
+									'abort',
+									() => {
+										gate.resolve(new Uint8Array());
+									},
+									{ once: true }
+								);
+								context.onOutput({ stream: 'stdout', data: ready });
 
-							context.signal.addEventListener(
-								'abort',
-								() => {
-									gate.resolve(new Uint8Array());
-								},
-								{ once: true }
-							);
-							context.onOutput({ stream: 'stdout', data: ready });
+								const bytes = await gate.promise;
 
-							const bytes = await gate.promise;
+								if (mode === 'cancelled') {
+									return {
+										kind: 'cancelled' as const,
+										termination: 'confirmed' as const
+									};
+								}
 
-							if (mode === 'cancelled') {
+								context.onOutput({ stream: 'stdout', data: bytes });
+
 								return {
-									kind: 'cancelled' as const,
-									termination: 'confirmed' as const
+									kind: 'exited' as const,
+									exit: { kind: 'code' as const, code: 0 }
 								};
 							}
-
-							context.onOutput({ stream: 'stdout', data: bytes });
-
-							return {
-								kind: 'exited' as const,
-								exit: { kind: 'code' as const, code: 0 }
-							};
-						}
-					};
-				}
+						};
+					}
+				})
 			}
 		};
 		const entry = providerContractCases(scenario).find(
@@ -1199,7 +1244,7 @@ it.each([
 	'observes listener connections independently of the denied exit status (%s)',
 	async (mode) => {
 		const base = contractScenario();
-		const open = base.provider.open;
+		const open = base.provider.create().open;
 		let connections = 1;
 		const scenario: SandboxProviderTestOptions<undefined> = {
 			...base,
@@ -1220,25 +1265,28 @@ it.each([
 					copy: []
 				},
 
-				async open(...arguments_) {
-					const backend = await open(...arguments_);
+				create: () => ({
+					...base.provider.create(),
+					async open(...arguments_) {
+						const backend = await open(...arguments_);
 
-					return {
-						...backend,
-						profile: arguments_[0].profile,
-						exec(request, context) {
-							if (
-								mode === 'connected' &&
-								request.kind === 'argv' &&
-								request.executable === 'probe'
-							) {
-								connections++;
+						return {
+							...backend,
+							profile: arguments_[0].profile,
+							exec(request, context) {
+								if (
+									mode === 'connected' &&
+									request.kind === 'argv' &&
+									request.executable === 'probe'
+								) {
+									connections++;
+								}
+
+								return backend.exec(request, context);
 							}
-
-							return backend.exec(request, context);
-						}
-					};
-				}
+						};
+					}
+				})
 			},
 			async createFixture() {
 				const fixture = await base.createFixture();
@@ -1330,17 +1378,22 @@ it('waits for a cancelled scenario to release its active job before disposal', a
 				cleanup: { cancellationGraceMs: 100 },
 				provider: {
 					...base.provider,
-					async open(...arguments_) {
-						const backend = await base.provider.open(...arguments_);
+					create: () => ({
+						...base.provider.create(),
+						async open(...arguments_) {
+							const backend = await base.provider.create().open(...arguments_);
 
-						return {
-							...backend,
-							async dispose(context) {
-								events.push(isPending ? 'disposed while running' : 'disposed');
-								await backend.dispose(context);
-							}
-						};
-					}
+							return {
+								...backend,
+								async dispose(context) {
+									events.push(
+										isPending ? 'disposed while running' : 'disposed'
+									);
+									await backend.dispose(context);
+								}
+							};
+						}
+					})
 				}
 			},
 			async (_fixture, _backend, context) => {
@@ -1388,24 +1441,27 @@ it('checks the first allocation was released before disposing the second', async
 		verifyIndependentAllocations: true,
 		provider: {
 			...base.provider,
-			async open(...arguments_) {
-				const backend = await base.provider.open(...arguments_);
-				const id = arguments_[0].generationId;
+			create: () => ({
+				...base.provider.create(),
+				async open(...arguments_) {
+					const backend = await base.provider.create().open(...arguments_);
+					const id = arguments_[0].generationId;
 
-				active.add(id);
+					active.add(id);
 
-				return {
-					...backend,
-					id,
-					async dispose(context) {
-						if (active.size === 1) {
-							active.delete(id);
+					return {
+						...backend,
+						id,
+						async dispose(context) {
+							if (active.size === 1) {
+								active.delete(id);
+							}
+
+							await backend.dispose(context);
 						}
-
-						await backend.dispose(context);
-					}
-				};
-			}
+					};
+				}
+			})
 		},
 		async createFixture() {
 			const fixture = await base.createFixture();
@@ -1457,30 +1513,33 @@ it.each([
 			policyEffects: ['late-special-file'],
 			provider: {
 				...base.provider,
-				async open(...arguments_) {
-					const backend = await base.provider.open(...arguments_);
-					const read = backend.files?.read;
+				create: () => ({
+					...base.provider.create(),
+					async open(...arguments_) {
+						const backend = await base.provider.create().open(...arguments_);
+						const read = backend.files?.read;
 
-					if (!read) {
-						throw new Error('Missing read fixture.');
-					}
-
-					return {
-						...backend,
-						files: {
-							...backend.files,
-							read: {
-								...read,
-								readFile: () =>
-									Promise.reject(
-										kind === 'listener'
-											? new UnmarkedOperationError()
-											: new SandboxOperationError({ operation: 'readFile' })
-									)
-							}
+						if (!read) {
+							throw new Error('Missing read fixture.');
 						}
-					};
-				}
+
+						return {
+							...backend,
+							files: {
+								...backend.files,
+								read: {
+									...read,
+									readFile: () =>
+										Promise.reject(
+											kind === 'listener'
+												? new UnmarkedOperationError()
+												: new SandboxOperationError({ operation: 'readFile' })
+										)
+								}
+							}
+						};
+					}
+				})
 			},
 			async createFixture() {
 				const fixture = await base.createFixture();
@@ -1551,22 +1610,25 @@ it.each([1, 2])(
 			cleanup: { cancellationGraceMs: 20, disposalTimeoutMs: 200 },
 			provider: {
 				...base.provider,
-				async open(...arguments_) {
-					const backend = await base.provider.open(...arguments_);
+				create: () => ({
+					...base.provider.create(),
+					async open(...arguments_) {
+						const backend = await base.provider.create().open(...arguments_);
 
-					if (++opened !== slowAllocation) {
-						return backend;
-					}
-
-					return {
-						...backend,
-						async dispose(context) {
-							await new Promise<void>((resolve) => setTimeout(resolve, 150));
-							await backend.dispose(context);
-							events.push('disposed');
+						if (++opened !== slowAllocation) {
+							return backend;
 						}
-					};
-				}
+
+						return {
+							...backend,
+							async dispose(context) {
+								await new Promise<void>((resolve) => setTimeout(resolve, 150));
+								await backend.dispose(context);
+								events.push('disposed');
+							}
+						};
+					}
+				})
 			},
 			async createFixture() {
 				const fixture = await base.createFixture();

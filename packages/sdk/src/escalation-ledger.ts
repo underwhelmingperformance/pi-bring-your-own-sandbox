@@ -1,8 +1,9 @@
+import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import type { Static } from 'typebox';
 import { Type } from 'typebox';
 
 import { workspaceSchema } from './backend-schemas.js';
-import type { SandboxContext, SandboxHost } from './contracts.js';
+import type { SandboxHost } from './contracts.js';
 import type { DisplayText } from './display-text.js';
 import {
 	cleanDisplayText,
@@ -177,7 +178,7 @@ export function appendLedgerEntry(
 }
 
 export function formatLedger(
-	context: SandboxContext,
+	context: Pick<ExtensionContext, 'sessionManager'>,
 	filter?: string
 ): DisplayText {
 	const entries = context.sessionManager.getEntries().flatMap((entry) => {

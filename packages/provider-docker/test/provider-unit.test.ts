@@ -36,7 +36,7 @@ import type {
 } from '../src/contracts.js';
 import dockerExtension from '../src/extension.js';
 import { DOCKER_IMAGE } from '../src/image.js';
-import { createDockerProvider } from '../src/provider.js';
+import { createDockerProvider, dockerProvider } from '../src/provider.js';
 import { cleanupContext } from '../src/resources.js';
 import dockerShellProfile from '../src/shell-profile.js';
 
@@ -494,13 +494,13 @@ it('reports confirmed broker cleanup after Docker opening releases partial alloc
 					registerSandboxProvider(
 						pi,
 						import.meta.filename,
-						createDockerProvider(() => docker),
-						{
-							configure: () => ({
+						dockerProvider(
+							() => docker,
+							() => ({
 								configuration: request.configuration,
 								settings: { policy: request.profile.policy }
 							})
-						}
+						)
 					);
 
 					const client = createSandboxClient(pi, import.meta.filename);

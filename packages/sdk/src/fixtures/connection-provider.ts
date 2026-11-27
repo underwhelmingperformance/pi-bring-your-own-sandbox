@@ -1,12 +1,11 @@
-import type { SandboxProvider } from '../contracts.js';
-
 import { fixtureProfile, fixtureProfiles } from './profile-fixture.js';
+import type { FixtureProvider } from './register-provider.js';
 
 interface ConnectionConfig {
 	readonly endpoint: URL;
 }
 
-export const connectionProvider: SandboxProvider<ConnectionConfig> = {
+export const connectionProvider: FixtureProvider<ConnectionConfig> = {
 	id: 'fixture.connection',
 	label: 'Connection protocol fixture',
 	profiles: fixtureProfiles(

@@ -14,7 +14,12 @@ import type {
 	EscalationRequest
 } from './escalation-ledger.js';
 import type { DestinationDescription } from './escalation-ledger.js';
-import type { PathGrants, Policy, Profile } from './policy-model.js';
+import type {
+	PathGrants,
+	Policy,
+	Profile,
+	SandboxProviderUnavailability
+} from './policy-model.js';
 import type { ReviewUnavailableReason } from './review-identities.js';
 export type {
 	Access,
@@ -65,8 +70,13 @@ export interface SandboxHostHandle {
 Live Pi context required for generation identity and workspace paths. Pass the
 context supplied by Pi so its runtime validity checks remain active.
 */
-export type SandboxContext = Pick<ExtensionContext, 'cwd' | 'sessionManager'> &
-	Partial<Pick<ExtensionContext, 'isProjectTrusted'>>;
+export interface SandboxContext {
+	readonly cwd: string;
+	readonly sessionManager: Pick<
+		ExtensionContext['sessionManager'],
+		'getSessionId'
+	>;
+}
 
 /**
 Command languages that a provider can advertise independently of argv
@@ -876,39 +886,14 @@ export interface SandboxConfigContext extends SandboxOperationContext {
 	readonly pi: SandboxContext;
 }
 /**
-Reads extension-owned settings without allocating a backend. The SDK resolves
-and validates the returned settings once per runtime generation.
+The schema for settings shared across providers.
 */
-export type SandboxConfigResolver<Value> = (
-	context: SandboxConfigContext
-) => Value | Promise<Value>;
+export type SharedSettingsSchema = typeof sharedSettingsSchema;
+
 /**
-Provider-owned configuration and execution defaults. An omitted policy uses the
-provider declaration's default; provider configuration is never displayed.
+Provider-owned settings for the configured policy and execution defaults.
 */
-export type SandboxSharedSettings = Readonly<
-	Static<typeof sharedSettingsSchema>
->;
-
-export interface SandboxProviderConfig<Config> {
-	readonly configuration: Config;
-	readonly settings?: SandboxSharedSettings;
-}
-
-export interface SandboxProviderRegistration<Input> {
-	readonly configure: (
-		context: SandboxConfigContext,
-		schema: typeof sharedSettingsSchema
-	) => SandboxProviderConfig<Input> | Promise<SandboxProviderConfig<Input>>;
-	/**
-	Save an approved read grant using the same global settings file as the
-	configuration resolver.
-	*/
-	readonly persistReadRoot?: (
-		context: SandboxReadRootPersistence,
-		schema: typeof sharedSettingsSchema
-	) => Promise<void>;
-}
+export type SandboxSharedSettings = Readonly<Static<SharedSettingsSchema>>;
 
 /**
 An approved set of canonical host paths. Call and await `updateSettings`
@@ -924,45 +909,48 @@ export interface SandboxReadRootPersistence {
 }
 
 /**
-Provider declaration registered synchronously during a Pi extension factory.
-Validation must not allocate resources. Consumers that request the same policy
-share one backend per generation.
-@typeParam Config - Provider-specific configuration returned by validation
-and received by opening.
+Declare a provider during a Pi extension factory. The SDK constructs an
+available implementation when it needs to configure the provider. An
+unavailable provider remains visible in diagnostics.
 */
-export interface SandboxProvider<Config> {
-	/**
-	Non-empty discovery identity. IDs of registered built-in providers are
-	reserved; duplicate IDs fail discovery.
-	*/
+export type SandboxProvider<Config> =
+	AvailableSandboxProvider<Config> | UnavailableSandboxProvider;
+
+interface UnavailableSandboxProvider {
 	readonly id: string;
-
-	/**
-	Human-readable provider description for status and enumeration.
-	*/
 	readonly label: string;
+	readonly unavailable: SandboxProviderUnavailability;
+}
 
-	/**
-	Optional execution destination selected independently through extension settings.
-	*/
-
+export interface AvailableSandboxProvider<Config> {
+	readonly id: string;
+	readonly label: string;
 	readonly profiles: {
 		readonly open: readonly Profile[];
 		readonly copy: readonly Profile[];
 	};
+	readonly create: () => SandboxProviderImplementation<Config>;
+}
 
+export interface SandboxProviderImplementation<Config> {
 	/**
-	Synchronously validate unknown input and return typed configuration
-	without allocating resources.
+	Read and validate trusted provider settings without allocating a backend.
 	*/
-	readonly validateConfig: (input: unknown) => Config;
-
+	readonly configure: (
+		context: SandboxConfigContext,
+		schema: SharedSettingsSchema
+	) => SandboxProviderConfig<Config> | Promise<SandboxProviderConfig<Config>>;
 	/**
-	Copy the host workspace, or a backend that this provider opened, into a
-	fresh backend that reports a `copied` workspace. Required exactly when
-	`capabilities.operations` includes `copy`. The request's policy is the
-	negotiated policy for the copy, which can be stricter or looser than the
-	source backend's policy. Report recovery metadata before allocation.
+	Allocate a backend for the selected profile. Report recovery before allocation
+	and release any resources if opening fails.
+	*/
+	readonly open: (
+		request: SandboxOpenRequest<Config>,
+		context: SandboxOpenContext
+	) => Promise<SandboxBackend>;
+	/**
+	Create an independent copy of the supplied source. Required when the
+	declaration includes copy profiles.
 	*/
 	readonly copy?: (
 		request: SandboxOpenRequest<Config> & {
@@ -970,15 +958,18 @@ export interface SandboxProvider<Config> {
 		},
 		context: SandboxOpenContext
 	) => Promise<SandboxBackend>;
-
 	/**
-	Allocate one backend for the generation. Report recovery metadata before
-	allocation and clean up a failed or cancelled opening.
+	Save an approved read grant in the provider's global settings file.
 	*/
-	readonly open: (
-		request: SandboxOpenRequest<Config>,
-		context: SandboxOpenContext
-	) => Promise<SandboxBackend>;
+	readonly persistReadRoot?: (
+		context: SandboxReadRootPersistence,
+		schema: SharedSettingsSchema
+	) => Promise<void>;
+}
+
+export interface SandboxProviderConfig<Config> {
+	readonly configuration: Config;
+	readonly settings?: SandboxSharedSettings;
 }
 
 /**

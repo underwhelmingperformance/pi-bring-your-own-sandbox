@@ -15,7 +15,6 @@ import type {
 	SandboxCopySource,
 	SandboxHost,
 	SandboxPolicy,
-	SandboxProvider,
 	SandboxWorkspace
 } from './contracts.js';
 import {
@@ -37,6 +36,8 @@ import { copyHostWorkspace } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import type { FixturePolicyChoices } from './fixtures/profile-fixture.js';
 import { fixtureProfile, fixtureProfiles } from './fixtures/profile-fixture.js';
+import type { FixtureProvider } from './fixtures/register-provider.js';
+import { registerFixtureProvider } from './fixtures/register-provider.js';
 import { registerSandboxProvider } from './provider-registration.js';
 import { checkedCopy } from './sandbox-copy.js';
 
@@ -128,7 +129,7 @@ function registerCopyProvider(pi: SandboxHost, options?: CopyProviderOptions) {
 	const copies: { source: SandboxCopySource; policy: SandboxPolicy }[] = [];
 	const released: string[] = [];
 	const opened: SandboxBackend[] = [];
-	const provider: SandboxProvider<object> = {
+	const provider: FixtureProvider<object> = {
 		id: 'active',
 		label: 'active',
 
@@ -166,7 +167,7 @@ function registerCopyProvider(pi: SandboxHost, options?: CopyProviderOptions) {
 		}
 	};
 
-	registerSandboxProvider(pi, import.meta.filename, provider);
+	registerFixtureProvider(pi, import.meta.filename, provider);
 
 	return { copies, released, opened };
 }
@@ -377,7 +378,7 @@ it('rejects copies from a provider without the copy capability', async () => {
 	await fixture(async (pi, context) => {
 		const backend = new MemoryBackend();
 
-		registerSandboxProvider(pi, import.meta.filename, {
+		registerFixtureProvider(pi, import.meta.filename, {
 			id: 'ordinary',
 			label: 'ordinary',
 
@@ -410,15 +411,18 @@ it('rejects copies from a provider without the copy capability', async () => {
 it.each([
 	['declares copy without implementing it', true, false],
 	['implements copy without declaring it', false, true]
-])('rejects a provider that %s', async (_, declared, implemented) => {
-	await fixture((pi) => {
-		const backend = new MemoryBackend();
+])(
+	'rejects a provider that %s before configuration or allocation',
+	async (_, declared, implemented) => {
+		await fixture(async (pi, context) => {
+			const backend = new MemoryBackend();
+			const configure = vi.fn(() => ({ configuration: undefined }));
+			const open = vi.fn(() => Promise.resolve(backend));
+			const copy = vi.fn(() => Promise.resolve(backend));
 
-		expect(() => {
 			registerSandboxProvider(pi, import.meta.filename, {
 				id: 'inconsistent',
 				label: 'inconsistent',
-
 				profiles: fixtureProfiles(
 					{
 						...backend.capabilities,
@@ -433,18 +437,22 @@ it.each([
 						network: [false]
 					}
 				),
-
-				validateConfig: () => ({}),
-				open: () => Promise.resolve(backend),
-				...(implemented && { copy: () => Promise.resolve(backend) })
+				create: () => ({ configure, open, ...(implemented && { copy }) })
 			});
-		}).toThrow(
-			expect.objectContaining({ name: 'InvalidSandboxDeclarationError' })
-		);
 
-		return Promise.resolve();
-	});
-});
+			await expect(getSandbox(pi, context)).rejects.toMatchObject({
+				name: 'InvalidSandboxConfigError',
+				providerId: 'inconsistent',
+				detail: { kind: 'config', field: 'provider.create' }
+			});
+			expect({
+				configure: configure.mock.calls,
+				open: open.mock.calls,
+				copy: copy.mock.calls
+			}).toStrictEqual({ configure: [], open: [], copy: [] });
+		});
+	}
+);
 
 it('retains the entire close report when a copy fails validation', async () => {
 	const recoveries = ['first', 'second'].map((id) => ({

@@ -1,4 +1,5 @@
 import type {
+	AvailableSandboxProvider,
 	DirectoryEntry,
 	FileStat,
 	FindRequest,
@@ -14,7 +15,6 @@ import type {
 	SandboxCleanupBudgets,
 	SandboxOperationContext,
 	SandboxPolicy,
-	SandboxProvider,
 	ShellDialect
 } from './contracts.js';
 
@@ -90,7 +90,7 @@ interface SandboxPolicyProbe {
 An isolated test workspace and provider-specific probes. The suite creates a
 fresh fixture for every test. Seed target files before returning this value.
 */
-export interface SandboxProviderTestFixture {
+export interface SandboxProviderTestFixture<Config = unknown> {
 	/**
 	Prepare the restricted resource after opening, and inspect it independently of the backend.
 	*/
@@ -181,9 +181,9 @@ export interface SandboxProviderTestFixture {
 	};
 
 	/**
-	Unknown configuration passed through the provider's validator.
+	Validated configuration to pass to the provider's allocation methods.
 	*/
-	readonly configuration: unknown;
+	readonly configuration: Config;
 	/**
 	Absolute host workspace passed to opening, independent of target paths.
 	*/
@@ -396,7 +396,7 @@ export interface SandboxProviderTestOptions<Config> {
 	Provider declaration used to collect cases. A fixture can supply the
 	instance used for allocation.
 	*/
-	readonly provider: SandboxProvider<Config>;
+	readonly provider: AvailableSandboxProvider<Config>;
 	/**
 	Operation groups and shells to test; defaults to the provider declaration.
 	*/
@@ -405,10 +405,10 @@ export interface SandboxProviderTestOptions<Config> {
 	Prepare fresh resources and target probes for each case. Clean up partial
 	setup within this callback if setup fails before returning a fixture.
 	*/
-	readonly createFixture: (
-		selection?: SandboxProviderTestSelection
-	) => Promise<
-		SandboxProviderTestFixture & { readonly provider?: SandboxProvider<Config> }
+	readonly createFixture: (selection?: SandboxProviderTestSelection) => Promise<
+		SandboxProviderTestFixture<Config> & {
+			readonly provider?: AvailableSandboxProvider<Config>;
+		}
 	>;
 	/**
 	Deadline for opening, each test case and fixture cleanup, in milliseconds.
@@ -429,10 +429,10 @@ export interface SandboxProviderFixtureOptions<Config> extends Omit<
 	SandboxProviderTestOptions<Config>,
 	'provider' | 'createFixture'
 > {
-	readonly createFixture: (
-		selection?: SandboxProviderTestSelection
-	) => Promise<
-		SandboxProviderTestFixture & { readonly provider: SandboxProvider<Config> }
+	readonly createFixture: (selection?: SandboxProviderTestSelection) => Promise<
+		SandboxProviderTestFixture<Config> & {
+			readonly provider: AvailableSandboxProvider<Config>;
+		}
 	>;
 }
 

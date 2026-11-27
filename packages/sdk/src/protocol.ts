@@ -30,10 +30,14 @@ export type CopySourceIdentity =
 	  >);
 
 /**
-Provider configuration captured in a closure after synchronous validation.
-Opening preserves the provider configuration type.
+Shared settings and bound operations returned after configuration.
+The registering SDK captures the typed configuration in the allocation methods.
 */
 export interface ConfiguredProviderV1 {
+	readonly settings?: import('./contracts.js').SandboxSharedSettings;
+	readonly persistReadRoot?: (
+		context: import('./contracts.js').SandboxReadRootPersistence
+	) => Promise<void>;
 	/**
 	Copy the host workspace or one of this provider's backends using the
 	captured configuration.
@@ -56,14 +60,12 @@ export interface ConfiguredProviderV1 {
 }
 
 /**
-Provider operations delivered to the elected broker at startup.
-Configuration validation allocates no backend.
+Provider metadata used by an allocation generation. The built-in provider
+prepares its operations locally after probing the host.
 */
 export interface ProviderServiceV1 extends ProviderInfo {
 	readonly protocol?: ProtocolIdentity;
-	readonly configure: (
-		input: unknown
-	) => ConfiguredProviderV1 | Promise<ConfiguredProviderV1>;
+	readonly prepare?: () => ConfiguredProviderV1 | Promise<ConfiguredProviderV1>;
 }
 
 /**

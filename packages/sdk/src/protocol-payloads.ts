@@ -25,7 +25,6 @@ import {
 	operationOptionsSchema,
 	processOptionsSchema,
 	processRequestSchema,
-	providerConfigSchema,
 	writeOptionsSchema
 } from './request-schemas.js';
 import {
@@ -43,7 +42,10 @@ import {
 	recoverySchema,
 	signalSchema
 } from './schemas.js';
-import { brokerServiceSchema } from './service-schemas.js';
+import {
+	brokerServiceSchema,
+	configuredProviderSchema
+} from './service-schemas.js';
 
 const buildRequest = Type.Object(
 	{ type: Type.Literal('get-builds') },
@@ -210,7 +212,7 @@ export const protocolSchemas = {
 		...providerOpenRequest.properties,
 		source: providerCopySource
 	}),
-	'provider.configuration': providerConfigSchema,
+	'provider.configured': configuredProviderSchema,
 	'review.get-availability': message('get-availability'),
 	'review.available': reviewAvailability,
 	'review.find-source': findReviewRequest,

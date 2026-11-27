@@ -18,8 +18,8 @@ import { discoverBroker } from './discovery.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfile, fixtureProfiles } from './fixtures/profile-fixture.js';
+import { registerFixtureProvider } from './fixtures/register-provider.js';
 import { observe } from './lifecycle.js';
-import { registerSandboxProvider } from './provider-registration.js';
 import { registerUserShell } from './user-shell.js';
 import { profileCapabilities } from './validation.js';
 
@@ -90,7 +90,7 @@ function fixture(
 	const extension: InlineExtension = {
 		name: 'sandbox-user-shell',
 		factory(pi) {
-			registerSandboxProvider(
+			registerFixtureProvider(
 				pi,
 				import.meta.filename,
 				{

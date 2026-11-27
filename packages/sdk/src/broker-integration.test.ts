@@ -15,7 +15,6 @@ import type {
 	SandboxContext
 } from './contracts.js';
 import { bindFactory, ensureSandboxService } from './default-broker.js';
-import { InvalidSandboxConfigError } from './errors.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
@@ -24,7 +23,6 @@ import { loadSdkInstance } from './fixtures/sdk-instance.js';
 import type { BrokerService } from './protocol.js';
 import { bindProtocolAddress } from './protocol-address.js';
 import { registerSandboxProvider } from './provider-registration.js';
-import { isRecord } from './validation.js';
 
 it('keeps model catalog refreshes in memory in the Pi fixture', async () => {
 	await withPiRuntime([], async (runtime) => {
@@ -78,33 +76,31 @@ function fixture(
 						network: [false]
 					}),
 
-					validateConfig(input: unknown): Record<string, never> {
-						configurations++;
+					create: () => ({
+						configure() {
+							configurations++;
 
-						if (!isRecord(input) || Object.keys(input).length > 0) {
-							throw new InvalidSandboxConfigError({ operation: 'configure' });
+							return { configuration: undefined };
+						},
+						open: () => {
+							opens++;
+
+							const backend = new MemoryBackend();
+
+							backends.push(backend);
+							backend.seed('file', new TextEncoder().encode('remote content'));
+
+							return Promise.resolve({
+								...snapshotBackend(backend),
+								id: `memory:${String(opens)}`,
+								dispose: () => {
+									disposals++;
+
+									return Promise.resolve();
+								}
+							});
 						}
-
-						return {};
-					},
-					open: () => {
-						opens++;
-
-						const backend = new MemoryBackend();
-
-						backends.push(backend);
-						backend.seed('file', new TextEncoder().encode('remote content'));
-
-						return Promise.resolve({
-							...snapshotBackend(backend),
-							id: `memory:${String(opens)}`,
-							dispose: () => {
-								disposals++;
-
-								return Promise.resolve();
-							}
-						});
-					}
+					})
 				});
 
 				return;
@@ -477,8 +473,7 @@ it.each([
 								providerId: 'fixture',
 								source: 'extension',
 								policy: template.policy
-							},
-							providerConfig: {}
+							}
 						}),
 					providers: () => [
 						{
@@ -491,7 +486,7 @@ it.each([
 								network: [false]
 							}),
 
-							configure: () => ({
+							prepare: () => ({
 								open: (_request, opening) => {
 									opening.reportRecovery(recovery);
 

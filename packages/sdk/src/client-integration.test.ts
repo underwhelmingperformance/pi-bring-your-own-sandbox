@@ -29,12 +29,12 @@ import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
 import { brokerReply, respond } from './fixtures/protocol-peer.js';
+import { registerFixtureProvider } from './fixtures/register-provider.js';
 import { loadSdkInstance } from './fixtures/sdk-instance.js';
 import { initialiseSandboxHost } from './host.js';
 import { probePassthrough } from './passthrough.js';
 import { bindProtocolAddress } from './protocol-address.js';
 import { RUNTIME_CHANNEL } from './protocol-envelope.js';
-import { registerSandboxProvider } from './provider-registration.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -87,7 +87,7 @@ function provider(open: () => Promise<MemoryBackend>): InlineExtension {
 	return {
 		name: 'fixture-provider',
 		factory(pi) {
-			registerSandboxProvider(pi, import.meta.filename, {
+			registerFixtureProvider(pi, import.meta.filename, {
 				id: 'fixture',
 
 				label: 'Fixture',

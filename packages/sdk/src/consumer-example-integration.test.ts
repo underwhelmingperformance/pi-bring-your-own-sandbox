@@ -4,10 +4,7 @@ import type {
 	ExtensionAPI,
 	InlineExtension
 } from '@earendil-works/pi-coding-agent';
-import type {
-	ProcessRequest,
-	SandboxProvider
-} from 'pi-bring-your-own-sandbox/provider';
+import type { ProcessRequest } from 'pi-bring-your-own-sandbox/provider';
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { ScriptedModel } from '../../../test-support/scripted-model.js';
@@ -19,13 +16,14 @@ import { imageProvider } from './fixtures/image-provider.js';
 import { messageScenario } from './fixtures/message-provider.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { contractScenario } from './fixtures/provider-contract.js';
+import type { FixtureProvider } from './fixtures/register-provider.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();
 });
 
 function observedProvider<Config>(
-	provider: SandboxProvider<Config>,
+	provider: FixtureProvider<Config>,
 	{
 		calls,
 		opening,
@@ -116,6 +114,9 @@ it.each([
 		}
 	]);
 
+	const contractScenarioProvider = contractScenario().provider;
+	const messageScenarioProvider = messageScenario().provider;
+
 	await withPiRuntime(
 		[
 			{ name: 'consumer-example', factory: consumerExtension },
@@ -130,16 +131,34 @@ it.each([
 					opening,
 					configuration: config
 				}),
-				observedProvider(contractScenario().provider, {
-					calls,
-					opening,
-					configuration: config
-				}),
-				observedProvider(messageScenario().provider, {
-					calls,
-					opening,
-					configuration: config
-				})
+				observedProvider(
+					{
+						...contractScenarioProvider,
+						...contractScenarioProvider.create(),
+						validateConfig(): undefined {
+							return;
+						}
+					},
+					{
+						calls,
+						opening,
+						configuration: config
+					}
+				),
+				observedProvider(
+					{
+						...messageScenarioProvider,
+						...messageScenarioProvider.create(),
+						validateConfig(): undefined {
+							return;
+						}
+					},
+					{
+						calls,
+						opening,
+						configuration: config
+					}
+				)
 			].filter((extension) => extension.name === scenario.provider),
 			model.extension
 		],

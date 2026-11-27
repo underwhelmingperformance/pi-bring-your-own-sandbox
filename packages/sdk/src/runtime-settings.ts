@@ -10,16 +10,18 @@ import type {
 import {
 	ConflictingSandboxProviderError,
 	InvalidSandboxConfigError,
-	isSandboxError
+	isSandboxError,
+	SandboxProviderUnavailableError
 } from './errors.js';
 import { observe, OperationScope } from './lifecycle.js';
 import { resolveHostUserDataRoots } from './path-grants.js';
 import type { DiagnosticStore } from './provider-diagnostics.js';
 import { ProviderDiagnostics } from './provider-diagnostics.js';
 import { bindReadRootPersistence } from './read-root-persistence.js';
-import { invalidField, providerConfigSchema } from './request-schemas.js';
+import { invalidField } from './request-schemas.js';
 import type { RuntimeProvider } from './runtime-participant.js';
 import { checker } from './schemas.js';
+import { configuredProviderSchema } from './service-schemas.js';
 
 export interface RuntimeSettings {
 	readonly diagnostics: DiagnosticStore;
@@ -28,7 +30,7 @@ export interface RuntimeSettings {
 	readonly read: (context: SandboxContext) => Promise<SandboxConfig>;
 }
 
-const isProviderConfig = checker(providerConfigSchema);
+const isConfiguredProvider = checker(configuredProviderSchema);
 
 export function createRuntimeSettings(
 	listProviders: () => readonly RuntimeProvider[],
@@ -78,13 +80,6 @@ export function createRuntimeSettings(
 			});
 			const pending = observe(
 				Promise.try(async () => {
-					const provided =
-						activation === undefined
-							? { configuration: {} }
-							: await activation.resolve(resolutionContext);
-
-					scope.check();
-
 					const extensionSource = provider.protocol?.extensionSource;
 					const identity = {
 						operation: 'configure' as const,
@@ -93,9 +88,23 @@ export function createRuntimeSettings(
 						...(extensionSource !== undefined && { extensionSource })
 					};
 
-					if (!isProviderConfig(provided)) {
+					if (provider.unavailable !== undefined) {
+						throw new SandboxProviderUnavailableError({
+							...identity,
+							detail: {
+								kind: 'provider-unavailable',
+								reason: provider.unavailable
+							}
+						});
+					}
+
+					const provided = await activation?.configure?.(resolutionContext);
+
+					scope.check();
+
+					if (activation !== undefined && !isConfiguredProvider(provided)) {
 						const field =
-							invalidField(providerConfigSchema, provided).join('.') ||
+							invalidField(configuredProviderSchema, provided).join('.') ||
 							'settings';
 
 						throw new InvalidSandboxConfigError({
@@ -106,14 +115,14 @@ export function createRuntimeSettings(
 
 					const value = resolveSandboxConfig(
 						provider,
-						provided,
+						provided?.settings,
 						activation === undefined ? 'default' : 'extension'
 					);
 					const profiles = [
 						...provider.profiles.open,
 						...provider.profiles.copy
 					];
-					const readRoots = provided.settings?.readRoots;
+					const readRoots = provided?.settings?.readRoots;
 					let hostUserDataRoots: readonly string[] | undefined;
 
 					if (
@@ -137,13 +146,14 @@ export function createRuntimeSettings(
 					scope.check();
 
 					const saveReadRoots =
-						activation !== undefined &&
+						provided?.persistReadRoot !== undefined &&
 						value.selection.policy.hostUserData === 'read-only'
-							? bindReadRootPersistence(activation)
+							? bindReadRootPersistence(provider, provided.persistReadRoot)
 							: undefined;
 
 					return Object.freeze({
 						...value,
+						...(provided !== undefined && { configured: provided }),
 						...(hostUserDataRoots !== undefined && { hostUserDataRoots }),
 						...(saveReadRoots !== undefined && { saveReadRoots }),
 						cleanup: resolveCleanupBudgets({

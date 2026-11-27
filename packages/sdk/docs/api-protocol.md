@@ -52,9 +52,8 @@ interface ShellReviewClient {
   ): ShellReviewLookup;
 }
 
-registerSandboxProvider<Config, Input = Config>(
-  pi: SandboxHost, extensionSource: string, provider: SandboxProvider<Config>,
-  options?: NoInfer<SandboxProviderRegistration<Input>>
+registerSandboxProvider<Config>(
+  pi: SandboxHost, extensionSource: string, declaration: SandboxProvider<Config>
 ): void;
 initialiseSandboxHost(
   pi: SandboxHost, extensionSource: string, options?: SandboxHostOptions
@@ -69,6 +68,11 @@ Create the client in the extension factory. Pass `import.meta.filename` for
 `extensionSource`. The client uses that path for build election, errors and
 ledger entries. Provider registration, the Pi tools and host initialisation
 register their builds through their factory entry points.
+
+Ordinary and copy negotiation return `{ ok: false, error }` for a refusal in a
+live session. A cached provider failure returns the same result on each call. An
+invalid request, a stale session or a session that has begun shutdown raises an
+exception. A failed `get` or `copy` rejects.
 
 `/host` is for embedding hosts. Call `initialiseSandboxHost` from an extension
 factory. The returned handle is frozen. After startup, its `close()` method
@@ -335,31 +339,42 @@ excess warnings increment the bounded `diagnosticsDropped` counter. Reports
 after the operation ends are ignored. Status exposes the retained `diagnostics`
 and `diagnosticsDropped` fields.
 
+## Provider registration
+
+An available provider declares its ID, label and open and copy profiles during
+the factory. The broker lists validated declarations without calling `create()`
+or `configure`. A factory or configuration failure remains visible in status for
+that provider throughout the generation. An unavailable provider supplies its
+ID, label and platform reason in `unavailable`.
+
 ## Provider settings
 
-<!--
-`SandboxSharedSettings`, the `settings` result field, the
-`sharedSettingsSchema` callback parameter and the `allowEscalation` setting
-are provisional.
--->
-
 The provider owns the settings file. The SDK defines one TypeBox object schema
-for the shared settings keys. `registerSandboxProvider` passes it to the
-`configure` callback as `sharedSettingsSchema`. The callback includes
-`sharedSettingsSchema.properties` at the top level of the provider's own
-settings schema. The provider validates the whole file with that schema and
-returns the shared values under `settings` and its own input under
-`configuration`. The `settings` field belongs to the callback result.
+for the shared settings keys and passes it to `configure`. A settings parser can
+include its properties at the top level of the provider's own schema.
+`configure` validates the settings and returns the provider's typed
+`configuration` and optional shared `settings`. The SDK captures the typed
+configuration for the provider's allocation methods.
 
 ```typescript
-interface SandboxProviderRegistration<Input> {
+interface SandboxProviderImplementation<Config> {
   readonly configure: (
     context: SandboxConfigContext,
-    sharedSettingsSchema: TObject
-  ) => SandboxProviderConfig<Input> | Promise<SandboxProviderConfig<Input>>;
+    sharedSettingsSchema: SharedSettingsSchema
+  ) => SandboxProviderConfig<Config> | Promise<SandboxProviderConfig<Config>>;
+  readonly open: (
+    request: SandboxOpenRequest<Config>,
+    context: SandboxOpenContext
+  ) => Promise<SandboxBackend>;
+  readonly copy?: (
+    request: SandboxOpenRequest<Config> & {
+      readonly source: SandboxCopySource;
+    },
+    context: SandboxOpenContext
+  ) => Promise<SandboxBackend>;
   readonly persistReadRoot?: (
     context: SandboxReadRootPersistence,
-    sharedSettingsSchema: TObject
+    sharedSettingsSchema: SharedSettingsSchema
   ) => Promise<void>;
 }
 
@@ -371,8 +386,8 @@ interface SandboxReadRootPersistence {
   ) => Promise<void>;
 }
 
-interface SandboxProviderConfig<Input> {
-  readonly configuration: Input;
+interface SandboxProviderConfig<Config> {
+  readonly configuration: Config;
   readonly settings?: SandboxSharedSettings;
 }
 
@@ -385,7 +400,7 @@ interface SandboxSharedSettings {
 }
 ```
 
-`TObject` is the TypeBox object schema type. The SDK derives
+`SharedSettingsSchema` is the type of the shared TypeBox schema. The SDK derives
 `SandboxSharedSettings` from the schema. It reports validation failures as
 `InvalidSandboxConfigError` before allocation, with the provider source and
 invalid key. It omits the raw settings from user-facing diagnostics.
@@ -719,12 +734,16 @@ type Envelope<Payload> = BuildIdentity & {
 | Review   | `reply`         | `{ type: 'source', ok: true, toolCallId, sourceId }`       |
 
 A review refusal replies with `ok: false` and a reason. Startup uses
-`start-broker` and `connect-runtime` with direct receiver callbacks. The elected
-owner receives the provider configuration and backend functions. The embedding
-host receives its close function. The tool integration receives its dispatch
-callbacks. The runtime offers no settings service. The shell integration query
-returns `{ type: 'shell-integration' }` when an extension registers the Pi
-tools.
+`start-broker` and `connect-runtime` with direct receiver callbacks.
+
+| Participant      | Private handoff                                                                                                                                                                                                                                                                                                                         |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime provider | Supplies its declaration and build identity. An available provider also supplies `configure(context)`, which returns shared `settings?`, `open`, `copy?` and `persistReadRoot?`. The registering SDK keeps typed configuration in the allocation closures. The broker offers Always only when the result includes a persistence method. |
+| Embedding host   | Receives the broker's close function.                                                                                                                                                                                                                                                                                                   |
+| Tool integration | Receives the callbacks for dispatching shell calls.                                                                                                                                                                                                                                                                                     |
+
+The shell integration query returns `{ type: 'shell-integration' }` when an
+extension registers the Pi tools.
 
 SDK copies use the build census to detect a major mismatch before bootstrap. The
 [1.0 snapshot][v1] records the draft schemas until the first release. Earlier

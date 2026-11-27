@@ -1,30 +1,25 @@
-import { InvalidSandboxConfigError } from './errors.js';
 import {
 	basePassthroughProfile,
 	openPassthrough,
 	probePassthrough
 } from './passthrough.js';
-import type { ProviderServiceV1 } from './protocol.js';
-import { isRecord } from './validation.js';
+import type { ConfiguredProviderV1, ProviderServiceV1 } from './protocol.js';
 
 type Inventory = Awaited<ReturnType<typeof probePassthrough>>;
 
-function provider(inventory?: Inventory): ProviderServiceV1 {
-	return Object.freeze<ProviderServiceV1>({
+type PassthroughProvider = ProviderServiceV1 & {
+	readonly prepare: () => ConfiguredProviderV1;
+};
+
+function provider(inventory?: Inventory): PassthroughProvider {
+	return Object.freeze<PassthroughProvider>({
 		id: 'passthrough',
 		label: 'Host execution without isolation',
 		profiles: {
 			open: [inventory?.profile ?? basePassthroughProfile],
 			copy: []
 		},
-		configure(input: unknown) {
-			if (!isRecord(input) || Object.keys(input).length > 0) {
-				throw new InvalidSandboxConfigError({
-					operation: 'configure',
-					providerId: 'passthrough'
-				});
-			}
-
+		prepare() {
 			return {
 				open: (request, context) =>
 					openPassthrough(
@@ -42,6 +37,6 @@ export const passthroughProvider = provider();
 
 export async function createPassthroughProvider(
 	workspace: string
-): Promise<ProviderServiceV1> {
+): Promise<PassthroughProvider> {
 	return provider(await probePassthrough(workspace));
 }

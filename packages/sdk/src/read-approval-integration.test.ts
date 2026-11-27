@@ -18,12 +18,12 @@ import { expect, it, vi } from 'vitest';
 import { ScriptedModel } from '../../../test-support/scripted-model.js';
 
 import { createSandboxClient } from './client.js';
-import type { SandboxProviderRegistration } from './contracts.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import type { FixtureProviderOptions } from './fixtures/register-provider.js';
+import { registerFixtureProvider } from './fixtures/register-provider.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import sandboxTools from './pi-tools.js';
 import type { Profile } from './policy-model.js';
-import { registerSandboxProvider } from './provider-registration.js';
 
 const filename = 'read-fixture.json';
 
@@ -77,58 +77,57 @@ it.each([
 		const provider: InlineExtension = {
 			name: 'persist-provider',
 			factory(pi) {
-				const registration: SandboxProviderRegistration<Record<string, never>> =
-					{
-						async configure(_context, shared) {
-							let contents = '{}';
+				const registration: FixtureProviderOptions<Record<string, never>> = {
+					async configure(_context, shared) {
+						let contents = '{}';
 
-							try {
-								contents = await readFile(file, 'utf8');
-							} catch (error) {
-								if (
-									!(error instanceof Error) ||
-									!('code' in error) ||
-									error.code !== 'ENOENT'
-								) {
-									throw error;
-								}
+						try {
+							contents = await readFile(file, 'utf8');
+						} catch (error) {
+							if (
+								!(error instanceof Error) ||
+								!('code' in error) ||
+								error.code !== 'ENOENT'
+							) {
+								throw error;
 							}
-
-							const parsed: unknown = JSON.parse(contents);
-							const schema = Type.Object(
-								{ ...shared.properties, label: Type.Optional(Type.String()) },
-								{ additionalProperties: false }
-							);
-							const validator = Compile(schema);
-
-							if (!validator.Check(parsed)) {
-								throw new Error('Invalid fixture settings.');
-							}
-
-							const { label: _label, ...settings } = parsed;
-
-							return { configuration: {}, settings };
-						},
-						async persistReadRoot(context, shared) {
-							wrote.push(context.paths);
-
-							if (scenario === 'failure') {
-								throw new Error('Fixture persistence failure.');
-							}
-
-							const schema = Type.Object(
-								{ ...shared.properties, label: Type.Optional(Type.String()) },
-								{ additionalProperties: false }
-							);
-							const validator = Compile(schema);
-
-							await context.updateSettings(filename, (value) =>
-								validator.Check(value)
-							);
 						}
-					};
 
-				registerSandboxProvider(
+						const parsed: unknown = JSON.parse(contents);
+						const schema = Type.Object(
+							{ ...shared.properties, label: Type.Optional(Type.String()) },
+							{ additionalProperties: false }
+						);
+						const validator = Compile(schema);
+
+						if (!validator.Check(parsed)) {
+							throw new Error('Invalid fixture settings.');
+						}
+
+						const { label: _label, ...settings } = parsed;
+
+						return { configuration: {}, settings };
+					},
+					async persistReadRoot(context, shared) {
+						wrote.push(context.paths);
+
+						if (scenario === 'failure') {
+							throw new Error('Fixture persistence failure.');
+						}
+
+						const schema = Type.Object(
+							{ ...shared.properties, label: Type.Optional(Type.String()) },
+							{ additionalProperties: false }
+						);
+						const validator = Compile(schema);
+
+						await context.updateSettings(filename, (value) =>
+							validator.Check(value)
+						);
+					}
+				};
+
+				registerFixtureProvider(
 					pi,
 					'<inline:persist-provider>',
 					{

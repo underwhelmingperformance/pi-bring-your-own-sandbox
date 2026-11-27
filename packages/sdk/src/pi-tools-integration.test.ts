@@ -21,12 +21,12 @@ import type { SandboxBackend } from './contracts.js';
 import { SandboxCancelledError, SandboxTransportError } from './errors.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfile, fixtureProfiles } from './fixtures/profile-fixture.js';
+import { registerFixtureProvider } from './fixtures/register-provider.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import { resolveHostUserDataRoots } from './path-grants.js';
 import { createShellOperations } from './pi-shell-operations.js';
 import sandboxTools, { registerShellOnlyTools } from './pi-tools.js';
 import { unrestrictedPolicy } from './policy-model.js';
-import { registerSandboxProvider } from './provider-registration.js';
 import { profileCapabilities } from './validation.js';
 import { isRecord } from './validation.js';
 
@@ -39,7 +39,7 @@ function provider(backend: SandboxBackend): InlineExtension {
 	return {
 		name: 'target-provider',
 		factory(pi) {
-			registerSandboxProvider(pi, import.meta.filename, {
+			registerFixtureProvider(pi, import.meta.filename, {
 				id: 'fixture',
 
 				label: 'In-memory shell; no OS isolation.',
@@ -811,7 +811,7 @@ it.each([
 				}
 
 				if (profile !== 'host') {
-					registerSandboxProvider(
+					registerFixtureProvider(
 						pi,
 						'<inline:prompt-fixture>',
 						{

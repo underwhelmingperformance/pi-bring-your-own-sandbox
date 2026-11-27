@@ -37,7 +37,7 @@ import {
 } from 'pi-bring-your-own-sandbox/provider-kit';
 
 import { NodeDockerClient } from './client.js';
-import { dockerConfig } from './config.js';
+import { resolveDockerConfig } from './config.js';
 import type {
 	DockerClient,
 	DockerConfig,
@@ -712,7 +712,7 @@ class DockerBackend implements SandboxBackend {
 	}
 }
 
-export function dockerProviderDeclaration(powerShellImage?: string) {
+function dockerProviderProfiles(powerShellImage?: string) {
 	const capabilities: SandboxCapabilities =
 		powerShellImage === undefined
 			? defaultCapabilities
@@ -769,7 +769,7 @@ export function createDockerProvider(
 		);
 	}
 
-	const declaration = dockerProviderDeclaration(powerShellImage);
+	const declaration = dockerProviderProfiles(powerShellImage);
 	const { profiles } = declaration;
 	const image = powerShellImage ?? DOCKER_IMAGE;
 
@@ -940,8 +940,42 @@ export function createDockerProvider(
 
 	return {
 		...declaration,
-		validateConfig: dockerConfig,
-		open: (request, context) => allocate(request, context),
-		copy: (request, context) => allocate(request, context, request.source)
-	} satisfies SandboxProvider<DockerConfig>;
+		open: (
+			request: SandboxOpenRequest<DockerConfig>,
+			context: SandboxOpenContext
+		) => allocate(request, context),
+		copy: (
+			request: SandboxOpenRequest<DockerConfig> & {
+				readonly source: SandboxCopySource;
+			},
+			context: SandboxOpenContext
+		) => allocate(request, context, request.source)
+	};
+}
+
+type DockerDeclaration = Extract<
+	SandboxProvider<DockerConfig>,
+	{ readonly create: unknown }
+>;
+type DockerConfig_ = ReturnType<DockerDeclaration['create']>['configure'];
+
+export function dockerProvider(
+	options: Parameters<typeof createDockerProvider>[0] = {},
+	configure: DockerConfig_ = async ({ pi, signal, reportWarning }) => ({
+		configuration: await resolveDockerConfig(
+			{},
+			{ workspace: pi.cwd, signal, reportWarning }
+		)
+	})
+): DockerDeclaration {
+	return {
+		...dockerProviderProfiles(
+			typeof options === 'function' ? undefined : options.powerShellImage
+		),
+		create() {
+			const { open, copy } = createDockerProvider(options);
+
+			return { configure, open, copy };
+		}
+	};
 }

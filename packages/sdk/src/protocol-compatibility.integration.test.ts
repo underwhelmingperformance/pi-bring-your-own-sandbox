@@ -165,16 +165,18 @@ it.each([
 								}
 							),
 
-							validateConfig: () => ({}),
-							open: (request) => {
-								const backend = new MemoryBackend();
+							create: () => ({
+								configure: () => ({ configuration: undefined }),
+								open: (request) => {
+									const backend = new MemoryBackend();
 
-								Object.defineProperty(backend, 'profile', {
-									value: request.profile
-								});
+									Object.defineProperty(backend, 'profile', {
+										value: request.profile
+									});
 
-								return Promise.resolve(backend);
-							}
+									return Promise.resolve(backend);
+								}
+							})
 						});
 					}
 

@@ -73,9 +73,10 @@ export class SandboxSession implements SessionIdentity {
 		this.workspace = workspace;
 		this.context = Object.freeze({
 			cwd: workspace,
-			sessionManager: source.sessionManager,
-			...(source.isProjectTrusted !== undefined && {
-				isProjectTrusted: source.isProjectTrusted
+			sessionManager: Object.freeze({
+				getSessionId: source.sessionManager.getSessionId.bind(
+					source.sessionManager
+				)
 			})
 		});
 	}

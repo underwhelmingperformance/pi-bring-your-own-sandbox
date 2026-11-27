@@ -1,13 +1,15 @@
 import { Type } from 'typebox';
 
 import { cleanupSelectionSchema } from '../cleanup-budgets.js';
-import type { SandboxHost, SandboxProvider } from '../contracts.js';
+import type { SandboxHost } from '../contracts.js';
 import { InvalidSandboxConfigError } from '../errors.js';
 import { accessPolicySchema } from '../policy-model.js';
 import { registerSandboxProvider } from '../provider-registration.js';
 import { checker, shellSchema } from '../schemas.js';
 
 import { fixtureProtocolAddress } from './protocol-address.js';
+import type { FixtureProvider } from './register-provider.js';
+import { registerFixtureProvider } from './register-provider.js';
 
 const schema = Type.Object(
 	{
@@ -58,23 +60,31 @@ export class FixtureConfig {
 
 	activate<Config>(
 		pi: SandboxHost,
-		provider: SandboxProvider<Config>,
+		provider: FixtureProvider<Config>,
 		register = registerSandboxProvider,
 		extensionSource = source(pi)
 	): void {
-		register<Config, unknown>(pi, extensionSource, provider, {
-			configure: async () => {
-				const value = await this.#read();
+		registerFixtureProvider<Config, unknown>(
+			pi,
+			extensionSource,
+			provider,
+			{
+				configure: async () => {
+					const value = await this.#read();
 
-				return {
-					configuration: value.providerConfig ?? {},
-					settings: {
-						...(value.policy !== undefined && { policy: value.policy }),
-						...(value.cleanup !== undefined && { cleanup: value.cleanup }),
-						...(value.userShell !== undefined && { userShell: value.userShell })
-					}
-				};
-			}
-		});
+					return {
+						configuration: value.providerConfig ?? {},
+						settings: {
+							...(value.policy !== undefined && { policy: value.policy }),
+							...(value.cleanup !== undefined && { cleanup: value.cleanup }),
+							...(value.userShell !== undefined && {
+								userShell: value.userShell
+							})
+						}
+					};
+				}
+			},
+			register
+		);
 	}
 }

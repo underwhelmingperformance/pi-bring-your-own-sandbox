@@ -9,6 +9,7 @@ import { ensureSandboxService } from './default-broker.js';
 import { UnsupportedSandboxCapabilityError } from './errors.js';
 import type { DestinationDescription } from './escalation-ledger.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { registerFixtureProvider } from './fixtures/register-provider.js';
 import { loadSdkInstance } from './fixtures/sdk-instance.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import sandboxTools from './pi-tools.js';
@@ -17,7 +18,6 @@ import {
 	collectProtocolReplies,
 	RUNTIME_CHANNEL
 } from './protocol-envelope.js';
-import { registerSandboxProvider } from './provider-registration.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -98,7 +98,7 @@ it('refuses a shell command changed after Pi reports the pending call', async ()
 			{
 				name: 'provider',
 				factory(pi) {
-					registerSandboxProvider(pi, '<inline:provider>', {
+					registerFixtureProvider(pi, '<inline:provider>', {
 						id: 'fixture',
 						label: 'Fixture',
 						profiles: { open: [backend.profile], copy: [] },
@@ -179,7 +179,7 @@ it.each([false, true])(
 		const provider: InlineExtension = {
 			name: 'review-fixture',
 			factory(pi) {
-				registerSandboxProvider(pi, '<inline:review-fixture>', {
+				registerFixtureProvider(pi, '<inline:review-fixture>', {
 					id: 'fixture.review',
 					label: 'Review fixture',
 					profiles: { open: [openProfile], copy: [copyProfile] },

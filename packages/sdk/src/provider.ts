@@ -38,6 +38,7 @@ export type {
 	SandboxReadRootPersistence,
 	SandboxSharedSettings,
 	SandboxWorkspace,
+	SharedSettingsSchema,
 	ShellDialect
 } from './contracts.js';
 export {
@@ -57,8 +58,4 @@ export {
 	UnsupportedSandboxPolicyError
 } from './errors.js';
 export type { SandboxProviderUnavailability } from './policy-model.js';
-export {
-	registerSandboxProvider,
-	registerSandboxProviderFactory,
-	registerUnavailableSandboxProvider
-} from './provider-registration.js';
+export { registerSandboxProvider } from './provider-registration.js';

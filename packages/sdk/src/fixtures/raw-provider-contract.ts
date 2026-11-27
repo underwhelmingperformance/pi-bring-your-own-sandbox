@@ -21,16 +21,17 @@ import {
 
 function openFixture<Config>(
 	options: SandboxProviderTestOptions<Config>,
-	fixture: SandboxProviderTestFixture,
+	fixture: SandboxProviderTestFixture<Config>,
 	context: SandboxOperationContext,
 	confirmCleanup: () => void
 ): Promise<SandboxBackend> {
+	const implementation = options.provider.create();
 	const request = {
 		generationId: randomUUID(),
 		sessionId: randomUUID(),
 		hostWorkspace: fixture.hostWorkspace,
 		profile: fixtureProfile(options, fixture),
-		configuration: options.provider.validateConfig(fixture.configuration)
+		configuration: fixture.configuration
 	};
 	const opening = {
 		...context,
@@ -41,17 +42,14 @@ function openFixture<Config>(
 	};
 
 	if (options.workspaceVisibility !== 'copied') {
-		return options.provider.open(request, opening);
+		return implementation.open(request, opening);
 	}
 
-	if (options.provider.copy === undefined) {
+	if (implementation.copy === undefined) {
 		throw new Error('The fixture provider cannot copy the workspace.');
 	}
 
-	return options.provider.copy(
-		{ ...request, source: { kind: 'host' } },
-		opening
-	);
+	return implementation.copy({ ...request, source: { kind: 'host' } }, opening);
 }
 
 export async function usingRawProviderFixture<Config>(

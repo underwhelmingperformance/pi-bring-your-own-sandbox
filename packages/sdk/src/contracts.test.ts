@@ -1,6 +1,7 @@
 import { expectTypeOf, it } from 'vitest';
 
 import type {
+	AvailableSandboxProvider,
 	BackendProcessOutcome,
 	FileStat,
 	ProcessRequest,
@@ -9,7 +10,7 @@ import type {
 	SandboxErrorInfo,
 	SandboxHost,
 	SandboxProvider,
-	SandboxProviderRegistration
+	SharedSettingsSchema
 } from './contracts.js';
 import { connectionProvider } from './fixtures/connection-provider.js';
 import { inspectWorkspace } from './fixtures/consumer.js';
@@ -24,18 +25,16 @@ interface ConnectionConfig {
 	readonly endpoint: URL;
 }
 
+type Implementation<Config> = ReturnType<
+	AvailableSandboxProvider<Config>['create']
+>;
+
 it('keeps provider-specific configuration typed through opening', () => {
-	expectTypeOf<
-		SandboxProvider<ImageConfig>['validateConfig']
-	>().returns.toEqualTypeOf<ImageConfig>();
-	expectTypeOf<
-		SandboxProvider<ConnectionConfig>['validateConfig']
-	>().returns.toEqualTypeOf<ConnectionConfig>();
-	expectTypeOf<SandboxProvider<ImageConfig>['open']>().parameter(0).toExtend<{
+	expectTypeOf<Implementation<ImageConfig>['open']>().parameter(0).toExtend<{
 		readonly configuration: ImageConfig;
 	}>();
-	expectTypeOf<SandboxProvider<ImageConfig>>().not.toExtend<
-		SandboxProvider<ConnectionConfig>
+	expectTypeOf<AvailableSandboxProvider<ImageConfig>>().not.toExtend<
+		AvailableSandboxProvider<ConnectionConfig>
 	>();
 });
 
@@ -107,31 +106,31 @@ it('rejects shell requests without a dialect and ambiguous termination outcomes'
 	}>().not.toExtend<SandboxErrorInfo>();
 });
 
-it('connects registration options to provider configuration', () => {
+it('accepts one declaration and passes the shared settings schema to configure', () => {
 	expectTypeOf<typeof registerSandboxProvider<ImageConfig>>()
-		.parameter(3)
-		.toEqualTypeOf<SandboxProviderRegistration<ImageConfig> | undefined>();
+		.parameter(2)
+		.toEqualTypeOf<SandboxProvider<ImageConfig>>();
+	expectTypeOf<Implementation<ImageConfig>['configure']>()
+		.parameter(1)
+		.toEqualTypeOf<SharedSettingsSchema>();
 	expectTypeOf<{
 		configure: () => { configuration: { image: number } };
-	}>().not.toExtend<
-		NonNullable<Parameters<typeof registerSandboxProvider<ImageConfig>>[2]>
-	>();
-	expectTypeOf<
-		typeof registerSandboxProvider<ConnectionConfig, { endpoint: string }>
-	>()
-		.parameter(3)
-		.toEqualTypeOf<
-			SandboxProviderRegistration<{ endpoint: string }> | undefined
-		>();
+	}>().not.toExtend<Pick<Implementation<ImageConfig>, 'configure'>>();
 });
 
 function invalidRegistration(pi: SandboxHost): void {
-	registerSandboxProvider(pi, import.meta.filename, imageProvider, {
-		// @ts-expect-error The provider requires a string image identifier.
-		configure: () => ({ configuration: { image: 123 } })
+	registerSandboxProvider<ImageConfig>(pi, import.meta.filename, {
+		id: imageProvider.id,
+		label: imageProvider.label,
+		profiles: imageProvider.profiles,
+		create: () => ({
+			// @ts-expect-error The provider requires a string image identifier.
+			configure: () => ({ configuration: { image: 123 } }),
+			open: imageProvider.open
+		})
 	});
 }
 
-it('does not infer a wider input type from an incompatible resolver', () => {
+it('rejects a declaration with incompatible typed configuration', () => {
 	expectTypeOf(invalidRegistration).toBeFunction();
 });

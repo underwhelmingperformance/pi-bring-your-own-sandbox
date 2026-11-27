@@ -15,15 +15,15 @@ import { expect } from 'vitest';
 
 import { nodeVisibilityProbe } from '../../../test-support/node-visibility-probe.js';
 
-import type { SandboxProvider } from './contracts.js';
 import { firstOpenProfile } from './fixtures/profile-fixture.js';
+import { fixtureProvider } from './fixtures/register-provider.js';
 import { openPassthrough, probePassthrough } from './passthrough.js';
 import { unrestrictedPolicy } from './policy-model.js';
 import { profileCapabilities } from './validation.js';
 
 const hostProfile = await probePassthrough(process.cwd());
 
-const provider: SandboxProvider<undefined> = {
+const provider = fixtureProvider<undefined>({
 	id: 'fixture.host',
 	label: 'Host provider contract scenario without isolation',
 	profiles: { open: [hostProfile.profile], copy: [] },
@@ -42,7 +42,7 @@ const provider: SandboxProvider<undefined> = {
 			? backend
 			: { ...backend, hostUserDataRoots: request.hostUserDataRoots };
 	}
-};
+});
 
 defineSandboxProviderTests({
 	workspaceVisibility: 'shared',

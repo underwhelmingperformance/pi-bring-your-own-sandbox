@@ -11,7 +11,6 @@ import type {
 	ProcessRequest,
 	SandboxBackend,
 	SandboxPolicy,
-	SandboxProvider,
 	SandboxWorkspace
 } from '../contracts.js';
 import { SandboxOperationError, SandboxTransportError } from '../errors.js';
@@ -21,6 +20,7 @@ import { isRecord } from '../validation.js';
 
 import { fixtureProfile } from './profile-fixture.js';
 import { fixtureProfiles } from './profile-fixture.js';
+import { fixtureProvider } from './register-provider.js';
 import { visibilityFixture } from './visibility-fixture.js';
 
 interface PendingProcess {
@@ -321,7 +321,7 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 			source = bytes;
 		}
 	);
-	const provider: SandboxProvider<undefined> = {
+	const provider = fixtureProvider<undefined>({
 		id: 'fixture.message',
 		label: 'Message-channel provider without OS isolation',
 		profiles: fixtureProfiles(
@@ -368,7 +368,7 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 				)
 			);
 		}
-	};
+	});
 	const probe = {
 		exit: { kind: 'code', code: 7 },
 		stdout: new Uint8Array([0, 255, 10]),
@@ -387,7 +387,7 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 			const workspace = await realpath(directory);
 
 			return {
-				configuration: {},
+				configuration: undefined,
 				hostWorkspace: workspace,
 				policy: unrestrictedPolicy,
 				visibility: visibility.probe(),

@@ -20,13 +20,13 @@ import {
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { contractScenario } from './fixtures/provider-contract.js';
+import { registerFixtureProvider } from './fixtures/register-provider.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import { SandboxGeneration } from './generation.js';
 import { OperationScope } from './lifecycle.js';
 import type { Profile } from './policy-model.js';
 import { defaultPolicy } from './policy-model.js';
 import { verifyCredentialExclusion } from './provider-credential-suite.js';
-import { registerSandboxProvider } from './provider-registration.js';
 import type { FixtureAttempt } from './provider-test-broker.js';
 import { fixtureBroker } from './provider-test-broker.js';
 
@@ -58,7 +58,7 @@ async function fixture(
 			{
 				name: 'policy-provider',
 				factory(pi) {
-					registerSandboxProvider(pi, source, {
+					registerFixtureProvider(pi, source, {
 						id: 'fixture.policy',
 						label: 'Profile fixture',
 						profiles: { open: [selected], copy: [] },
@@ -335,12 +335,15 @@ it.each([
 			provider: {
 				...original.provider,
 				profiles: { open: [backend.profile], copy: [] },
-				open: ({ hostUserDataRoots }) =>
-					Promise.resolve(
-						hostUserDataRoots === undefined
-							? backend
-							: Object.assign(backend, { hostUserDataRoots })
-					)
+				create: () => ({
+					...original.provider.create(),
+					open: ({ hostUserDataRoots }) =>
+						Promise.resolve(
+							hostUserDataRoots === undefined
+								? backend
+								: Object.assign(backend, { hostUserDataRoots })
+						)
+				})
 			},
 			async createFixture(selection) {
 				const selected = await original.createFixture(selection);
@@ -535,7 +538,7 @@ it.each([true, false])(
 					id: providerId,
 					label: 'Path grant fixture',
 					profiles: { open: [withGrant], copy: [] },
-					configure: () => ({
+					prepare: () => ({
 						open(request) {
 							opened.push(request.profile);
 
@@ -566,8 +569,7 @@ it.each([true, false])(
 						source: 'extension',
 						providerId,
 						policy: withGrant.policy
-					},
-					providerConfig: {}
+					}
 				})
 		});
 
@@ -641,31 +643,33 @@ it.each([
 				id: 'fixture.roots',
 				label: 'Read roots fixture',
 				profiles: { open: [selected], copy: [] },
-				validateConfig: () => ({}),
-				open(request) {
-					rootsSeen.push(request.hostUserDataRoots?.includes(root) === true);
+				create: () => ({
+					configure: () => ({ configuration: undefined }),
+					open(request) {
+						rootsSeen.push(request.hostUserDataRoots?.includes(root) === true);
 
-					const backend = new MemoryBackend('exec');
+						const backend = new MemoryBackend('exec');
 
-					return Promise.resolve(
-						Object.assign(backend, {
-							policy: selected.policy,
-							workspace: {
-								...backend.workspace,
-								hostUserDataRoot: '/target-home'
-							},
-							...(request.hostUserDataRoots !== undefined && {
-								hostUserDataRoots: request.hostUserDataRoots
-							}),
-							grantedPaths: [
-								{ hostPath: filename, targetPath: filename, kind: access }
-							]
-						})
-					);
-				}
+						return Promise.resolve(
+							Object.assign(backend, {
+								policy: selected.policy,
+								workspace: {
+									...backend.workspace,
+									hostUserDataRoot: '/target-home'
+								},
+								...(request.hostUserDataRoots !== undefined && {
+									hostUserDataRoots: request.hostUserDataRoots
+								}),
+								grantedPaths: [
+									{ hostPath: filename, targetPath: filename, kind: access }
+								]
+							})
+						);
+					}
+				})
 			},
 			checkout,
-			{},
+			undefined,
 			settings,
 			attempt
 		);
@@ -754,12 +758,14 @@ it.each([
 				id: 'fixture.echo',
 				label: 'Read roots echo fixture',
 				profiles: { open: [openProfile], copy: [copyProfile] },
-				validateConfig: () => ({}),
-				open: allocate,
-				copy: allocate
+				create: () => ({
+					configure: () => ({ configuration: undefined }),
+					open: allocate,
+					copy: allocate
+				})
 			},
 			await realpath(tmpdir()),
-			{},
+			undefined,
 			{},
 			{}
 		);

@@ -32,6 +32,7 @@ import type {
 	SandboxPolicy
 } from './contracts.js';
 import {
+	InvalidSandboxConfigError,
 	InvalidSandboxDeclarationError,
 	InvalidSandboxRequestError,
 	isSandboxError,
@@ -39,7 +40,6 @@ import {
 	SandboxCleanupError,
 	SandboxInitialisationError,
 	SandboxPermissionDeniedError,
-	SandboxProviderUnavailableError,
 	SandboxSessionClosingError,
 	SandboxStartupError,
 	StaleSandboxHandleError,
@@ -158,6 +158,7 @@ export class SandboxGeneration {
 	readonly #id = randomUUID();
 	#state: BrokerState = 'initialising';
 	#providerInfos: readonly ProviderInfo[] = [];
+	#declarations: Promise<readonly ProviderServiceV1[]> | undefined;
 	#selection: ProviderSelection | undefined;
 	#allowsEscalation = true;
 	#hostUserDataRoots: readonly string[] = Object.freeze([]);
@@ -185,10 +186,14 @@ export class SandboxGeneration {
 		this.#session.check(context, operation);
 	}
 
-	#assertOpen(operation: SandboxOperation, slot?: BackendSlot): void {
+	#assertNotClosing(operation: SandboxOperation): void {
 		if (this.#state === 'closing' || this.#state === 'closed') {
 			throw new SandboxSessionClosingError({ operation });
 		}
+	}
+
+	#assertOpen(operation: SandboxOperation, slot?: BackendSlot): void {
+		this.#assertNotClosing(operation);
 
 		const failure = this.#failure ?? slot?.failure;
 
@@ -267,27 +272,38 @@ export class SandboxGeneration {
 		return pending.promise;
 	}
 
+	async #readProviders(): Promise<readonly ProviderServiceV1[]> {
+		const declarations = await this.#dependencies.providers(
+			this.#session.context
+		);
+		const providers = Object.freeze(
+			declarations.map((provider) =>
+				Object.freeze({
+					...snapshotProviderInfo(provider),
+					...(provider.protocol !== undefined && {
+						protocol: provider.protocol
+					}),
+					...(provider.prepare !== undefined && {
+						prepare: provider.prepare.bind(provider)
+					})
+				})
+			)
+		);
+
+		this.#providerInfos = Object.freeze(
+			providers.map((provider) => snapshotProviderInfo(provider))
+		);
+
+		return providers;
+	}
+
+	#providers(): Promise<readonly ProviderServiceV1[]> {
+		return (this.#declarations ??= this.#readProviders());
+	}
+
 	async #load(pending: PromiseWithResolvers<Prepared>): Promise<void> {
 		try {
-			const declarations = await this.#dependencies.providers(
-				this.#session.context
-			);
-			const providers = Object.freeze(
-				declarations.map((provider) =>
-					Object.freeze({
-						...snapshotProviderInfo(provider),
-						...(provider.protocol !== undefined && {
-							protocol: provider.protocol
-						}),
-						configure: provider.configure.bind(provider)
-					})
-				)
-			);
-
-			this.#providerInfos = Object.freeze(
-				providers.map((provider) => snapshotProviderInfo(provider))
-			);
-
+			const providers = await this.#providers();
 			const config = await this.#dependencies.readConfig(this.#session.context);
 
 			this.#allowsEscalation = config.allowEscalation ?? true;
@@ -332,7 +348,14 @@ export class SandboxGeneration {
 				);
 			}
 
-			const configured = await provider.configure(config.providerConfig);
+			const configured = config.configured ?? (await provider.prepare?.());
+
+			if (configured === undefined) {
+				throw new InvalidSandboxConfigError({
+					operation: 'configure',
+					providerId: provider.id
+				});
+			}
 
 			this.#configurationSource = undefined;
 
@@ -976,7 +999,7 @@ export class SandboxGeneration {
 			});
 		}
 
-		const configured = await provider.configure({});
+		const configured = await provider.prepare();
 
 		return { provider, configured, profile: choice.profile };
 	}
@@ -995,7 +1018,7 @@ export class SandboxGeneration {
 				{
 					...provider,
 					profiles: { ...provider.profiles, open: [profile] },
-					configure: () => configured
+					prepare: () => configured
 				}
 			],
 			readConfig: () =>
@@ -1005,7 +1028,6 @@ export class SandboxGeneration {
 						providerId: provider.id,
 						policy: profile.policy
 					},
-					providerConfig: {},
 					hostUserDataRoots: this.#hostUserDataRoots,
 					cleanup: this.#cleanup
 				})
@@ -1361,7 +1383,7 @@ export class SandboxGeneration {
 					{
 						...provider,
 						profiles: { ...provider.profiles, open: [profile] },
-						configure: () => ({
+						prepare: () => ({
 							open: (request, opening) =>
 								copier({ ...request, source: origin }, opening),
 							copy: copier
@@ -1371,7 +1393,6 @@ export class SandboxGeneration {
 				readConfig: () =>
 					Promise.resolve({
 						selection: { source: 'extension', providerId: provider.id, policy },
-						providerConfig: {},
 						hostUserDataRoots: this.#hostUserDataRoots,
 						cleanup: this.#cleanup
 					})
@@ -1426,11 +1447,13 @@ export class SandboxGeneration {
 		input?: SandboxAcquireOptions
 	): Promise<SandboxNegotiation> {
 		this.#assertContext(context, 'acquire');
-		this.#assertOpen('acquire');
+		this.#assertNotClosing('acquire');
 
 		const options = acquireOptions(input);
 
 		try {
+			this.#assertOpen('acquire');
+
 			const prepared = await this.#prepare();
 
 			const { profile } = await this.#negotiate(prepared.provider, options);
@@ -1451,12 +1474,14 @@ export class SandboxGeneration {
 		requirements?: SandboxCopyOptions
 	): Promise<SandboxNegotiation> {
 		this.#assertContext(context, 'acquire');
-		this.#assertOpen('acquire');
+		this.#assertNotClosing('acquire');
 
 		const source = copySource(input);
 		const options = copyOptions(requirements);
 
 		try {
+			this.#assertOpen('acquire');
+
 			const prepared = await this.#prepare();
 			const { profile } = await this.#negotiateCopy(prepared, source, options);
 
@@ -1539,18 +1564,8 @@ export class SandboxGeneration {
 	}
 
 	async providers(): Promise<readonly ProviderInfo[]> {
-		if (this.#state === 'closing' || this.#state === 'closed') {
-			throw new SandboxSessionClosingError({ operation: 'discover' });
-		}
-
-		const result = await observe(this.#prepare());
-
-		if (
-			result.kind === 'rejected' &&
-			!isSandboxError(result.error, SandboxProviderUnavailableError)
-		) {
-			throw result.error;
-		}
+		this.#assertNotClosing('discover');
+		await this.#providers();
 
 		return this.#providerInfos;
 	}

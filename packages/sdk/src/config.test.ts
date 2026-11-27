@@ -17,22 +17,17 @@ const provider: ProviderServiceV1 = {
 	id: 'fixture',
 	label: 'Fixture',
 	profiles: { open: [open(), open(unrestrictedPolicy)], copy: [] },
-	configure: () => ({ open: () => Promise.resolve(backend) })
+	prepare: () => ({ open: () => Promise.resolve(backend) })
 };
 
-it('uses the SDK default and keeps the provider configuration separate', () => {
-	const config = { image: 'fixture' };
-
-	expect(
-		resolveSandboxConfig(provider, { configuration: config }, 'extension')
-	).toStrictEqual({
+it('uses the SDK default when a provider omits shared settings', () => {
+	expect(resolveSandboxConfig(provider, undefined, 'extension')).toStrictEqual({
 		allowEscalation: true,
 		selection: {
 			providerId: 'fixture',
 			source: 'extension',
 			policy: defaultPolicy
 		},
-		providerConfig: config,
 		providerConfigSource: 'extension'
 	});
 });
@@ -44,18 +39,17 @@ it('narrows an omitted policy to the best supported profile', () => {
 		profiles: { open: [open(restricted)], copy: [] }
 	};
 
-	expect(
-		resolveSandboxConfig(candidate, { configuration: {} }, 'extension')
-	).toStrictEqual({
-		allowEscalation: true,
-		selection: {
-			providerId: 'fixture',
-			source: 'extension',
-			policy: restricted
-		},
-		providerConfig: {},
-		providerConfigSource: 'extension'
-	});
+	expect(resolveSandboxConfig(candidate, undefined, 'extension')).toStrictEqual(
+		{
+			allowEscalation: true,
+			selection: {
+				providerId: 'fixture',
+				source: 'extension',
+				policy: restricted
+			},
+			providerConfigSource: 'extension'
+		}
+	);
 });
 
 it('uses an explicit policy as the limit and snapshots shared settings', () => {
@@ -63,13 +57,10 @@ it('uses an explicit policy as the limit and snapshots shared settings', () => {
 	const result = resolveSandboxConfig(
 		provider,
 		{
-			configuration: {},
-			settings: {
-				policy,
-				allowEscalation: false,
-				userShell: 'bash',
-				cleanup: { disposalTimeoutMs: 300 }
-			}
+			policy,
+			allowEscalation: false,
+			userShell: 'bash',
+			cleanup: { disposalTimeoutMs: 300 }
 		},
 		'extension'
 	);
@@ -84,7 +75,6 @@ it('uses an explicit policy as the limit and snapshots shared settings', () => {
 			policy: unrestrictedPolicy,
 			userShell: 'bash'
 		},
-		providerConfig: {},
 		providerConfigSource: 'extension',
 		policySource: 'extension',
 		cleanup: { disposalTimeoutMs: 300 }
@@ -97,17 +87,13 @@ it('rejects a provider that supports no profile within the configured limit', ()
 		profiles: { open: [open(unrestrictedPolicy)], copy: [] }
 	};
 
-	expect(() =>
-		resolveSandboxConfig(candidate, { configuration: {} }, 'extension')
-	).toThrow(UnsupportedSandboxPolicyError);
+	expect(() => resolveSandboxConfig(candidate, undefined, 'extension')).toThrow(
+		UnsupportedSandboxPolicyError
+	);
 });
 
 it('refuses to select a missing provider', () => {
-	const config = resolveSandboxConfig(
-		provider,
-		{ configuration: {} },
-		'extension'
-	);
+	const config = resolveSandboxConfig(provider, undefined, 'extension');
 
 	expect(() => selectProvider(config, [])).toThrow(ProviderNotFoundError);
 });

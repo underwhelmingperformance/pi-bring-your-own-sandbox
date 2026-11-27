@@ -18,11 +18,11 @@ import {
 } from './errors.js';
 import type { EscalationRequest } from './escalation-ledger.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
+import { registerFixtureProvider } from './fixtures/register-provider.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import { resolveHostUserDataRoots } from './path-grants.js';
 import sandboxTools from './pi-tools.js';
 import { unrestrictedPolicy } from './policy-model.js';
-import { registerSandboxProvider } from './provider-registration.js';
 import { createShellReviewClient } from './review.js';
 import { isRecord } from './validation.js';
 
@@ -97,7 +97,7 @@ it.each([
 				{
 					name: 'credential-provider',
 					factory(pi) {
-						registerSandboxProvider(
+						registerFixtureProvider(
 							pi,
 							'<inline:credential-provider>',
 							{
@@ -429,7 +429,7 @@ it.each([
 		const provider: InlineExtension = {
 			name: 'escalation-target',
 			factory(pi) {
-				registerSandboxProvider(
+				registerFixtureProvider(
 					pi,
 					'<inline:escalation-target>',
 					{
@@ -762,7 +762,7 @@ it.each([
 					{
 						name: 'restricted-provider',
 						factory(pi) {
-							registerSandboxProvider(pi, '<inline:restricted-provider>', {
+							registerFixtureProvider(pi, '<inline:restricted-provider>', {
 								id: 'fixture.restricted',
 								label: 'Restricted fixture provider',
 								profiles: { open: [backend.profile], copy: [] },
@@ -922,7 +922,7 @@ it.each([
 					{
 						name: 'read-provider',
 						factory(pi) {
-							registerSandboxProvider(pi, '<inline:read-provider>', {
+							registerFixtureProvider(pi, '<inline:read-provider>', {
 								id: 'fixture.reader',
 								label: 'Read fixture',
 								profiles: { open: [profile], copy: [] },

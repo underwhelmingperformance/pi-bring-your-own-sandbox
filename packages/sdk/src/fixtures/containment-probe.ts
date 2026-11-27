@@ -6,10 +6,10 @@ import { Type } from 'typebox';
 
 import { ScriptedModel } from '../../../../test-support/scripted-model.js';
 import { getSandbox } from '../client.js';
-import { registerSandboxProvider } from '../provider-registration.js';
 
 import { MemoryBackend } from './memory-backend.js';
 import { withPiRuntime } from './pi-runtime.js';
+import { registerFixtureProvider } from './register-provider.js';
 
 export default async function probe(marker: string): Promise<void> {
 	const model = new ScriptedModel([
@@ -39,7 +39,7 @@ export default async function probe(marker: string): Promise<void> {
 			{
 				name: 'peer-extension',
 				factory(pi) {
-					registerSandboxProvider(pi, import.meta.filename, {
+					registerFixtureProvider(pi, import.meta.filename, {
 						id: 'fixture',
 						label: 'Containment fixture',
 						profiles: { open: [backend.profile], copy: [] },

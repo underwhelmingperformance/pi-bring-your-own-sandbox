@@ -1,27 +1,25 @@
 import type { SandboxBroker } from './broker.js';
 import type {
-	SandboxConfigResolver,
+	SandboxConfigContext,
 	SandboxContext,
 	SandboxHost,
 	SandboxHostHandle,
-	SandboxHostOptions,
-	SandboxProviderConfig,
-	SandboxReadRootPersistence
+	SandboxHostOptions
 } from './contracts.js';
 import {
 	InvalidSandboxRequestError,
 	SandboxInitialisationError
 } from './errors.js';
-import type { ProviderInfo, ProviderServiceV1 } from './protocol.js';
+import type { ConfiguredProviderV1, ProviderInfo } from './protocol.js';
 import type { ProtocolIdentity } from './protocol-envelope.js';
 import type { BrokerPin } from './protocol-payloads.js';
 import type { ShellRouteRegistration } from './shell-review-routes.js';
 
-export interface RuntimeProvider extends ProviderServiceV1 {
-	readonly resolve: SandboxConfigResolver<SandboxProviderConfig<unknown>>;
-	readonly persistReadRoot?: (
-		context: SandboxReadRootPersistence
-	) => Promise<void>;
+export interface RuntimeProvider extends ProviderInfo {
+	readonly protocol: ProtocolIdentity;
+	readonly configure?: (
+		context: SandboxConfigContext
+	) => Promise<ConfiguredProviderV1>;
 }
 
 export interface ShellSettings {

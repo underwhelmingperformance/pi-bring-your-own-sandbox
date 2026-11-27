@@ -50,16 +50,18 @@ it('gives the embedding host an idempotent close handle across SDK copies', asyn
 						id: 'fixture',
 						label: 'Fixture',
 						profiles: { open: [backend.profile], copy: [] },
-						validateConfig: () => ({}),
-						open: () =>
-							Promise.resolve({
-								...snapshotBackend(backend),
-								dispose() {
-									disposals++;
+						create: () => ({
+							configure: () => ({ configuration: undefined }),
+							open: () =>
+								Promise.resolve({
+									...snapshotBackend(backend),
+									dispose() {
+										disposals++;
 
-									return Promise.resolve();
-								}
-							})
+										return Promise.resolve();
+									}
+								})
+						})
 					});
 				}
 			}

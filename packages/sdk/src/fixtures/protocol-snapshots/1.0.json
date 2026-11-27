@@ -3337,11 +3337,37 @@
 			"type": "object",
 			"~kind": "Object"
 		},
-		"provider.configuration": {
+		"provider.configured": {
 			"additionalProperties": false,
 			"properties": {
-				"configuration": {
-					"~kind": "Unknown"
+				"copy": {
+					"parameters": [],
+					"returnType": {
+						"~kind": "Unknown"
+					},
+					"type": "function",
+					"~kind": "Function",
+					"~optional": true,
+					"~unsafe": null
+				},
+				"open": {
+					"parameters": [],
+					"returnType": {
+						"~kind": "Unknown"
+					},
+					"type": "function",
+					"~kind": "Function",
+					"~unsafe": null
+				},
+				"persistReadRoot": {
+					"parameters": [],
+					"returnType": {
+						"~kind": "Unknown"
+					},
+					"type": "function",
+					"~kind": "Function",
+					"~optional": true,
+					"~unsafe": null
 				},
 				"settings": {
 					"additionalProperties": false,
@@ -3484,7 +3510,7 @@
 					"~optional": true
 				}
 			},
-			"required": ["configuration"],
+			"required": ["open"],
 			"type": "object",
 			"~kind": "Object"
 		},

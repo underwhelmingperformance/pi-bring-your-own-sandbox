@@ -12,7 +12,7 @@ import {
 	PROTOCOL_MAJOR,
 	REVIEW_CHANNEL
 } from './protocol-envelope.js';
-import { findReviewRequest } from './protocol-payloads.js';
+import { findReviewRequest, reviewSourceSchema } from './protocol-payloads.js';
 import { ReviewIdentities } from './review-identities.js';
 import { findShellReviewSource, hasShellReviewRoute } from './review-route.js';
 import { checker } from './schemas.js';
@@ -195,6 +195,7 @@ it.each([
 		const local = protocolAddress(pi.events);
 		const fixtures = Array.from({ length: count }, (_, index) =>
 			owner.register(inspectContext(scope, 'acquire'), call, {
+				command: 'printf target',
 				destination: {
 					providerId: 'fixture',
 					label: String(index),
@@ -242,3 +243,47 @@ it.each([
 		});
 	}
 );
+
+it('requires the source command and checks it against the escalation command', () => {
+	const isSource = checker(reviewSourceSchema);
+	const command = 'export REVIEW_FIXTURE=sample\nprintf target';
+	const source = {
+		destination: {
+			providerId: 'fixture',
+			label: 'Review fixture',
+			policy: defaultPolicy
+		},
+		copy: vi.fn(),
+		negotiateCopy: vi.fn()
+	};
+	const escalated = {
+		...source,
+		command,
+		escalation: {
+			toolCallId: call.toolCallId,
+			command,
+			justification: 'Read the review fixture.',
+			access: {},
+			destination: {
+				kind: 'provider',
+				providerId: 'fixture',
+				policy: defaultPolicy,
+				effectiveRestrictions: 'Fixture restrictions'
+			}
+		},
+		signal: new AbortController().signal,
+		recordDecision: vi.fn()
+	};
+
+	expect({
+		ordinary: isSource({ ...source, command }),
+		missing: isSource(source),
+		escalated: isSource(escalated),
+		inconsistent: isSource({ ...escalated, command: 'printf other' })
+	}).toStrictEqual({
+		ordinary: true,
+		missing: false,
+		escalated: true,
+		inconsistent: false
+	});
+});

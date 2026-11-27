@@ -1539,6 +1539,11 @@
 		},
 		"broker.reviewSource": {
 			"properties": {
+				"command": {
+					"pattern": "^[^\\u0000]*$",
+					"type": "string",
+					"~kind": "String"
+				},
 				"copy": {
 					"parameters": [
 						{
@@ -2552,13 +2557,13 @@
 					"~unsafe": null
 				}
 			},
-			"required": ["destination", "negotiateCopy", "copy"],
+			"required": ["command", "destination", "negotiateCopy", "copy"],
 			"type": "object",
 			"~kind": "Object",
 			"~refine": [
 				{
 					"check": {
-						"implementation": "9204d8c52bbbdb4b686d0f9baf8a1e033dcd3eb7ed62febf8ec5085d84e9abfa"
+						"implementation": "88e2c1681e2221b83e18941ef4e13a588d59df97c1b5ce39eee9571801fb3b1a"
 					},
 					"error": {
 						"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"

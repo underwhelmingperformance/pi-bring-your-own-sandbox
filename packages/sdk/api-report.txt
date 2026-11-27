@@ -463,6 +463,7 @@ export interface ShellReviewClient {
 
 // contracts.d.ts
 export interface ShellReviewSource {
+    readonly command: string;
     readonly destination: DestinationDescription;
     readonly escalation?: EscalationRequest;
     readonly signal?: AbortSignal;

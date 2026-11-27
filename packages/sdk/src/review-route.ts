@@ -173,6 +173,7 @@ function bindReviewSource(
 	const { signal, recordDecision } = source;
 
 	return Object.freeze<ShellReviewSource>({
+		command: source.command,
 		destination: source.destination,
 		...(escalation !== undefined &&
 			signal !== undefined &&

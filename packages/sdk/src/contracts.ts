@@ -943,6 +943,7 @@ The destination of a pending shell tool call. A reviewer can copy the files
 that the command will see, but cannot run anything in the destination itself.
 */
 export interface ShellReviewSource {
+	readonly command: string;
 	readonly destination: DestinationDescription;
 	readonly escalation?: EscalationRequest;
 	/**

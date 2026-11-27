@@ -35,6 +35,7 @@ type Dialect = 'bash' | 'powershell';
 
 interface ShellCommand {
 	readonly command: string;
+	readonly effective: string;
 	readonly prefix: string | undefined;
 	readonly timeout: number | undefined;
 	readonly escalation: ReturnType<typeof escalationInput>;
@@ -210,7 +211,8 @@ export class ShellReviewRoutes {
 		const command = input['command'];
 		const prefix =
 			toolName === 'bash' ? pi.getSettings().shellCommandPrefix : undefined;
-		const escalation = escalationInput(id, effectiveCommand(command, prefix), {
+		const effective = effectiveCommand(command, prefix);
+		const escalation = escalationInput(id, effective, {
 			escalate: input['escalate'],
 			justification: input['justification']
 		});
@@ -224,6 +226,7 @@ export class ShellReviewRoutes {
 
 		return Object.freeze({
 			command,
+			effective,
 			prefix,
 			timeout:
 				typeof input['timeout'] === 'number' ? input['timeout'] : undefined,
@@ -289,6 +292,7 @@ export class ShellReviewRoutes {
 			const registration = await this.#broker.prepareReview(
 				context,
 				{ toolName, toolCallId: id },
+				command.effective,
 				pending
 			);
 

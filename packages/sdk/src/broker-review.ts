@@ -103,6 +103,7 @@ interface ReviewDestination {
 
 export interface RegisteredReview {
 	readonly call: ReviewedToolCall;
+	readonly command: string;
 	readonly escalation?: EscalationRequest;
 	readonly state: ReviewState;
 	readonly target: ReviewDestination;
@@ -192,7 +193,7 @@ export function resolvedReviewSource(
 	isCurrent: () => boolean,
 	append?: (entry: SandboxLedgerEntry) => void
 ): ShellReviewSource {
-	const { generation, call, escalation, state, target } = review;
+	const { generation, call, command, escalation, state, target } = review;
 	const { destination, source } = target;
 	const check = () => {
 		if (!isCurrent() || !state.isCurrent()) {
@@ -203,6 +204,7 @@ export function resolvedReviewSource(
 	const { signal } = state;
 
 	return Object.freeze<ShellReviewSource>({
+		command,
 		destination,
 		...(escalation !== undefined &&
 			signal !== undefined && {

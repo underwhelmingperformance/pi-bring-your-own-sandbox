@@ -604,6 +604,11 @@ interface EscalationRequest {
 }
 ```
 
+`ShellReviewSource.command` contains the broker's effective command for every
+source. For Bash, the command includes Pi's configured prefix. Auto-review uses
+this field to show the effective command in ordinary Bash reviews. For escalated
+calls, the SDK requires `command` and `escalation.command` to agree.
+
 Call the review source's `recordDecision` method while the escalation is
 pending. The broker binds the method to the exact call and attributes the
 decision to the requesting extension. A late decision fails with

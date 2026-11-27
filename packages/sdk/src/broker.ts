@@ -13,7 +13,10 @@ import type {
 	SandboxContext,
 	SandboxHost
 } from './contracts.js';
-import { SandboxInitialisationError } from './errors.js';
+import {
+	InvalidSandboxRequestError,
+	SandboxInitialisationError
+} from './errors.js';
 import type { EscalationPlan } from './escalation-plan.js';
 import type { GenerationDependencies } from './generation.js';
 import { SandboxGeneration } from './generation.js';
@@ -175,9 +178,15 @@ export class SandboxBroker implements BrokerService {
 	async prepareReview(
 		context: SandboxContext,
 		call: ReviewedToolCall,
+		command: string,
 		pending?: PendingEscalation
 	) {
 		const escalation = pending?.request;
+
+		if (escalation !== undefined && escalation.command !== command) {
+			throw new InvalidSandboxRequestError({ operation: 'exec' });
+		}
+
 		const { session, generation } = this.#resolve(context);
 		const target = await describeReviewDestination(
 			generation,
@@ -190,6 +199,7 @@ export class SandboxBroker implements BrokerService {
 		);
 		const registration = this.#reviewIdentities.register(session, call, {
 			call,
+			command,
 			...(escalation !== undefined && { escalation }),
 			target,
 			generation,

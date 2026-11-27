@@ -157,6 +157,8 @@ it.each([false, true])(
 	async (isAlreadyOpen) => {
 		const sdk = await loadSdkInstance();
 		const { backend, requests } = shellBackend();
+		const prefix = 'export REVIEW_FIXTURE=sample';
+		const effective = prefix + '\nprintf target';
 		const opens: string[] = [];
 		const copies: string[] = [];
 		const disposals: string[] = [];
@@ -170,6 +172,7 @@ it.each([false, true])(
 			policy: { ...backend.profile.policy, hostWorkspaceWrites: false }
 		};
 		const checks: {
+			readonly command: string;
 			readonly destination: DestinationDescription;
 			readonly negotiation: SandboxNegotiation;
 			readonly opens: readonly string[];
@@ -255,6 +258,7 @@ it.each([false, true])(
 					});
 
 					checks.push({
+						command: resolved.command,
 						destination: resolved.destination,
 						negotiation,
 						opens: [...opens],
@@ -318,6 +322,8 @@ it.each([false, true])(
 				model.extension
 			],
 			async (runtime, errors) => {
+				runtime.services.settingsManager.setShellCommandPrefix(prefix);
+
 				const selected = runtime.session.modelRuntime.getModel(
 					'scripted',
 					'scripted'
@@ -357,6 +363,7 @@ it.each([false, true])(
 					errors: [],
 					checks: [
 						{
+							command: effective,
 							destination,
 							negotiation: { ok: true, profile: copyProfile },
 							opens: isAlreadyOpen ? [backend.id] : [],
@@ -370,7 +377,7 @@ it.each([false, true])(
 						{
 							kind: 'shell',
 							dialect: 'bash',
-							command: 'printf target',
+							command: effective,
 							cwd: backend.workspace.root
 						}
 					],

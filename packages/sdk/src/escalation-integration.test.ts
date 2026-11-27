@@ -492,7 +492,7 @@ it.each([
 						return;
 					}
 
-					const { escalation, signal, recordDecision } = review.source;
+					const { command, escalation, signal, recordDecision } = review.source;
 
 					if (signal === undefined || recordDecision === undefined) {
 						throw new Error(
@@ -500,7 +500,10 @@ it.each([
 						);
 					}
 
-					expect(signal.aborted).toBe(false);
+					expect({ command, isAborted: signal.aborted }).toStrictEqual({
+						command: escalation.command,
+						isAborted: false
+					});
 					reviewSignals.push(signal);
 					observed.push(escalation);
 					record = recordDecision;

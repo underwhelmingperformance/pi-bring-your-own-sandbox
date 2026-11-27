@@ -73,6 +73,7 @@ import {
 	denseArray,
 	nonEmptyStringSchema,
 	recoverySchema,
+	safeTextSchema,
 	signalSchema
 } from './schemas.js';
 import {
@@ -208,6 +209,7 @@ const recordDecision = callable<
 const reviewRequirements = Type.Optional(Type.Ref('broker.requirements'));
 const reviewOptions = Type.Optional(Type.Ref('broker.acquireOptions'));
 const reviewSourceShape = Type.Object({
+	command: safeTextSchema,
 	destination: destinationDescriptionSchema,
 	escalation: Type.Optional(escalationRequestSchema),
 	signal: Type.Optional(signalSchema),
@@ -226,9 +228,10 @@ const reviewSourceShape = Type.Object({
 
 export const reviewSourceSchema = Type.Refine(
 	reviewSourceShape,
-	({ escalation, signal, recordDecision }) =>
+	({ command, escalation, signal, recordDecision }) =>
 		(escalation !== undefined) === (signal !== undefined) &&
-		(escalation !== undefined) === (recordDecision !== undefined)
+		(escalation !== undefined) === (recordDecision !== undefined) &&
+		(escalation === undefined || escalation.command === command)
 );
 
 export const protocolSchemas = {

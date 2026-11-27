@@ -7,6 +7,12 @@ import manifest from '../packages/sdk/package.json' with { type: 'json' };
 const sdk = path.resolve(import.meta.dirname, '../packages/sdk');
 const examples = path.join(sdk, 'examples');
 const piEntry = path.join(sdk, 'src/pi-tools.ts');
+const piFileTools = path.join(sdk, 'src/integration/file-tools.ts');
+const piSearchHelpers = new Set(
+	['grep-output', 'ripgrep-arguments'].flatMap((name) =>
+		['.js', '.ts'].map((suffix) => path.join(sdk, 'src', name + suffix))
+	)
+);
 const piIntegrations = new Set(
 	['privileged', 'file-tools', 'diagnostics'].flatMap((name) =>
 		['.js', '.ts'].map((suffix) =>
@@ -72,6 +78,10 @@ export const sdkImportBoundary: Rule.RuleModule = {
 					context.report({ node, messageId: 'piIntegration' });
 				}
 
+				return;
+			}
+
+			if (context.filename === piFileTools && piSearchHelpers.has(file)) {
 				return;
 			}
 

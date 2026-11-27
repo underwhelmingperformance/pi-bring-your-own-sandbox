@@ -27,8 +27,7 @@ it('uses the SDK default when a provider omits shared settings', () => {
 			providerId: 'fixture',
 			source: 'extension',
 			policy: defaultPolicy
-		},
-		providerConfigSource: 'extension'
+		}
 	});
 });
 
@@ -46,8 +45,7 @@ it('narrows an omitted policy to the best supported profile', () => {
 				providerId: 'fixture',
 				source: 'extension',
 				policy: restricted
-			},
-			providerConfigSource: 'extension'
+			}
 		}
 	);
 });
@@ -75,8 +73,6 @@ it('uses an explicit policy as the limit and snapshots shared settings', () => {
 			policy: unrestrictedPolicy,
 			userShell: 'bash'
 		},
-		providerConfigSource: 'extension',
-		policySource: 'extension',
 		cleanup: { disposalTimeoutMs: 300 }
 	});
 });

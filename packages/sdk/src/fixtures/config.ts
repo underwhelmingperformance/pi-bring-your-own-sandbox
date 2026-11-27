@@ -46,8 +46,7 @@ export class FixtureConfig {
 
 		if (!isSettings(this.#value)) {
 			throw new InvalidSandboxConfigError({
-				operation: 'configure',
-				configurationSource: 'extension'
+				operation: 'configure'
 			});
 		}
 

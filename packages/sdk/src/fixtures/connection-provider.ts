@@ -45,7 +45,6 @@ export const connectionProvider: FixtureProvider<ConnectionConfig> = {
 				root: '/project',
 				pathFlavor: 'posix',
 				relationship: 'shared',
-				description: 'In-memory protocol fixture; no connection is opened.',
 				defaultShell: 'sh'
 			},
 			profile: fixtureProfile(request.profile.policy, {

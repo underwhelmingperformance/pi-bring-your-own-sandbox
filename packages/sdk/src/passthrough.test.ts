@@ -248,16 +248,21 @@ it('shares host files, preserves byte ownership and follows filesystem links', a
 	await symlink('nested/file', path.join(directory, 'link'));
 	await symlink('absent', path.join(directory, 'dangling'));
 
-	const update = await sandbox.files.updateText(
-		'link',
-		(text) => `${text}second\n`
+	const initial = new TextDecoder().decode(
+		await sandbox.files.readFile('link')
 	);
+
+	await sandbox.files.writeFile(
+		'link',
+		new TextEncoder().encode(initial + 'second\n')
+	);
+
 	const entries = await sandbox.files.listDirectory('.');
 
 	expect({
 		workspace: sandbox.workspace,
 		policy: sandbox.profile.policy,
-		update,
+		initial,
 		content: await readFile(path.join(directory, 'nested/file'), 'utf8'),
 		entries
 	}).toStrictEqual({
@@ -267,9 +272,7 @@ it('shares host files, preserves byte ownership and follows filesystem links', a
 			relationship: 'shared',
 			home: process.env['HOME'],
 			hostUserDataRoot: process.env['HOME'],
-			defaultShell: 'bash',
-			description:
-				'The host workspace is shared. No sandbox isolation is applied.'
+			defaultShell: 'bash'
 		},
 		policy: {
 			hostWorkspaceWrites: true,
@@ -277,7 +280,7 @@ it('shares host files, preserves byte ownership and follows filesystem links', a
 			hostSystemFiles: 'read-write',
 			network: true
 		},
-		update: { before: 'first\r\n', after: 'first\r\nsecond\n' },
+		initial: 'first\r\n',
 		content: 'first\r\nsecond\n',
 		entries: [
 			{ name: 'dangling', kind: 'symlink' },

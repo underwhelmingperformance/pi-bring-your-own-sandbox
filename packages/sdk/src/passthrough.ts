@@ -129,8 +129,6 @@ export async function openPassthrough(
 				relationship: 'shared',
 				home,
 				hostUserDataRoot: home,
-				description:
-					'The host workspace is shared. No sandbox isolation is applied.',
 				...(defaultShell !== undefined && { defaultShell })
 			},
 			profile,

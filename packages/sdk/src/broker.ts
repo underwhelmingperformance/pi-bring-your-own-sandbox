@@ -11,7 +11,6 @@ import type {
 	SandboxAcquireOptions,
 	SandboxCloseReport,
 	SandboxContext,
-	SandboxCopyOptions,
 	SandboxHost
 } from './contracts.js';
 import { SandboxInitialisationError } from './errors.js';
@@ -121,7 +120,7 @@ export class SandboxBroker implements BrokerService {
 	copy(
 		context: SandboxContext,
 		source: CopySourceIdentity,
-		options?: SandboxCopyOptions
+		options?: SandboxAcquireOptions
 	) {
 		return this.#resolve(context).generation.copy(context, source, options);
 	}

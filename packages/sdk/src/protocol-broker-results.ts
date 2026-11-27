@@ -2,13 +2,13 @@ import type { Sandbox, SandboxCopy } from './contracts.js';
 import { profileSchema, providerInfoSchema } from './policy-model.js';
 import type { BrokerService } from './protocol.js';
 import type { ProtocolIdentity } from './protocol-envelope.js';
-import { copyOptionsSchema } from './protocol-payloads.js';
 import { projectOffer } from './protocol-schema.js';
 import {
 	checkDemand,
 	sharedFeatureLevel,
 	unavailableFeature
 } from './protocol-version.js';
+import { acquireOptionsSchema } from './request-schemas.js';
 import { rethrowCopyError } from './sandbox-copy.js';
 import { checker } from './schemas.js';
 
@@ -53,7 +53,7 @@ export function brokerOffers(
 			profile,
 			async copy(options) {
 				checkDemand(
-					copyOptionsSchema,
+					acquireOptionsSchema,
 					options ?? {},
 					local,
 					peer,

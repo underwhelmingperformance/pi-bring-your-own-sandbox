@@ -1,12 +1,12 @@
 import { Type } from 'typebox';
 
-import { acquireOptions, checkRequirements } from './acquire-options.js';
+import { checkRequirements } from './acquire-options.js';
 import { settleSandboxClose } from './cleanup-report.js';
 import type {
 	Sandbox,
+	SandboxAcquireOptions,
 	SandboxCloseReport,
 	SandboxCopy,
-	SandboxCopyOptions,
 	SandboxErrorContext
 } from './contracts.js';
 import {
@@ -40,16 +40,9 @@ export function copySource(input: unknown): CopySourceIdentity {
 	return Object.freeze({ ...input });
 }
 
-export function copyOptions(
-	input: unknown,
-	extensionSource?: string
-): SandboxCopyOptions {
-	return acquireOptions(input, extensionSource);
-}
-
 export function checkCopiedSandbox(
 	sandbox: Sandbox,
-	options: SandboxCopyOptions,
+	options: SandboxAcquireOptions,
 	extensionSource?: string
 ): void {
 	checkRequirements(sandbox, options, extensionSource);
@@ -67,7 +60,7 @@ export function checkCopiedSandbox(
 
 export async function checkedCopy(
 	copy: SandboxCopy,
-	options: SandboxCopyOptions,
+	options: SandboxAcquireOptions,
 	extensionSource: string
 ): Promise<SandboxCopy> {
 	try {

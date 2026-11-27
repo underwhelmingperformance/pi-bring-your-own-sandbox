@@ -72,11 +72,8 @@ export function formatCleanupReport(report: SandboxCloseReport): DisplayText {
 			continue;
 		}
 
-		const expiry =
-			recovery.expiresAt === undefined ? '' : `; expires ${recovery.expiresAt}`;
-
 		lines.push(
-			`Recovery: ${recovery.id} (lease ${recovery.lease}${expiry})`,
+			`Recovery: ${recovery.id} (lease ${recovery.lease})`,
 			recovery.instructions
 		);
 	}

@@ -334,338 +334,6 @@
 			"type": "object",
 			"~kind": "Object"
 		},
-		"broker.copyOptions": {
-			"additionalProperties": false,
-			"properties": {
-				"access": {
-					"additionalProperties": false,
-					"properties": {
-						"hostSystemFiles": {
-							"anyOf": [
-								{
-									"const": "needed",
-									"type": "string",
-									"~kind": "Literal"
-								},
-								{
-									"const": "prevented",
-									"type": "string",
-									"~kind": "Literal"
-								}
-							],
-							"~kind": "Union",
-							"~optional": true
-						},
-						"hostUserData": {
-							"anyOf": [
-								{
-									"const": "needed",
-									"type": "string",
-									"~kind": "Literal"
-								},
-								{
-									"const": "prevented",
-									"type": "string",
-									"~kind": "Literal"
-								}
-							],
-							"~kind": "Union",
-							"~optional": true
-						},
-						"hostWorkspaceWrites": {
-							"anyOf": [
-								{
-									"const": "needed",
-									"type": "string",
-									"~kind": "Literal"
-								},
-								{
-									"const": "prevented",
-									"type": "string",
-									"~kind": "Literal"
-								}
-							],
-							"~kind": "Union",
-							"~optional": true
-						},
-						"network": {
-							"anyOf": [
-								{
-									"const": "needed",
-									"type": "string",
-									"~kind": "Literal"
-								},
-								{
-									"const": "prevented",
-									"type": "string",
-									"~kind": "Literal"
-								}
-							],
-							"~kind": "Union",
-							"~optional": true
-						},
-						"paths": {
-							"additionalProperties": false,
-							"properties": {
-								"read": {
-									"items": {
-										"minLength": 1,
-										"pattern": "^[^\\u0000]*$",
-										"type": "string",
-										"~kind": "String"
-									},
-									"type": "array",
-									"uniqueItems": true,
-									"~kind": "Array",
-									"~optional": true,
-									"~refine": [
-										{
-											"check": {
-												"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
-											},
-											"error": {
-												"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-											}
-										}
-									]
-								},
-								"write": {
-									"items": {
-										"minLength": 1,
-										"pattern": "^[^\\u0000]*$",
-										"type": "string",
-										"~kind": "String"
-									},
-									"type": "array",
-									"uniqueItems": true,
-									"~kind": "Array",
-									"~optional": true,
-									"~refine": [
-										{
-											"check": {
-												"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
-											},
-											"error": {
-												"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-											}
-										}
-									]
-								}
-							},
-							"type": "object",
-							"~kind": "Object",
-							"~optional": true
-						}
-					},
-					"type": "object",
-					"~kind": "Object",
-					"~optional": true
-				},
-				"capabilities": {
-					"items": {
-						"anyOf": [
-							{
-								"const": "files.read",
-								"type": "string",
-								"~kind": "Literal"
-							},
-							{
-								"const": "files.write",
-								"type": "string",
-								"~kind": "Literal"
-							},
-							{
-								"const": "files.list",
-								"type": "string",
-								"~kind": "Literal"
-							},
-							{
-								"const": "search.find",
-								"type": "string",
-								"~kind": "Literal"
-							},
-							{
-								"const": "search.grep",
-								"type": "string",
-								"~kind": "Literal"
-							}
-						],
-						"~kind": "Union"
-					},
-					"type": "array",
-					"uniqueItems": true,
-					"~kind": "Array",
-					"~optional": true,
-					"~refine": [
-						{
-							"check": {
-								"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
-							},
-							"error": {
-								"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-							}
-						}
-					]
-				},
-				"exitStatus": {
-					"const": "guaranteed",
-					"type": "string",
-					"~kind": "Literal",
-					"~optional": true
-				},
-				"processKinds": {
-					"items": {
-						"anyOf": [
-							{
-								"const": "argv",
-								"type": "string",
-								"~kind": "Literal"
-							},
-							{
-								"const": "shell",
-								"type": "string",
-								"~kind": "Literal"
-							}
-						],
-						"~kind": "Union"
-					},
-					"type": "array",
-					"uniqueItems": true,
-					"~kind": "Array",
-					"~optional": true,
-					"~refine": [
-						{
-							"check": {
-								"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
-							},
-							"error": {
-								"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-							}
-						}
-					]
-				},
-				"shells": {
-					"items": {
-						"anyOf": [
-							{
-								"const": "bash",
-								"type": "string",
-								"~kind": "Literal"
-							},
-							{
-								"const": "sh",
-								"type": "string",
-								"~kind": "Literal"
-							},
-							{
-								"const": "powershell",
-								"type": "string",
-								"~kind": "Literal"
-							}
-						],
-						"~kind": "Union"
-					},
-					"type": "array",
-					"uniqueItems": true,
-					"~kind": "Array",
-					"~optional": true,
-					"~refine": [
-						{
-							"check": {
-								"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
-							},
-							"error": {
-								"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-							}
-						}
-					]
-				},
-				"signal": {
-					"properties": {
-						"aborted": {
-							"type": "boolean",
-							"~kind": "Boolean"
-						},
-						"addEventListener": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~unsafe": null
-						},
-						"dispatchEvent": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~unsafe": null
-						},
-						"reason": {
-							"~kind": "Unknown"
-						},
-						"removeEventListener": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~unsafe": null
-						},
-						"throwIfAborted": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~unsafe": null
-						}
-					},
-					"required": [
-						"aborted",
-						"addEventListener",
-						"removeEventListener",
-						"dispatchEvent",
-						"throwIfAborted",
-						"reason"
-					],
-					"type": "object",
-					"~kind": "Object",
-					"~optional": true,
-					"~unsafe": null
-				},
-				"terminationScope": {
-					"anyOf": [
-						{
-							"const": "process-group",
-							"type": "string",
-							"~kind": "Literal"
-						},
-						{
-							"const": "workload",
-							"type": "string",
-							"~kind": "Literal"
-						}
-					],
-					"~kind": "Union",
-					"~optional": true
-				},
-				"timeoutMs": {
-					"exclusiveMinimum": 0,
-					"maximum": 1.7976931348623157e308,
-					"type": "number",
-					"~kind": "Number",
-					"~optional": true
-				}
-			},
-			"type": "object",
-			"~kind": "Object"
-		},
 		"broker.providerInfo": {
 			"properties": {
 				"id": {
@@ -1443,11 +1111,6 @@
 											"~kind": "Union",
 											"~optional": true
 										},
-										"description": {
-											"minLength": 1,
-											"type": "string",
-											"~kind": "String"
-										},
 										"home": {
 											"minLength": 1,
 											"pattern": "^[^\\u0000]*$",
@@ -1519,12 +1182,7 @@
 											]
 										}
 									},
-									"required": [
-										"pathFlavor",
-										"root",
-										"description",
-										"relationship"
-									],
+									"required": ["pathFlavor", "root", "relationship"],
 									"type": "object",
 									"~kind": "Object"
 								},
@@ -1550,11 +1208,6 @@
 											],
 											"~kind": "Union",
 											"~optional": true
-										},
-										"description": {
-											"minLength": 1,
-											"type": "string",
-											"~kind": "String"
 										},
 										"home": {
 											"minLength": 1,
@@ -1627,12 +1280,7 @@
 											]
 										}
 									},
-									"required": [
-										"pathFlavor",
-										"root",
-										"description",
-										"relationship"
-									],
+									"required": ["pathFlavor", "root", "relationship"],
 									"type": "object",
 									"~kind": "Object"
 								}
@@ -2189,21 +1837,6 @@
 									},
 									{
 										"properties": {
-											"expiresAt": {
-												"type": "string",
-												"~kind": "String",
-												"~optional": true,
-												"~refine": [
-													{
-														"check": {
-															"implementation": "02cfe0bb9590c66091d11668d83931e18ac9778c273188f5e719519832a118ee"
-														},
-														"error": {
-															"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-														}
-													}
-												]
-											},
 											"id": {
 												"minLength": 1,
 												"type": "string",
@@ -2259,12 +1892,6 @@
 									"minLength": 1,
 									"type": "string",
 									"~kind": "String",
-									"~optional": true
-								},
-								"configurationSource": {
-									"const": "extension",
-									"type": "string",
-									"~kind": "Literal",
 									"~optional": true
 								},
 								"detail": {
@@ -2751,11 +2378,6 @@
 											"~kind": "Literal"
 										},
 										{
-											"const": "updateText",
-											"type": "string",
-											"~kind": "Literal"
-										},
-										{
 											"const": "find",
 											"type": "string",
 											"~kind": "Literal"
@@ -2795,21 +2417,6 @@
 										},
 										{
 											"properties": {
-												"expiresAt": {
-													"type": "string",
-													"~kind": "String",
-													"~optional": true,
-													"~refine": [
-														{
-															"check": {
-																"implementation": "02cfe0bb9590c66091d11668d83931e18ac9778c273188f5e719519832a118ee"
-															},
-															"error": {
-																"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-															}
-														}
-													]
-												},
 												"id": {
 													"minLength": 1,
 													"type": "string",
@@ -2902,16 +2509,6 @@
 												},
 												{
 													"const": "ConflictingSandboxProviderError",
-													"type": "string",
-													"~kind": "Literal"
-												},
-												{
-													"const": "SandboxProviderRequiredError",
-													"type": "string",
-													"~kind": "Literal"
-												},
-												{
-													"const": "SandboxProviderMismatchError",
 													"type": "string",
 													"~kind": "Literal"
 												},
@@ -4277,21 +3874,6 @@
 												},
 												{
 													"properties": {
-														"expiresAt": {
-															"type": "string",
-															"~kind": "String",
-															"~optional": true,
-															"~refine": [
-																{
-																	"check": {
-																		"implementation": "02cfe0bb9590c66091d11668d83931e18ac9778c273188f5e719519832a118ee"
-																	},
-																	"error": {
-																		"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-																	}
-																}
-															]
-														},
 														"id": {
 															"minLength": 1,
 															"type": "string",
@@ -4372,11 +3954,6 @@
 															"~kind": "Union",
 															"~optional": true
 														},
-														"description": {
-															"minLength": 1,
-															"type": "string",
-															"~kind": "String"
-														},
 														"home": {
 															"minLength": 1,
 															"pattern": "^[^\\u0000]*$",
@@ -4448,12 +4025,7 @@
 															]
 														}
 													},
-													"required": [
-														"pathFlavor",
-														"root",
-														"description",
-														"relationship"
-													],
+													"required": ["pathFlavor", "root", "relationship"],
 													"type": "object",
 													"~kind": "Object"
 												},
@@ -4479,11 +4051,6 @@
 															],
 															"~kind": "Union",
 															"~optional": true
-														},
-														"description": {
-															"minLength": 1,
-															"type": "string",
-															"~kind": "String"
 														},
 														"home": {
 															"minLength": 1,
@@ -4556,12 +4123,7 @@
 															]
 														}
 													},
-													"required": [
-														"pathFlavor",
-														"root",
-														"description",
-														"relationship"
-													],
+													"required": ["pathFlavor", "root", "relationship"],
 													"type": "object",
 													"~kind": "Object"
 												}
@@ -6186,21 +5748,6 @@
 									},
 									{
 										"properties": {
-											"expiresAt": {
-												"type": "string",
-												"~kind": "String",
-												"~optional": true,
-												"~refine": [
-													{
-														"check": {
-															"implementation": "02cfe0bb9590c66091d11668d83931e18ac9778c273188f5e719519832a118ee"
-														},
-														"error": {
-															"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-														}
-													}
-												]
-											},
 											"id": {
 												"minLength": 1,
 												"type": "string",
@@ -6256,12 +5803,6 @@
 									"minLength": 1,
 									"type": "string",
 									"~kind": "String",
-									"~optional": true
-								},
-								"configurationSource": {
-									"const": "extension",
-									"type": "string",
-									"~kind": "Literal",
 									"~optional": true
 								},
 								"detail": {
@@ -6748,11 +6289,6 @@
 											"~kind": "Literal"
 										},
 										{
-											"const": "updateText",
-											"type": "string",
-											"~kind": "Literal"
-										},
-										{
 											"const": "find",
 											"type": "string",
 											"~kind": "Literal"
@@ -6792,21 +6328,6 @@
 										},
 										{
 											"properties": {
-												"expiresAt": {
-													"type": "string",
-													"~kind": "String",
-													"~optional": true,
-													"~refine": [
-														{
-															"check": {
-																"implementation": "02cfe0bb9590c66091d11668d83931e18ac9778c273188f5e719519832a118ee"
-															},
-															"error": {
-																"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-															}
-														}
-													]
-												},
 												"id": {
 													"minLength": 1,
 													"type": "string",
@@ -6899,16 +6420,6 @@
 												},
 												{
 													"const": "ConflictingSandboxProviderError",
-													"type": "string",
-													"~kind": "Literal"
-												},
-												{
-													"const": "SandboxProviderRequiredError",
-													"type": "string",
-													"~kind": "Literal"
-												},
-												{
-													"const": "SandboxProviderMismatchError",
 													"type": "string",
 													"~kind": "Literal"
 												},
@@ -8096,21 +7607,6 @@
 				},
 				{
 					"properties": {
-						"expiresAt": {
-							"type": "string",
-							"~kind": "String",
-							"~optional": true,
-							"~refine": [
-								{
-									"check": {
-										"implementation": "02cfe0bb9590c66091d11668d83931e18ac9778c273188f5e719519832a118ee"
-									},
-									"error": {
-										"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-									}
-								}
-							]
-						},
 						"id": {
 							"minLength": 1,
 							"type": "string",
@@ -8163,11 +7659,6 @@
 							],
 							"~kind": "Union",
 							"~optional": true
-						},
-						"description": {
-							"minLength": 1,
-							"type": "string",
-							"~kind": "String"
 						},
 						"home": {
 							"minLength": 1,
@@ -8240,7 +7731,7 @@
 							]
 						}
 					},
-					"required": ["pathFlavor", "root", "description", "relationship"],
+					"required": ["pathFlavor", "root", "relationship"],
 					"type": "object",
 					"~kind": "Object"
 				},
@@ -8266,11 +7757,6 @@
 							],
 							"~kind": "Union",
 							"~optional": true
-						},
-						"description": {
-							"minLength": 1,
-							"type": "string",
-							"~kind": "String"
 						},
 						"home": {
 							"minLength": 1,
@@ -8343,90 +7829,12 @@
 							]
 						}
 					},
-					"required": ["pathFlavor", "root", "description", "relationship"],
+					"required": ["pathFlavor", "root", "relationship"],
 					"type": "object",
 					"~kind": "Object"
 				}
 			],
 			"~kind": "Union"
-		},
-		"sandbox.writeOptions": {
-			"additionalProperties": false,
-			"properties": {
-				"createParents": {
-					"type": "boolean",
-					"~kind": "Boolean",
-					"~optional": true
-				},
-				"signal": {
-					"properties": {
-						"aborted": {
-							"type": "boolean",
-							"~kind": "Boolean"
-						},
-						"addEventListener": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~unsafe": null
-						},
-						"dispatchEvent": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~unsafe": null
-						},
-						"reason": {
-							"~kind": "Unknown"
-						},
-						"removeEventListener": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~unsafe": null
-						},
-						"throwIfAborted": {
-							"parameters": [],
-							"returnType": {
-								"~kind": "Unknown"
-							},
-							"type": "function",
-							"~kind": "Function",
-							"~unsafe": null
-						}
-					},
-					"required": [
-						"aborted",
-						"addEventListener",
-						"removeEventListener",
-						"dispatchEvent",
-						"throwIfAborted",
-						"reason"
-					],
-					"type": "object",
-					"~kind": "Object",
-					"~optional": true,
-					"~unsafe": null
-				},
-				"timeoutMs": {
-					"exclusiveMinimum": 0,
-					"maximum": 1.7976931348623157e308,
-					"type": "number",
-					"~kind": "Number",
-					"~optional": true
-				}
-			},
-			"type": "object",
-			"~kind": "Object"
 		},
 		"unrepresentable-offer": {
 			"additionalProperties": false,

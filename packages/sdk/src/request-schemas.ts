@@ -91,14 +91,6 @@ export const processOptionsSchema = Type.Object(
 	{ additionalProperties: false }
 );
 
-export const writeOptionsSchema = Type.Object(
-	{
-		...operationOptionsSchema.properties,
-		createParents: Type.Optional(Type.Boolean())
-	},
-	{ additionalProperties: false }
-);
-
 export const acquireOptionsSchema = Type.Object(
 	{
 		terminationScope: Type.Optional(terminationScopeSchema),

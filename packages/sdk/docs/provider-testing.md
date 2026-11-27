@@ -200,9 +200,8 @@ before it chooses a destination and that no allocation starts.
   change the transport bootstrap or its output boundary.
 - For file capabilities, run the same fixture across providers. Compare whole
   read, stat and list results, access errors and the effects of writes. Queue
-  two text edits and verify that the second reads the first result. Check that
-  an unsuccessful transform leaves the file unchanged. Point a symlink at a
-  marker outside the allowed target tree. Check that read and write attempts
+  two writes and verify that the second waits for the first. Point a symlink at
+  a marker outside the allowed target tree. Check that read and write attempts
   fail and that the marker stays unchanged.
 - For search capabilities, run identical fixtures across providers. Compare the
   complete result fields for the same supported glob or regex, including paths,

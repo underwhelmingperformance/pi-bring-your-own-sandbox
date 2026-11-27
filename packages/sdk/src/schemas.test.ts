@@ -143,8 +143,7 @@ it.each([
 			kind: 'allocation',
 			id: 'resource',
 			instructions: 'Remove the resource.',
-			lease: 'manual',
-			expiresAt: '1 November 2026'
+			lease: 'manual'
 		},
 		expected: true
 	},
@@ -154,8 +153,7 @@ it.each([
 			kind: 'allocation',
 			id: 'resource',
 			instructions: 'Remove the resource.',
-			lease: 'manual',
-			expiresAt: 'invalid'
+			lease: ''
 		},
 		expected: false
 	}

@@ -1,5 +1,3 @@
-import path from 'node:path';
-
 import type {
 	BackendDirectoryReader,
 	BackendFileReader,
@@ -12,19 +10,16 @@ import type {
 	GrepResult,
 	RecoveryDescriptor,
 	Sandbox,
+	SandboxAcquireOptions,
 	SandboxCopy,
-	SandboxCopyOptions,
 	SandboxFiles,
 	SandboxOperation,
 	SandboxOperationOptions,
-	SandboxSearch,
-	SandboxWriteOptions,
-	TextUpdate
+	SandboxSearch
 } from './contracts.js';
 import {
 	InvalidSandboxDeclarationError,
 	InvalidSandboxRequestError,
-	SandboxOperationError,
 	UnsupportedSandboxCapabilityError
 } from './errors.js';
 import type { BackendOwner } from './execution.js';
@@ -34,8 +29,7 @@ import {
 	findRequest,
 	grepRequest,
 	operationOptions,
-	requirePath,
-	writeOptions
+	requirePath
 } from './file-input.js';
 import {
 	isDirectoryEntries,
@@ -45,7 +39,7 @@ import {
 } from './file-result.js';
 import type { MutationQueue } from './mutation-queue.js';
 import { runOperation } from './operation-runner.js';
-import { isRecord, snapshotProfile } from './validation.js';
+import { snapshotProfile } from './validation.js';
 
 export interface SandboxOwner extends BackendOwner {
 	readonly identity: {
@@ -55,7 +49,7 @@ export interface SandboxOwner extends BackendOwner {
 	};
 	readonly generationId: string;
 	readonly mutations: MutationQueue;
-	readonly copy: (options?: SandboxCopyOptions) => Promise<SandboxCopy>;
+	readonly copy: (options?: SandboxAcquireOptions) => Promise<SandboxCopy>;
 }
 
 class Files implements SandboxFiles {
@@ -132,7 +126,7 @@ class Files implements SandboxFiles {
 	async writeFile(
 		filename: string,
 		content: Uint8Array,
-		input?: SandboxWriteOptions
+		input?: SandboxOperationOptions
 	): Promise<void> {
 		this.#owner.assertLive('writeFile');
 
@@ -142,27 +136,14 @@ class Files implements SandboxFiles {
 
 		const group = this.#write('writeFile');
 		const target = requirePath(filename, 'writeFile');
-		const options = writeOptions(input);
+		const options = operationOptions(input, 'writeFile');
 		const bytes = new Uint8Array(content);
 
 		return runOperation(
 			this.#owner,
 			'writeFile',
 			options,
-			async (context) => {
-				if (options.createParents === true) {
-					await group.mkdir(
-						path[this.#owner.backend.workspace.pathFlavor].dirname(target),
-						context
-					);
-				}
-
-				if (context.signal.aborted) {
-					return;
-				}
-
-				await group.writeFile(target, bytes, context);
-			},
+			(context) => group.writeFile(target, bytes, context),
 			this.#owner.mutations
 		);
 	}
@@ -247,68 +228,6 @@ class Files implements SandboxFiles {
 						)
 					: this.#invalid('listDirectory');
 			}
-		);
-	}
-
-	async updateText(
-		filename: string,
-		transform: (text: string) => string,
-		input?: SandboxOperationOptions
-	): Promise<TextUpdate> {
-		this.#owner.assertLive('updateText');
-
-		if (typeof transform !== 'function') {
-			throw new InvalidSandboxRequestError({ operation: 'updateText' });
-		}
-
-		const read = this.#read('updateText');
-		const write = this.#write('updateText');
-		const target = requirePath(filename, 'updateText');
-		const options = operationOptions(input, 'updateText');
-
-		return runOperation(
-			this.#owner,
-			'updateText',
-			options,
-			async (context, check) => {
-				await write.access(target, context);
-
-				const bytes: unknown = await read.readFile(target, context);
-
-				if (!(bytes instanceof Uint8Array)) {
-					return this.#invalid('updateText');
-				}
-
-				let before: string;
-				let after: unknown;
-
-				try {
-					before = new TextDecoder('utf-8', {
-						fatal: true,
-						ignoreBOM: true
-					}).decode(bytes);
-					after = transform(before);
-				} catch (error) {
-					throw new SandboxOperationError(
-						{ ...this.#owner.identity, operation: 'updateText' },
-						{ cause: error }
-					);
-				}
-
-				if (typeof after !== 'string') {
-					if (isRecord(after) && typeof after['then'] === 'function') {
-						void Promise.allSettled([Promise.resolve(after)]);
-					}
-
-					throw new InvalidSandboxRequestError({ operation: 'updateText' });
-				}
-
-				check();
-				await write.writeFile(target, new TextEncoder().encode(after), context);
-
-				return Object.freeze({ before, after });
-			},
-			this.#owner.mutations
 		);
 	}
 }

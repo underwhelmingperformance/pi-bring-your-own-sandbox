@@ -1,6 +1,8 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import type { GrepResult } from 'pi-bring-your-own-sandbox/provider';
+
 const corpus = {
 	'.gitignore': 'omitted.txt\npruned/\n',
 	'.ignore': 'ignore-wins.txt\n',
@@ -33,4 +35,38 @@ export async function seedRipgrepParityCorpus(
 		await mkdir(path.dirname(target), { recursive: true });
 		await writeFile(target, content);
 	}
+}
+
+export function ripgrepParityResult(output: string): GrepResult {
+	const matches = output
+		.split('\n')
+		.filter(Boolean)
+		.map((record) => {
+			const match =
+				/^(?<file>[^:]+):(?<line>[1-9]\d*):[1-9]\d*:(?<text>.*)$/u.exec(record);
+			const file = match?.groups?.['file'];
+			const line = match?.groups?.['line'];
+			const text = match?.groups?.['text'];
+
+			if (file === undefined || line === undefined || text === undefined) {
+				throw new Error('Unexpected ripgrep output for the parity corpus.');
+			}
+
+			return {
+				path: file.replace(/^\.\//u, ''),
+				line: Number(line),
+				text,
+				before: [],
+				after: []
+			};
+		});
+
+	return {
+		matches: matches.toSorted(
+			(left, right) =>
+				Buffer.compare(Buffer.from(left.path), Buffer.from(right.path)) ||
+				left.line - right.line
+		),
+		truncated: false
+	};
 }

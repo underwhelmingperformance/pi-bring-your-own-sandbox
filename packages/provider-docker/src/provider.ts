@@ -85,9 +85,7 @@ const copiedWorkspace = {
 	pathFlavor: 'posix',
 	relationship: 'copied',
 	home: '/tmp',
-	defaultShell: 'sh',
-	description:
-		'The host workspace is copied on opening. Changes remain in a generation-owned Docker volume until disposal.'
+	defaultShell: 'sh'
 } as const;
 
 const defaultCapabilities = {
@@ -150,7 +148,6 @@ class DockerBackend implements SandboxBackend {
 		helpers: DockerFileHelpers,
 		owner: CopyOwner,
 		image: string,
-		source?: SandboxCopySource,
 		shared?: SharedCheckout
 	) {
 		this.#shared = shared;
@@ -164,21 +161,8 @@ class DockerBackend implements SandboxBackend {
 		}
 
 		this.workspace = shared
-			? {
-					...copiedWorkspace,
-					relationship: 'shared',
-					description:
-						'Live host checkout. Authorised edits are visible to the developer immediately.'
-				}
-			: source === undefined
-				? copiedWorkspace
-				: {
-						...copiedWorkspace,
-						description:
-							source.kind === 'host'
-								? 'Private copy of the host checkout.'
-								: 'Private copy of another Docker workspace.'
-					};
+			? { ...copiedWorkspace, relationship: 'shared' }
+			: copiedWorkspace;
 		this.#owner = owner;
 		this.#image = image;
 		this.#resources = resources;
@@ -914,7 +898,6 @@ export function createDockerProvider(
 			{ files, search, matcher },
 			owner,
 			image,
-			source,
 			shared
 		);
 

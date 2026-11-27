@@ -74,8 +74,7 @@ function bindConfig<Config>(
 		const identity = {
 			operation: 'configure' as const,
 			providerId: info.id,
-			extensionSource,
-			configurationSource: 'extension' as const
+			extensionSource
 		};
 
 		try {

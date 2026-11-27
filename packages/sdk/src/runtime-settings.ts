@@ -84,7 +84,6 @@ export function createRuntimeSettings(
 					const identity = {
 						operation: 'configure' as const,
 						providerId: provider.id,
-						configurationSource: 'extension' as const,
 						...(extensionSource !== undefined && { extensionSource })
 					};
 
@@ -184,7 +183,6 @@ export function createRuntimeSettings(
 			throw new InvalidSandboxConfigError(
 				{
 					operation: 'configure',
-					configurationSource: 'extension',
 					...(selectedId !== undefined && { providerId: selectedId })
 				},
 				{ cause: error }

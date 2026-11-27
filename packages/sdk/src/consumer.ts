@@ -7,16 +7,9 @@ export type {
 	SandboxCloseReport,
 	SandboxContext,
 	SandboxCopy,
-	SandboxCopyOptions,
 	SandboxErrorInfo,
 	SandboxHost,
 	SandboxNegotiation,
 	SandboxRequirements
 } from './contracts.js';
-export {
-	isSandboxError,
-	SandboxCleanupError,
-	SandboxProviderUnavailableError
-} from './errors.js';
-export { GrepOutput } from './grep-output.js';
-export { sandboxRipgrepArguments } from './ripgrep-arguments.js';
+export { isSandboxError } from './errors.js';

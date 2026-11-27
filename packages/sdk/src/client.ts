@@ -25,14 +25,7 @@ function identifyRequester(
 		return error;
 	}
 
-	const {
-		operation,
-		configurationSource,
-		providerId,
-		backendId,
-		recovery,
-		detail
-	} = error;
+	const { operation, providerId, backendId, recovery, detail } = error;
 
 	return rehydrateSandboxError(
 		error,
@@ -41,7 +34,6 @@ function identifyRequester(
 			operation,
 			extensionSource,
 			detail,
-			...(configurationSource !== undefined && { configurationSource }),
 			...(providerId !== undefined && { providerId }),
 			...(backendId !== undefined && { backendId }),
 			...(recovery !== undefined && { recovery })

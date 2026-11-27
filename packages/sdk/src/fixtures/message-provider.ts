@@ -60,7 +60,6 @@ class MessageBackend implements SandboxBackend {
 			root: '/message/project',
 			pathFlavor: 'posix',
 			relationship: 'shared',
-			description: 'Message-channel test double without OS isolation.',
 			...(policy.hostUserData !== 'denied' && {
 				hostUserDataRoot: '/message/host-user-data'
 			})

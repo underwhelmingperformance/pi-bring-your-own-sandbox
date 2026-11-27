@@ -183,8 +183,7 @@ it('retains configuration failure without opening or selecting passthrough', asy
 		for (const _attempt of [1, 2]) {
 			await expect(getSandbox(pi, context)).rejects.toMatchObject({
 				name: 'InvalidSandboxConfigError',
-				providerId: 'failed',
-				configurationSource: 'extension'
+				providerId: 'failed'
 			});
 		}
 
@@ -522,8 +521,7 @@ it('attributes an invalid shared setting to the extension', async () => {
 			operation: 'configure',
 			providerId: 'active',
 			detail: { kind: 'config', field: 'settings.policy.network' },
-			extensionSource: import.meta.filename,
-			configurationSource: 'extension'
+			extensionSource: import.meta.filename
 		});
 	});
 });

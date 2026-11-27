@@ -27,8 +27,7 @@ function fixture(
 		workspace: {
 			root: '/target',
 			pathFlavor: 'posix',
-			relationship: 'shared',
-			description: 'Test fixture.'
+			relationship: 'shared'
 		},
 		profile: fixtureProfile(
 			{

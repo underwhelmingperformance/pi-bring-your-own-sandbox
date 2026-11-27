@@ -150,7 +150,7 @@ it.each(['closing', 'closed'] as const)(
 	}
 );
 
-it('shows allocation recovery instructions and expiry when cleanup is incomplete', () => {
+it('shows allocation recovery instructions and lease when cleanup is incomplete', () => {
 	const backend = new MemoryBackend();
 
 	expect(
@@ -170,7 +170,6 @@ it('shows allocation recovery instructions and expiry when cleanup is incomplete
 						kind: 'allocation',
 						id: 'allocation',
 						lease: 'lease',
-						expiresAt: '2099-01-01T00:00:00Z',
 						instructions: 'Remove allocations with this lease.'
 					}
 				]
@@ -185,7 +184,7 @@ it('shows allocation recovery instructions and expiry when cleanup is incomplete
 			'Requested policy: workspace read-write, network denied, host user data denied, host system files read-only',
 			'User shell: provider default (not opened)',
 			'Cleanup: incomplete',
-			'Recovery: allocation (lease lease; expires 2099-01-01T00:00:00Z)',
+			'Recovery: allocation (lease lease)',
 			'Remove allocations with this lease.'
 		].join('\n')
 	);

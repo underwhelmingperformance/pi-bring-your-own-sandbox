@@ -108,12 +108,6 @@ export interface SandboxWorkspace {
 	readonly relationship: 'shared' | 'copied';
 
 	/**
-	Operator-facing explanation of workspace synchronisation and
-	persistence.
-	*/
-	readonly description: string;
-
-	/**
 	Absolute target home directory, when the provider exposes it.
 	*/
 	readonly home?: string;
@@ -155,11 +149,6 @@ export type RecoveryDescriptor =
 			whether automatic expiry or manual recovery releases abandoned resources.
 			*/
 			readonly lease: string;
-			/**
-			Absolute expiry timestamp, parseable by `Date.parse`, when the provider
-			enforces one. Omit when cleanup has no scheduled expiry.
-			*/
-			readonly expiresAt?: string;
 	  };
 
 /**
@@ -179,17 +168,6 @@ export interface SandboxOperationOptions {
 	120,000, files and search 30,000.
 	*/
 	readonly timeoutMs?: number;
-}
-
-/**
-Options for replacing a complete target file through the shared mutation
-queue. Parent creation and the write use one queue entry and deadline.
-*/
-export interface SandboxWriteOptions extends SandboxOperationOptions {
-	/**
-	Create missing parent directories before writing. Defaults to false.
-	*/
-	readonly createParents?: boolean;
 }
 
 /**
@@ -931,8 +909,6 @@ export type SandboxCopySource =
 	| { readonly kind: 'host' }
 	| { readonly kind: 'backend'; readonly backend: SandboxBackend };
 
-export type SandboxCopyOptions = SandboxAcquireOptions;
-
 /**
 A private copy owned by its caller. The copy is not shared with other
 consumers. Close it when it is no longer needed; closing the session also
@@ -1043,21 +1019,6 @@ export interface SandboxBackend {
 }
 
 /**
-The complete UTF-8 text before and after a successful queued transformation.
-*/
-export interface TextUpdate {
-	/**
-	Strict UTF-8 text read before invoking the transform.
-	*/
-	readonly before: string;
-
-	/**
-	Text successfully written after the synchronous transform.
-	*/
-	readonly after: string;
-}
-
-/**
 Consumer filesystem facade. Methods always exist and reject unsupported
 capabilities. Paths use target semantics. Mutations share the generation
 queue; commands execute outside it.
@@ -1073,13 +1034,12 @@ export interface SandboxFiles {
 
 	/**
 	Snapshot input bytes and replace the complete file through the shared
-	mutation queue. Optional parent creation is part of the same queue
-	entry; the default requires existing parents.
+	mutation queue. Create missing parent directories before writing.
 	*/
 	readonly writeFile: (
 		path: string,
 		content: Uint8Array,
-		options?: SandboxWriteOptions
+		options?: SandboxOperationOptions
 	) => Promise<void>;
 
 	/**
@@ -1116,17 +1076,6 @@ export interface SandboxFiles {
 		path: string,
 		options?: SandboxOperationOptions
 	) => Promise<readonly DirectoryEntry[]>;
-
-	/**
-	Queue the complete strict UTF-8 read, synchronous transform and write.
-	Requires read and write capabilities; commands execute outside this
-	queue.
-	*/
-	readonly updateText: (
-		path: string,
-		transform: (text: string) => string,
-		options?: SandboxOperationOptions
-	) => Promise<TextUpdate>;
 }
 
 /**
@@ -1209,7 +1158,7 @@ export interface Sandbox {
 	Copy this sandbox's workspace into an independent allocation. The provider
 	must declare a copy profile that meets the requirements.
 	*/
-	readonly copy: (options?: SandboxCopyOptions) => Promise<SandboxCopy>;
+	readonly copy: (options?: SandboxAcquireOptions) => Promise<SandboxCopy>;
 }
 
 /**
@@ -1240,11 +1189,6 @@ export interface SandboxErrorContext {
 	readonly extensionSource?: string;
 	readonly detail?: Readonly<Static<typeof errorDetailSchema>>;
 	readonly operation: SandboxOperation;
-
-	/**
-	The extension-owned configuration that could not be resolved or validated.
-	*/
-	readonly configurationSource?: 'extension';
 
 	/**
 	The selected provider, if discovery or selection progressed far enough.

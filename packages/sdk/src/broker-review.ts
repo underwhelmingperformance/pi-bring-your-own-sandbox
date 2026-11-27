@@ -1,5 +1,6 @@
 import { homedir } from 'node:os';
 
+import { acquireOptions } from './acquire-options.js';
 import type {
 	ReviewedToolCall,
 	SandboxContext,
@@ -21,11 +22,7 @@ import type { SandboxGeneration } from './generation.js';
 import { passthroughProvider } from './passthrough-provider.js';
 import type { CopySourceIdentity } from './protocol.js';
 import type { ReviewRegistration } from './review-identities.js';
-import {
-	checkCopiedSandbox,
-	copyOptions,
-	rethrowCopyError
-} from './sandbox-copy.js';
+import { checkCopiedSandbox, rethrowCopyError } from './sandbox-copy.js';
 
 type PermissionDecider = Extract<
 	NonNullable<EscalationEntry['decider']>,
@@ -165,8 +162,7 @@ export async function describeReviewDestination(
 					root: context.cwd,
 					home: homedir(),
 					pathFlavor: process.platform === 'win32' ? 'win32' : 'posix',
-					relationship: 'shared',
-					description: 'The host checkout.'
+					relationship: 'shared'
 				} as const)
 			: undefined);
 
@@ -234,7 +230,7 @@ export function resolvedReviewSource(
 			return result;
 		},
 		async copy(input) {
-			const options = copyOptions(input, extension);
+			const options = acquireOptions(input, extension);
 
 			check();
 

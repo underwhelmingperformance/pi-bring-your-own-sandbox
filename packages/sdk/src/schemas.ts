@@ -76,18 +76,13 @@ export const workspaceRelationshipSchema = Type.Union([
 	Type.Literal('copied')
 ]);
 
-const expirySchema = Type.Refine(Type.String(), (value) =>
-	Number.isFinite(Date.parse(value))
-);
-
 export const recoverySchema = Type.Union([
 	Type.Object({ kind: Type.Literal('none') }),
 	Type.Object({
 		kind: Type.Literal('allocation'),
 		id: nonEmptyStringSchema,
 		instructions: nonEmptyStringSchema,
-		lease: nonEmptyStringSchema,
-		expiresAt: Type.Optional(expirySchema)
+		lease: nonEmptyStringSchema
 	})
 ]);
 

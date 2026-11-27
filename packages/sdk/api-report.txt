@@ -8,17 +8,12 @@ type SandboxClient (contracts.d.ts)
 type SandboxCloseReport (contracts.d.ts)
 type SandboxContext (contracts.d.ts)
 type SandboxCopy (contracts.d.ts)
-type SandboxCopyOptions (contracts.d.ts)
 type SandboxErrorInfo (contracts.d.ts)
 type SandboxHost (contracts.d.ts)
 type SandboxNegotiation (contracts.d.ts)
 type SandboxRequirements (contracts.d.ts)
-value GrepOutput (grep-output.d.ts)
-value SandboxCleanupError (errors.d.ts)
-value SandboxProviderUnavailableError (errors.d.ts)
 value createSandboxClient (client.d.ts)
 value isSandboxError (errors.d.ts)
-value sandboxRipgrepArguments (ripgrep-arguments.d.ts)
 
 pi-bring-your-own-sandbox/host
 type SandboxCloseReport (contracts.d.ts)
@@ -287,7 +282,7 @@ export interface Sandbox {
     readonly exec: (request: ProcessRequest, options?: ProcessOptions) => Promise<ProcessResult>;
     readonly files: SandboxFiles;
     readonly search: SandboxSearch;
-    readonly copy: (options?: SandboxCopyOptions) => Promise<SandboxCopy>;
+    readonly copy: (options?: SandboxAcquireOptions) => Promise<SandboxCopy>;
 }
 
 // contracts.d.ts
@@ -356,7 +351,6 @@ export interface SandboxErrorContext {
     readonly extensionSource?: string;
     readonly detail?: Readonly<Static<typeof errorDetailSchema>>;
     readonly operation: SandboxOperation;
-    readonly configurationSource?: 'extension';
     readonly providerId?: string;
     readonly backendId?: string;
     readonly recovery?: RecoveryDescriptor;
@@ -365,12 +359,11 @@ export interface SandboxErrorContext {
 // contracts.d.ts
 export interface SandboxFiles {
     readonly readFile: (path: string, options?: SandboxOperationOptions) => Promise<Uint8Array>;
-    readonly writeFile: (path: string, content: Uint8Array, options?: SandboxWriteOptions) => Promise<void>;
+    readonly writeFile: (path: string, content: Uint8Array, options?: SandboxOperationOptions) => Promise<void>;
     readonly mkdir: (path: string, options?: SandboxOperationOptions) => Promise<void>;
     readonly access: (path: string, mode: 'read' | 'write', options?: SandboxOperationOptions) => Promise<void>;
     readonly stat: (path: string, options?: SandboxOperationOptions) => Promise<FileStat>;
     readonly listDirectory: (path: string, options?: SandboxOperationOptions) => Promise<readonly DirectoryEntry[]>;
-    readonly updateText: (path: string, transform: (text: string) => string, options?: SandboxOperationOptions) => Promise<TextUpdate>;
 }
 
 // contracts.d.ts
@@ -451,15 +444,9 @@ export interface SandboxWorkspace {
     readonly root: string;
     readonly pathFlavor: 'posix' | 'win32';
     readonly relationship: 'shared' | 'copied';
-    readonly description: string;
     readonly home?: string;
     readonly hostUserDataRoot?: string;
     readonly defaultShell?: ShellDialect;
-}
-
-// contracts.d.ts
-export interface SandboxWriteOptions extends SandboxOperationOptions {
-    readonly createParents?: boolean;
 }
 
 // contracts.d.ts
@@ -476,12 +463,6 @@ export interface ShellReviewSource {
     readonly recordDecision?: (decision: EscalationDecision) => void;
     readonly negotiateCopy: (requirements?: SandboxRequirements) => Promise<SandboxNegotiation>;
     readonly copy: (options?: SandboxAcquireOptions) => Promise<SandboxCopy>;
-}
-
-// contracts.d.ts
-export interface TextUpdate {
-    readonly before: string;
-    readonly after: string;
 }
 
 // contracts.d.ts
@@ -531,11 +512,7 @@ export type RecoveryDescriptor = {
     readonly id: string;
     readonly instructions: string;
     readonly lease: string;
-    readonly expiresAt?: string;
 };
-
-// contracts.d.ts
-export type SandboxCopyOptions = SandboxAcquireOptions;
 
 // contracts.d.ts
 export type SandboxCopySource = {
@@ -768,7 +745,6 @@ declare const operationSchema: Type.TUnion<[
     Type.TLiteral<"access">,
     Type.TLiteral<"stat">,
     Type.TLiteral<"listDirectory">,
-    Type.TLiteral<"updateText">,
     Type.TLiteral<"find">,
     Type.TLiteral<"grep">,
     Type.TLiteral<"dispose">
@@ -787,8 +763,6 @@ declare const ordinaryErrorNameSchema: Type.TUnion<[
     Type.TLiteral<"DuplicateProviderError">,
     Type.TLiteral<"ConflictingSandboxConfigError">,
     Type.TLiteral<"ConflictingSandboxProviderError">,
-    Type.TLiteral<"SandboxProviderRequiredError">,
-    Type.TLiteral<"SandboxProviderMismatchError">,
     Type.TLiteral<"UnsupportedSandboxCapabilityError">,
     Type.TLiteral<"UnsupportedSandboxPolicyError">,
     Type.TLiteral<"SandboxStartupError">,
@@ -805,7 +779,6 @@ declare abstract class SandboxError<Name extends string = string> extends Error 
     readonly operation: SandboxOperation;
     readonly extensionSource?: string;
     readonly detail?: NonNullable<SandboxErrorContext['detail']>;
-    readonly configurationSource?: 'extension';
     readonly providerId?: string;
     readonly backendId?: string;
     readonly recovery?: RecoveryDescriptor;
@@ -859,12 +832,6 @@ export declare class SandboxPathNotFoundError extends SandboxError<'SandboxPathN
 // errors.d.ts
 export declare class SandboxPermissionDeniedError extends SandboxError<'SandboxPermissionDeniedError'> {
     static readonly errorName = "SandboxPermissionDeniedError";
-    constructor(context: SandboxErrorContext, options?: ErrorOptions);
-}
-
-// errors.d.ts
-export declare class SandboxProviderUnavailableError extends SandboxError<'SandboxProviderUnavailableError'> {
-    static readonly errorName = "SandboxProviderUnavailableError";
     constructor(context: SandboxErrorContext, options?: ErrorOptions);
 }
 
@@ -928,7 +895,6 @@ declare const destinationDescriptionSchema: Type.TObject<{
             root: Type.TRefine<Type.TString>;
             home: Type.TOptional<Type.TRefine<Type.TString>>;
             hostUserDataRoot: Type.TOptional<Type.TRefine<Type.TString>>;
-            description: Type.TString;
             relationship: Type.TUnion<[
                 Type.TLiteral<"shared">,
                 Type.TLiteral<"copied">
@@ -944,7 +910,6 @@ declare const destinationDescriptionSchema: Type.TObject<{
             root: Type.TRefine<Type.TString>;
             home: Type.TOptional<Type.TRefine<Type.TString>>;
             hostUserDataRoot: Type.TOptional<Type.TRefine<Type.TString>>;
-            description: Type.TString;
             relationship: Type.TUnion<[
                 Type.TLiteral<"shared">,
                 Type.TLiteral<"copied">
@@ -1108,14 +1073,6 @@ type ReadonlyData<Value> = Value extends object ? {
     readonly [Key in keyof Value]: ReadonlyData<Value[Key]>;
 } : Value;
 
-// grep-output.d.ts
-export declare class GrepOutput implements SearchOutput<GrepResult> {
-    #private;
-    constructor(context: number, limit: number);
-    write(data: Uint8Array): void;
-    finish(): GrepResult;
-}
-
 // host-error.d.ts
 export declare function mapSandboxErrno(cause: unknown, context: SandboxErrorContext): SandboxOperationError | SandboxPathNotFoundError | SandboxPermissionDeniedError | (Error & SandboxErrorContext & {
     readonly message: string;
@@ -1167,16 +1124,6 @@ export declare function mapSandboxErrno(cause: unknown, context: SandboxErrorCon
     readonly cause?: unknown;
 } & {
     readonly name: "SandboxInitialisationError";
-}) | (Error & SandboxErrorContext & {
-    readonly message: string;
-    readonly cause?: unknown;
-} & {
-    readonly name: "SandboxProviderMismatchError";
-}) | (Error & SandboxErrorContext & {
-    readonly message: string;
-    readonly cause?: unknown;
-} & {
-    readonly name: "SandboxProviderRequiredError";
 }) | (Error & SandboxErrorContext & {
     readonly message: string;
     readonly cause?: unknown;
@@ -1672,21 +1619,12 @@ declare const reasonSchema: Type.TUnion<[
 // review-identities.d.ts
 export type ReviewUnavailableReason = Static<typeof reasonSchema>;
 
-// ripgrep-arguments.d.ts
-export declare function sandboxRipgrepArguments(request: GrepRequest, target: string, extra?: readonly string[]): string[];
-
 // schemas.d.ts
 declare const shellSchema: Type.TUnion<[
     Type.TLiteral<"bash">,
     Type.TLiteral<"sh">,
     Type.TLiteral<"powershell">
 ]>;
-
-// search-output.d.ts
-export interface SearchOutput<Result> {
-    readonly write: (data: Uint8Array) => void;
-    readonly finish: () => Result;
-}
 
 // shell-transport.d.ts
 export declare class ShellTransportRunner implements HostProcessRunner {

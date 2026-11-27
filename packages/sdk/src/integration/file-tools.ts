@@ -28,11 +28,7 @@ import {
 	truncateToVisualLines
 } from '@earendil-works/pi-coding-agent';
 import type { Sandbox } from 'pi-bring-your-own-sandbox/consumer';
-import {
-	createSandboxClient,
-	GrepOutput,
-	sandboxRipgrepArguments
-} from 'pi-bring-your-own-sandbox/consumer';
+import { createSandboxClient } from 'pi-bring-your-own-sandbox/consumer';
 import type {
 	GrepRequest,
 	ProcessRequest
@@ -49,6 +45,9 @@ import {
 } from 'pi-bring-your-own-sandbox/provider-kit';
 import type { TSchema } from 'typebox';
 import { Value } from 'typebox/value';
+
+import { GrepOutput } from '../grep-output.js';
+import { sandboxRipgrepArguments } from '../ripgrep-arguments.js';
 
 type GrepResult = Awaited<ReturnType<Sandbox['search']['grep']>>;
 

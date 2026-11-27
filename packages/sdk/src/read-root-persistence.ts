@@ -228,7 +228,6 @@ export function bindReadRootPersistence(
 				{
 					operation: 'configure',
 					providerId: provider.id,
-					configurationSource: 'extension',
 					...(extensionSource !== undefined && { extensionSource }),
 					detail: { kind: 'config', field: 'settings.readRoots' }
 				},

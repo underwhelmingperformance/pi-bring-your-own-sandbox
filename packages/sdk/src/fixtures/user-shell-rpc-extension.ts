@@ -81,7 +81,6 @@ export default function rpcFixture(pi: ExtensionAPI): void {
 					root: '/rpc/target',
 					pathFlavor: 'posix',
 					relationship: 'shared',
-					description: 'RPC test fixture; no OS isolation.',
 					defaultShell: 'sh'
 				},
 				profile: fixtureProfile(

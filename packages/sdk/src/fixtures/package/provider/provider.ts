@@ -61,8 +61,7 @@ export const provider = {
 				workspace: {
 					root: '/packed/project',
 					pathFlavor: 'posix',
-					relationship: 'shared',
-					description: 'In-memory fixture without OS isolation.'
+					relationship: 'shared'
 				},
 				profile: request.profile,
 				policyDescription: 'In-memory fixture without OS isolation.',

@@ -14,10 +14,7 @@ export function snapshotRecovery(
 				kind: 'allocation',
 				id: recovery.id,
 				instructions: recovery.instructions,
-				lease: recovery.lease,
-				...(recovery.expiresAt !== undefined && {
-					expiresAt: recovery.expiresAt
-				})
+				lease: recovery.lease
 			});
 }
 
@@ -56,7 +53,6 @@ export function snapshotBackend(backend: SandboxBackend): SandboxBackend {
 			root: workspace.root,
 			pathFlavor: workspace.pathFlavor,
 			relationship: workspace.relationship,
-			description: workspace.description,
 			...(workspace.home !== undefined && { home: workspace.home }),
 			...(workspace.hostUserDataRoot !== undefined && {
 				hostUserDataRoot: workspace.hostUserDataRoot

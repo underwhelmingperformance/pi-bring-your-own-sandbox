@@ -2,8 +2,7 @@ import type {
 	FindRequest,
 	GrepRequest,
 	SandboxOperation,
-	SandboxOperationOptions,
-	SandboxWriteOptions
+	SandboxOperationOptions
 } from './contracts.js';
 import { InvalidSandboxRequestError } from './errors.js';
 import { isTargetPath } from './process-input.js';
@@ -11,13 +10,11 @@ import {
 	accessModeSchema,
 	findRequestSchema,
 	grepRequestSchema,
-	operationOptionsSchema,
-	writeOptionsSchema
+	operationOptionsSchema
 } from './request-schemas.js';
 import { checker } from './schemas.js';
 
 const isOperationOptions = checker(operationOptionsSchema);
-const isWriteOptions = checker(writeOptionsSchema);
 const isFindRequest = checker(findRequestSchema);
 const isGrepRequest = checker(grepRequestSchema);
 const isAccessMode = checker(accessModeSchema);
@@ -44,21 +41,6 @@ export function operationOptions(
 	}
 
 	return Object.freeze({ ...value });
-}
-
-export function writeOptions(input: unknown): SandboxWriteOptions {
-	const value = input === undefined ? {} : input;
-
-	if (!isWriteOptions(value)) {
-		throw new InvalidSandboxRequestError({ operation: 'writeFile' });
-	}
-
-	const { createParents, ...remaining } = value;
-
-	return Object.freeze({
-		...operationOptions(remaining, 'writeFile'),
-		...(createParents !== undefined && { createParents })
-	});
 }
 
 export function findRequest(value: unknown): FindRequest {

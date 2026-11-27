@@ -1,13 +1,9 @@
 import { afterEach, expect, it, vi } from 'vitest';
 
-import type { SandboxBackend, SandboxWorkspace } from './contracts.js';
 import { StaleSandboxHandleError } from './errors.js';
 import { createSandbox } from './facade.js';
-import { writeOptions } from './file-input.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
-import { fixtureProfile } from './fixtures/profile-fixture.js';
-import { observe } from './lifecycle.js';
 
 afterEach(() => {
 	vi.useRealTimers();
@@ -84,19 +80,40 @@ it('uses target-only files and owns returned metadata and bytes', async () => {
 	);
 });
 
-it('serialises whole text updates with writes across consumer facades', async () => {
+it('rejects a retired file option without invoking the provider', async () => {
+	const { owner, backend } = fixture();
+	const sandbox = createSandbox(owner);
+	const write: unknown = Reflect.apply(sandbox.files.writeFile, sandbox.files, [
+		'file',
+		new Uint8Array([1]),
+		{ createParents: true }
+	]);
+
+	await expect(write).rejects.toMatchObject({
+		name: 'InvalidSandboxRequestError'
+	});
+	expect({
+		hasTransform: 'updateText' in sandbox.files,
+		calls: backend.calls
+	}).toStrictEqual({
+		hasTransform: false,
+		calls: []
+	});
+});
+
+it('serialises writes and snapshots input across sandbox handles', async () => {
 	const { owner, backend } = fixture();
 
 	backend.seed('file', new TextEncoder().encode('old'));
 
 	const firstStarted = Promise.withResolvers<string>();
 	const release = Promise.withResolvers<string>();
-	let writes = 0;
+	const previous: (Uint8Array | undefined)[] = [];
 
 	backend.beforeWrite = async () => {
-		writes++;
+		previous.push(backend.bytes('file'));
 
-		if (writes !== 1) {
+		if (previous.length !== 1) {
 			return;
 		}
 
@@ -108,7 +125,10 @@ it('serialises whole text updates with writes across consumer facades', async ()
 	const second = createSandbox(owner);
 	const input = new TextEncoder().encode('new');
 	const write = first.files.writeFile('file', input);
-	const update = second.files.updateText('file', (text) => text + '!');
+	const update = second.files.writeFile(
+		'file',
+		new TextEncoder().encode('new!')
+	);
 
 	await firstStarted.promise;
 	input.fill(0);
@@ -117,10 +137,12 @@ it('serialises whole text updates with writes across consumer facades', async ()
 	]);
 	release.resolve('release');
 	await write;
-	expect(await update).toStrictEqual({ before: 'new', after: 'new!' });
+	await update;
+	expect(previous).toStrictEqual(
+		['old', 'new'].map((text) => new TextEncoder().encode(text))
+	);
 	expect(backend.calls).toStrictEqual([
 		{ operation: 'writeFile', path: '/remote/project/file' },
-		{ operation: 'readFile', path: '/remote/project/file' },
 		{ operation: 'writeFile', path: '/remote/project/file' }
 	]);
 	expect(backend.bytes('file')).toStrictEqual(new TextEncoder().encode('new!'));
@@ -235,31 +257,6 @@ it('bounds an unconfirmed write cancellation before releasing queued work', asyn
 	});
 });
 
-it('preserves UTF-8 BOM and CRLF, and never writes after invalid input or a failed transform', async () => {
-	const { owner, backend } = fixture();
-	const sandbox = createSandbox(owner);
-
-	backend.seed('text', new TextEncoder().encode('\u{FEFF}first\r\n'));
-	expect(
-		await sandbox.files.updateText('text', (text) => text + 'last\r\n')
-	).toStrictEqual({
-		before: '\u{FEFF}first\r\n',
-		after: '\u{FEFF}first\r\nlast\r\n'
-	});
-	backend.seed('invalid', new Uint8Array([0xff]));
-	await expect(
-		sandbox.files.updateText('invalid', (text) => text)
-	).rejects.toMatchObject({ name: 'SandboxOperationError' });
-	await expect(
-		sandbox.files.updateText('text', () => {
-			throw new Error('transform failed');
-		})
-	).rejects.toMatchObject({ name: 'SandboxOperationError' });
-	expect(
-		backend.calls.filter((call) => call.operation === 'writeFile')
-	).toStrictEqual([{ operation: 'writeFile', path: '/remote/project/text' }]);
-});
-
 it('keeps absent capability methods available and rejects without host fallback', async () => {
 	const { owner, backend } = fixture(new MemoryBackend('exec'));
 	const sandbox = createSandbox(owner);
@@ -274,172 +271,4 @@ it('keeps absent capability methods available and rejects without host fallback'
 		name: 'UnsupportedSandboxCapabilityError'
 	});
 	expect(backend.calls).toStrictEqual([]);
-});
-
-function writerFixture(
-	workspace: SandboxWorkspace,
-	beforeMkdir?: () => Promise<void>
-) {
-	const template = new MemoryBackend('exec');
-	const calls: { operation: 'mkdir' | 'writeFile'; path: string }[] = [];
-	const backend: SandboxBackend = {
-		id: 'writer',
-		workspace,
-		profile: fixtureProfile(template.policy, {
-			processKinds: ['argv'],
-			terminationScope: 'workload',
-			exitStatus: 'guaranteed',
-			operations: ['files.write'],
-			shells: []
-		}),
-
-		policyDescription: template.policyDescription,
-		recovery: template.recovery,
-		exec: template.exec.bind(template),
-		dispose: template.dispose.bind(template),
-		files: {
-			write: {
-				access: () => Promise.resolve(),
-				async mkdir(filename) {
-					calls.push({ operation: 'mkdir', path: filename });
-					await beforeMkdir?.();
-				},
-				writeFile(filename) {
-					calls.push({ operation: 'writeFile', path: filename });
-
-					return Promise.resolve();
-				}
-			}
-		}
-	};
-	const owner = new TestBackendOwner(backend);
-
-	return { sandbox: createSandbox(owner), calls, owner };
-}
-
-it.each([
-	{
-		pathFlavor: 'posix' as const,
-		root: '/target',
-		filename: '/target/nested/file',
-		parent: '/target/nested'
-	},
-	{
-		pathFlavor: 'win32' as const,
-		root: String.raw`D:\target`,
-		filename: String.raw`D:\target\nested\file`,
-		parent: String.raw`D:\target\nested`
-	}
-])(
-	'creates target-native parents in the write queue: $pathFlavor',
-	async ({ pathFlavor, root, filename, parent }) => {
-		const { sandbox, calls } = writerFixture({
-			root,
-			pathFlavor,
-			relationship: 'shared',
-			description: 'Test fixture.'
-		});
-		const options = { createParents: true };
-		const running = sandbox.files.writeFile(
-			filename,
-			new Uint8Array([1]),
-			options
-		);
-
-		options.createParents = false;
-		await running;
-		expect(calls).toStrictEqual([
-			{ operation: 'mkdir', path: parent },
-			{ operation: 'writeFile', path: filename }
-		]);
-	}
-);
-
-it('does not write after cancellation during confirmed parent creation', async () => {
-	const started = Promise.withResolvers<'started'>();
-	const release = Promise.withResolvers<'ready'>();
-	const { sandbox, calls, owner } = writerFixture(
-		{
-			root: '/target',
-			pathFlavor: 'posix',
-			relationship: 'shared',
-			description: 'Test fixture.'
-		},
-		async () => {
-			started.resolve('started');
-			await release.promise;
-		}
-	);
-	const controller = new AbortController();
-	const running = observe(
-		sandbox.files.writeFile('/target/file', new Uint8Array([1]), {
-			createParents: true,
-			signal: controller.signal
-		})
-	);
-
-	await started.promise;
-	controller.abort();
-	release.resolve('ready');
-	expect(await running).toMatchObject({
-		kind: 'rejected',
-		error: {
-			name: 'SandboxCancelledError',
-			completion: 'confirmed',
-			operation: 'writeFile'
-		}
-	});
-	expect({ calls, failures: owner.failures }).toStrictEqual({
-		calls: [{ operation: 'mkdir', path: '/target' }],
-		failures: []
-	});
-});
-
-it.each([0, 'yes', { invalid: true }])(
-	'rejects an invalid parent-creation flag: %j',
-	(value) => {
-		expect(() => writeOptions({ createParents: value })).toThrow(
-			'The sandbox request is invalid.'
-		);
-	}
-);
-
-it('does not write after a synchronous transform overruns its deadline', async () => {
-	let now = 0;
-	const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
-	const { owner, backend } = fixture();
-	const sandbox = createSandbox(owner);
-
-	backend.seed('file', new TextEncoder().encode('before'));
-
-	try {
-		await expect(
-			sandbox.files.updateText(
-				'file',
-				() => {
-					now = 100;
-
-					return 'after';
-				},
-				{ timeoutMs: 5 }
-			)
-		).rejects.toMatchObject({
-			name: 'SandboxTimeoutError',
-			completion: 'confirmed'
-		});
-
-		const writes = backend.calls.filter(
-			(call) => call.operation === 'writeFile'
-		);
-
-		expect({
-			writes,
-			contents: await sandbox.files.readFile('file')
-		}).toStrictEqual({
-			writes: [],
-			contents: new TextEncoder().encode('before')
-		});
-	} finally {
-		clock.mockRestore();
-	}
 });

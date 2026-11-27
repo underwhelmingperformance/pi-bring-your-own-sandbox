@@ -24,8 +24,7 @@ import {
 	grepRequestSchema,
 	operationOptionsSchema,
 	processOptionsSchema,
-	processRequestSchema,
-	writeOptionsSchema
+	processRequestSchema
 } from './request-schemas.js';
 import {
 	fileStatSchema,
@@ -136,7 +135,6 @@ export const findReviewRequest = Type.Object(
 	{ additionalProperties: false }
 );
 export const sourceReply = reviewIdentityReplySchema;
-export const copyOptionsSchema = acquireOptionsSchema;
 
 const reviewAvailability = Type.Object(
 	{ type: Type.Literal('available') },
@@ -218,7 +216,6 @@ export const protocolSchemas = {
 	'review.source': sourceReply,
 	'broker.reviewSource': reviewSourceSchema,
 	'broker.acquireOptions': acquireOptionsSchema,
-	'broker.copyOptions': copyOptionsSchema,
 	'broker.providerInfo': providerInfoSchema,
 	'sandbox.profile': profileSchema,
 	'sandbox.profile.policy': policySchema,
@@ -230,7 +227,6 @@ export const protocolSchemas = {
 	'sandbox.processOutcome': processOutcomeSchema,
 	'sandbox.fileStat': fileStatSchema,
 	'sandbox.operationOptions': operationOptionsSchema,
-	'sandbox.writeOptions': writeOptionsSchema,
 	'sandbox.findRequest': findRequestSchema,
 	'sandbox.grepRequest': grepRequestSchema,
 	'sandbox.closeReport': closeReportSchema,

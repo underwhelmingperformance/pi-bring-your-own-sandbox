@@ -28,10 +28,7 @@ import type {
 	SandboxClient,
 	SandboxCopy
 } from 'pi-bring-your-own-sandbox/consumer';
-import {
-	createSandboxClient,
-	GrepOutput
-} from 'pi-bring-your-own-sandbox/consumer';
+import { createSandboxClient } from 'pi-bring-your-own-sandbox/consumer';
 import type { SandboxHostHandle } from 'pi-bring-your-own-sandbox/host';
 import { initialiseSandboxHost } from 'pi-bring-your-own-sandbox/host';
 import sandboxTools from 'pi-bring-your-own-sandbox/pi-tools';
@@ -54,6 +51,7 @@ import { withPiRuntime } from '../../../test-support/pi-runtime.js';
 import { firstCopyProfile } from '../../../test-support/provider-profiles.js';
 import {
 	ripgrepParityCases,
+	ripgrepParityResult,
 	seedRipgrepParityCorpus
 } from '../../../test-support/ripgrep-parity.js';
 import { ScriptedModel } from '../../../test-support/scripted-model.js';
@@ -1450,8 +1448,7 @@ socket.on('error', error => {
 						const directory = root === 'pruned' ? 'pruned' : '.';
 						const arguments_ = [
 							'--no-config',
-							'--json',
-							'--line-number',
+							'--vimgrep',
 							'--color=never',
 							'--hidden',
 							...(glob === undefined ? [] : ['--glob', glob]),
@@ -1467,11 +1464,7 @@ socket.on('error', error => {
 								env: { HOME: fixture.workspace, GIT_CONFIG_GLOBAL: '/dev/null' }
 							}
 						);
-						const output = new GrepOutput(0, 100);
-
-						output.write(Buffer.from(stdout));
-
-						const expected = output.finish();
+						const expected = ripgrepParityResult(stdout);
 						const actual = await sandbox.search.grep({
 							pattern: 'needle',
 							path: root,

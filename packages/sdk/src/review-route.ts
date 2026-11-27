@@ -1,3 +1,4 @@
+import { acquireOptions } from './acquire-options.js';
 import { inspectContext } from './context.js';
 import type {
 	ReviewedToolCall,
@@ -19,14 +20,11 @@ import type {
 	ProtocolIdentity
 } from './protocol-envelope.js';
 import { collectProtocolReplies, REVIEW_CHANNEL } from './protocol-envelope.js';
-import {
-	copyOptionsSchema,
-	reviewSourceSchema,
-	sourceReply
-} from './protocol-payloads.js';
+import { reviewSourceSchema, sourceReply } from './protocol-payloads.js';
 import { checkDemand, sharedFeatureLevel } from './protocol-version.js';
+import { acquireOptionsSchema } from './request-schemas.js';
 import type { ReviewUnavailableReason } from './review-identities.js';
-import { checkedCopy, copyOptions } from './sandbox-copy.js';
+import { checkedCopy } from './sandbox-copy.js';
 import { checker } from './schemas.js';
 
 const isSource = checker(sourceReply);
@@ -183,7 +181,7 @@ function bindReviewSource(
 			}),
 		negotiateCopy(requirements) {
 			checkDemand(
-				copyOptionsSchema,
+				acquireOptionsSchema,
 				requirements ?? {},
 				local,
 				peer,
@@ -193,9 +191,9 @@ function bindReviewSource(
 			return source.negotiateCopy(requirements);
 		},
 		async copy(input) {
-			const options = copyOptions(input, local.extensionSource);
+			const options = acquireOptions(input, local.extensionSource);
 
-			checkDemand(copyOptionsSchema, options, local, peer, 'review copy');
+			checkDemand(acquireOptionsSchema, options, local, peer, 'review copy');
 
 			const copy = await source.copy(options);
 

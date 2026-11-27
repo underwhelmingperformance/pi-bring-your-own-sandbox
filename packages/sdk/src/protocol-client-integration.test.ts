@@ -186,7 +186,6 @@ it('keeps a lazy provider discoverable and retains its factory failure', async (
 });
 
 const nonFactoryFunctions = new Set([
-	'GrepOutput',
 	'SandboxLaunchFrames',
 	'ShellTransportRunner',
 	'checkSandboxTargetStatus',
@@ -198,7 +197,6 @@ const nonFactoryFunctions = new Set([
 	'mapSandboxErrno',
 	'isProtectedWorkspacePath',
 	'resolveSandboxCopySource',
-	'sandboxRipgrepArguments',
 	'sendDisplayMessage',
 	'targetFileHelper',
 	'targetSearchHelper'

@@ -272,7 +272,6 @@ type RecoveryDescriptor =
       readonly id: string;
       readonly instructions: string;
       readonly lease: string;
-      readonly expiresAt?: string;
     };
 ```
 
@@ -315,10 +314,10 @@ profile that denies host user data omits the field.
 describe all outstanding allocations. The final backend's `recovery` matches the
 latest descriptor. Use `none` only if there are no persistent allocations. An
 update cannot replace an allocation with `none`. For an allocation, `lease`
-describes the cleanup mechanism and `expiresAt` is a parseable absolute
-timestamp. The provider calls `confirmCleanup` after releasing all allocations
-from a failed opening. The provider then rejects the opening without allocating
-anything else. Both callbacks expire when opening ends.
+describes the cleanup mechanism. The provider calls `confirmCleanup` after
+releasing all allocations from a failed opening. The provider then rejects the
+opening without allocating anything else. Both callbacks expire when opening
+ends.
 
 ```typescript
 interface SandboxDiagnosticRecord {
@@ -496,11 +495,10 @@ for the host checkout and its own backends from the same session and generation.
 | `search.find` | `search.find`                              |
 | `search.grep` | `search.grep`                              |
 
-The facade adds `files.updateText(path, transform, options)` when both file read
-and file write are available. The synchronous transform maps strict UTF-8 text
-to replacement text. The result has `before` and `after` strings. The optional
-`createParents` on `writeFile` defaults to false. `readFile` and process
-captures return consumer-owned bytes.
+Use `mkdir` to create parent directories before calling `writeFile`. The broker
+serialises writes and directory creation in the same queue. A read followed by a
+write can interleave with another mutation. `readFile` and process captures
+return consumer-owned bytes.
 
 Find and grep results contain target-relative paths and `truncated: boolean`.
 Find defaults to 1,000 paths. Grep defaults to 100 matching lines, regex

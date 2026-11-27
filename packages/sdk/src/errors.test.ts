@@ -188,32 +188,6 @@ const cases = [
 			)
 	},
 	{
-		name: 'SandboxProviderRequiredError',
-		create: (cause: unknown) =>
-			rehydrateSandboxError(
-				{
-					message: 'Remote provider failure.',
-					name: 'SandboxProviderRequiredError',
-					operation: 'exec',
-					providerId: 'test.remote'
-				},
-				{ cause }
-			)
-	},
-	{
-		name: 'SandboxProviderMismatchError',
-		create: (cause: unknown) =>
-			rehydrateSandboxError(
-				{
-					message: 'Remote provider failure.',
-					name: 'SandboxProviderMismatchError',
-					operation: 'exec',
-					providerId: 'test.remote'
-				},
-				{ cause }
-			)
-	},
-	{
 		name: 'SandboxInitialisationError',
 		create: (cause: unknown) =>
 			new SandboxInitialisationError(

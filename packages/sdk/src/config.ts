@@ -24,8 +24,6 @@ export interface SandboxConfig {
 	readonly hostUserDataRoots?: readonly string[];
 	readonly saveReadRoots?: SaveReadRoots;
 	readonly configured?: ConfiguredProviderV1;
-	readonly providerConfigSource?: 'extension';
-	readonly policySource?: 'extension';
 }
 
 export function resolveSandboxConfig(
@@ -42,7 +40,6 @@ export function resolveSandboxConfig(
 		throw new InvalidSandboxConfigError({
 			operation: 'configure',
 			providerId: provider.id,
-			configurationSource: 'extension',
 			detail: { kind: 'config', field: 'settings.policy' },
 			...(extensionSource !== undefined && { extensionSource })
 		});
@@ -55,8 +52,7 @@ export function resolveSandboxConfig(
 			operation: 'configure',
 			providerId: provider.id,
 			detail: selected.detail,
-			...(extensionSource !== undefined && { extensionSource }),
-			...(source === 'extension' && { configurationSource: 'extension' })
+			...(extensionSource !== undefined && { extensionSource })
 		});
 	}
 
@@ -71,12 +67,6 @@ export function resolveSandboxConfig(
 			...(settings?.userShell !== undefined && {
 				userShell: settings.userShell
 			})
-		}),
-		...(source === 'extension' && {
-			providerConfigSource: 'extension' as const
-		}),
-		...(explicit !== undefined && {
-			policySource: 'extension' as const
 		}),
 		...(settings?.cleanup !== undefined && {
 			cleanup: Object.freeze({ ...settings.cleanup })

@@ -89,61 +89,51 @@ it('records bounded provider warnings separately from process output and cleanup
 	});
 });
 
-it.each(['providerConfig', 'policy'] as const)(
-	'reports extension provenance for invalid %s',
-	async (field) => {
-		const { generation, context, backend } = fixture(() =>
-			Promise.reject(new Error('Must not open.'))
-		);
+it('attributes a provider preparation failure to its extension', async () => {
+	const { generation, context, backend } = fixture(() =>
+		Promise.reject(new Error('Must not open.'))
+	);
+	const extensionSource = '<inline:config-source>';
 
-		await generation.close();
+	await generation.close();
 
-		const selected = new SandboxGeneration(context, {
-			readConfig: () =>
-				Promise.resolve({
-					selection: {
-						providerId: 'fixture',
-						source: 'extension',
-						policy:
-							field === 'policy'
-								? {
-										...backend.policy,
-										hostUserData: 'denied',
-										hostSystemFiles: 'denied'
-									}
-								: backend.policy
-					},
-					providerConfigSource: 'extension',
-					policySource: 'extension'
-				}),
-			providers: () => [
-				{
-					id: 'fixture',
-					label: 'Fixture',
-					profiles: fixtureProfiles(backend.capabilities, {
-						hostWorkspaceWrites: [true],
-						hostUserData: ['denied'],
-						hostSystemFiles: ['read-only'],
-						network: [false]
-					}),
-
-					prepare() {
-						throw new InvalidSandboxConfigError({ operation: 'configure' });
-					}
+	const selected = new SandboxGeneration(context, {
+		readConfig: () =>
+			Promise.resolve({
+				selection: {
+					providerId: 'fixture',
+					source: 'extension',
+					policy: backend.policy
 				}
-			]
-		});
+			}),
+		providers: () => [
+			{
+				id: 'fixture',
+				label: 'Fixture',
+				profiles: { open: [backend.profile], copy: [] },
+				protocol: {
+					major: 1,
+					featureLevel: 0,
+					buildId: 'fixture',
+					packageVersion: '0.0.0',
+					extensionSource
+				},
+				prepare() {
+					throw new InvalidSandboxConfigError({ operation: 'configure' });
+				}
+			}
+		]
+	});
 
-		try {
-			await expect(selected.acquire(context)).rejects.toMatchObject({
-				name: 'InvalidSandboxConfigError',
-				configurationSource: 'extension'
-			});
-		} finally {
-			await selected.close();
-		}
+	try {
+		await expect(selected.acquire(context)).rejects.toMatchObject({
+			name: 'InvalidSandboxConfigError',
+			extensionSource
+		});
+	} finally {
+		await selected.close();
 	}
-);
+});
 
 it('rejects a backend returned after failed-open cleanup was acknowledged', async () => {
 	const { generation, context, backend, counts } = fixture((opening) => {
@@ -246,11 +236,11 @@ it.each([true, false])(
 	}
 );
 
-it('preserves the configuration source when recording a typed initialisation failure', async () => {
+it('preserves the extension source when recording a typed initialisation failure', async () => {
 	const { context } = fixture();
 	const cause = new InvalidSandboxConfigError({
 		operation: 'configure',
-		configurationSource: 'extension'
+		extensionSource: '<inline:config-failure>'
 	});
 	const generation = new SandboxGeneration(context, {
 		providers: () => [],
@@ -259,7 +249,7 @@ it('preserves the configuration source when recording a typed initialisation fai
 
 	await expect(generation.acquire(context)).rejects.toMatchObject({
 		name: 'InvalidSandboxConfigError',
-		configurationSource: 'extension',
+		extensionSource: '<inline:config-failure>',
 		cause
 	});
 	await generation.close();

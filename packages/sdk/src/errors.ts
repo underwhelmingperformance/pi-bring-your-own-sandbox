@@ -34,8 +34,6 @@ abstract class SandboxError<Name extends string = string> extends Error {
 	declare readonly extensionSource?: string;
 	declare readonly detail?: NonNullable<SandboxErrorContext['detail']>;
 
-	declare readonly configurationSource?: 'extension';
-
 	/**
 	Provider identity, when known before the failure.
 	*/
@@ -67,10 +65,6 @@ abstract class SandboxError<Name extends string = string> extends Error {
 
 		if (context.detail !== undefined) {
 			this.detail = Object.freeze({ ...context.detail });
-		}
-
-		if (context.configurationSource !== undefined) {
-			this.configurationSource = context.configurationSource;
 		}
 
 		if (context.providerId !== undefined) {
@@ -151,44 +145,6 @@ export class IncompatibleSandboxProtocolError extends SandboxError<'Incompatible
 }
 
 /**
-The activated provider does not match a guard requirement.
-*/
-class SandboxProviderMismatchError extends SandboxError<'SandboxProviderMismatchError'> {
-	/**
-	Stable identity used by the structural guard across SDK copies.
-	*/
-	static readonly errorName = 'SandboxProviderMismatchError';
-
-	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
-		super(
-			SandboxProviderMismatchError.errorName,
-			'The activated sandbox provider does not match the guard requirements. Check the loaded provider extension.',
-			context,
-			options
-		);
-	}
-}
-
-/**
-A guard requires explicit provider activation before SDK operations can proceed.
-*/
-class SandboxProviderRequiredError extends SandboxError<'SandboxProviderRequiredError'> {
-	/**
-	Stable identity used by the structural guard across SDK copies.
-	*/
-	static readonly errorName = 'SandboxProviderRequiredError';
-
-	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
-		super(
-			SandboxProviderRequiredError.errorName,
-			'A sandbox provider must be activated. Load the required provider extension.',
-			context,
-			options
-		);
-	}
-}
-
-/**
 Provider or backend metadata violates the advertised protocol. Consumers
 must not use the declaration.
 */
@@ -225,9 +181,7 @@ export class InvalidSandboxConfigError extends SandboxError<'InvalidSandboxConfi
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			InvalidSandboxConfigError.errorName,
-			context.configurationSource === 'extension'
-				? 'Sandbox extension settings are invalid. Check the extension configuration.'
-				: 'Sandbox settings are invalid. Check the extension configuration.',
+			'Sandbox settings are invalid. Check the extension configuration.',
 			context,
 			options
 		);
@@ -736,8 +690,7 @@ export function rehydrateSandboxError(
 	options?: ErrorOptions,
 	override?: SandboxErrorContext
 ): SandboxErrorInfo {
-	const { operation, providerId, recovery, configurationSource } =
-		override ?? error;
+	const { operation, providerId, recovery } = override ?? error;
 	const extensionSource = override?.extensionSource ?? error.extensionSource;
 	const detail = override?.detail ?? error.detail;
 	const backendId = override?.backendId ?? error.backendId;
@@ -747,19 +700,10 @@ export function rehydrateSandboxError(
 		...(detail !== undefined && { detail }),
 		...(backendId !== undefined && { backendId }),
 		...(providerId !== undefined && { providerId }),
-		...(recovery !== undefined && { recovery }),
-		...(configurationSource !== undefined && { configurationSource })
+		...(recovery !== undefined && { recovery })
 	};
 
 	switch (error.name) {
-		case 'SandboxProviderMismatchError': {
-			return new SandboxProviderMismatchError(context, options);
-		}
-
-		case 'SandboxProviderRequiredError': {
-			return new SandboxProviderRequiredError(context, options);
-		}
-
 		case 'SandboxInitialisationError': {
 			return new SandboxInitialisationError(context, options);
 		}

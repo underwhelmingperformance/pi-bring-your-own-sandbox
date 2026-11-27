@@ -629,8 +629,7 @@ it('uses literal argv, isolated mounts and explicit target environment overrides
 			pathFlavor: 'posix',
 			relationship: 'copied',
 			home: '/tmp',
-			defaultShell: 'sh',
-			description: 'Private copy of the host checkout.'
+			defaultShell: 'sh'
 		},
 		recoveries: [backend.recovery]
 	});

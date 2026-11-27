@@ -293,8 +293,7 @@ it('persists an explicit provider startup failure without executing on the host'
 
 			await expect(getSandbox(pi, context)).rejects.toMatchObject({
 				name,
-				providerId: 'fixture',
-				configurationSource: 'extension'
+				providerId: 'fixture'
 			});
 			await expect(getSandbox(pi, context)).rejects.toMatchObject({
 				name,

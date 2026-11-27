@@ -44,8 +44,7 @@ export const imageProvider: FixtureProvider<ImageConfig> = {
 			workspace: {
 				root: '/workspace',
 				pathFlavor: 'posix',
-				relationship: 'shared',
-				description: 'In-memory protocol fixture; no image is started.'
+				relationship: 'shared'
 			},
 			profile: fixtureProfile(request.profile.policy, {
 				processKinds: ['argv'],

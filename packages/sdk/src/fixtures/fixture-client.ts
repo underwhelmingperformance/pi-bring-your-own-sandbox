@@ -1,17 +1,18 @@
+import { acquireOptions } from '../acquire-options.js';
 import {
 	getSandbox as acquire,
 	negotiateSandbox as negotiate
 } from '../client.js';
 import { inspectContext } from '../context.js';
 import type {
+	SandboxAcquireOptions,
 	SandboxContext,
-	SandboxCopyOptions,
 	SandboxHost
 } from '../contracts.js';
 import { startSandboxRuntime } from '../default-broker.js';
 import { protocolAddress } from '../protocol-address.js';
 import { localRuntimeBindings } from '../runtime-participant.js';
-import { checkedCopy, copyOptions } from '../sandbox-copy.js';
+import { checkedCopy } from '../sandbox-copy.js';
 
 interface FixtureSession {
 	readonly context: SandboxContext;
@@ -80,7 +81,7 @@ export function fixtureOwner(pi: SandboxHost) {
 export async function copyHostWorkspace(
 	pi: SandboxHost,
 	context: SandboxContext,
-	options?: SandboxCopyOptions
+	options?: SandboxAcquireOptions
 ) {
 	const starting = startFixture(pi);
 
@@ -91,7 +92,7 @@ export async function copyHostWorkspace(
 	inspectContext(context, 'acquire');
 
 	const source = protocolAddress(pi.events).extensionSource;
-	const settings = copyOptions(options, source);
+	const settings = acquireOptions(options, source);
 	const copy = await fixtureOwner(pi).copy(context, { kind: 'host' }, settings);
 
 	return checkedCopy(copy, settings, source);

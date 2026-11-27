@@ -74,8 +74,7 @@ async function fixture(
 										root: '/fixture/workspace',
 										pathFlavor: 'posix' as const,
 										relationship: 'shared' as const,
-										hostUserDataRoot: '/fixture/host-user-data',
-										description: 'In-memory fixture.'
+										hostUserDataRoot: '/fixture/host-user-data'
 									}
 								});
 
@@ -253,7 +252,6 @@ it('publishes separate target home and host user data roots', async () => {
 		root: '/fixture/workspace',
 		pathFlavor: 'posix',
 		relationship: 'shared',
-		description: 'In-memory fixture',
 		home: '/private-home',
 		hostUserDataRoot: '/mount/host-user-data'
 	} as const;
@@ -439,7 +437,6 @@ it.each(['missing', 'outside target'] as const)(
 						root: '/fixture/workspace',
 						pathFlavor: 'posix' as const,
 						relationship: 'shared' as const,
-						description: 'In-memory fixture',
 						hostUserDataRoot: '/fixture/host-user-data'
 					},
 					grantedPaths:

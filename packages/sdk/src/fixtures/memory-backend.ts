@@ -22,8 +22,7 @@ export class MemoryBackend implements SandboxBackend {
 	readonly workspace: SandboxWorkspace = {
 		root: '/remote/project',
 		pathFlavor: 'posix',
-		relationship: 'shared',
-		description: 'In-memory test fixture; no OS isolation.'
+		relationship: 'shared'
 	};
 	readonly policy: SandboxPolicy = {
 		hostWorkspaceWrites: true,

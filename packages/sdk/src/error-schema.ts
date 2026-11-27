@@ -28,7 +28,6 @@ export const operationSchema = Type.Union([
 	Type.Literal('access'),
 	Type.Literal('stat'),
 	Type.Literal('listDirectory'),
-	Type.Literal('updateText'),
 	Type.Literal('find'),
 	Type.Literal('grep'),
 	Type.Literal('dispose')
@@ -58,8 +57,6 @@ export const ordinaryErrorNameSchema = Type.Union([
 	Type.Literal('DuplicateProviderError'),
 	Type.Literal('ConflictingSandboxConfigError'),
 	Type.Literal('ConflictingSandboxProviderError'),
-	Type.Literal('SandboxProviderRequiredError'),
-	Type.Literal('SandboxProviderMismatchError'),
 	Type.Literal('UnsupportedSandboxCapabilityError'),
 	Type.Literal('UnsupportedSandboxPolicyError'),
 	Type.Literal('SandboxStartupError'),
@@ -153,7 +150,6 @@ const errorContextSchema = Type.Object({
 	extensionSource: Type.Optional(nonEmptyStringSchema),
 	detail: Type.Optional(errorDetailSchema),
 	operation: operationSchema,
-	configurationSource: Type.Optional(Type.Literal('extension')),
 	providerId: Type.Optional(nonEmptyStringSchema),
 	backendId: Type.Optional(nonEmptyStringSchema),
 	recovery: Type.Optional(recoverySchema)

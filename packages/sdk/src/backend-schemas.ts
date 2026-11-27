@@ -49,7 +49,6 @@ function workspaceShape(flavor: 'posix' | 'win32') {
 		root: absolutePaths[flavor],
 		home: Type.Optional(absolutePaths[flavor]),
 		hostUserDataRoot: Type.Optional(absolutePaths[flavor]),
-		description: nonEmptyStringSchema,
 		relationship: workspaceRelationshipSchema,
 		defaultShell: Type.Optional(shellSchema)
 	});

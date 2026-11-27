@@ -21,7 +21,6 @@ import type {
 	SandboxCloseReport,
 	SandboxContext,
 	SandboxCopy,
-	SandboxCopyOptions,
 	SandboxCopySource,
 	SandboxErrorInfo,
 	SandboxNegotiation,
@@ -89,7 +88,7 @@ import type { DiagnosticStore } from './provider-diagnostics.js';
 import { ProviderDiagnostics } from './provider-diagnostics.js';
 import type { SaveReadRoots } from './read-root-persistence.js';
 import { acquireOptionsSchema } from './request-schemas.js';
-import { copyOptions, copySource, rethrowCopyError } from './sandbox-copy.js';
+import { copySource, rethrowCopyError } from './sandbox-copy.js';
 import { callable, checker } from './schemas.js';
 import { isRecord, isRecovery, snapshotProviderInfo } from './validation.js';
 
@@ -158,7 +157,7 @@ export class SandboxGeneration {
 	#allowsEscalation = true;
 	#hostUserDataRoots: readonly string[] = Object.freeze([]);
 	#saveReadRoots: SaveReadRoots | undefined;
-	#configurationSource: 'extension' | undefined;
+	#providerExtensionSource: string | undefined;
 	#prepared: Promise<Prepared> | undefined;
 	readonly #slots = new Map<string, BackendSlot>();
 	#defaultProfile: Profile | undefined;
@@ -208,21 +207,15 @@ export class SandboxGeneration {
 				: slot.recovery.kind === 'none'
 					? (slot.candidateRecovery ?? slot.recovery)
 					: slot.recovery;
+		const failure = isSandboxError(cause) ? cause : undefined;
+		const extensionSource =
+			failure?.extensionSource ?? this.#providerExtensionSource;
 		const context = {
 			operation,
-			...(this.#selection !== undefined &&
-				this.#selection.source !== 'default' && {
-					configurationSource: this.#selection.source
-				}),
-			...(this.#configurationSource !== undefined && {
-				configurationSource: this.#configurationSource
+			...(extensionSource !== undefined && { extensionSource }),
+			...(failure?.providerId !== undefined && {
+				providerId: failure.providerId
 			}),
-			...(isSandboxError(cause) &&
-				cause.configurationSource !== undefined && {
-					configurationSource: cause.configurationSource
-				}),
-			...(isSandboxError(cause) &&
-				cause.providerId !== undefined && { providerId: cause.providerId }),
 			...(this.#selection !== undefined && {
 				providerId: this.#selection.providerId
 			}),
@@ -231,8 +224,8 @@ export class SandboxGeneration {
 				recovery.kind !== 'none' && { recovery })
 		};
 
-		if (isSandboxError(cause)) {
-			return rehydrateSandboxError(cause, { cause }, context);
+		if (failure !== undefined) {
+			return rehydrateSandboxError(failure, { cause }, context);
 		}
 
 		return operation === 'open'
@@ -328,7 +321,7 @@ export class SandboxGeneration {
 			});
 
 			this.#defaultProfile = defaults.ok ? defaults.profile : undefined;
-			this.#configurationSource = config.providerConfigSource;
+			this.#providerExtensionSource = provider.protocol?.extensionSource;
 
 			const local = this.#dependencies.protocol;
 			const peer = provider.protocol;
@@ -351,8 +344,6 @@ export class SandboxGeneration {
 					providerId: provider.id
 				});
 			}
-
-			this.#configurationSource = undefined;
 
 			if (this.#state === 'initialising') {
 				this.#state = 'idle';
@@ -1098,7 +1089,7 @@ export class SandboxGeneration {
 	async #negotiateCopy(
 		{ configured, provider }: Prepared,
 		source: CopySourceIdentity,
-		options: SandboxCopyOptions
+		options: SandboxAcquireOptions
 	) {
 		const copy = configured.copy;
 		const identity = {
@@ -1306,13 +1297,13 @@ export class SandboxGeneration {
 	async copy(
 		context: SandboxContext,
 		input: CopySourceIdentity,
-		settings?: SandboxCopyOptions
+		settings?: SandboxAcquireOptions
 	): Promise<SandboxCopy> {
 		this.#assertContext(context, 'acquire');
 		this.#assertOpen('acquire');
 
 		const source = copySource(input);
-		const options = copyOptions(settings);
+		const options = acquireOptions(settings);
 		const scope = new OperationScope(
 			{ operation: 'acquire' },
 			this.#lifetime.signal,
@@ -1452,13 +1443,13 @@ export class SandboxGeneration {
 	async negotiateCopy(
 		context: SandboxContext,
 		input: CopySourceIdentity,
-		requirements?: SandboxCopyOptions
+		requirements?: SandboxAcquireOptions
 	): Promise<SandboxNegotiation> {
 		this.#assertContext(context, 'acquire');
 		this.#assertNotClosing('acquire');
 
 		const source = copySource(input);
-		const options = copyOptions(requirements);
+		const options = acquireOptions(requirements);
 
 		try {
 			this.#assertOpen('acquire');
@@ -1575,6 +1566,5 @@ function isSameRecovery(
 		? left.kind === right.kind
 		: left.id === right.id &&
 				left.instructions === right.instructions &&
-				left.lease === right.lease &&
-				left.expiresAt === right.expiresAt;
+				left.lease === right.lease;
 }

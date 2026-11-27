@@ -525,8 +525,6 @@ class DockerBackend implements SandboxBackend {
 		importer: string,
 		context: SandboxOpenContext
 	): Promise<void> {
-		context.reportRecovery(this.recovery);
-
 		if (context.signal.aborted) {
 			throw new SandboxCancelledError({
 				operation: 'open',
@@ -534,6 +532,8 @@ class DockerBackend implements SandboxBackend {
 				completion: 'not-started'
 			});
 		}
+
+		context.reportRecovery(this.recovery);
 
 		try {
 			await this.#resources.checked(

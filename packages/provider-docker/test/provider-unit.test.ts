@@ -824,6 +824,31 @@ it('reports unconfirmed termination when the client finishes but the daemon cann
 	await backend.dispose(context());
 });
 
+it('does not report recovery for an already cancelled copy', async () => {
+	const docker = new FakeDocker();
+	const controller = new AbortController();
+	const reportRecovery = vi.fn();
+	const confirmCleanup = vi.fn();
+
+	controller.abort();
+	await expect(
+		createDockerProvider(() => docker).copy(hostCopy, {
+			...context(controller.signal),
+			reportRecovery,
+			confirmCleanup
+		})
+	).rejects.toMatchObject({
+		name: 'SandboxCancelledError',
+		operation: 'open',
+		completion: 'not-started'
+	});
+	expect({
+		commands: docker.commands,
+		recoveries: reportRecovery.mock.calls,
+		confirmations: confirmCleanup.mock.calls
+	}).toStrictEqual({ commands: [], recoveries: [], confirmations: [] });
+});
+
 it('releases a partial allocation when copying the workspace fails', async () => {
 	const docker = new FakeDocker();
 

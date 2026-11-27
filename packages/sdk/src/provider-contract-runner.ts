@@ -8,7 +8,10 @@ import {
 	providerContractCases,
 	usingProviderFixture
 } from './provider-contract-suite.js';
-import { verifyCredentialExclusion } from './provider-credential-suite.js';
+import {
+	verifyCredentialExclusion,
+	verifyUndeclaredCredentialGrant
+} from './provider-credential-suite.js';
 import { verifyOpeningCase } from './provider-opening-suite.js';
 import {
 	invalidSharedSettings,
@@ -102,6 +105,23 @@ export function defineSandboxProviderTests<Config>(
 					() => verifyOpeningCase(registered, mode, fault, selection),
 					testTimeout
 				);
+			}
+
+			if (selection?.mode === 'open') {
+				const { pathGrantKinds = [], credentialPathGrantKinds = [] } =
+					selection.profile;
+
+				for (const kind of pathGrantKinds) {
+					if (!credentialPathGrantKinds.includes(kind)) {
+						it(
+							label +
+								`excludes the profile from an undeclared credential ${kind} grant`,
+							() =>
+								verifyUndeclaredCredentialGrant(registered, selection, kind),
+							testTimeout
+						);
+					}
+				}
 			}
 
 			if (

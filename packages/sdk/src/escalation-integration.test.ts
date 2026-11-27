@@ -42,6 +42,11 @@ it.each([
 		route: 'confirmation',
 		behaviour:
 			'shows the effective roots and permits only one-call credential approval'
+	},
+	{
+		route: 'fallback',
+		behaviour:
+			'offers the unrestricted host when the provider cannot grant a credential'
 	}
 ] as const)('$behaviour', async ({ route }) => {
 	const temporaryHome = await mkdtemp(path.join(tmpdir(), 'byos-home-'));
@@ -51,14 +56,20 @@ it.each([
 	const targetHome = '/fixture-home';
 	const providerId = 'fixture.credentials';
 	const { backend, requests } = shellBackend();
+	const isHostFallback = route === 'fallback';
 	const profile = {
 		...backend.profile,
 		policy: { ...backend.profile.policy, hostUserData: 'read-only' as const },
-		pathGrantKinds: ['read'] as const
+		pathGrantKinds: ['read'] as const,
+		...(!isHostFallback && { credentialPathGrantKinds: ['read'] as const })
 	};
 	const opened: { paths: PathGrants | undefined; ledger: unknown[] }[] = [];
 	const refusals: unknown[] = [];
-	const confirmations: { roots: boolean; choices: readonly string[] }[] = [];
+	const confirmations: {
+		roots: boolean;
+		unrestricted: boolean;
+		choices: readonly string[];
+	}[] = [];
 	const command = 'printf fixture';
 	const model = new ScriptedModel([
 		{
@@ -240,7 +251,7 @@ it.each([
 
 				const escalation = {
 					kind: 'escalation',
-					outcome: 'allowed',
+					outcome: isHostFallback ? 'denied' : 'allowed',
 					decider:
 						route === 'reviewed'
 							? {
@@ -253,14 +264,20 @@ it.each([
 						command,
 						justification: 'Read synthetic credential data.',
 						access: { paths: { read: [hostPath] } },
-						destination: {
-							kind: 'provider',
-							providerId,
-							policy: profile.policy,
-							effectiveRestrictions: expect.stringContaining(
-								scopeDescription
-							) as unknown
-						}
+						destination: isHostFallback
+							? {
+									kind: 'host',
+									policy: unrestrictedPolicy,
+									effectiveRestrictions: 'none'
+								}
+							: {
+									kind: 'provider',
+									providerId,
+									policy: profile.policy,
+									effectiveRestrictions: expect.stringContaining(
+										scopeDescription
+									) as unknown
+								}
 					}
 				};
 
@@ -272,19 +289,29 @@ it.each([
 					ledger: readLedger()
 				}).toStrictEqual({
 					errors: [],
-					opened: [{ paths: { read: [hostPath] }, ledger: [escalation] }],
+					opened: isHostFallback
+						? []
+						: [{ paths: { read: [hostPath] }, ledger: [escalation] }],
 					confirmations:
-						route === 'confirmation'
-							? [{ roots: true, choices: ['Deny', 'Allow'] }]
+						route === 'confirmation' || isHostFallback
+							? [
+									{
+										roots: !isHostFallback,
+										unrestricted: isHostFallback,
+										choices: ['Deny', 'Allow']
+									}
+								]
 							: [],
-					requests: [
-						{
-							kind: 'shell',
-							dialect: 'bash',
-							command,
-							cwd: backend.workspace.root
-						}
-					],
+					requests: isHostFallback
+						? []
+						: [
+								{
+									kind: 'shell',
+									dialect: 'bash',
+									command,
+									cwd: backend.workspace.root
+								}
+							],
 					ledger: [escalation]
 				});
 			},
@@ -292,10 +319,11 @@ it.each([
 				select(text, choices) {
 					confirmations.push({
 						roots: text.includes(scopeDescription),
+						unrestricted: text.includes('Effective restrictions: none'),
 						choices
 					});
 
-					return Promise.resolve('Allow');
+					return Promise.resolve(isHostFallback ? 'Deny' : 'Allow');
 				}
 			}
 		);

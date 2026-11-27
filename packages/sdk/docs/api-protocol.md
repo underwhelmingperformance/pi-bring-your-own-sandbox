@@ -143,6 +143,7 @@ interface Profile {
   readonly exitStatus: ExitStatus;
   readonly terminationScope: TerminationScope;
   readonly pathGrantKinds?: readonly ('read' | 'write')[];
+  readonly credentialPathGrantKinds?: readonly ('read' | 'write')[];
 }
 
 type SandboxNegotiation =
@@ -184,6 +185,8 @@ Directory grants keep the exclusions.
 The specification defines [profile ranking and path checks][access]. Through
 `pathGrantKinds`, a profile can declare support for extra read and write paths
 during escalation. An omitted or empty list provides no extra kinds.
+`credentialPathGrantKinds` lists the subset that can reach an explicit
+credential path. An omitted or empty credential list permits neither kind.
 
 [access]: specification.md#configuration-and-negotiation
 

@@ -170,7 +170,9 @@ session grant expires when the session ends. For a provider that supplies a
 settings writer, check that **Always** appears under the configured read-only
 policy and that a fresh session uses the saved root. Check that remembered
 directory grants keep credential exclusions and that a specific credential read,
-write grant or network grant requires a decision for each call.
+write grant or network grant requires a decision for each call. For an
+undeclared credential grant kind, verify that the broker excludes the profile
+before it chooses a destination and that no allocation starts.
 
 ## Broker and lifecycle cases
 

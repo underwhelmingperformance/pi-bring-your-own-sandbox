@@ -20,11 +20,27 @@ import {
 	providerContractCases,
 	usingProviderFixture as usingBrokerProviderFixture
 } from './provider-contract-suite.js';
+import { verifyUndeclaredCredentialGrant } from './provider-credential-suite.js';
 import type { SandboxProviderTestOptions } from './provider-test-contracts.js';
 import { defineSandboxProviderTests } from './testing.js';
 import { profileCapabilities } from './validation.js';
 
 defineSandboxProviderTests(contractScenario());
+
+it('checks undeclared credential grant kinds without opening a backend', async () => {
+	const scenario = contractScenario();
+	const profile = {
+		...firstOpenProfile(scenario.provider),
+		pathGrantKinds: ['read', 'write'] as const,
+		credentialPathGrantKinds: ['read'] as const
+	};
+
+	await verifyUndeclaredCredentialGrant(
+		scenario,
+		{ mode: 'open', profile },
+		'write'
+	);
+});
 
 it('opens the fixture provider through the broker and verifies the backend allocation', async () => {
 	const scenario = contractScenario();

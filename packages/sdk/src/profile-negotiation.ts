@@ -285,7 +285,9 @@ export function selectProfile({
 				(isEscalated &&
 					mode === 'open' &&
 					path.location !== 'workspace' &&
-					profile.pathGrantKinds?.includes(path.kind) === true)
+					profile.pathGrantKinds?.includes(path.kind) === true &&
+					(path.isCredential !== true ||
+						profile.credentialPathGrantKinds?.includes(path.kind) === true))
 		);
 
 		if (eligible.length === 0) {

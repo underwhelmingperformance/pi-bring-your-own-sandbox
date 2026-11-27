@@ -30,6 +30,44 @@ function isAccessDenied(error: unknown): boolean {
 	);
 }
 
+export async function verifyUndeclaredCredentialGrant<Config>(
+	options: SandboxProviderTestOptions<Config>,
+	selection: SandboxProviderTestSelection,
+	kind: 'read' | 'write'
+): Promise<void> {
+	const fixture = await options.createFixture(selection);
+	const provider = fixture.provider ?? options.provider;
+	const attempt: FixtureAttempt = {};
+
+	try {
+		const runtime = await fixtureBroker(
+			{
+				...provider,
+				profiles: { ...provider.profiles, open: [selection.profile] }
+			},
+			fixture.hostWorkspace,
+			fixture.configuration,
+			{ policy: selection.profile.policy },
+			attempt
+		);
+
+		try {
+			const plan = await runtime.planEscalation({
+				access: { paths: { [kind]: ['~/.ssh/byos-conformance'] } }
+			});
+
+			expect({ destination: plan.destination.kind, attempt }).toStrictEqual({
+				destination: 'host',
+				attempt: {}
+			});
+		} finally {
+			await runtime.close();
+		}
+	} finally {
+		await bounded(options, () => fixture.cleanup());
+	}
+}
+
 export async function verifyCredentialExclusion<Config>(
 	options: SandboxProviderTestOptions<Config>,
 	selection: SandboxProviderTestSelection,

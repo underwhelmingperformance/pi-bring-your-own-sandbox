@@ -84,7 +84,8 @@ const profileShape = Type.Object(
 		shells: denseArray(shellSchema, { uniqueItems: true }),
 		exitStatus,
 		terminationScope: terminationScopeSchema,
-		pathGrantKinds: Type.Optional(pathGrantKinds)
+		pathGrantKinds: Type.Optional(pathGrantKinds),
+		credentialPathGrantKinds: Type.Optional(pathGrantKinds)
 	},
 	{ additionalProperties: false }
 );
@@ -92,12 +93,16 @@ const profileShape = Type.Object(
 export const profileSchema = Type.Refine(
 	profileShape,
 	(profile) =>
-		profile.processKinds.includes('shell') === profile.shells.length > 0
+		profile.processKinds.includes('shell') === profile.shells.length > 0 &&
+		(profile.credentialPathGrantKinds ?? []).every(
+			(kind) => profile.pathGrantKinds?.includes(kind) === true
+		)
 );
 /**
 Effective restrictions for an allocation. Read-only and read-write host user
 data exclude credential locations outside the checkout. A provider can grant
-an excluded path for an approved escalation that requests it explicitly.
+an excluded path for an approved escalation of a kind listed in
+`credentialPathGrantKinds`.
 */
 export type Profile = Frozen<Static<typeof profileSchema>>;
 
@@ -144,7 +149,8 @@ export function profileKey(profile: Profile): string {
 		profile.shells.toSorted(compareCodeUnits),
 		profile.exitStatus,
 		profile.terminationScope,
-		(profile.pathGrantKinds ?? []).toSorted(compareCodeUnits)
+		(profile.pathGrantKinds ?? []).toSorted(compareCodeUnits),
+		(profile.credentialPathGrantKinds ?? []).toSorted(compareCodeUnits)
 	]);
 }
 

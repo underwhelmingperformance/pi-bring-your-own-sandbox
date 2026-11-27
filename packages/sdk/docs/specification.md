@@ -416,6 +416,11 @@ in `pathGrantKinds`. The backend reports the actual mappings in `grantedPaths`.
 If the provider reports an unreachable path or a different target path, the
 broker returns a typed path error and disposes the backend.
 
+An explicit credential path grant requires its kind in
+`credentialPathGrantKinds`. The list is a subset of `pathGrantKinds`. A profile
+without a matching kind cannot supply the grant. If no provider profile
+qualifies, the broker presents the unrestricted host destination for approval.
+
 When a profile permits host user data reads, the backend reports an absolute
 target path in `workspace.hostUserDataRoot`. Ordinary files from the host home
 directory keep their home-relative paths under this root. Credential exclusions

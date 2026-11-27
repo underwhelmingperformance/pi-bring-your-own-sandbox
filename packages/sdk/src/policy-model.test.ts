@@ -28,6 +28,24 @@ function withPolicy(policy: Policy): Profile {
 	return { ...profile, policy };
 }
 
+it('requires every credential grant kind to be an extra path grant kind', () => {
+	const isProfile = checker(profileSchema);
+	const readGrant: Profile = { ...profile, pathGrantKinds: ['read'] };
+	const credentialRead: Profile = {
+		...readGrant,
+		credentialPathGrantKinds: ['read']
+	};
+
+	expect({
+		declared: isProfile(credentialRead),
+		undeclared: isProfile({
+			...readGrant,
+			credentialPathGrantKinds: ['write']
+		}),
+		distinct: profileKey(credentialRead) !== profileKey(readGrant)
+	}).toStrictEqual({ declared: true, undeclared: false, distinct: true });
+});
+
 const exactCases = {
 	hostWorkspaceWrites: { denied: false, allowed: true },
 	network: { denied: false, allowed: true },
@@ -119,7 +137,11 @@ it.each(['read-only', 'read-write'] as const)(
 	(hostUserData) => {
 		const policy = { ...unrestrictedPolicy, hostUserData };
 		const ordinary = withPolicy(policy);
-		const granting: Profile = { ...ordinary, pathGrantKinds: ['read'] };
+		const pathGranting: Profile = { ...ordinary, pathGrantKinds: ['read'] };
+		const granting: Profile = {
+			...pathGranting,
+			credentialPathGrantKinds: ['read']
+		};
 		const path = '/fixture/home/.ssh/key';
 		const requested = {
 			kind: 'read',
@@ -142,7 +164,7 @@ it.each(['read-only', 'read-write'] as const)(
 				isEscalated: true
 			}),
 			unsupportedGrant: selectProfile({
-				profiles: [ordinary],
+				profiles: [pathGranting],
 				limit: policy,
 				paths: [requested],
 				isEscalated: true

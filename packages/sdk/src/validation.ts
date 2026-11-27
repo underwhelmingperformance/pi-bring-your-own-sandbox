@@ -41,6 +41,11 @@ export function snapshotProfile(profile: Profile): Profile {
 		terminationScope: profile.terminationScope,
 		...(profile.pathGrantKinds !== undefined && {
 			pathGrantKinds: Object.freeze([...profile.pathGrantKinds])
+		}),
+		...(profile.credentialPathGrantKinds !== undefined && {
+			credentialPathGrantKinds: Object.freeze([
+				...profile.credentialPathGrantKinds
+			])
 		})
 	});
 }

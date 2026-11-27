@@ -1406,6 +1406,10 @@ declare const profileSchema: Type.TRefine<Type.TObject<{
         Type.TLiteral<"read">,
         Type.TLiteral<"write">
     ]>>>>;
+    credentialPathGrantKinds: Type.TOptional<Type.TRefine<Type.TArray<Type.TUnion<[
+        Type.TLiteral<"read">,
+        Type.TLiteral<"write">
+    ]>>>>;
 }>>;
 
 // policy-model.d.ts

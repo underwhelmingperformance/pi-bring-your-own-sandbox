@@ -1,6 +1,15 @@
 import { execFile } from 'node:child_process';
 import { once } from 'node:events';
-import { chown, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import {
+	chown,
+	link,
+	mkdir,
+	mkdtemp,
+	readFile,
+	rm,
+	symlink,
+	writeFile
+} from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -1357,6 +1366,188 @@ it('registers the Docker provider and Bash integration from the shell profile fa
 			return Promise.resolve();
 		}
 	);
+});
+
+async function asCheckoutOwner(directory: string) {
+	if (process.getuid?.() === 0) {
+		await chown(directory, 1000, 1000);
+		vi.spyOn(process, 'getuid').mockReturnValue(1000);
+	}
+
+	if (process.getgid?.() === 0) {
+		vi.spyOn(process, 'getgid').mockReturnValue(1000);
+	}
+}
+
+it.each(['hard link', 'symbolic link'] as const)(
+	'refuses a protected tree with a %s to a writable file',
+	async (kind) => {
+		const hostWorkspace = await mkdtemp(
+			path.join(tmpdir(), 'byos-guard-alias-')
+		);
+		const docker = new FakeDocker();
+		const provider = createDockerProvider(() => docker);
+		const reportWarning = vi.fn();
+		const reportRecovery = vi.fn();
+
+		try {
+			await asCheckoutOwner(hostWorkspace);
+
+			const protectedTree = path.join(hostWorkspace, '.pi', 'nested');
+
+			await mkdir(protectedTree, { recursive: true });
+
+			const writable = path.join(hostWorkspace, 'shared-file');
+
+			await writeFile(writable, 'fixture');
+
+			const alias = path.join(protectedTree, 'aliased-file');
+
+			if (kind === 'hard link') {
+				await link(writable, alias);
+			} else {
+				await symlink('../../shared-file', alias);
+			}
+
+			const profile = provider.profiles.open.find(
+				({ policy }) => policy.hostWorkspaceWrites
+			);
+
+			if (profile === undefined) {
+				throw new Error('The fixture requires a writable checkout profile.');
+			}
+
+			const pending = provider.open(
+				{
+					...request,
+					hostWorkspace,
+					profile
+				},
+				{
+					...context(),
+					reportWarning,
+					reportRecovery,
+					confirmCleanup: vi.fn()
+				}
+			);
+			const [outcome] = await Promise.allSettled([pending]);
+
+			const failure: unknown = expect.objectContaining({
+				name: 'UnsupportedSandboxPolicyError'
+			});
+
+			if (outcome.status === 'fulfilled') {
+				await outcome.value.dispose(context());
+			}
+
+			expect({
+				outcome,
+				commands: docker.commands,
+				recoveries: reportRecovery.mock.calls
+			}).toStrictEqual({
+				outcome: { status: 'rejected', reason: failure },
+				commands: [],
+				recoveries: []
+			});
+			expect(reportWarning).toHaveBeenCalledWith(
+				'A protected checkout tree contains a file with an alias or an unsupported type.'
+			);
+		} finally {
+			vi.restoreAllMocks();
+			await rm(hostWorkspace, { recursive: true, force: true });
+		}
+	}
+);
+
+it('mounts Git config includes inside the checkout read-only', async () => {
+	const hostWorkspace = await mkdtemp(
+		path.join(tmpdir(), 'byos-guard-config-')
+	);
+	const docker = new FakeDocker();
+	const provider = createDockerProvider(() => docker);
+	const git = promisify(execFile);
+	const paths = ['config/first', 'config/second', 'config/conditional'];
+
+	try {
+		if (process.getuid?.() === 0) {
+			vi.stubEnv('GIT_CONFIG_COUNT', '1');
+			vi.stubEnv('GIT_CONFIG_KEY_0', 'safe.directory');
+			vi.stubEnv('GIT_CONFIG_VALUE_0', hostWorkspace);
+		}
+
+		await asCheckoutOwner(hostWorkspace);
+		await mkdir(path.join(hostWorkspace, '.pi'));
+		await mkdir(path.join(hostWorkspace, 'config'));
+		await git('git', ['-C', hostWorkspace, 'init', '--quiet']);
+		await git('git', [
+			'-C',
+			hostWorkspace,
+			'config',
+			'--local',
+			'include.path',
+			'../config/first'
+		]);
+		await git('git', [
+			'-C',
+			hostWorkspace,
+			'config',
+			'--local',
+			'includeIf.onbranch:fixture-never.path',
+			'../config/conditional'
+		]);
+		await writeFile(
+			path.join(hostWorkspace, 'config/first'),
+			'[include]\n\tpath = second\n'
+		);
+		await writeFile(
+			path.join(hostWorkspace, 'config/second'),
+			'[fixture]\n\tinput = true\n'
+		);
+		await writeFile(
+			path.join(hostWorkspace, 'config/conditional'),
+			'[fixture]\n\tinput = true\n'
+		);
+
+		const backend = await provider.open(
+			{
+				...request,
+				hostWorkspace,
+				profile: firstOpenProfile({
+					profiles: {
+						open: provider.profiles.open.filter(
+							({ policy }) => policy.hostWorkspaceWrites
+						)
+					}
+				})
+			},
+			{
+				...context(),
+				reportRecovery: vi.fn(),
+				confirmCleanup: vi.fn()
+			}
+		);
+
+		try {
+			const arguments_ =
+				docker.commands.find(({ args }) => args[0] === 'create')?.args ?? [];
+
+			expect(
+				paths.map((file) => ({
+					file,
+					readOnly: arguments_.some(
+						(argument) =>
+							argument.includes(`"volume-subpath=${file}"`) &&
+							argument.includes('"readonly"')
+					)
+				}))
+			).toStrictEqual(paths.map((file) => ({ file, readOnly: true })));
+		} finally {
+			await backend.dispose(context());
+		}
+	} finally {
+		vi.restoreAllMocks();
+		await rm(hostWorkspace, { recursive: true, force: true });
+	}
 });
 
 it.each(['FIFO', 'socket'] as const)(

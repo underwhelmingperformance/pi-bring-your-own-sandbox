@@ -806,7 +806,12 @@ export function createDockerProvider(
 
 		const choice =
 			source === undefined
-				? await SharedCheckout.select(request.hostWorkspace, client, context)
+				? await SharedCheckout.select(
+						request.hostWorkspace,
+						client,
+						context,
+						profile.policy.hostWorkspaceWrites
+					)
 				: undefined;
 
 		if (typeof choice === 'string') {

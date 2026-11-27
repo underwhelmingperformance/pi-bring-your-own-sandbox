@@ -63,9 +63,12 @@ explicit copies for permission review.
 The example supplies shared settings through provider registration. The default
 permits live checkout writes and denies network access, host user data and host
 system files. Docker mounts existing protected paths read-only. This includes
-the provider kit defaults, the checkout's `.git` directory, and Git metadata and
-hooks inside the checkout. Create an empty `.pi` directory if the checkout lacks
-one. Opening fails if Docker cannot mount the checkout with the selected policy.
+the provider kit defaults, the checkout's `.git` directory, and Git metadata,
+hooks and included configuration files inside the checkout. Docker refuses a
+writable checkout if a protected tree contains a symbolic link, a regular file
+with multiple hard links, or a special file. Create an empty `.pi` directory if
+the checkout lacks one. Opening fails if Docker cannot mount the checkout with
+the selected policy.
 
 For a nested protected path, Docker also mounts each ancestor below the checkout
 root. An ancestor mount blocks renaming that directory. The ancestor uses the

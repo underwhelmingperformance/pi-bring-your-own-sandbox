@@ -10,6 +10,7 @@ import type {
 } from 'pi-bring-your-own-sandbox/provider';
 import { UnsupportedSandboxPolicyError } from 'pi-bring-your-own-sandbox/provider';
 import {
+	canonicalHostPath,
 	cleanDisplayText,
 	defaultProtectedWorkspacePaths,
 	isProtectedWorkspacePath
@@ -80,6 +81,175 @@ async function hasSpecialFiles(
 	return false;
 }
 
+async function hasProtectedAliases(
+	root: string,
+	signal: AbortSignal
+): Promise<boolean> {
+	const pending = [root];
+
+	while (pending.length > 0) {
+		signal.throwIfAborted();
+
+		const filename = pending.pop();
+
+		if (filename === undefined) {
+			break;
+		}
+
+		const metadata = await entry(filename);
+
+		if (metadata?.isDirectory()) {
+			const children = await readdir(filename);
+
+			for (const child of children) {
+				pending.push(path.join(filename, child));
+			}
+
+			continue;
+		}
+
+		if (metadata?.isFile() !== true || metadata.nlink !== 1n) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+function gitIncludePaths(root: string, output: string): string[] {
+	if (output === '') {
+		return [];
+	}
+
+	const records = output.split('\0');
+
+	if (records.pop() !== '' || records.length % 2 !== 0) {
+		throw new Error('Git returned an invalid configuration listing.');
+	}
+
+	const includes: string[] = [];
+
+	for (let index = 0; index < records.length; index += 2) {
+		const origin = records[index];
+		const record = records[index + 1];
+		const separator = record?.indexOf('\n') ?? -1;
+
+		if (origin === undefined || record === undefined || separator < 0) {
+			throw new Error('Git returned an invalid include setting.');
+		}
+
+		const value = record.slice(separator + 1);
+
+		if (path.isAbsolute(value)) {
+			includes.push(value);
+
+			continue;
+		}
+
+		if (value === '' || !origin.startsWith('file:')) {
+			throw new Error('Git returned an include without a resolvable path.');
+		}
+
+		const directory = path.dirname(origin.slice(5));
+
+		includes.push(path.resolve(root, directory, value));
+	}
+
+	return includes;
+}
+
+async function gitControlPaths(
+	executable: string,
+	root: string,
+	context: SandboxOperationContext
+): Promise<readonly string[]> {
+	const configEnvironment = Object.fromEntries(
+		Object.entries(process.env).filter(([key]) =>
+			/^GIT_CONFIG_(?:GLOBAL|SYSTEM|NOSYSTEM|PARAMETERS|COUNT|(?:KEY|VALUE)_\d+)$/u.test(
+				key
+			)
+		)
+	);
+	const options = () => ({
+		env: {
+			XDG_CONFIG_HOME: process.env['XDG_CONFIG_HOME'],
+			...configEnvironment,
+			PATH: path.dirname(executable),
+			HOME: homedir(),
+			GIT_OPTIONAL_LOCKS: '0',
+			GIT_CEILING_DIRECTORIES: path.dirname(root)
+		},
+		signal: context.signal,
+		timeout: Math.max(1, Math.min(3000, context.remainingMs())),
+		maxBuffer: 32_768
+	});
+	const { stdout } = await runGit(
+		executable,
+		[
+			'-C',
+			root,
+			'rev-parse',
+			'--path-format=absolute',
+			'--git-dir',
+			'--git-common-dir',
+			'--git-path',
+			'hooks'
+		],
+		options()
+	);
+	const metadata = stdout.split('\n');
+
+	if (
+		metadata.pop() !== '' ||
+		metadata.length !== 3 ||
+		metadata.some((candidate) => !path.isAbsolute(candidate))
+	) {
+		throw new Error('Git returned an invalid metadata path.');
+	}
+
+	let includeOutput: string;
+
+	try {
+		({ stdout: includeOutput } = await runGit(
+			executable,
+			[
+				'-C',
+				root,
+				'config',
+				'--includes',
+				'--null',
+				'--path',
+				'--show-origin',
+				'--get-regexp',
+				'^(include|includeif\\..*)\\.path$'
+			],
+			options()
+		));
+	} catch (error) {
+		if (
+			error instanceof Error &&
+			'code' in error &&
+			error.code === 1 &&
+			'stdout' in error &&
+			error.stdout === '' &&
+			'stderr' in error &&
+			error.stderr === ''
+		) {
+			return metadata;
+		}
+
+		throw error;
+	}
+
+	const includes = gitIncludePaths(root, includeOutput);
+
+	const canonical = await Promise.all(
+		includes.map((filename) => canonicalHostPath(filename))
+	);
+
+	return [...metadata, ...includes, ...canonical];
+}
+
 function hasVolumeSubpaths(version: string): boolean {
 	const api = /^(\d+)\.(\d+)$/u.exec(version);
 
@@ -96,7 +266,8 @@ export class SharedCheckout {
 	static async select(
 		directory: string,
 		client: DockerClient,
-		context: SandboxOperationContext
+		context: SandboxOperationContext,
+		canWrite: boolean
 	): Promise<SharedCheckout | string> {
 		const uid = process.getuid?.();
 		const gid = process.getgid?.();
@@ -125,7 +296,7 @@ export class SharedCheckout {
 			gid,
 			await findHostExecutable('git', root)
 		);
-		const guards = await checkout.#guards(context);
+		const guards = await checkout.#guards(context, canWrite);
 
 		if (typeof guards === 'string') {
 			return guards;
@@ -188,7 +359,7 @@ export class SharedCheckout {
 		private readonly gitExecutable: string | undefined
 	) {}
 
-	async #guards(context: SandboxOperationContext) {
+	async #guards(context: SandboxOperationContext, canWrite: boolean) {
 		const paths = new Set(guardPaths);
 		const git = await entry(path.join(this.root, '.git'));
 
@@ -202,50 +373,11 @@ export class SharedCheckout {
 			}
 
 			try {
-				const timeout = Math.max(1, Math.min(3000, context.remainingMs()));
-				const config = Object.fromEntries(
-					Object.entries(process.env).filter(([key]) =>
-						/^GIT_CONFIG_(?:GLOBAL|SYSTEM|NOSYSTEM|PARAMETERS|COUNT|(?:KEY|VALUE)_\d+)$/u.test(
-							key
-						)
-					)
-				);
-				const { stdout } = await runGit(
+				const resolved = await gitControlPaths(
 					this.gitExecutable,
-					[
-						'-C',
-						this.root,
-						'rev-parse',
-						'--path-format=absolute',
-						'--git-dir',
-						'--git-common-dir',
-						'--git-path',
-						'hooks'
-					],
-					{
-						env: {
-							XDG_CONFIG_HOME: process.env['XDG_CONFIG_HOME'],
-							...config,
-							PATH: path.dirname(this.gitExecutable),
-							HOME: homedir(),
-							GIT_OPTIONAL_LOCKS: '0',
-							GIT_CEILING_DIRECTORIES: path.dirname(this.root)
-						},
-						signal: context.signal,
-						timeout,
-						maxBuffer: 32_768
-					}
+					this.root,
+					context
 				);
-				const resolved = stdout.split('\n');
-				const terminator = resolved.pop();
-
-				if (
-					terminator !== '' ||
-					resolved.length !== 3 ||
-					resolved.some((candidate) => !path.isAbsolute(candidate))
-				) {
-					return 'Docker could not identify the Git metadata for this checkout.';
-				}
 
 				for (const candidate of resolved) {
 					const relative = path.relative(this.root, candidate);
@@ -300,6 +432,13 @@ export class SharedCheckout {
 				(name === '.pi' && !metadata.isDirectory())
 			) {
 				return 'A host configuration path is a symbolic link or special file.';
+			}
+
+			if (
+				canWrite &&
+				(await hasProtectedAliases(path.join(this.root, name), context.signal))
+			) {
+				return 'A protected checkout tree contains a file with an alias or an unsupported type.';
 			}
 
 			if (name.trim() !== name) {
@@ -410,7 +549,7 @@ export class SharedCheckout {
 	) {
 		await this.checkForNewProtectedEntries(volume, context, operation);
 
-		const selection = await this.#guards(context);
+		const selection = await this.#guards(context, !isWorkspaceReadOnly);
 
 		if (typeof selection === 'string') {
 			context.reportWarning(selection + ' Reopen the sandbox before editing.');

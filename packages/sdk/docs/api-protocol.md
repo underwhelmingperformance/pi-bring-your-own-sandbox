@@ -451,10 +451,16 @@ For **Always**, the elected broker calls the selected provider's
 `persistReadRoot` callback with the approved canonical paths. The callback
 awaits one call to `updateSettings` with the provider's global settings filename
 and a validator for the whole file. The file must be a regular file in Pi's
-effective agent directory outside the checkout. The SDK rereads the file,
-validates the original and updated settings, deduplicates the roots, and
-replaces the file atomically. Concurrent approvals from separate sessions can
-lose one update.
+effective agent directory outside the checkout. The SDK validates the original
+and updated settings and deduplicates the roots. The SDK creates a guard file
+with the suffix `.byos-read-roots.lock` beside the settings file. The guard
+protects the final reread, comparison and atomic replacement. If another session
+owns the guard or the settings changed, the SDK reports a conflict before
+approving the read.
+
+If a process crashes during the update, the guard can remain. The error gives
+the guard path. Remove the guard after checking that no session is using it,
+then retry the approval.
 
 ## Process, files and search
 

@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import {
 	mkdir,
 	mkdtemp,
@@ -32,6 +33,8 @@ it.each([
 	'missing',
 	'existing',
 	'embedded',
+	'guarded',
+	'concurrent-edit',
 	'duplicate',
 	'malformed',
 	'project',
@@ -46,6 +49,7 @@ it.each([
 		const directory = await realpath(temporary);
 		const agentDirectory = path.join(directory, 'agent');
 		const file = path.join(agentDirectory, filename);
+		const guard = file + '.byos-read-roots.lock';
 		const root = path.join(directory, 'approved');
 		const auth = path.join(agentDirectory, 'auth.json');
 		const relocatedAuth = path.join(directory, 'relocated-auth');
@@ -75,6 +79,10 @@ it.each([
 						readRoots: initialRoots,
 						...(!canPersist && { policy: profile.policy })
 					};
+		const concurrentEdit = JSON.stringify({
+			label: 'another session',
+			readRoots: [existing]
+		});
 		const changed = {
 			...initial,
 			policy: { ...profile.policy, hostUserData: 'read-write' }
@@ -128,9 +136,15 @@ it.each([
 						);
 						const validator = Compile(schema);
 
-						await context.updateSettings(filename, (value) =>
-							validator.Check(value)
-						);
+						let validations = 0;
+
+						await context.updateSettings(filename, (value) => {
+							if (scenario === 'concurrent-edit' && ++validations === 2) {
+								writeFileSync(file, concurrentEdit);
+							}
+
+							return validator.Check(value);
+						});
 					}
 				};
 
@@ -246,10 +260,25 @@ it.each([
 					async select(_text, choices) {
 						prompts.push([...choices]);
 
-						if (scenario === 'malformed') {
-							await writeFile(file, '{');
-						} else if (scenario === 'policy-changed') {
-							await writeFile(file, JSON.stringify(changed));
+						switch (scenario) {
+							case 'guarded': {
+								await writeFile(guard, 'other session');
+								break;
+							}
+
+							case 'malformed': {
+								await writeFile(file, '{');
+								break;
+							}
+
+							case 'policy-changed': {
+								await writeFile(file, JSON.stringify(changed));
+								break;
+							}
+
+							default: {
+								break;
+							}
 						}
 
 						if (scenario === 'project' && projectFile !== undefined) {
@@ -268,7 +297,35 @@ it.each([
 				}
 			);
 
-			if (scenario === 'embedded' || scenario === 'denied') {
+			if (scenario === 'guarded' || scenario === 'concurrent-edit') {
+				const results = model.requests
+					.at(1)
+					?.messages.filter((message) => message.role === 'toolResult')
+					.map((message) => ({
+						isError: message.isError,
+						content: message.content
+					}));
+				const message: unknown = expect.stringContaining(
+					scenario === 'guarded' ? guard : 'The provider settings changed'
+				);
+				const contents = await readFile(file, 'utf8');
+
+				expect({ results, contents }).toStrictEqual({
+					results: [
+						{ isError: true, content: [{ type: 'text', text: message }] }
+					],
+					contents:
+						scenario === 'guarded' ? JSON.stringify(initial) : concurrentEdit
+				});
+
+				if (scenario === 'guarded') {
+					expect(await readFile(guard, 'utf8')).toBe('other session');
+				} else {
+					await expect(readFile(guard, 'utf8')).rejects.toMatchObject({
+						code: 'ENOENT'
+					});
+				}
+			} else if (scenario === 'embedded' || scenario === 'denied') {
 				expect(
 					allocatedExclusions.map((paths) =>
 						paths?.filter((entry) => entry.startsWith(directory + path.sep))
@@ -309,7 +366,7 @@ it.each([
 			});
 
 			if (!isSucceeded) {
-				if (scenario !== 'project') {
+				if (scenario !== 'project' && scenario !== 'concurrent-edit') {
 					const expected = {
 						malformed: '{',
 						'policy-changed': JSON.stringify(changed)

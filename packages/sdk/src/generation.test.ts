@@ -10,7 +10,8 @@ import type {
 	SandboxCleanupBudgets,
 	SandboxContext,
 	SandboxOpenContext,
-	SandboxOpenRequest
+	SandboxOpenRequest,
+	SandboxOperationContext
 } from './contracts.js';
 import { InvalidSandboxConfigError, SandboxCancelledError } from './errors.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
@@ -492,14 +493,71 @@ it('initialises diagnostics without provisioning, then shares one lazy startup',
 	});
 });
 
-it('keeps startup running when all current acquisition waiters cancel', async () => {
+it('publishes the backend snapshot checked by the grant probe', async () => {
+	const { generation, context, backend } = fixture((_opening, request) => {
+		const read = backend.files?.read;
+		const workspace = backend.workspace;
+		const hostPath = request.paths?.read?.[0];
+
+		if (read === undefined || hostPath === undefined) {
+			throw new Error('The fixture must open with a workspace read grant.');
+		}
+
+		return Promise.resolve(
+			Object.assign(backend, {
+				grantedPaths: [
+					{ kind: 'read' as const, hostPath, targetPath: workspace.root }
+				],
+				files: {
+					...backend.files,
+					read: {
+						...read,
+						async access(filename: string, operation: SandboxOperationContext) {
+							await read.access(filename, operation);
+							Object.assign(backend, {
+								workspace: { ...workspace, root: '/changed' }
+							});
+						}
+					}
+				}
+			})
+		);
+	});
+	const original = backend.workspace;
+
+	try {
+		const sandbox = await generation.acquire(context, {
+			access: { paths: { read: ['.'] } }
+		});
+
+		expect({
+			published: sandbox.workspace,
+			provided: backend.workspace
+		}).toStrictEqual({
+			published: original,
+			provided: { ...original, root: '/changed' }
+		});
+	} finally {
+		await generation.close();
+	}
+});
+
+it('disposes a late backend when all acquisition waiters have cancelled', async () => {
 	const gate = Promise.withResolvers<SandboxBackend>();
 	const started = Promise.withResolvers<SandboxOpenContext>();
+	const finishDisposal = Promise.withResolvers<undefined>();
 	const { generation, context, backend, counts } = fixture((opening) => {
 		started.resolve(opening);
 
 		return gate.promise;
 	});
+	const dispose = backend.dispose.bind(backend);
+
+	backend.dispose = async (disposal) => {
+		await dispose(disposal);
+		await finishDisposal.promise;
+	};
+
 	const caller = new AbortController();
 	const pending = generation.acquire(context, { signal: caller.signal });
 	const rejected = expect(pending).rejects.toMatchObject({
@@ -509,20 +567,36 @@ it('keeps startup running when all current acquisition waiters cancel', async ()
 	});
 	const opening = await started.promise;
 
-	caller.abort();
-	await rejected;
-	expect(opening.signal.aborted).toBe(false);
-	gate.resolve(backend);
+	try {
+		caller.abort();
+		await rejected;
+		expect(opening.signal.aborted).toBe(false);
+		gate.resolve(backend);
+		await new Promise<void>((resolve) => setImmediate(resolve));
 
-	const sandbox = await generation.acquire(context);
+		expect(counts()).toStrictEqual({ opens: 1, disposals: 1, reads: 1 });
 
-	expect({ backendId: sandbox.backendId, ...counts() }).toStrictEqual({
-		backendId: 'memory',
-		opens: 1,
-		disposals: 0,
-		reads: 1
-	});
-	await generation.close();
+		const acquiring = generation.acquire(context);
+
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(counts()).toStrictEqual({ opens: 1, disposals: 1, reads: 1 });
+		finishDisposal.resolve(undefined);
+
+		const sandbox = await acquiring;
+
+		expect({ backendId: sandbox.backendId, ...counts() }).toStrictEqual({
+			backendId: 'memory',
+			opens: 2,
+			disposals: 1,
+			reads: 1
+		});
+	} finally {
+		finishDisposal.resolve(undefined);
+		gate.resolve(backend);
+		await generation.close();
+	}
+
+	expect(counts()).toStrictEqual({ opens: 2, disposals: 2, reads: 1 });
 });
 
 it('uses independent waiter deadlines and preserves startup failure until close', async () => {

@@ -120,6 +120,10 @@ interface Disposable {
 	readonly dispose: (context: SandboxOperationContext) => Promise<void>;
 }
 interface BackendSlot {
+	readonly key: string;
+	activeWaiters: number;
+	hasOwner: boolean;
+	retiring?: Promise<void>;
 	readonly profile: Profile;
 	readonly paths: readonly ResolvedPath[];
 	state: SandboxBackendStatus['state'];
@@ -394,6 +398,9 @@ export class SandboxGeneration {
 		}
 
 		const slot: BackendSlot = {
+			key,
+			activeWaiters: 0,
+			hasOwner: false,
 			profile,
 			paths,
 			state: 'opening',
@@ -538,16 +545,24 @@ export class SandboxGeneration {
 			throw scope.cancellationError(isDisposed ? 'confirmed' : 'unknown');
 		}
 
+		const mode = this.#dependencies.mode ?? 'open';
 		const provided = validateBackend(
 			candidate,
 			prepared.provider,
 			slot.profile,
-			this.#dependencies.mode ?? 'open',
+			mode,
+			hostUserDataRoots
+		);
+		const backend = validateBackend(
+			snapshotBackend(provided),
+			prepared.provider,
+			slot.profile,
+			mode,
 			hostUserDataRoots
 		);
 
 		await verifyGrantedPaths(
-			provided,
+			backend,
 			slot.paths,
 			scope.context,
 			prepared.provider,
@@ -555,8 +570,6 @@ export class SandboxGeneration {
 			this.#dependencies.isEscalated
 		);
 		scope.check();
-
-		const backend = snapshotBackend(provided);
 
 		if (
 			(backend.recovery.kind === 'allocation' && !slot.hasRecovery) ||
@@ -635,6 +648,7 @@ export class SandboxGeneration {
 				throw result.error;
 			}
 
+			this.#retireUnowned(slot);
 			pending.resolve(result.value);
 		} catch (error_) {
 			let error = this.#normalise(error_, 'open', slot);
@@ -728,6 +742,31 @@ export class SandboxGeneration {
 					options
 				)
 		};
+	}
+
+	#retireUnowned(slot: BackendSlot): void {
+		if (
+			slot.state !== 'ready' ||
+			slot.hasOwner ||
+			slot.activeWaiters > 0 ||
+			slot.retiring !== undefined
+		) {
+			return;
+		}
+
+		slot.retiring = Promise.try(async () => {
+			if (await this.#dispose(slot)) {
+				this.#slots.delete(slot.key);
+
+				return;
+			}
+
+			this.#failSlot(
+				slot,
+				slot.disposalReport?.failures[0] ??
+					new SandboxCleanupError({ operation: 'dispose' })
+			);
+		});
 	}
 
 	#dispose(slot: BackendSlot): Promise<boolean> {
@@ -1096,26 +1135,45 @@ export class SandboxGeneration {
 		paths: readonly ResolvedPath[],
 		scope: OperationScope
 	): Promise<Sandbox> {
-		const slot = this.#slot(profile, paths);
-		const result = await Promise.race([
-			this.#start(slot),
-			scope.whenCancelled()
-		]);
+		let slot = this.#slot(profile, paths);
 
-		if (result.kind === 'cancelled') {
-			throw scope.cancellationError('not-started');
+		while (slot.retiring !== undefined) {
+			await Promise.race([slot.retiring, scope.whenCancelled()]);
+			scope.check();
+			this.#assertOpen('acquire', slot);
+			slot = this.#slot(profile, paths);
 		}
 
-		scope.check();
+		slot.activeWaiters++;
 
-		if (result.kind === 'rejected') {
-			throw result.error;
+		try {
+			const result = await Promise.race([
+				this.#start(slot),
+				scope.whenCancelled()
+			]);
+
+			if (result.kind === 'cancelled') {
+				throw scope.cancellationError('not-started');
+			}
+
+			scope.check();
+
+			if (result.kind === 'rejected') {
+				throw result.error;
+			}
+
+			this.#assertContext(context, 'acquire');
+			this.#assertOpen('acquire', slot);
+
+			const sandbox = createSandbox(this.#owner(context, slot, result.value));
+
+			slot.hasOwner = true;
+
+			return sandbox;
+		} finally {
+			slot.activeWaiters--;
+			this.#retireUnowned(slot);
 		}
-
-		this.#assertContext(context, 'acquire');
-		this.#assertOpen('acquire', slot);
-
-		return createSandbox(this.#owner(context, slot, result.value));
 	}
 
 	async #negotiateCopy(
@@ -1171,7 +1229,9 @@ export class SandboxGeneration {
 			throw slot.failure;
 		}
 
-		return slot?.state === 'ready' ? slot.backend : undefined;
+		return slot?.state === 'ready' && slot.retiring === undefined
+			? slot.backend
+			: undefined;
 	}
 
 	async planEscalation(

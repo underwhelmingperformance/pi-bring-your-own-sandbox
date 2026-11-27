@@ -354,10 +354,12 @@ produces a typed output error.
 Acquisition waiting, opening, execution and file or search operations have
 separate default deadlines, listed in the [API appendix][process]. A cancelled
 acquisition waiter stops waiting while shared provisioning continues under the
-broker's opening deadline. Pi relies on the broker never starting the command
-for a cancelled cold-start `user_bash` waiter. The bridge returns operations or
-throws. Returning `undefined` on failure would let Pi run the command through
-its own shell operations.
+broker's opening deadline. If no waiter receives the new backend, the broker
+disposes of it and requires confirmed disposal before reopening for the same
+request. Pi relies on the broker never starting the command for a cancelled
+cold-start `user_bash` waiter. The bridge returns operations or throws.
+Returning `undefined` on failure would let Pi run the command through its own
+shell operations.
 
 The permission reviewer requires a reported exit status to distinguish
 successful probes from failed probes. Pi reports unavailable optional status

@@ -275,6 +275,29 @@ export class ProviderNotFoundError extends SandboxError<'ProviderNotFoundError'>
 }
 
 /**
+The selected provider declared that it is unavailable before configuration.
+*/
+export class SandboxProviderUnavailableError extends SandboxError<'SandboxProviderUnavailableError'> {
+	static readonly errorName = 'SandboxProviderUnavailableError';
+
+	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
+		const detail = context.detail;
+
+		super(
+			SandboxProviderUnavailableError.errorName,
+			'The selected sandbox provider is unavailable on this platform.',
+			detail?.kind === 'provider-unavailable'
+				? {
+						...context,
+						detail: { ...detail, reason: Object.freeze({ ...detail.reason }) }
+					}
+				: context,
+			options
+		);
+	}
+}
+
+/**
 Multiple extensions activated sandbox providers for one runtime.
 */
 export class ConflictingSandboxProviderError extends SandboxError<'ConflictingSandboxProviderError'> {
@@ -774,6 +797,10 @@ export function rehydrateSandboxError(
 
 		case 'ProviderNotFoundError': {
 			return new ProviderNotFoundError(context, options);
+		}
+
+		case 'SandboxProviderUnavailableError': {
+			return new SandboxProviderUnavailableError(context, options);
 		}
 
 		case 'ConflictingSandboxProviderError': {

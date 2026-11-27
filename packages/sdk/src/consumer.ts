@@ -16,7 +16,11 @@ export type {
 	ShellReviewLookup,
 	ShellReviewSource
 } from './contracts.js';
-export { isSandboxError, SandboxCleanupError } from './errors.js';
+export {
+	isSandboxError,
+	SandboxCleanupError,
+	SandboxProviderUnavailableError
+} from './errors.js';
 export type {
 	DestinationDescription,
 	EscalationDecision,

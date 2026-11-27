@@ -65,6 +65,9 @@ export function snapshotProviderInfo(provider: ProviderInfo): ProviderInfo {
 	return Object.freeze({
 		id: provider.id,
 		label: provider.label,
+		...(provider.unavailable !== undefined && {
+			unavailable: Object.freeze({ ...provider.unavailable })
+		}),
 		profiles: Object.freeze({
 			open: Object.freeze(open),
 			copy: Object.freeze(copy)

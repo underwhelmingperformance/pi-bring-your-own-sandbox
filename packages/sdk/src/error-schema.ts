@@ -1,7 +1,11 @@
 import { Type } from 'typebox';
 
 import type { SandboxCloseReport, SandboxErrorInfo } from './contracts.js';
-import { accessPolicySchema, accessStateSchema } from './policy-model.js';
+import {
+	accessPolicySchema,
+	accessStateSchema,
+	providerUnavailabilitySchema
+} from './policy-model.js';
 import {
 	capabilitySchema,
 	denseArray,
@@ -51,6 +55,7 @@ export const ordinaryErrorNameSchema = Type.Union([
 	Type.Literal('InvalidSandboxConfigError'),
 	Type.Literal('InvalidSandboxRequestError'),
 	Type.Literal('ProviderNotFoundError'),
+	Type.Literal('SandboxProviderUnavailableError'),
 	Type.Literal('DuplicateProviderError'),
 	Type.Literal('ConflictingSandboxConfigError'),
 	Type.Literal('ConflictingSandboxProviderError'),
@@ -132,6 +137,10 @@ export const errorDetailSchema = Type.Union([
 	Type.Object({
 		kind: Type.Literal('config'),
 		field: nonEmptyStringSchema
+	}),
+	Type.Object({
+		kind: Type.Literal('provider-unavailable'),
+		reason: providerUnavailabilitySchema
 	}),
 	Type.Object({
 		kind: Type.Literal('request'),

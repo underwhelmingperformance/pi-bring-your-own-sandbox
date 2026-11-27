@@ -10,6 +10,7 @@ import {
 	defaultPolicy,
 	profileKey,
 	profileSchema,
+	providerInfoSchema,
 	unrestrictedPolicy
 } from './policy-model.js';
 import { selectProfile } from './profile-negotiation.js';
@@ -27,6 +28,34 @@ const profile: Profile = {
 function withPolicy(policy: Policy): Profile {
 	return { ...profile, policy };
 }
+
+it('permits empty profiles only for an unavailable provider', () => {
+	const isProvider = checker(providerInfoSchema);
+	const entry = {
+		id: 'fixture.unavailable',
+		label: 'Unavailable fixture',
+		profiles: { open: [], copy: [] }
+	};
+	const unavailable = {
+		kind: 'unsupported-platform',
+		platform: 'fixture',
+		message: 'The native runtime is unavailable.'
+	};
+
+	expect({
+		unavailable: isProvider({ ...entry, unavailable }),
+		noReason: isProvider(entry),
+		claimsSupport: isProvider({
+			...entry,
+			unavailable,
+			profiles: { open: [profile], copy: [] }
+		})
+	}).toStrictEqual({
+		unavailable: true,
+		noReason: false,
+		claimsSupport: false
+	});
+});
 
 it('requires every credential grant kind to be an extra path grant kind', () => {
 	const isProfile = checker(profileSchema);

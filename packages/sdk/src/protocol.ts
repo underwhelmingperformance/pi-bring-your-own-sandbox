@@ -139,9 +139,8 @@ export interface SandboxStatus {
 	readonly selection?: ProviderSelection;
 
 	/**
-	Every backend that an acquisition has started, one for each negotiated
-	policy, in the order they were requested. Omitted before the first
-	acquisition.
+	Every backend started for an acquisition, in request order. Omitted before
+	the first acquisition.
 	*/
 	readonly backends?: readonly SandboxBackendStatus[];
 
@@ -218,6 +217,7 @@ exposing configuration.
 export interface ProviderInfo {
 	readonly id: string;
 	readonly label: string;
+	readonly unavailable?: import('./policy-model.js').SandboxProviderUnavailability;
 	readonly profiles: {
 		readonly open: readonly Profile[];
 		readonly copy: readonly Profile[];

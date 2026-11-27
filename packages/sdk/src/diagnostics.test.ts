@@ -297,7 +297,7 @@ it('escapes controls in a provider label in the provider list', () => {
 		])
 	).toStrictEqual(
 		[
-			'Available sandbox providers (declared profiles)',
+			'Sandbox providers (declared profiles)',
 			String.raw`custom: Custom\x09boundary`,
 			'  open: workspace read-write (shared), network denied, host user data denied, host system files read-only',
 			'    Operations: exec',

@@ -156,26 +156,46 @@ export function profileKey(profile: Profile): string {
 
 const profilesSchema = Type.Object(
 	{
-		open: denseArray(profileSchema, { minItems: 1 }),
+		open: denseArray(profileSchema),
 		copy: denseArray(profileSchema)
 	},
 	{ additionalProperties: false }
 );
 
+export const providerUnavailabilitySchema = Type.Object(
+	{
+		kind: Type.Literal('unsupported-platform'),
+		platform: nonEmptyStringSchema,
+		message: nonEmptyStringSchema
+	},
+	{ additionalProperties: false }
+);
+
+export type SandboxProviderUnavailability = Readonly<
+	Static<typeof providerUnavailabilitySchema>
+>;
+
 export const providerInfoSchema = Type.Refine(
 	Type.Object({
 		id: nonEmptyStringSchema,
 		label: nonEmptyStringSchema,
-		profiles: profilesSchema
+		profiles: profilesSchema,
+		unavailable: Type.Optional(providerUnavailabilitySchema)
 	}),
-	({ profiles }) =>
-		new Set(profiles.open.map((profile) => profileKey(profile))).size ===
-			profiles.open.length &&
-		new Set(profiles.copy.map((profile) => profileKey(profile))).size ===
-			profiles.copy.length &&
-		profiles.copy.every((profile) => !profile.policy.hostWorkspaceWrites) &&
-		[...profiles.open, ...profiles.copy].every(
-			(profile) =>
-				!profile.capabilities.includes('copy') || profiles.copy.length > 0
-		)
+	({ profiles, unavailable }) => {
+		return unavailable === undefined
+			? profiles.open.length > 0 &&
+					new Set(profiles.open.map((profile) => profileKey(profile))).size ===
+						profiles.open.length &&
+					new Set(profiles.copy.map((profile) => profileKey(profile))).size ===
+						profiles.copy.length &&
+					profiles.copy.every(
+						(profile) => !profile.policy.hostWorkspaceWrites
+					) &&
+					[...profiles.open, ...profiles.copy].every(
+						(profile) =>
+							!profile.capabilities.includes('copy') || profiles.copy.length > 0
+					)
+			: profiles.open.length === 0 && profiles.copy.length === 0;
+	}
 );

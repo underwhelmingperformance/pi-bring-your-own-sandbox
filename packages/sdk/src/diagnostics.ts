@@ -94,6 +94,13 @@ function failureDetail(error: SandboxErrorInfo): string[] {
 			return [...lines, `Settings key: ${detail.field}`];
 		}
 
+		case 'provider-unavailable': {
+			return [
+				...lines,
+				`Unavailable on ${detail.reason.platform}. ${detail.reason.message}`
+			];
+		}
+
 		case 'declaration': {
 			return [...lines, `Declaration: ${detail.field}`];
 		}
@@ -106,6 +113,10 @@ function failureDetail(error: SandboxErrorInfo): string[] {
 
 export function formatStatus(status: SandboxStatus): DisplayText {
 	const selection = status.selection;
+	const providerId =
+		status.failure?.name === 'SandboxProviderUnavailableError'
+			? status.failure.providerId
+			: undefined;
 	const baseKey =
 		selection === undefined ? undefined : policyKey(selection.policy);
 	const additional = (status.backends ?? []).filter(
@@ -113,7 +124,9 @@ export function formatStatus(status: SandboxStatus): DisplayText {
 	);
 	const lines = [
 		selection === undefined
-			? 'Provider: unavailable'
+			? providerId === undefined
+				? 'Provider: unavailable'
+				: `Provider: ${providerId} (unavailable)`
 			: `Provider: ${selection.providerId} (${selection.source})`,
 		`State: ${status.state}`,
 		`Generation: ${status.generationId}`
@@ -240,10 +253,16 @@ function formatProviderDiagnostics(
 export function formatProviders(
 	providers: readonly ProviderInfo[]
 ): DisplayText {
-	const lines = ['Available sandbox providers (declared profiles)'];
+	const lines = ['Sandbox providers (declared profiles)'];
 
 	for (const provider of providers) {
 		lines.push(`${provider.id}: ${provider.label}`);
+
+		if (provider.unavailable !== undefined) {
+			lines.push(
+				`  Unavailable on ${provider.unavailable.platform}. ${provider.unavailable.message}`
+			);
+		}
 
 		const modes = ['open', 'copy'] as const;
 

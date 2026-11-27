@@ -1366,7 +1366,6 @@
 									}
 								]
 							},
-							"minItems": 1,
 							"type": "array",
 							"~kind": "Array",
 							"~refine": [
@@ -1384,6 +1383,30 @@
 					"required": ["open", "copy"],
 					"type": "object",
 					"~kind": "Object"
+				},
+				"unavailable": {
+					"additionalProperties": false,
+					"properties": {
+						"kind": {
+							"const": "unsupported-platform",
+							"type": "string",
+							"~kind": "Literal"
+						},
+						"message": {
+							"minLength": 1,
+							"type": "string",
+							"~kind": "String"
+						},
+						"platform": {
+							"minLength": 1,
+							"type": "string",
+							"~kind": "String"
+						}
+					},
+					"required": ["kind", "platform", "message"],
+					"type": "object",
+					"~kind": "Object",
+					"~optional": true
 				}
 			},
 			"required": ["id", "label", "profiles"],
@@ -1392,7 +1415,7 @@
 			"~refine": [
 				{
 					"check": {
-						"implementation": "17b171f5fd127efd6d38350090b27f0b09463ebb41a268b96b8573d62d50a43c"
+						"implementation": "0302a04eb026632948b1a0877d2f5e012082f9cb36e06112bcc40d0434ac17f2"
 					},
 					"error": {
 						"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
@@ -1965,6 +1988,41 @@
 										},
 										{
 											"properties": {
+												"kind": {
+													"const": "provider-unavailable",
+													"type": "string",
+													"~kind": "Literal"
+												},
+												"reason": {
+													"additionalProperties": false,
+													"properties": {
+														"kind": {
+															"const": "unsupported-platform",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														"message": {
+															"minLength": 1,
+															"type": "string",
+															"~kind": "String"
+														},
+														"platform": {
+															"minLength": 1,
+															"type": "string",
+															"~kind": "String"
+														}
+													},
+													"required": ["kind", "platform", "message"],
+													"type": "object",
+													"~kind": "Object"
+												}
+											},
+											"required": ["kind", "reason"],
+											"type": "object",
+											"~kind": "Object"
+										},
+										{
+											"properties": {
 												"field": {
 													"minLength": 1,
 													"type": "string",
@@ -2201,6 +2259,11 @@
 												},
 												{
 													"const": "ProviderNotFoundError",
+													"type": "string",
+													"~kind": "Literal"
+												},
+												{
+													"const": "SandboxProviderUnavailableError",
 													"type": "string",
 													"~kind": "Literal"
 												},
@@ -5070,7 +5133,6 @@
 											}
 										]
 									},
-									"minItems": 1,
 									"type": "array",
 									"~kind": "Array",
 									"~refine": [
@@ -5088,6 +5150,30 @@
 							"required": ["open", "copy"],
 							"type": "object",
 							"~kind": "Object"
+						},
+						"unavailable": {
+							"additionalProperties": false,
+							"properties": {
+								"kind": {
+									"const": "unsupported-platform",
+									"type": "string",
+									"~kind": "Literal"
+								},
+								"message": {
+									"minLength": 1,
+									"type": "string",
+									"~kind": "String"
+								},
+								"platform": {
+									"minLength": 1,
+									"type": "string",
+									"~kind": "String"
+								}
+							},
+							"required": ["kind", "platform", "message"],
+							"type": "object",
+							"~kind": "Object",
+							"~optional": true
 						}
 					},
 					"required": ["id", "label", "profiles"],
@@ -5096,7 +5182,7 @@
 					"~refine": [
 						{
 							"check": {
-								"implementation": "17b171f5fd127efd6d38350090b27f0b09463ebb41a268b96b8573d62d50a43c"
+								"implementation": "0302a04eb026632948b1a0877d2f5e012082f9cb36e06112bcc40d0434ac17f2"
 							},
 							"error": {
 								"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
@@ -6232,6 +6318,41 @@
 										},
 										{
 											"properties": {
+												"kind": {
+													"const": "provider-unavailable",
+													"type": "string",
+													"~kind": "Literal"
+												},
+												"reason": {
+													"additionalProperties": false,
+													"properties": {
+														"kind": {
+															"const": "unsupported-platform",
+															"type": "string",
+															"~kind": "Literal"
+														},
+														"message": {
+															"minLength": 1,
+															"type": "string",
+															"~kind": "String"
+														},
+														"platform": {
+															"minLength": 1,
+															"type": "string",
+															"~kind": "String"
+														}
+													},
+													"required": ["kind", "platform", "message"],
+													"type": "object",
+													"~kind": "Object"
+												}
+											},
+											"required": ["kind", "reason"],
+											"type": "object",
+											"~kind": "Object"
+										},
+										{
+											"properties": {
 												"field": {
 													"minLength": 1,
 													"type": "string",
@@ -6468,6 +6589,11 @@
 												},
 												{
 													"const": "ProviderNotFoundError",
+													"type": "string",
+													"~kind": "Literal"
+												},
+												{
+													"const": "SandboxProviderUnavailableError",
 													"type": "string",
 													"~kind": "Literal"
 												},

@@ -23,6 +23,7 @@ type ShellReviewLookup (contracts.d.ts)
 type ShellReviewSource (contracts.d.ts)
 value GrepOutput (grep-output.d.ts)
 value SandboxCleanupError (errors.d.ts)
+value SandboxProviderUnavailableError (errors.d.ts)
 value createSandboxClient (client.d.ts)
 value isSandboxError (errors.d.ts)
 value sandboxRipgrepArguments (ripgrep-arguments.d.ts)
@@ -74,6 +75,7 @@ type SandboxOperation (contracts.d.ts)
 type SandboxOperationContext (contracts.d.ts)
 type SandboxPolicy (contracts.d.ts)
 type SandboxProvider (contracts.d.ts)
+type SandboxProviderUnavailability (policy-model.d.ts)
 type SandboxReadRootPersistence (contracts.d.ts)
 type SandboxSharedSettings (contracts.d.ts)
 type SandboxWorkspace (contracts.d.ts)
@@ -112,6 +114,7 @@ value isSandboxError (errors.d.ts)
 value mapSandboxErrno (host-error.d.ts)
 value registerSandboxProvider (provider-registration.d.ts)
 value registerSandboxProviderFactory (provider-registration.d.ts)
+value registerUnavailableSandboxProvider (provider-registration.d.ts)
 value resolveCleanupBudgets as resolveSandboxCleanupBudgets (cleanup-budgets.d.ts)
 value resolveCredentialLocations (credential-locations.d.ts)
 value resolveSandboxCopySource (provider-copy.d.ts)
@@ -761,6 +764,14 @@ declare const errorDetailSchema: Type.TUnion<[
         field: Type.TString;
     }>,
     Type.TObject<{
+        kind: Type.TLiteral<"provider-unavailable">;
+        reason: Type.TObject<{
+            kind: Type.TLiteral<"unsupported-platform">;
+            platform: Type.TString;
+            message: Type.TString;
+        }>;
+    }>,
+    Type.TObject<{
         kind: Type.TLiteral<"request">;
         field: Type.TString;
         value: Type.TOptional<Type.TUnion<[
@@ -799,6 +810,7 @@ declare const ordinaryErrorNameSchema: Type.TUnion<[
     Type.TLiteral<"InvalidSandboxConfigError">,
     Type.TLiteral<"InvalidSandboxRequestError">,
     Type.TLiteral<"ProviderNotFoundError">,
+    Type.TLiteral<"SandboxProviderUnavailableError">,
     Type.TLiteral<"DuplicateProviderError">,
     Type.TLiteral<"ConflictingSandboxConfigError">,
     Type.TLiteral<"ConflictingSandboxProviderError">,
@@ -874,6 +886,12 @@ export declare class SandboxPathNotFoundError extends SandboxError<'SandboxPathN
 // errors.d.ts
 export declare class SandboxPermissionDeniedError extends SandboxError<'SandboxPermissionDeniedError'> {
     static readonly errorName = "SandboxPermissionDeniedError";
+    constructor(context: SandboxErrorContext, options?: ErrorOptions);
+}
+
+// errors.d.ts
+export declare class SandboxProviderUnavailableError extends SandboxError<'SandboxProviderUnavailableError'> {
+    static readonly errorName = "SandboxProviderUnavailableError";
     constructor(context: SandboxErrorContext, options?: ErrorOptions);
 }
 
@@ -1190,6 +1208,11 @@ export declare function mapSandboxErrno(cause: unknown, context: SandboxErrorCon
     readonly message: string;
     readonly cause?: unknown;
 } & {
+    readonly name: "SandboxProviderUnavailableError";
+}) | (Error & SandboxErrorContext & {
+    readonly message: string;
+    readonly cause?: unknown;
+} & {
     readonly name: "SandboxSessionClosingError";
 }) | (Error & SandboxErrorContext & {
     readonly message: string;
@@ -1413,6 +1436,13 @@ declare const profileSchema: Type.TRefine<Type.TObject<{
 }>>;
 
 // policy-model.d.ts
+declare const providerUnavailabilitySchema: Type.TObject<{
+    kind: Type.TLiteral<"unsupported-platform">;
+    platform: Type.TString;
+    message: Type.TString;
+}>;
+
+// policy-model.d.ts
 export type Access = Frozen<Static<typeof accessSchema>>;
 
 // policy-model.d.ts
@@ -1423,6 +1453,9 @@ export type Policy = Frozen<Static<typeof accessPolicySchema>>;
 
 // policy-model.d.ts
 export type Profile = Frozen<Static<typeof profileSchema>>;
+
+// policy-model.d.ts
+export type SandboxProviderUnavailability = Readonly<Static<typeof providerUnavailabilitySchema>>;
 
 // policy-model.d.ts
 type Frozen<Value> = Value extends object ? {
@@ -1463,6 +1496,13 @@ export declare function registerSandboxProvider<Config, Input = Config>(pi: Sand
 
 // provider-registration.d.ts
 export declare function registerSandboxProviderFactory<Config, Input = Config>(pi: SandboxHost, extensionSource: string, declaration: Pick<SandboxProvider<Config>, 'id' | 'label' | 'profiles'>, create: () => SandboxProvider<Config>, options?: NoInfer<SandboxProviderRegistration<Input>>): void;
+
+// provider-registration.d.ts
+export declare function registerUnavailableSandboxProvider(pi: SandboxHost, extensionSource: string, declaration: {
+    readonly id: string;
+    readonly label: string;
+    readonly unavailable: SandboxProviderUnavailability;
+}): void;
 
 // provider-test-contexts.d.ts
 export declare function createBackendProcessContext(options?: SandboxTestContextOptions & {

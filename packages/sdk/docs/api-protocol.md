@@ -274,6 +274,22 @@ non-empty. A copy profile always has `hostWorkspaceWrites: false` because a copy
 cannot change the host checkout. The provider decides whether the copy's own
 files accept writes.
 
+On an unsupported platform, the extension factory calls
+`registerUnavailableSandboxProvider` with its ID, label and `unavailable`
+reason.
+
+```typescript
+interface SandboxProviderUnavailability {
+  readonly kind: 'unsupported-platform';
+  readonly platform: string;
+  readonly message: string;
+}
+```
+
+Discovery lists the provider with empty open and copy profile lists and the
+reason. Acquisition fails with `SandboxProviderUnavailableError`. Inspect
+`detail.reason` when `detail.kind` is `provider-unavailable`.
+
 The backend reports the location of each granted path in `grantedPaths`. Each
 entry maps the resolved host path and access kind to the path in the target. The
 broker verifies the reported grants against the request and exposes the entries

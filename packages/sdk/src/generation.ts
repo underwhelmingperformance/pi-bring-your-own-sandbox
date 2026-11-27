@@ -39,6 +39,7 @@ import {
 	SandboxCleanupError,
 	SandboxInitialisationError,
 	SandboxPermissionDeniedError,
+	SandboxProviderUnavailableError,
 	SandboxSessionClosingError,
 	SandboxStartupError,
 	StaleSandboxHandleError,
@@ -1500,8 +1501,13 @@ export class SandboxGeneration {
 			)
 			.toArray();
 		const diagnostics = this.#diagnostics.snapshot();
+		const providerId =
+			this.#selection?.providerId ??
+			(failure?.name === 'SandboxProviderUnavailableError'
+				? failure.providerId
+				: undefined);
 		const provider = this.#providerInfos.find(
-			(entry) => entry.id === this.#selection?.providerId
+			(entry) => entry.id === providerId
 		);
 
 		return Object.freeze({
@@ -1537,7 +1543,14 @@ export class SandboxGeneration {
 			throw new SandboxSessionClosingError({ operation: 'discover' });
 		}
 
-		await this.#prepare();
+		const result = await observe(this.#prepare());
+
+		if (
+			result.kind === 'rejected' &&
+			!isSandboxError(result.error, SandboxProviderUnavailableError)
+		) {
+			throw result.error;
+		}
 
 		return this.#providerInfos;
 	}

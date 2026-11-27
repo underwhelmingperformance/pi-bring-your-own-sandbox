@@ -68,6 +68,7 @@ export { PosixProcessRunner } from './host-process.js';
 export { hostSystemRoots } from './host-system-roots.js';
 export { hostToolchainRoots } from './host-toolchain-roots.js';
 export { SandboxLaunchFrames } from './launch-frames.js';
+export type { SandboxProviderUnavailability } from './policy-model.js';
 export {
 	defaultProtectedWorkspacePaths,
 	isProtectedWorkspacePath
@@ -76,7 +77,8 @@ export { createSandboxCleanupContext } from './provider-cleanup.js';
 export { resolveSandboxCopySource } from './provider-copy.js';
 export {
 	registerSandboxProvider,
-	registerSandboxProviderFactory
+	registerSandboxProviderFactory,
+	registerUnavailableSandboxProvider
 } from './provider-registration.js';
 export type { ShellTransportOptions } from './shell-transport.js';
 export { encodePosixArgv, ShellTransportRunner } from './shell-transport.js';

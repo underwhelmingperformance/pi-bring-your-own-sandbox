@@ -168,6 +168,20 @@ const factoryArguments = new Map<string, readonly unknown[]>([
 		]
 	],
 	['registerSandboxProviderFactory', [imageProvider, () => imageProvider]],
+	[
+		'registerUnavailableSandboxProvider',
+		[
+			{
+				id: 'fixture.unavailable',
+				label: 'Unavailable fixture',
+				unavailable: {
+					kind: 'unsupported-platform',
+					platform: 'fixture-system',
+					message: 'Native sandbox runtime unavailable.'
+				}
+			}
+		]
+	],
 	['registerShellOnlyTools', []]
 ]);
 

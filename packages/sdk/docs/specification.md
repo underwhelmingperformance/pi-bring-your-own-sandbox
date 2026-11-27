@@ -113,6 +113,11 @@ default through the ordinary shared settings. The Docker offline shell entry
 point prevents access to the network and to host files outside the checkout. It
 also registers only the shell tools.
 
+An extension can declare its provider unavailable on an unsupported platform.
+Discovery reports the identity and reason with empty profile lists.
+Configuration fails for that provider before allocation. The status command
+reports the reason.
+
 ### Access requirements
 
 Each property of the `access` record maps to one policy setting. The `needed`

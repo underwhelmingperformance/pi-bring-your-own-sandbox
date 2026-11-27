@@ -18,7 +18,10 @@ import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
 import { initialiseSandboxHost } from './host.js';
 import sandboxTools from './pi-tools.js';
-import { registerSandboxProvider } from './provider-registration.js';
+import {
+	registerSandboxProvider,
+	registerUnavailableSandboxProvider
+} from './provider-registration.js';
 import { isRecord } from './validation.js';
 
 afterEach(() => {
@@ -224,7 +227,7 @@ it('enumerates providers without allocation and omits provider configuration', a
 					{
 						display: true,
 						content:
-							'Available sandbox providers (declared profiles)\npassthrough: Host execution without isolation\n  open: workspace read-write (shared), network allowed, host user data read-write, host system files read-write\n    Operations: exec, files.read, files.write, files.list, search.find, search.grep\n    Termination scope: process-group\n    Shells: bash, sh\nfixture: In-memory fixture; no OS isolation.\n  open: workspace read-write (shared), network denied, host user data denied, host system files read-only\n    Operations: exec, files.read, files.write, files.list\n    Termination scope: workload\n    Shells: none'
+							'Sandbox providers (declared profiles)\npassthrough: Host execution without isolation\n  open: workspace read-write (shared), network allowed, host user data read-write, host system files read-write\n    Operations: exec, files.read, files.write, files.list, search.find, search.grep\n    Termination scope: process-group\n    Shells: bash, sh\nfixture: In-memory fixture; no OS isolation.\n  open: workspace read-write (shared), network denied, host user data denied, host system files read-only\n    Operations: exec, files.read, files.write, files.list\n    Termination scope: workload\n    Shells: none'
 					}
 				]
 			}
@@ -281,7 +284,7 @@ it('keeps provider enumeration available after startup fails and excludes raw er
 			expect({
 				errors,
 				...counts(),
-				hasProviders: output.includes('Available sandbox providers'),
+				hasProviders: output.includes('Sandbox providers'),
 				hasFailure: output.includes('SandboxStartupError'),
 				leaksSecret: output.includes('PRIVATE_PROVIDER_TOKEN')
 			}).toStrictEqual({
@@ -558,6 +561,109 @@ it('displays resolver diagnostics after configuration fails without exposing its
 				hasDiagnostic: true,
 				leaksCause: false,
 				openings: []
+			});
+		}
+	);
+});
+
+it('reports a declared unavailable provider without allocating a backend', async () => {
+	const providerId = 'fixture.unavailable';
+	const label = 'Unavailable fixture';
+	const unavailable = {
+		kind: 'unsupported-platform',
+		platform: 'fixture-system',
+		message: 'Native sandbox runtime unavailable\u{1B}.'
+	} as const;
+	let current: { pi: ExtensionAPI; context: ExtensionContext } | undefined;
+
+	await withPiRuntime(
+		[
+			{
+				name: 'diagnostics',
+				factory(pi) {
+					sandboxExtension(pi, '<inline:diagnostics>');
+				}
+			},
+			{
+				name: 'unavailable-provider',
+				factory(pi) {
+					registerUnavailableSandboxProvider(
+						pi,
+						'<inline:unavailable-provider>',
+						{
+							id: providerId,
+							label,
+							unavailable
+						}
+					);
+				}
+			},
+			{
+				name: 'observer',
+				factory(pi) {
+					pi.on('session_start', (_event, context) => {
+						current = { pi, context };
+					});
+				}
+			}
+		],
+		async (runtime) => {
+			if (current === undefined) {
+				throw new Error('Pi did not start the diagnostic fixture.');
+			}
+
+			const { pi, context } = current;
+			const broker = discoverBroker(pi.events);
+
+			if (broker === undefined) {
+				throw new Error('Pi did not publish the sandbox service.');
+			}
+
+			const detail = { kind: 'provider-unavailable', reason: unavailable };
+
+			await expect(getSandbox(pi, context)).rejects.toMatchObject({
+				name: 'SandboxProviderUnavailableError',
+				providerId,
+				detail
+			});
+
+			const providers = await broker.providers(context);
+			const status = await broker.status(context);
+
+			await runtime.session.prompt('/byos status');
+			await runtime.session.prompt('/byos providers');
+
+			const display = messages(runtime)
+				.flatMap((message) =>
+					typeof message.content === 'string' ? message.content : []
+				)
+				.join('\n');
+			const reasonText =
+				'fixture-system. Native sandbox runtime unavailable\\x1b.';
+
+			expect({
+				provider: providers.find(({ id }) => id === providerId),
+				failure: status.failure?.detail,
+				state: status.state,
+				allocations: status.backends,
+				statusShowsProvider: display.includes(
+					'Provider: fixture.unavailable (unavailable)'
+				),
+				displaysReason: display.split(reasonText).length - 1,
+				hasControlCharacter: display.includes('\u{1B}')
+			}).toStrictEqual({
+				provider: {
+					id: providerId,
+					label,
+					profiles: { open: [], copy: [] },
+					unavailable
+				},
+				failure: detail,
+				state: 'failed',
+				allocations: undefined,
+				statusShowsProvider: true,
+				displaysReason: 2,
+				hasControlCharacter: false
 			});
 		}
 	);

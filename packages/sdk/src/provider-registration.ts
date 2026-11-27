@@ -9,20 +9,105 @@ import {
 	InvalidSandboxConfigError,
 	InvalidSandboxDeclarationError,
 	InvalidSandboxRequestError,
-	isSandboxError
+	isSandboxError,
+	SandboxProviderUnavailableError
 } from './errors.js';
-import type { ConfiguredProviderV1, ProviderServiceV1 } from './protocol.js';
+import type { SandboxProviderUnavailability } from './policy-model.js';
+import type {
+	ConfiguredProviderV1,
+	ProviderInfo,
+	ProviderServiceV1
+} from './protocol.js';
 import { protocolAddress } from './protocol-address.js';
+import type { ProtocolIdentity } from './protocol-envelope.js';
 import { onProtocolRequest, PROVIDER_CHANNEL } from './protocol-envelope.js';
 import { providerAdvertisement } from './protocol-payloads.js';
 import { projectReply } from './protocol-version.js';
 import { sharedSettingsSchema } from './request-schemas.js';
 import { localRuntimeBindings } from './runtime-participant.js';
 import { checker } from './schemas.js';
-import { providerDeclarationSchema } from './service-schemas.js';
+import {
+	providerDeclarationSchema,
+	unavailableProviderDeclarationSchema
+} from './service-schemas.js';
 import { isRecord, snapshotProviderInfo } from './validation.js';
 
 const isProviderDeclaration = checker(providerDeclarationSchema);
+const isUnavailableDeclaration = checker(unavailableProviderDeclarationSchema);
+
+function advertiseProvider(
+	pi: SandboxHost,
+	identity: ProtocolIdentity,
+	info: ProviderInfo
+): void {
+	onProtocolRequest(
+		pi.events,
+		PROVIDER_CHANNEL,
+		identity,
+		'get-providers',
+		(request) =>
+			projectReply(
+				providerAdvertisement,
+				{ type: 'provider', id: info.id, service: info },
+				identity,
+				request
+			),
+		'advertisement'
+	);
+}
+
+/**
+Registers a provider identity and its reason for being unavailable. Call this
+during the extension factory when the runtime cannot offer any profiles.
+*/
+export function registerUnavailableSandboxProvider(
+	pi: SandboxHost,
+	extensionSource: string,
+	declaration: {
+		readonly id: string;
+		readonly label: string;
+		readonly unavailable: SandboxProviderUnavailability;
+	}
+): void {
+	if (!isUnavailableDeclaration(declaration)) {
+		throw new InvalidSandboxDeclarationError({
+			operation: 'discover',
+			extensionSource,
+			detail: { kind: 'declaration', field: 'provider.unavailable' }
+		});
+	}
+
+	bindFactory(pi, extensionSource);
+
+	const { id, label } = declaration;
+	const reason = Object.freeze({ ...declaration.unavailable });
+	const identity = protocolAddress(pi.events);
+	const info = snapshotProviderInfo({
+		id,
+		label,
+		profiles: { open: [], copy: [] },
+		unavailable: reason
+	});
+	const refuse = (): never => {
+		throw new SandboxProviderUnavailableError({
+			operation: 'configure',
+			providerId: id,
+			extensionSource,
+			configurationSource: 'extension',
+			detail: { kind: 'provider-unavailable', reason }
+		});
+	};
+
+	localRuntimeBindings(pi).providers.push(
+		Object.freeze({
+			...info,
+			protocol: identity,
+			resolve: refuse,
+			configure: refuse
+		})
+	);
+	advertiseProvider(pi, identity, info);
+}
 
 /**
 Registers a provider whose construction can fail. The fallback declaration
@@ -193,18 +278,5 @@ export function registerSandboxProvider<Config, Input = Config>(
 		})
 	);
 
-	onProtocolRequest(
-		pi.events,
-		PROVIDER_CHANNEL,
-		identity,
-		'get-providers',
-		(request) =>
-			projectReply(
-				providerAdvertisement,
-				{ type: 'provider', id, service: info },
-				identity,
-				request
-			),
-		'advertisement'
-	);
+	advertiseProvider(pi, identity, info);
 }

@@ -4,6 +4,7 @@ export default defineConfig({
 	test: {
 		include: [
 			'src/package.test.ts',
+			'src/package-cutover.test.ts',
 			'src/source-package-integration.test.ts',
 			'src/protocol-compatibility.integration.test.ts'
 		],

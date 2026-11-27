@@ -23,7 +23,7 @@ handle shares the elected broker's shutdown operation after session startup.
 export function initialiseSandboxHost(
 	pi: SandboxHost,
 	extensionSource: string,
-	options: SandboxHostOptions
+	options: SandboxHostOptions = {}
 ): SandboxHostHandle {
 	if (isPiBound(pi)) {
 		throw new SandboxInitialisationError({ operation: 'configure' });

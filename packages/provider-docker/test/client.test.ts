@@ -20,7 +20,7 @@ function command(arguments_: readonly string[]): DockerCommand {
 	return {
 		args: arguments_,
 		context: {
-			reportDiagnostic() {
+			reportWarning() {
 				return;
 			},
 			cleanup: {

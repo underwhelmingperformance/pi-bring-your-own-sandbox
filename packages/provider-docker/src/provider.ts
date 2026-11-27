@@ -220,11 +220,9 @@ class DockerBackend implements SandboxBackend {
 	}
 
 	#powerShellFailure(context: SandboxOpenContext, cause?: unknown) {
-		context.reportDiagnostic({
-			level: 'warning',
-			message:
-				'The selected Docker toolchain must provide executable PowerShell 7 or later at /opt/powershell/pwsh.'
-		});
+		context.reportWarning(
+			'The selected Docker toolchain must provide executable PowerShell 7 or later at /opt/powershell/pwsh.'
+		);
 
 		return new UnsupportedSandboxCapabilityError(
 			{ operation: 'open', providerId: 'example.docker' },
@@ -408,7 +406,7 @@ class DockerBackend implements SandboxBackend {
 				: undefined) ??
 			'The Docker workspace importer stopped before it finished.';
 
-		context.reportDiagnostic({ level: 'warning', message });
+		context.reportWarning(message);
 
 		throw new SandboxOperationError(
 			{
@@ -622,11 +620,9 @@ class DockerBackend implements SandboxBackend {
 				}
 
 				if (probe.exit.kind !== 'code' || probe.exit.code !== 0) {
-					context.reportDiagnostic({
-						level: 'warning',
-						message:
-							'Docker could not verify the selected access to the live checkout and read-only access to .pi.'
-					});
+					context.reportWarning(
+						'Docker could not verify the selected access to the live checkout and read-only access to .pi.'
+					);
 
 					throw new UnsupportedSandboxPolicyError({
 						operation: 'open',
@@ -826,7 +822,7 @@ export function createDockerProvider(
 				: undefined;
 
 		if (typeof choice === 'string') {
-			context.reportDiagnostic({ level: 'warning', message: choice });
+			context.reportWarning(choice);
 
 			throw new UnsupportedSandboxPolicyError({
 				operation: 'open',
@@ -856,11 +852,9 @@ export function createDockerProvider(
 						line === 'Error: ' + missing
 				)
 			) {
-				context.reportDiagnostic({
-					level: 'warning',
-					message:
-						'Build the configured PowerShell image on the selected Docker daemon before opening the workspace.'
-				});
+				context.reportWarning(
+					'Build the configured PowerShell image on the selected Docker daemon before opening the workspace.'
+				);
 
 				throw new UnsupportedSandboxCapabilityError({
 					operation: 'open',

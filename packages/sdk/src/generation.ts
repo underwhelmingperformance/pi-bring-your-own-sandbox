@@ -666,7 +666,7 @@ export class SandboxGeneration {
 			},
 			generationId: this.#id,
 			cleanup: this.#cleanup,
-			reportDiagnostic: this.#diagnostics.record.bind(this.#diagnostics),
+			reportWarning: this.#diagnostics.record.bind(this.#diagnostics),
 			...(this.#dependencies.appendLedger !== undefined && {
 				appendLedger: this.#dependencies.appendLedger
 			}),

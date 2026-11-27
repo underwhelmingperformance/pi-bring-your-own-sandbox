@@ -88,7 +88,7 @@ export class DockerFixture {
 			{
 				workspace: process.cwd(),
 				signal: AbortSignal.timeout(30_000),
-				reportDiagnostic() {
+				reportWarning() {
 					return;
 				}
 			}

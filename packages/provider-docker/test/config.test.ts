@@ -2,7 +2,6 @@ import { mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import type { SandboxDiagnostic } from 'pi-bring-your-own-sandbox/host';
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { dockerConfig, resolveDockerConfig } from '../src/config.js';
@@ -22,7 +21,7 @@ async function scratch() {
 	const temporary = await mkdtemp(path.join(tmpdir(), 'byos-docker-config-'));
 	const directory = await realpath(temporary);
 	const workspace = path.join(directory, 'workspace');
-	const diagnostics: SandboxDiagnostic[] = [];
+	const diagnostics: string[] = [];
 
 	await mkdir(workspace);
 
@@ -32,7 +31,7 @@ async function scratch() {
 		context: {
 			workspace,
 			signal: AbortSignal.timeout(10_000),
-			reportDiagnostic(diagnostic: SandboxDiagnostic) {
+			reportWarning(diagnostic: string) {
 				diagnostics.push(diagnostic);
 			}
 		},
@@ -223,7 +222,5 @@ it.each([
 		providerId: 'example.docker',
 		cause: { name: 'TypeError', message: scenario.message }
 	});
-	expect(test.diagnostics).toStrictEqual([
-		{ level: 'warning', message: `Docker: ${scenario.message}` }
-	]);
+	expect(test.diagnostics).toStrictEqual([`Docker: ${scenario.message}`]);
 });

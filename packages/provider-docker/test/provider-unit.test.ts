@@ -7,10 +7,8 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 
 import { createSandboxClient } from 'pi-bring-your-own-sandbox/consumer';
-import {
-	initialiseSandboxHost,
-	registerSandboxDiagnostics
-} from 'pi-bring-your-own-sandbox/host';
+import { initialiseSandboxHost } from 'pi-bring-your-own-sandbox/host';
+import { registerSandboxDiagnostics } from 'pi-bring-your-own-sandbox/pi-tools';
 import type {
 	BackendProcessContext,
 	SandboxOpenRequest,
@@ -256,7 +254,7 @@ function context(
 	signal = new AbortController().signal
 ): SandboxOperationContext {
 	return {
-		reportDiagnostic() {
+		reportWarning() {
 			return;
 		},
 		cleanup: {
@@ -395,8 +393,8 @@ it.each([
 				},
 				{
 					...context(),
-					reportDiagnostic(warning) {
-						messages.push(warning.message);
+					reportWarning(warning) {
+						messages.push(warning);
 					},
 					reportRecovery() {
 						return;
@@ -1228,7 +1226,7 @@ it.each([
 			{ ...hostCopy, profile: firstCopyProfile(provider) },
 			{
 				...context(),
-				reportDiagnostic(entry) {
+				reportWarning(entry) {
 					diagnostics.push(entry);
 				},
 				reportRecovery() {
@@ -1277,9 +1275,7 @@ it.each([
 					? 'The selected Docker toolchain must provide executable PowerShell 7 or later at /opt/powershell/pwsh.'
 					: undefined;
 
-			expect(diagnostics).toStrictEqual(
-				diagnostic ? [{ level: 'warning', message: diagnostic }] : []
-			);
+			expect(diagnostics).toStrictEqual(diagnostic ? [diagnostic] : []);
 
 			if (isMissing) {
 				expect(docker.commands.map((command) => command.args)).toStrictEqual([
@@ -1409,8 +1405,8 @@ it.each(['FIFO', 'socket'] as const)(
 						...context(),
 						reportRecovery: recovery,
 						confirmCleanup: vi.fn(),
-						reportDiagnostic: (entry) => {
-							diagnostics.push(entry.message);
+						reportWarning: (entry) => {
+							diagnostics.push(entry);
 						}
 					}
 				)

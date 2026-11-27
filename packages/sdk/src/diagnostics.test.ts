@@ -218,7 +218,6 @@ it('shows recovery from an opening that failed before returning a backend', () =
 				{
 					operation: 'open',
 					operationId: 'first',
-					level: 'warning',
 					message: 'Base opening failed.\u{1B}[8m'
 				}
 			]

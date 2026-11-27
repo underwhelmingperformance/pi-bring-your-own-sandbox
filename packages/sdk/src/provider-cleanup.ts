@@ -8,7 +8,7 @@ cleanup deadline as soon as the broker publishes it. All commands in the
 cleanup share the same context and deadline.
 */
 export function createSandboxCleanupContext(
-	context: Pick<SandboxOperationContext, 'reportDiagnostic' | 'operationId'> &
+	context: Pick<SandboxOperationContext, 'reportWarning' | 'operationId'> &
 		Partial<Pick<SandboxOperationContext, 'cleanup' | 'cleanupBudgets'>>,
 	operationId = `${context.operationId}:cleanup`,
 	monotonicNow: () => number = () => performance.now()
@@ -23,7 +23,7 @@ export function createSandboxCleanupContext(
 
 	return {
 		remainingMs,
-		reportDiagnostic: context.reportDiagnostic,
+		reportWarning: context.reportWarning,
 		cleanupBudgets,
 		cleanup: Object.freeze({
 			remainingMs,

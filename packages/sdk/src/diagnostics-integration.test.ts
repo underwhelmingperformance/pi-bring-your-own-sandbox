@@ -7,7 +7,6 @@ import type {
 import { afterEach, expect, it, vi } from 'vitest';
 
 import type { SandboxHostHandle } from './contracts.js';
-import { registerSandboxDiagnostics as sandboxExtension } from './diagnostic-registration.js';
 import { discoverBroker } from './discovery.js';
 import type { SandboxLedgerEntry } from './escalation-ledger.js';
 import { appendLedgerEntry } from './escalation-ledger.js';
@@ -18,6 +17,7 @@ import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
 import { initialiseSandboxHost } from './host.js';
 import sandboxTools from './pi-tools.js';
+import { registerSandboxDiagnostics as sandboxExtension } from './pi-tools.js';
 import {
 	registerSandboxProvider,
 	registerUnavailableSandboxProvider
@@ -443,10 +443,7 @@ it('shows provider warnings through generic status without adding workload outpu
 		'configured',
 		async ({ pi, context, runtime, backend, errors }) => {
 			backend.exec = (_request, execution) => {
-				execution.reportDiagnostic({
-					level: 'warning',
-					message: 'Provider runtime warning'
-				});
+				execution.reportWarning('Provider runtime warning');
 				execution.onOutput({
 					stream: 'stdout',
 					data: new TextEncoder().encode('workload')
@@ -483,7 +480,6 @@ it('shows provider warnings through generic status without adding workload outpu
 
 			expect(status?.diagnostics).toStrictEqual([
 				{
-					level: 'warning',
 					message: 'Provider runtime warning',
 					operation: 'exec',
 					operationId,
@@ -530,10 +526,9 @@ it('displays resolver diagnostics after configuration fails without exposing its
 						},
 						{
 							configure(scope) {
-								scope.reportDiagnostic({
-									level: 'warning',
-									message: 'sandbox-settings.json: runtime must be a string.'
-								});
+								scope.reportWarning(
+									'sandbox-settings.json: runtime must be a string.'
+								);
 
 								throw new Error('PRIVATE_CONFIGURATION_VALUE');
 							}

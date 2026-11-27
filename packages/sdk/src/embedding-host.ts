@@ -1,8 +1,7 @@
 export type {
-	SandboxDiagnostic,
+	SandboxCloseReport,
 	SandboxHost,
 	SandboxHostHandle,
 	SandboxHostOptions
 } from './contracts.js';
-export { registerSandboxDiagnostics } from './diagnostic-registration.js';
 export { initialiseSandboxHost } from './host.js';

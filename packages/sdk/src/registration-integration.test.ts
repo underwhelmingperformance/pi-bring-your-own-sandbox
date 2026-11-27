@@ -70,10 +70,7 @@ it.each(['denied', 'read-only'] as const)(
 										recovery: template.recovery,
 										profile,
 										exec: (_request, execution) => {
-											execution.reportDiagnostic({
-												level: 'warning',
-												message: 'Independent provider warning'
-											});
+											execution.reportWarning('Independent provider warning');
 
 											return Promise.resolve({
 												kind: 'exited',
@@ -127,7 +124,6 @@ it.each(['denied', 'read-only'] as const)(
 
 								expect(status?.diagnostics).toStrictEqual([
 									{
-										level: 'warning',
 										message: 'Independent provider warning',
 										operation: 'exec',
 										operationId,

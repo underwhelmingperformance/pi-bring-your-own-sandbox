@@ -13,7 +13,7 @@ export interface SandboxTestContextOptions {
 	readonly signal?: AbortSignal;
 	readonly timeoutMs?: number;
 	readonly cleanup?: Partial<SandboxCleanupBudgets>;
-	readonly reportDiagnostic?: SandboxOperationContext['reportDiagnostic'];
+	readonly reportWarning?: SandboxOperationContext['reportWarning'];
 }
 
 function ignoreEvent(): void {
@@ -45,7 +45,7 @@ export function createSandboxOperationContext(
 			}
 		},
 		cleanupBudgets,
-		reportDiagnostic: options.reportDiagnostic ?? ignoreEvent
+		reportWarning: options.reportWarning ?? ignoreEvent
 	};
 }
 

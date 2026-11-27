@@ -21,15 +21,15 @@ value isSandboxError (errors.d.ts)
 value sandboxRipgrepArguments (ripgrep-arguments.d.ts)
 
 pi-bring-your-own-sandbox/host
-type SandboxDiagnostic (contracts.d.ts)
+type SandboxCloseReport (contracts.d.ts)
 type SandboxHost (contracts.d.ts)
 type SandboxHostHandle (contracts.d.ts)
 type SandboxHostOptions (contracts.d.ts)
 value initialiseSandboxHost (host.d.ts)
-value registerSandboxDiagnostics (diagnostic-registration.d.ts)
 
 pi-bring-your-own-sandbox/pi-tools
 value default (pi-tools.d.ts)
+value registerSandboxDiagnostics (integration/diagnostics.d.ts)
 value registerShellOnlyTools (pi-tools.d.ts)
 
 pi-bring-your-own-sandbox/provider
@@ -351,12 +351,6 @@ export interface SandboxCopy {
 }
 
 // contracts.d.ts
-export interface SandboxDiagnostic {
-    readonly level: 'warning';
-    readonly message: string;
-}
-
-// contracts.d.ts
 export interface SandboxErrorContext {
     readonly extensionSource?: string;
     readonly detail?: Readonly<Static<typeof errorDetailSchema>>;
@@ -409,7 +403,7 @@ export interface SandboxOpenRequest<Config = unknown> {
 // contracts.d.ts
 export interface SandboxOperationContext {
     readonly remainingMs: () => number;
-    readonly reportDiagnostic: (diagnostic: SandboxDiagnostic) => void;
+    readonly reportWarning: (message: string) => void;
     readonly cleanup: SandboxCleanupContext;
     readonly cleanupBudgets?: SandboxCleanupBudgets;
     readonly operationId: string;
@@ -655,9 +649,6 @@ type SandboxCapability = Static<typeof capabilitySchema>;
 
 // contracts.d.ts
 type SandboxViolation = Readonly<Static<typeof violationsSchema>[number]>;
-
-// diagnostic-registration.d.ts
-export declare function registerSandboxDiagnostics(pi: ExtensionAPI, extensionSource: string): void;
 
 // display-text.d.ts
 declare const displayTextBrand: unique symbol;
@@ -1285,7 +1276,10 @@ export interface HostProcessRunner {
 declare const hostSystemRoots: Readonly<Record<'darwin' | 'linux', readonly string[]>>;
 
 // host.d.ts
-export declare function initialiseSandboxHost(pi: SandboxHost, extensionSource: string, options: SandboxHostOptions): SandboxHostHandle;
+export declare function initialiseSandboxHost(pi: SandboxHost, extensionSource: string, options?: SandboxHostOptions): SandboxHostHandle;
+
+// integration/diagnostics.d.ts
+export declare function registerSandboxDiagnostics(pi: ExtensionAPI, extensionSource: string): void;
 
 // launch-frames.d.ts
 export declare class SandboxLaunchFrames {
@@ -1453,7 +1447,7 @@ export declare function isProtectedWorkspacePath(filename: string, options?: {
 }): boolean;
 
 // provider-cleanup.d.ts
-export declare function createSandboxCleanupContext(context: Pick<SandboxOperationContext, 'reportDiagnostic' | 'operationId'> & Partial<Pick<SandboxOperationContext, 'cleanup' | 'cleanupBudgets'>>, operationId?: string, monotonicNow?: () => number): SandboxOperationContext;
+export declare function createSandboxCleanupContext(context: Pick<SandboxOperationContext, 'reportWarning' | 'operationId'> & Partial<Pick<SandboxOperationContext, 'cleanup' | 'cleanupBudgets'>>, operationId?: string, monotonicNow?: () => number): SandboxOperationContext;
 
 // provider-contract-runner.d.ts
 export declare function defineSandboxProviderTests<Config>(options: SandboxProviderTestOptions<Config> | SandboxProviderFixtureOptions<Config>): void;
@@ -1494,7 +1488,7 @@ export interface SandboxTestContextOptions {
     readonly signal?: AbortSignal;
     readonly timeoutMs?: number;
     readonly cleanup?: Partial<SandboxCleanupBudgets>;
-    readonly reportDiagnostic?: SandboxOperationContext['reportDiagnostic'];
+    readonly reportWarning?: SandboxOperationContext['reportWarning'];
 }
 
 // provider-test-contracts.d.ts

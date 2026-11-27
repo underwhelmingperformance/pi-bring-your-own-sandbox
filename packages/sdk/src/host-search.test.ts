@@ -38,7 +38,7 @@ async function fixture(prepare?: (directory: string) => void | Promise<void>) {
 	await prepare?.(directory);
 
 	const backend = await openPassthrough(directory, {
-		reportDiagnostic() {
+		reportWarning() {
 			return;
 		},
 		cleanup: {
@@ -61,7 +61,7 @@ async function fixture(prepare?: (directory: string) => void | Promise<void>) {
 
 	releases.push(() =>
 		backend.dispose({
-			reportDiagnostic() {
+			reportWarning() {
 				return;
 			},
 			cleanup: {

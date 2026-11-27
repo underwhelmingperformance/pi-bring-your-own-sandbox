@@ -27,12 +27,12 @@ export function registerDockerProvider(
 				open(request, context) {
 					return provider.open(request, {
 						...context,
-						reportDiagnostic(warning) {
-							context.reportDiagnostic(warning);
+						reportWarning(warning) {
+							context.reportWarning(warning);
 							sendDisplayMessage(
 								pi,
 								cleanDisplayText('byos-docker'),
-								cleanDisplayText(warning.message),
+								cleanDisplayText(warning),
 								{ triggerTurn: false }
 							);
 						}
@@ -41,11 +41,11 @@ export function registerDockerProvider(
 			};
 		},
 		{
-			async configure({ pi: session, signal, reportDiagnostic }) {
+			async configure({ pi: session, signal, reportWarning }) {
 				return {
 					configuration: await resolveDockerConfig(
 						{},
-						{ workspace: session.cwd, signal, reportDiagnostic }
+						{ workspace: session.cwd, signal, reportWarning }
 					),
 					...(settings !== undefined && { settings })
 				};

@@ -44,7 +44,7 @@ async function execute(runner: HostProcessRunner, request: ProcessRequest) {
 	const stdout: Uint8Array[] = [];
 	const stderr: Uint8Array[] = [];
 	const outcome = await runner.run(request, {
-		reportDiagnostic() {
+		reportWarning() {
 			return;
 		},
 		cleanup: {

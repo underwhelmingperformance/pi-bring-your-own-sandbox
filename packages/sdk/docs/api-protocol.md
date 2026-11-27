@@ -8,15 +8,15 @@ contract. Runtime schemas define the types.
 
 ## Public entry points
 
-| Entry point     | Operations and types                                                                        |
-| --------------- | ------------------------------------------------------------------------------------------- |
-| `/consumer`     | `createSandboxClient`, sandbox handles, requirements and error checks                       |
-| `/review`       | `createShellReviewClient`, pending shell review and escalation decisions                    |
-| `/provider`     | `registerSandboxProvider`, provider and backend contracts, and errors                       |
-| `/provider-kit` | Shell transport, target file and search operations, cleanup, path and display helpers       |
-| `/host`         | `initialiseSandboxHost`, `SandboxHostHandle`, host options and `registerSandboxDiagnostics` |
-| `/pi-tools`     | Pi shell integration factory and `registerShellOnlyTools`                                   |
-| `/testing`      | `defineSandboxProviderTests` and `SandboxProviderTestFixture`                               |
+| Entry point     | Operations and types                                                                   |
+| --------------- | -------------------------------------------------------------------------------------- |
+| `/consumer`     | `createSandboxClient`, sandbox handles, requirements and error checks                  |
+| `/review`       | `createShellReviewClient`, pending shell review and escalation decisions               |
+| `/provider`     | `registerSandboxProvider`, provider and backend contracts, and errors                  |
+| `/provider-kit` | Shell transport, target file and search operations, cleanup, path and display helpers  |
+| `/host`         | `initialiseSandboxHost`, the host handle and options, and `SandboxCloseReport`         |
+| `/pi-tools`     | Pi tool integration factory, `registerShellOnlyTools` and `registerSandboxDiagnostics` |
+| `/testing`      | `defineSandboxProviderTests` and `SandboxProviderTestFixture`                          |
 
 The package prefix is `pi-bring-your-own-sandbox`. Wire schemas, channel
 constants, broker objects and identity constructors are internal.
@@ -57,7 +57,7 @@ registerSandboxProvider<Config, Input = Config>(
   options?: NoInfer<SandboxProviderRegistration<Input>>
 ): void;
 initialiseSandboxHost(
-  pi: SandboxHost, extensionSource: string, options: SandboxHostOptions
+  pi: SandboxHost, extensionSource: string, options?: SandboxHostOptions
 ): SandboxHostHandle;
 
 interface SandboxHostHandle {
@@ -320,12 +320,8 @@ from a failed opening. The provider then rejects the opening without allocating
 anything else. Both callbacks expire when opening ends.
 
 ```typescript
-interface SandboxDiagnostic {
-  readonly level: 'warning';
+interface SandboxDiagnosticRecord {
   readonly message: string;
-}
-
-interface SandboxDiagnosticRecord extends SandboxDiagnostic {
   readonly operationId: string;
   readonly operation: SandboxOperation;
   readonly providerId?: string;
@@ -333,12 +329,11 @@ interface SandboxDiagnosticRecord extends SandboxDiagnostic {
 }
 ```
 
-Every operation context has
-`reportDiagnostic(diagnostic: SandboxDiagnostic): void`. A generation retains up
-to 64 warnings of 1 to 2,048 UTF-16 code units each. Rejected and excess
-warnings increment the bounded `diagnosticsDropped` counter. Reports after the
-operation ends are ignored. Status exposes the retained `diagnostics` and
-`diagnosticsDropped` fields.
+Every operation context has `reportWarning(message: string): void`. A generation
+retains up to 64 warnings of 1 to 2,048 UTF-16 code units each. Rejected and
+excess warnings increment the bounded `diagnosticsDropped` counter. Reports
+after the operation ends are ignored. Status exposes the retained `diagnostics`
+and `diagnosticsDropped` fields.
 
 ## Provider settings
 

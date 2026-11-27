@@ -353,10 +353,7 @@ export class SharedCheckout {
 		const guards = await this.#guards(context);
 
 		if (typeof guards === 'string') {
-			context.reportDiagnostic({
-				level: 'warning',
-				message: guards + ' Reopen the sandbox before editing.'
-			});
+			context.reportWarning(guards + ' Reopen the sandbox before editing.');
 
 			throw new UnsupportedSandboxPolicyError({
 				operation,

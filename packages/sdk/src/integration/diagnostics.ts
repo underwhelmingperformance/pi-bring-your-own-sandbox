@@ -1,13 +1,13 @@
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 
-import { bindFactory, ensureSandboxService } from './default-broker.js';
-import { formatProviders, formatStatus } from './diagnostics.js';
-import type { DisplayText } from './display-text.js';
-import { cleanDisplayText, joinDisplayLines } from './display-text.js';
-import { sendDisplayMessage } from './display-ui.js';
-import { isSandboxError, SandboxInitialisationError } from './errors.js';
-import { formatLedger } from './escalation-ledger.js';
-import { describeShellIntegration } from './pi-integration-status.js';
+import { bindFactory, ensureSandboxService } from '../default-broker.js';
+import { formatProviders, formatStatus } from '../diagnostics.js';
+import type { DisplayText } from '../display-text.js';
+import { cleanDisplayText, joinDisplayLines } from '../display-text.js';
+import { sendDisplayMessage } from '../display-ui.js';
+import { isSandboxError, SandboxInitialisationError } from '../errors.js';
+import { formatLedger } from '../escalation-ledger.js';
+import { describeShellIntegration } from '../pi-integration-status.js';
 
 /**
 Register optional sandbox diagnostics. Status and provider enumeration use

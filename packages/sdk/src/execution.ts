@@ -40,7 +40,7 @@ import { settleProcess } from './termination-scope.js';
 import { isRecord } from './validation.js';
 
 export interface BackendOwner {
-	readonly reportDiagnostic?: DiagnosticReporter;
+	readonly reportWarning?: DiagnosticReporter;
 	readonly appendLedger?: (entry: SandboxLedgerEntry) => void;
 	readonly cleanup?: SandboxCleanupBudgets;
 	readonly identity: Omit<OperationIdentity, 'operation'>;
@@ -199,7 +199,7 @@ export async function executeProcess(
 		owner.cleanup
 	);
 
-	scope.setDiagnosticReporter(owner.reportDiagnostic);
+	scope.setDiagnosticReporter(owner.reportWarning);
 
 	return owner.operations.run(scope, async () => {
 		scope.check();

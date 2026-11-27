@@ -38,7 +38,7 @@ Uses the broker's cleanup deadline when cancellation has begun. The independent
 signal permits termination requests after foreground execution is aborted.
 */
 export function cleanupContext(
-	context: Pick<SandboxOperationContext, 'reportDiagnostic' | 'operationId'> &
+	context: Pick<SandboxOperationContext, 'reportWarning' | 'operationId'> &
 		Partial<
 			Pick<SandboxOperationContext, 'cleanup' | 'cleanupBudgets' | 'signal'>
 		>,

@@ -82,7 +82,7 @@ async function fixture(processes: HostProcessRunner) {
 		operations
 	);
 	const context = {
-		reportDiagnostic() {
+		reportWarning() {
 			return;
 		},
 		cleanup: {

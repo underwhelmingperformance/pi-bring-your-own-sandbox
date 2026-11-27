@@ -1,7 +1,4 @@
-import { Type } from 'typebox';
-
 import type { SandboxDiagnosticRecord } from './contracts.js';
-import { checker } from './schemas.js';
 
 export type DiagnosticIdentity = Pick<
 	SandboxDiagnosticRecord,
@@ -9,7 +6,7 @@ export type DiagnosticIdentity = Pick<
 >;
 export type DiagnosticReporter = (
 	identity: DiagnosticIdentity,
-	diagnostic: unknown
+	message: unknown
 ) => void;
 
 export interface DiagnosticStore {
@@ -20,42 +17,17 @@ export interface DiagnosticStore {
 	};
 }
 
-const isDiagnostic = checker(
-	Type.Object({
-		level: Type.Literal('warning'),
-		message: Type.String({ minLength: 1, maxLength: 2048 })
-	})
-);
-
-function snapshotDiagnostic(input: unknown) {
-	try {
-		if (
-			typeof input !== 'object' ||
-			input === null ||
-			Array.isArray(input) ||
-			!('level' in input) ||
-			!('message' in input)
-		) {
-			return;
-		}
-
-		const value = { level: input.level, message: input.message };
-
-		return isDiagnostic(value) ? value : undefined;
-	} catch {
-		return;
-	}
-}
-
 export class ProviderDiagnostics implements DiagnosticStore {
 	readonly #entries: SandboxDiagnosticRecord[] = [];
 	#dropped = 0;
 
-	record(identity: DiagnosticIdentity, input: unknown): void {
-		const value =
-			this.#entries.length < 64 ? snapshotDiagnostic(input) : undefined;
-
-		if (value === undefined) {
+	record(identity: DiagnosticIdentity, message: unknown): void {
+		if (
+			typeof message !== 'string' ||
+			message.length === 0 ||
+			message.length > 2048 ||
+			this.#entries.length >= 64
+		) {
 			this.#dropped = Math.min(Number.MAX_SAFE_INTEGER, this.#dropped + 1);
 
 			return;
@@ -71,8 +43,7 @@ export class ProviderDiagnostics implements DiagnosticStore {
 				...(identity.backendId !== undefined && {
 					backendId: identity.backendId
 				}),
-				level: value.level,
-				message: value.message
+				message
 			})
 		);
 	}

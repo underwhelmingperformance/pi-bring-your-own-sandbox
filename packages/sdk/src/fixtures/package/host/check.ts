@@ -28,10 +28,8 @@ import {
 	createSandboxClient,
 	isSandboxError
 } from 'pi-bring-your-own-sandbox/consumer';
-import {
-	initialiseSandboxHost,
-	registerSandboxDiagnostics
-} from 'pi-bring-your-own-sandbox/host';
+import { initialiseSandboxHost } from 'pi-bring-your-own-sandbox/host';
+import { registerSandboxDiagnostics } from 'pi-bring-your-own-sandbox/pi-tools';
 import { SandboxOperationError } from 'pi-bring-your-own-sandbox/provider';
 import type { ShellReviewClient } from 'pi-bring-your-own-sandbox/review';
 import { createShellReviewClient } from 'pi-bring-your-own-sandbox/review';

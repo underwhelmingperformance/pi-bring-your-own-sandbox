@@ -31,7 +31,7 @@ it('gives the embedding host an idempotent close handle across SDK copies', asyn
 					const source = '<inline:embedding-host>';
 
 					bindProtocolAddress(pi.events, source);
-					observations.host = hostSdk.initialiseSandboxHost(pi, source, {});
+					observations.host = hostSdk.initialiseSandboxHost(pi, source);
 					pi.on('session_start', async (_event, context) => {
 						const status = await discoverBroker(pi.events)?.status(context);
 

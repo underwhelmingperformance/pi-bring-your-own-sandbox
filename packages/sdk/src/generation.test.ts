@@ -26,29 +26,20 @@ it('records bounded provider warnings separately from process output and cleanup
 	let opening: SandboxOpenContext | undefined;
 	const { generation, context, backend } = fixture((received) => {
 		opening = received;
-		received.reportDiagnostic({
-			level: 'warning',
-			message: 'Opening warning'
-		});
+		received.reportWarning('Opening warning');
 
 		return Promise.resolve(backend);
 	});
 
 	backend.exec = (_request, execution) => {
-		execution.reportDiagnostic({
-			level: 'warning',
-			message: 'Execution warning'
-		});
+		execution.reportWarning('Execution warning');
 		execution.onOutput({ stream: 'stdout', data: new Uint8Array([1]) });
 
 		return Promise.resolve({ kind: 'exited', exit: { kind: 'code', code: 0 } });
 	};
 
 	backend.dispose = (disposal) => {
-		disposal.reportDiagnostic({
-			level: 'warning',
-			message: 'Disposal warning'
-		});
+		disposal.reportWarning('Disposal warning');
 
 		return Promise.resolve();
 	};
@@ -60,7 +51,7 @@ it('records bounded provider warnings separately from process output and cleanup
 		args: []
 	});
 
-	opening?.reportDiagnostic({ level: 'warning', message: 'Late warning' });
+	opening?.reportWarning('Late warning');
 	await generation.close();
 
 	const status = await generation.status();
@@ -76,7 +67,6 @@ it('records bounded provider warnings separately from process output and cleanup
 				operation: 'open',
 				operationId,
 				providerId: 'fixture',
-				level: 'warning',
 				message: 'Opening warning'
 			},
 			{
@@ -84,7 +74,6 @@ it('records bounded provider warnings separately from process output and cleanup
 				operationId,
 				providerId: 'fixture',
 				backendId: backend.id,
-				level: 'warning',
 				message: 'Execution warning'
 			},
 			{
@@ -92,7 +81,6 @@ it('records bounded provider warnings separately from process output and cleanup
 				operationId,
 				providerId: 'fixture',
 				backendId: backend.id,
-				level: 'warning',
 				message: 'Disposal warning'
 			}
 		],

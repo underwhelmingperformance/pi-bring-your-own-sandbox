@@ -201,7 +201,7 @@ export class DockerFileWorker implements TargetFileOperations {
 					operation === 'dispose'
 						? {
 								operationId: context.operationId,
-								reportDiagnostic: context.reportDiagnostic,
+								reportWarning: context.reportWarning,
 								...(context.cleanupBudgets !== undefined && {
 									cleanupBudgets: context.cleanupBudgets
 								})

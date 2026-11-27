@@ -22,7 +22,7 @@ search.
 */
 export interface DockerDiscoveryContext extends Pick<
 	SandboxConfigContext,
-	'signal' | 'reportDiagnostic'
+	'signal' | 'reportWarning'
 > {
 	/**
 	Host workspace. A Docker CLI inside it is never used.
@@ -49,10 +49,7 @@ class DockerDiscovery {
 	the message also goes to the status display as a diagnostic.
 	*/
 	#fail(message: string, cause?: unknown) {
-		this.#context.reportDiagnostic({
-			level: 'warning',
-			message: `Docker: ${message}`
-		});
+		this.#context.reportWarning(`Docker: ${message}`);
 
 		return invalid(message, cause);
 	}

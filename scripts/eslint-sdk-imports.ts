@@ -8,7 +8,7 @@ const sdk = path.resolve(import.meta.dirname, '../packages/sdk');
 const examples = path.join(sdk, 'examples');
 const piEntry = path.join(sdk, 'src/pi-tools.ts');
 const piIntegrations = new Set(
-	['privileged', 'file-tools'].flatMap((name) =>
+	['privileged', 'file-tools', 'diagnostics'].flatMap((name) =>
 		['.js', '.ts'].map((suffix) =>
 			path.join(sdk, 'src/integration', name + suffix)
 		)
@@ -36,8 +36,7 @@ export const sdkImportBoundary: Rule.RuleModule = {
 		schema: [],
 		messages: {
 			publicEntry: 'Import the SDK through a public entry point.',
-			piIntegration:
-				'Import SDK internals through the shell or file integration.'
+			piIntegration: 'Import SDK internals through a Pi integration module.'
 		}
 	},
 	create(context) {

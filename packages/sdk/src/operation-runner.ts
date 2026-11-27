@@ -98,7 +98,7 @@ export async function runOperation<Value>(
 		owner.cleanup
 	);
 
-	scope.setDiagnosticReporter(owner.reportDiagnostic);
+	scope.setDiagnosticReporter(owner.reportWarning);
 
 	return owner.operations.run(scope, async () => {
 		scope.check();

@@ -147,7 +147,7 @@ it('waits for process-group disappearance after a denied existence probe', async
 			args: ['-e', 'process.stdout.write("finished")']
 		},
 		{
-			reportDiagnostic() {
+			reportWarning() {
 				return;
 			},
 			cleanup: {
@@ -194,7 +194,7 @@ async function fixture(
 	await prepare?.(directory);
 
 	const backend = await openPassthrough(directory, {
-		reportDiagnostic() {
+		reportWarning() {
 			return;
 		},
 		cleanup: {
@@ -217,7 +217,7 @@ async function fixture(
 	const owner = new TestBackendOwner(backend);
 	const dispose = () =>
 		backend.dispose({
-			reportDiagnostic() {
+			reportWarning() {
 				return;
 			},
 			cleanup: {

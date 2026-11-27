@@ -261,7 +261,7 @@ export interface SandboxOperationContext {
 	for user display and must not include credentials. The callback is
 	synchronous; reports after the operation finishes are ignored.
 	*/
-	readonly reportDiagnostic: (diagnostic: SandboxDiagnostic) => void;
+	readonly reportWarning: (message: string) => void;
 	/**
 	Stable cleanup context. Its deadline becomes available before cancellation
 	listeners run and remains unchanged for that cancellation. Disposal receives
@@ -325,24 +325,10 @@ export interface SandboxCleanupBudgets {
 }
 
 /**
-A provider warning outside workload stdout and stderr. Each generation retains
-at most 64 warnings; messages contain from 1 to 2,048 UTF-16 code units.
-*/
-export interface SandboxDiagnostic {
-	/**
-	Warning severity. Diagnostics never relax capability or policy checks.
-	*/
-	readonly level: 'warning';
-	/**
-	Human-readable warning suitable for the framework's status display.
-	*/
-	readonly message: string;
-}
-
-/**
 A retained warning with broker-supplied operation and resource identities.
 */
-export interface SandboxDiagnosticRecord extends SandboxDiagnostic {
+export interface SandboxDiagnosticRecord {
+	readonly message: string;
 	/**
 	Identity of the operation that emitted the warning.
 	*/

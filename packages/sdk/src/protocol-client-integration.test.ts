@@ -14,7 +14,10 @@ import {
 import { imageProvider } from './fixtures/image-provider.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { initialiseSandboxHost } from './host.js';
-import { registerShellOnlyTools } from './pi-tools.js';
+import {
+	registerSandboxDiagnostics,
+	registerShellOnlyTools
+} from './pi-tools.js';
 import { protocolAddress } from './protocol-address.js';
 import * as provider from './provider.js';
 import * as providerKit from './provider-kit.js';
@@ -158,7 +161,7 @@ const nonFactoryFunctions = new Set([
 const factoryArguments = new Map<string, readonly unknown[]>([
 	['createSandboxClient', []],
 	['createShellReviewClient', []],
-	['initialiseSandboxHost', [{}]],
+	['initialiseSandboxHost', []],
 	['registerSandboxDiagnostics', []],
 	[
 		'registerSandboxProvider',
@@ -191,6 +194,7 @@ const factoryExports = Object.entries<unknown>({
 	...provider,
 	...providerKit,
 	...review,
+	registerSandboxDiagnostics,
 	registerShellOnlyTools
 }).filter(
 	([name, value]) =>

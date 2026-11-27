@@ -315,10 +315,7 @@ it.each(['success', 'failure'] as const)(
 			const reports: SandboxConfigContext[] = [];
 			const configure = vi.fn((scope: SandboxConfigContext) => {
 				reports.push(scope);
-				scope.reportDiagnostic({
-					level: 'warning',
-					message: 'sandbox-settings.json: runtime must be a string.'
-				});
+				scope.reportWarning('sandbox-settings.json: runtime must be a string.');
 
 				if (outcome === 'failure') {
 					throw new Error('PRIVATE_CONFIGURATION_VALUE');
@@ -348,7 +345,7 @@ it.each(['success', 'failure'] as const)(
 			const status = await broker?.status(context);
 
 			for (const scope of reports) {
-				scope.reportDiagnostic({ level: 'warning', message: 'Late warning' });
+				scope.reportWarning('Late warning');
 			}
 
 			const after = await broker?.status(context);
@@ -364,7 +361,6 @@ it.each(['success', 'failure'] as const)(
 						operation: 'configure',
 						operationId,
 						providerId: 'active',
-						level: 'warning',
 						message: 'sandbox-settings.json: runtime must be a string.'
 					}
 				],
@@ -373,7 +369,6 @@ it.each(['success', 'failure'] as const)(
 						operation: 'configure',
 						operationId,
 						providerId: 'active',
-						level: 'warning',
 						message: 'sandbox-settings.json: runtime must be a string.'
 					}
 				],
@@ -433,10 +428,7 @@ it('shares one diagnostic allowance between configuration and execution', async 
 
 		backend.exec = (_request, execution) => {
 			for (const index of [0, 1, 2]) {
-				execution.reportDiagnostic({
-					level: 'warning',
-					message: `execution ${String(index)}`
-				});
+				execution.reportWarning(`execution ${String(index)}`);
 			}
 
 			return Promise.resolve({
@@ -452,10 +444,7 @@ it('shares one diagnostic allowance between configuration and execution', async 
 			{
 				configure: (scope) => {
 					for (let index = 0; index < 63; index++) {
-						scope.reportDiagnostic({
-							level: 'warning',
-							message: `configuration ${String(index)}`
-						});
+						scope.reportWarning(`configuration ${String(index)}`);
 					}
 
 					return { configuration: {} };

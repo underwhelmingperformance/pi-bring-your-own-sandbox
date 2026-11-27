@@ -3,6 +3,7 @@ import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 
 import type { InlineExtension } from '@earendil-works/pi-coding-agent';
+import { Type } from 'typebox';
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { ScriptedModel } from '../../../test-support/scripted-model.js';
@@ -21,6 +22,7 @@ import { shellBackend } from './fixtures/shell-backend.js';
 import sandboxTools from './pi-tools.js';
 import { unrestrictedPolicy } from './policy-model.js';
 import { registerSandboxProvider } from './provider-registration.js';
+import { isRecord } from './validation.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -789,6 +791,157 @@ it.each([
 			);
 		} finally {
 			restoreClock?.();
+		}
+	}
+);
+
+it.each([
+	{ selection: 'Allow', expectedPrompts: 2 },
+	{ selection: 'Allow for session', expectedPrompts: 1 }
+])(
+	'reuses a read approval for the chosen duration: $selection',
+	async ({ selection, expectedPrompts }) => {
+		const directory = await mkdtemp(path.join(tmpdir(), 'byos-read-grant-'));
+
+		try {
+			const root = await realpath(directory);
+			const file = path.join(root, 'document.txt');
+			const { backend, requests } = shellBackend();
+			const profile = { ...backend.profile, pathGrantKinds: ['read'] as const };
+			const prompts: string[][] = [];
+			const resultErrors: boolean[] = [];
+			const model = new ScriptedModel([
+				{
+					type: 'toolCall',
+					name: 'run_twice',
+					id: 'repeat-read',
+					arguments: {}
+				}
+			]);
+
+			await withPiRuntime(
+				[
+					{
+						name: 'read-provider',
+						factory(pi) {
+							registerSandboxProvider(pi, '<inline:read-provider>', {
+								id: 'fixture.reader',
+								label: 'Read fixture',
+								profiles: { open: [profile], copy: [] },
+								validateConfig: () => ({}),
+								open(request) {
+									return Promise.resolve({
+										...backend,
+										profile: request.profile,
+										grantedPaths: (request.paths?.read ?? []).map(
+											(granted) => ({
+												kind: 'read' as const,
+												hostPath: granted,
+												targetPath: granted
+											})
+										)
+									});
+								}
+							});
+						}
+					},
+					{
+						name: 'sandbox-tools',
+						factory(pi) {
+							sandboxTools(pi, '<inline:sandbox-tools>');
+						}
+					},
+					{
+						name: 'run-twice',
+						factory(pi) {
+							pi.registerTool({
+								name: 'run_twice',
+								label: 'Run twice',
+								description: 'Request the same read grant twice in order.',
+								parameters: Type.Object({}),
+								async execute(_id, _input, _signal, _update, context) {
+									for (const command of ['read once', 'read again']) {
+										const result = await context.executeTool('bash', {
+											command,
+											escalate: [{ read: [file] }],
+											justification: 'Read the fixture.'
+										});
+
+										resultErrors.push(result.isError);
+									}
+
+									return {
+										content: [{ type: 'text', text: 'Finished.' }],
+										details: {}
+									};
+								}
+							});
+						}
+					},
+					model.extension
+				],
+				async (runtime, errors) => {
+					const chosen = runtime.session.modelRuntime.getModel(
+						'scripted',
+						'scripted'
+					);
+
+					if (chosen === undefined) {
+						throw new Error('The scripted model was not registered.');
+					}
+
+					await runtime.session.setModel(chosen);
+					runtime.session.setActiveToolsByName(['bash', 'run_twice']);
+					await runtime.session.prompt('Run both read requests.');
+
+					const deciders = runtime.session.sessionManager
+						.getEntries()
+						.flatMap((entry) => {
+							return entry.type === 'custom' &&
+								entry.customType === 'byos.ledger' &&
+								isRecord(entry.data) &&
+								entry.data['kind'] === 'escalation'
+								? [entry.data['decider']]
+								: [];
+						});
+
+					expect({
+						errors,
+						prompts,
+						resultErrors,
+						deciders,
+						commands: requests.map((request) =>
+							request.kind === 'shell' ? request.command : undefined
+						)
+					}).toStrictEqual({
+						errors: [],
+						prompts: Array.from({ length: expectedPrompts }, () => [
+							'Deny',
+							'Allow',
+							'Allow for session'
+						]),
+						resultErrors: [false, false],
+						deciders: [
+							{ kind: 'confirmation' },
+							selection === 'Allow'
+								? { kind: 'confirmation' }
+								: { kind: 'remembered-read', toolCallIds: ['repeat-read/1'] }
+						],
+						commands: ['read once', 'read again']
+					});
+				},
+				{
+					select(_text, choices) {
+						prompts.push([...choices]);
+
+						return Promise.resolve(
+							choices.find((choice) => choice === selection)
+						);
+					}
+				}
+			);
+		} finally {
+			await rm(directory, { recursive: true, force: true });
 		}
 	}
 );

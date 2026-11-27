@@ -65,6 +65,7 @@ import {
 import { requestedPathGrants, resolvePathGrants } from './path-grants.js';
 import type { Profile } from './policy-model.js';
 import {
+	accessOrder,
 	accessPolicySchema as policySchema,
 	profileKey,
 	unrestrictedPolicy
@@ -1165,6 +1166,20 @@ export class SandboxGeneration {
 
 		const policy = destination.profile.policy;
 		const grants = requestedPathGrants(paths);
+		const eligibleReads = isHost
+			? []
+			: paths.filter(
+					(entry) =>
+						entry.kind === 'read' &&
+						entry.location !== 'workspace' &&
+						entry.isCredential !== true
+				);
+		const hasAccessProperties = accessOrder.some(
+			(property) => options.access?.[property] !== undefined
+		);
+		const readApprovalPaths = Object.freeze(
+			eligibleReads.map((entry) => entry.path)
+		);
 		let isUsed = false;
 
 		return Object.freeze<EscalationPlan>({
@@ -1178,6 +1193,13 @@ export class SandboxGeneration {
 					}),
 			label: destination.provider.label,
 			...(grants !== undefined && { paths: grants }),
+			...(eligibleReads.length > 0 && {
+				readApproval: Object.freeze({
+					paths: readApprovalPaths,
+					coversRequest:
+						!hasAccessProperties && eligibleReads.length === paths.length
+				})
+			}),
 			assertCurrent,
 			open: async (actual, processOptions) => {
 				assertCurrent(actual);

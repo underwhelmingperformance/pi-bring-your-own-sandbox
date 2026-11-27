@@ -13,7 +13,12 @@ import { appendTypedEntry } from './display-ui.js';
 import { InvalidSandboxDeclarationError } from './errors.js';
 import { accessPolicySchema, accessSchema } from './policy-model.js';
 import { violationsSchema } from './result-schemas.js';
-import { checker, nonEmptyStringSchema, safeTextSchema } from './schemas.js';
+import {
+	checker,
+	denseArray,
+	nonEmptyStringSchema,
+	safeTextSchema
+} from './schemas.js';
 
 type ReadonlyData<Value> = Value extends object
 	? { readonly [Key in keyof Value]: ReadonlyData<Value[Key]> }
@@ -106,10 +111,15 @@ const confirmationDecider = Type.Object({ kind: Type.Literal('confirmation') });
 const configDecider = Type.Object({
 	kind: Type.Literal('configuration')
 });
+const rememberedReads = Type.Object({
+	kind: Type.Literal('remembered-read'),
+	toolCallIds: denseArray(nonEmptyStringSchema)
+});
 const decider = Type.Union([
 	confirmationDecider,
 	permissionDecider,
-	configDecider
+	configDecider,
+	rememberedReads
 ]);
 const escalation = Type.Object({
 	kind: Type.Literal('escalation'),

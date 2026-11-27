@@ -18,6 +18,10 @@ export interface EscalationPlan {
 	readonly label: string;
 	readonly destination: EscalationDestination;
 	readonly paths?: PathGrants;
+	readonly readApproval?: {
+		readonly paths: readonly string[];
+		readonly coversRequest: boolean;
+	};
 	readonly assertCurrent: (context: SandboxContext) => void;
 	readonly open: (
 		context: SandboxContext,

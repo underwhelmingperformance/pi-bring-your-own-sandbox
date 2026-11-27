@@ -15,6 +15,7 @@ import type {
 	SandboxHost
 } from './contracts.js';
 import { SandboxInitialisationError } from './errors.js';
+import type { EscalationPlan } from './escalation-plan.js';
 import type { GenerationDependencies } from './generation.js';
 import { SandboxGeneration } from './generation.js';
 import type {
@@ -36,6 +37,7 @@ export class SandboxBroker implements BrokerService {
 	readonly #abortConfig: (() => void) | undefined;
 	readonly #reviewIdentities = new ReviewIdentities<RegisteredReview>();
 	readonly #liveReviewCalls = new Set<string>();
+	readonly #readApprovals = new Map<string, string>();
 	#current:
 		| {
 				readonly session: SandboxSession;
@@ -132,6 +134,47 @@ export class SandboxBroker implements BrokerService {
 		return this.#resolve(context).generation.planEscalation(context, options);
 	}
 
+	rememberReadApprovals(plan: EscalationPlan, toolCallId: string): void {
+		if (
+			plan.readApproval === undefined ||
+			plan.destination.kind !== 'provider'
+		) {
+			return;
+		}
+
+		const { providerId } = plan.destination;
+
+		for (const path of plan.readApproval.paths) {
+			this.#readApprovals.set(JSON.stringify([providerId, path]), toolCallId);
+		}
+	}
+
+	rememberedReadApprovals(plan: EscalationPlan): readonly string[] | undefined {
+		if (
+			plan.readApproval?.coversRequest !== true ||
+			plan.destination.kind !== 'provider'
+		) {
+			return;
+		}
+
+		const { providerId } = plan.destination;
+		const toolCalls = new Set<string>();
+
+		for (const path of plan.readApproval.paths) {
+			const toolCallId = this.#readApprovals.get(
+				JSON.stringify([providerId, path])
+			);
+
+			if (toolCallId === undefined) {
+				return;
+			}
+
+			toolCalls.add(toolCallId);
+		}
+
+		return [...toolCalls];
+	}
+
 	async prepareReview(
 		context: SandboxContext,
 		call: ReviewedToolCall,
@@ -211,6 +254,7 @@ export class SandboxBroker implements BrokerService {
 
 		this.#isClosing = true;
 		this.#reviewIdentities.close();
+		this.#readApprovals.clear();
 		this.#liveReviewCalls.clear();
 
 		const closing = generation.close();

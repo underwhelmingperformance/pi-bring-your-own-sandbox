@@ -92,6 +92,12 @@ type Decider = NonNullable<EscalationEntry['decider']>;
 type EscalationData = Omit<EscalationRequest, 'destination'>;
 type Dialect = 'bash' | 'powershell';
 
+interface GrantDecision {
+	readonly choice: EscalationDecision;
+	readonly decider: Decider;
+	readonly rememberReads?: true;
+}
+
 export function escalationInput(
 	toolCallId: string,
 	command: string,
@@ -201,11 +207,8 @@ export class PendingEscalation {
 	async #confirm(
 		context: ExtensionContext,
 		request: EscalationRequest,
-		label: string
-	): Promise<
-		| { readonly choice: EscalationDecision; readonly decider: Decider }
-		| undefined
-	> {
+		plan: EscalationPlan
+	): Promise<GrantDecision | undefined> {
 		const { signal } = this.#scope.context;
 		const display = [
 			cleanDisplayText('Allow sandbox escalation?'),
@@ -214,13 +217,21 @@ export class PendingEscalation {
 			cleanFullDisplayText(
 				'Requested access: ' + JSON.stringify(request.access)
 			),
-			cleanFullDisplayText('Destination: ' + label),
+			cleanFullDisplayText('Destination: ' + plan.label),
 			cleanFullDisplayText(
 				'Effective restrictions: ' + request.destination.effectiveRestrictions
 			)
 		];
+		const sessionChoice =
+			plan.readApproval?.coversRequest === true
+				? 'Allow for session'
+				: 'Allow and remember reads for session';
+		const choices =
+			plan.readApproval === undefined
+				? ['Deny', 'Allow']
+				: ['Deny', 'Allow', sessionChoice];
 		const pending = observe(
-			chooseDisplayOption(context, display, ['Deny', 'Allow'], { signal })
+			chooseDisplayOption(context, display, choices, { signal })
 		);
 		const answered = await Promise.race([pending, this.#scope.whenCancelled()]);
 
@@ -234,14 +245,28 @@ export class PendingEscalation {
 
 		const result = answered.value;
 
-		if (result !== 'Allow' && result !== 'Deny') {
+		if (result === undefined || !choices.includes(result)) {
 			return;
 		}
 
 		return {
-			choice: result === 'Allow' ? 'allow' : 'deny',
-			decider: { kind: 'confirmation' }
+			choice: result === 'Deny' ? 'deny' : 'allow',
+			decider: { kind: 'confirmation' },
+			...(result === sessionChoice && { rememberReads: true })
 		};
+	}
+
+	#rememberedDecision(plan: EscalationPlan): GrantDecision | undefined {
+		const toolCallIds = this.#broker.rememberedReadApprovals(plan);
+
+		if (toolCallIds !== undefined) {
+			return {
+				choice: 'allow',
+				decider: { kind: 'remembered-read', toolCallIds }
+			};
+		}
+
+		return;
 	}
 
 	#refusal(field: string): SandboxPermissionDeniedError {
@@ -342,8 +367,10 @@ export class PendingEscalation {
 				throw new InvalidSandboxRequestError({ operation: 'exec' });
 			}
 
-			const decided =
-				recorded ?? (await this.#confirm(context, request, plan.label));
+			const decided: GrantDecision | undefined =
+				recorded ??
+				this.#rememberedDecision(plan) ??
+				(await this.#confirm(context, request, plan));
 
 			this.#check(context, signal);
 
@@ -357,6 +384,10 @@ export class PendingEscalation {
 				this.#complete('denied', decided.decider);
 
 				throw this.#refusal('escalate');
+			}
+
+			if (decided.rememberReads === true) {
+				this.#broker.rememberReadApprovals(plan, request.toolCallId);
 			}
 
 			this.#complete('allowed', decided.decider);

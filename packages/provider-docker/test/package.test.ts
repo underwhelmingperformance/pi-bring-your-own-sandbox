@@ -22,6 +22,7 @@ import {
 	add,
 	packedArchive,
 	project,
+	retainedReleaseArchive,
 	run,
 	runIsolatedBuild
 } from '../../../test-support/packages.js';
@@ -30,7 +31,17 @@ const docker = fileURLToPath(new URL('../', import.meta.url));
 const sdk = fileURLToPath(new URL('../../sdk/', import.meta.url));
 const repository = fileURLToPath(new URL('../../../', import.meta.url));
 
-async function pack(cwd: string, directory: string): Promise<string> {
+async function pack(
+	cwd: string,
+	directory: string,
+	name: string
+): Promise<string> {
+	const retained = retainedReleaseArchive(name);
+
+	if (retained !== undefined) {
+		return retained;
+	}
+
 	const result = await run(cwd, 'pnpm', [
 		'pack',
 		'--ignore-scripts',
@@ -52,8 +63,8 @@ async function withPackedProvider(
 
 	try {
 		const [sdkArchive, dockerArchive] = await Promise.all([
-			pack(sdk, directory),
-			pack(docker, directory)
+			pack(sdk, directory, 'pi-bring-your-own-sandbox'),
+			pack(docker, directory, 'pi-byos-provider-docker')
 		]);
 
 		await project(consumer, sdkArchive);
@@ -63,10 +74,20 @@ async function withPackedProvider(
 			'typebox@1.3.27',
 			'vitest@5.1.0'
 		]);
-		await verify(
+
+		const installed = path.join(
 			consumer,
-			path.join(consumer, 'node_modules/pi-byos-provider-docker')
+			'node_modules/pi-byos-provider-docker'
 		);
+		const manifest: unknown = JSON.parse(
+			await readFile(path.join(installed, 'package.json'), 'utf8')
+		);
+
+		expect(manifest).toMatchObject({
+			version: '1.0.0',
+			dependencies: { 'pi-bring-your-own-sandbox': '1.0.0' }
+		});
+		await verify(consumer, installed);
 	} finally {
 		await rm(directory, { recursive: true, force: true });
 	}
@@ -83,7 +104,11 @@ it.skipIf(
 		try {
 			await mkdir(source, { recursive: true });
 
-			const sdkArchive = await pack(sdk, directory);
+			const sdkArchive = await pack(
+				sdk,
+				directory,
+				'pi-bring-your-own-sandbox'
+			);
 			const providerFiles = [
 				'package.json',
 				'tsconfig.json',

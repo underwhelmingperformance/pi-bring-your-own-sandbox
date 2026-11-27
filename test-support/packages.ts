@@ -76,6 +76,14 @@ export async function compilerPackage(): Promise<string> {
 	return `typescript@${version}`;
 }
 
+export function retainedReleaseArchive(name: string): string | undefined {
+	const directory = process.env['BYOS_RELEASE_ARTIFACTS'];
+
+	return directory === undefined
+		? undefined
+		: path.resolve(directory, `${name}-1.0.0.tgz`);
+}
+
 export async function project(directory: string, sdkOverride?: string) {
 	await mkdir(directory);
 	await writeFile(

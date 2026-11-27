@@ -2,6 +2,7 @@ import {
 	cp,
 	mkdtemp,
 	readFile,
+	realpath,
 	rm,
 	symlink,
 	writeFile
@@ -11,11 +12,23 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import type { InlineExtension } from '@earendil-works/pi-coding-agent';
-import { expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
+
+import {
+	add,
+	packedArchive,
+	project,
+	retainedReleaseArchive,
+	run
+} from '../../../test-support/packages.js';
 
 import type * as build from './compute-protocol-build.js';
 import type * as consumer from './consumer.js';
-import type { SandboxAcquireOptions, SandboxHost } from './contracts.js';
+import type {
+	ProcessRequest,
+	SandboxAcquireOptions,
+	SandboxHost
+} from './contracts.js';
 import type * as discovery from './discovery.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
@@ -25,9 +38,263 @@ import type * as provider from './provider.js';
 import { isRecord } from './validation.js';
 
 const sdk = fileURLToPath(new URL('../', import.meta.url));
+const packageName = 'pi-bring-your-own-sandbox';
+const isPackageRun = process.env['BYOS_PACKAGE_TESTS'] === '1';
+const packageFixture: {
+	installed?: readonly [string, string];
+	directory?: string;
+} = {};
 const capability = 'fixture-trace' as NonNullable<
 	SandboxAcquireOptions['capabilities']
 >[number];
+
+beforeAll(async () => {
+	if (!isPackageRun) {
+		return;
+	}
+
+	const directory = await mkdtemp(
+		path.join(tmpdir(), 'byos-packaged-protocol-')
+	);
+
+	packageFixture.directory = directory;
+
+	let archive = retainedReleaseArchive(packageName);
+
+	if (archive === undefined) {
+		await run(sdk, 'pnpm', ['build']);
+
+		const result = await run(sdk, 'pnpm', [
+			'pack',
+			'--ignore-scripts',
+			'--json',
+			'--pack-destination',
+			directory
+		]);
+
+		archive = packedArchive(result.stdout).filename;
+	}
+
+	const tarball = archive;
+	const install = async (name: string) => {
+		const prefix = path.join(directory, name);
+
+		await project(prefix);
+		await add(prefix, [tarball]);
+
+		return realpath(path.join(prefix, 'node_modules', packageName));
+	};
+
+	packageFixture.installed = await Promise.all([
+		install('first'),
+		install('second')
+	]);
+}, 120_000);
+
+afterAll(async () => {
+	if (packageFixture.directory !== undefined) {
+		await rm(packageFixture.directory, { recursive: true, force: true });
+	}
+});
+
+function installedPackages(): readonly [string, string] {
+	const { installed } = packageFixture;
+
+	if (installed === undefined) {
+		throw new Error('The release archive is missing from the package fixture.');
+	}
+
+	return installed;
+}
+
+it.skipIf(!isPackageRun)(
+	'matches the frozen registry in the installed release',
+	async () => {
+		const [root] = installedPackages();
+		const inputs = (await import(
+			pathToFileURL(path.join(root, 'dist/protocol-payloads.js')).href
+		)) as typeof import('./protocol-payloads.js');
+		const { protocolSnapshot } = (await import(
+			pathToFileURL(path.join(root, 'dist/protocol-snapshot.js')).href
+		)) as typeof import('./protocol-snapshot.js');
+		const frozen: unknown = JSON.parse(
+			await readFile(
+				new URL('fixtures/protocol-snapshots/1.0.json', import.meta.url),
+				'utf8'
+			)
+		);
+
+		expect(protocolSnapshot(1, 0, inputs.protocolSchemas)).toStrictEqual(
+			frozen
+		);
+	}
+);
+
+it.skipIf(!isPackageRun).each([
+	{ reverse: false, providerIndex: 0 },
+	{ reverse: true, providerIndex: 0 },
+	{ reverse: false, providerIndex: 1 },
+	{ reverse: true, providerIndex: 1 }
+] as const)(
+	'starts two independently installed releases and runs Pi Bash (%j)',
+	async ({ reverse, providerIndex }) => {
+		const roots = installedPackages();
+		const [first, second] = await Promise.all([
+			loadPeer(path.join(roots[0], 'dist'), 'first', 0, 1),
+			loadPeer(path.join(roots[1], 'dist'), 'second', 0, 1)
+		]);
+		const peers = [first, second] as const;
+		const providerPeer = peers[providerIndex];
+		const template = new MemoryBackend('exec');
+		const workspace = { ...template.workspace, defaultShell: 'sh' as const };
+		const profile = {
+			...template.profile,
+			processKinds: ['shell'] as const,
+			shells: ['sh'] as const
+		};
+		const acquired: string[] = [];
+		const requests: ProcessRequest[] = [];
+		const providerId = 'fixture.release-provider';
+
+		const extensions: InlineExtension[] = peers.map((peer) => ({
+			name: peer.name,
+			factory(pi) {
+				const client = peer.consumers.createSandboxClient(pi, peer.name);
+
+				if (peer === providerPeer) {
+					peer.providers.registerSandboxProvider(pi, peer.name, {
+						id: providerId,
+						label: 'Packaged release fixture',
+						profiles: { open: [profile], copy: [] },
+						create: () => ({
+							configure: () => ({ configuration: undefined }),
+							open: ({ profile }) =>
+								Promise.resolve({
+									id: template.id,
+									workspace,
+									policyDescription: template.policyDescription,
+									recovery: template.recovery,
+									profile,
+									exec(request, context) {
+										requests.push(request);
+										context.onOutput({
+											stream: 'stdout',
+											data: Buffer.from('packaged process')
+										});
+
+										return Promise.resolve({
+											kind: 'exited',
+											exit: { kind: 'code', code: 0 }
+										});
+									},
+									dispose: () => Promise.resolve()
+								})
+						})
+					});
+				} else {
+					peer.tools.default(pi, peer.name);
+				}
+
+				pi.on('session_start', async (_event, context) => {
+					const sandbox = await client.get(context);
+
+					acquired.push(sandbox.providerId);
+				});
+			}
+		}));
+
+		await withPiRuntime(
+			reverse ? extensions.toReversed() : extensions,
+			async (runtime, errors) => {
+				const command = 'release check';
+				const event = await runtime.session.extensionRunner.emitUserBash({
+					type: 'user_bash',
+					command,
+					excludeFromContext: false,
+					cwd: runtime.session.sessionManager.getCwd()
+				});
+
+				if (event?.operations === undefined) {
+					throw new Error(
+						'The release did not supply Pi user-shell operations.'
+					);
+				}
+
+				const result = await runtime.session.executeBash(command, undefined, {
+					operations: event.operations
+				});
+
+				expect({
+					errors,
+					acquired,
+					result,
+					requests,
+					versions: peers.map(({ packageVersion }) => packageVersion),
+					isSameFactory:
+						first.consumers.createSandboxClient ===
+						second.consumers.createSandboxClient,
+					isSameBuild: first.buildId === second.buildId
+				}).toStrictEqual({
+					errors: [],
+					acquired: [providerId, providerId],
+					result: {
+						output: 'packaged process',
+						exitCode: 0,
+						cancelled: false,
+						truncated: false,
+						fullOutputPath: undefined
+					},
+					requests: [
+						{
+							kind: 'shell',
+							dialect: 'sh',
+							command,
+							cwd: template.workspace.root
+						}
+					],
+					versions: ['1.0.0', '1.0.0'],
+					isSameFactory: false,
+					isSameBuild: true
+				});
+			},
+			{ bindFixtureSources: false }
+		);
+	}
+);
+
+it.skipIf(!isPackageRun)(
+	'closes an owned copy when the installed adapter rejects its handle',
+	async () => {
+		const [root] = installedPackages();
+		const { checkedCopy } = (await import(
+			pathToFileURL(path.join(root, 'dist/sandbox-copy.js')).href
+		)) as typeof import('./sandbox-copy.js');
+		const resources = new Set(['owned-copy']);
+
+		await expect(
+			checkedCopy(
+				{
+					sandbox: { backendId: 'owned-copy' },
+					close() {
+						resources.delete('owned-copy');
+
+						return Promise.resolve({
+							confirmed: true,
+							failures: [],
+							recoveries: []
+						});
+					}
+				},
+				{},
+				import.meta.filename
+			)
+		).rejects.toMatchObject({
+			name: 'InvalidSandboxDeclarationError',
+			detail: { kind: 'declaration', field: 'copy' }
+		});
+		expect(resources).toStrictEqual(new Set());
+	}
+);
 
 async function rewrite(file: string, from: string, to: string): Promise<void> {
 	const source = await readFile(file, 'utf8');
@@ -61,14 +328,18 @@ async function loadBuild(
 ) {
 	const directory = path.join(root, name);
 	const distribution = path.join(directory, 'dist');
+	const { installed } = packageFixture;
+	const source = installed?.[featureLevel] ?? sdk;
 
-	await cp(path.join(sdk, 'dist'), distribution, { recursive: true });
+	await cp(path.join(source, 'dist'), distribution, { recursive: true });
 	await cp(
-		path.join(sdk, 'package.json'),
+		path.join(source, 'package.json'),
 		path.join(directory, 'package.json')
 	);
 	await symlink(
-		path.join(sdk, 'node_modules'),
+		installed === undefined
+			? path.join(sdk, 'node_modules')
+			: path.dirname(source),
 		path.join(directory, 'node_modules')
 	);
 
@@ -98,7 +369,22 @@ async function loadBuild(
 		);
 	}
 
-	const identity = await writeProtocolBuild(distribution);
+	if (major !== PROTOCOL_MAJOR || featureLevel > 0) {
+		await writeProtocolBuild(distribution);
+	}
+
+	return loadPeer(distribution, name, featureLevel, major);
+}
+
+async function loadPeer(
+	distribution: string,
+	name: string,
+	featureLevel: number,
+	major: number
+) {
+	const metadata = (await import(
+		pathToFileURL(path.join(distribution, 'protocol-build.js')).href
+	)) as typeof import('./protocol-build.js');
 
 	const consumers = (await import(
 		pathToFileURL(path.join(distribution, 'consumer.js')).href
@@ -109,15 +395,19 @@ async function loadBuild(
 	const internals = (await import(
 		pathToFileURL(path.join(distribution, 'discovery.js')).href
 	)) as typeof discovery;
+	const tools = (await import(
+		pathToFileURL(path.join(distribution, 'pi-tools.js')).href
+	)) as typeof import('./pi-tools.js');
 
 	return {
 		consumers,
 		providers,
 		discovery: internals,
+		tools,
 		name,
 		featureLevel,
 		major,
-		...identity
+		...metadata.protocolBuild()
 	};
 }
 

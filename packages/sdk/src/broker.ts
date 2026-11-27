@@ -240,12 +240,18 @@ export class SandboxBroker implements BrokerService {
 			return;
 		}
 
+		const append = this.#dependencies.appendLedger;
+
 		return resolvedReviewSource(
 			context,
 			proof.value,
 			query.extensionSource,
 			() => proof.isCurrent() && this.#liveReviewCalls.has(key),
-			this.#dependencies.appendLedger
+			append === undefined
+				? undefined
+				: (entry) => {
+						append(session.sessionId, entry);
+					}
 		);
 	}
 

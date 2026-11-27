@@ -601,9 +601,11 @@ the host.
 
 For each review copy, the broker records the requesting extension and the
 negotiated policy. Users can inspect the current session with `/byos log` and
-filter by tool call ID. Users rely on the ledger to see who approved added
-access. Permission extensions can correlate the executed destination and review
-copy with the pending call.
+filter by tool call ID. The command sends its output to Pi's UI only. BYOS
+labels entries as unverified when the current ledger writer cannot confirm their
+origin. Users rely on the ledger to see who approved added access. Permission
+extensions can correlate the executed destination and review copy with the
+pending call.
 
 ## Diagnostics
 

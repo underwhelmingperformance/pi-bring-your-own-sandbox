@@ -96,7 +96,10 @@ import { isRecord, isRecovery, snapshotProviderInfo } from './validation.js';
 
 export interface GenerationDependencies {
 	readonly diagnostics?: DiagnosticStore;
-	readonly appendLedger?: (entry: SandboxLedgerEntry) => void;
+	readonly appendLedger?: (
+		sessionId: string,
+		entry: SandboxLedgerEntry
+	) => void;
 	readonly protocol?: ProtocolIdentity;
 	readonly providers: (
 		context: SandboxContext

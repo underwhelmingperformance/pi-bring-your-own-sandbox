@@ -134,6 +134,7 @@ export function effectiveCommand(
 export class PendingEscalation {
 	readonly #pi: ExtensionAPI;
 	readonly #context: ExtensionContext;
+	readonly #sessionId: string;
 	readonly #input: EscalationData;
 	readonly #scope: OperationScope;
 	readonly #decisionFinished = new AbortController();
@@ -156,6 +157,7 @@ export class PendingEscalation {
 	) {
 		this.#pi = pi;
 		this.#context = context;
+		this.#sessionId = context.sessionManager.getSessionId();
 		this.#input = input;
 		this.#settings = settings;
 		this.#broker = broker;
@@ -348,7 +350,7 @@ export class PendingEscalation {
 		this.#isFinished = true;
 		this.#scope.dispose();
 		this.#decisionFinished.abort();
-		appendLedgerEntry(this.#pi, {
+		appendLedgerEntry(this.#pi, this.#sessionId, {
 			kind: 'escalation',
 			request: this.#request ?? this.#input,
 			outcome,

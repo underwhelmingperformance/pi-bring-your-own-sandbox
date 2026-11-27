@@ -4,7 +4,7 @@ import { bindFactory, ensureSandboxService } from '../default-broker.js';
 import { formatProviders, formatStatus } from '../diagnostics.js';
 import type { DisplayText } from '../display-text.js';
 import { cleanDisplayText, joinDisplayLines } from '../display-text.js';
-import { sendDisplayMessage } from '../display-ui.js';
+import { notifyDisplay, sendDisplayMessage } from '../display-ui.js';
 import { isSandboxError, SandboxInitialisationError } from '../errors.js';
 import { formatLedger } from '../escalation-ledger.js';
 import { describeShellIntegration } from '../pi-integration-status.js';
@@ -34,11 +34,7 @@ export function registerSandboxDiagnostics(
 			const [command, filter, ...extra] = action.split(/\s+/u);
 
 			if (command === 'log' && extra.length === 0) {
-				sendDisplayMessage(
-					pi,
-					cleanDisplayText('byos'),
-					formatLedger(context, filter)
-				);
+				notifyDisplay(context, formatLedger(context, filter), 'info');
 
 				return;
 			}

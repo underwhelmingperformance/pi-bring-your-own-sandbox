@@ -224,8 +224,8 @@ export function bindFactory(pi: SandboxHost, extensionSource: string): void {
 			pi,
 			{
 				diagnostics: settings.diagnostics,
-				appendLedger(entry) {
-					appendLedgerEntry(pi, entry);
+				appendLedger(sessionId, entry) {
+					appendLedgerEntry(pi, sessionId, entry);
 				},
 				protocol: identity,
 				providers: async (configContext) => [

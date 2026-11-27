@@ -160,18 +160,45 @@ export type EscalationEntry = Extract<
 
 const customType = 'byos.ledger';
 const isLedgerEntry = checker(ledgerEntrySchema);
+const historicalViolationDetail = Type.Object({
+	operation: nonEmptyStringSchema,
+	accessProperty: Type.KeyOf(accessPolicySchema),
+	resource: Type.Optional(Type.String())
+});
+const isHistoricalViolation = checker(
+	Type.Object({
+		kind: Type.Literal('violation'),
+		toolCallId: Type.Optional(nonEmptyStringSchema),
+		operationId: nonEmptyStringSchema,
+		providerId: nonEmptyStringSchema,
+		violations: denseArray(historicalViolationDetail)
+	})
+);
+
+interface OwnEntry {
+	readonly sessionId: string;
+	readonly text: string;
+}
+
+const ownEntries = new WeakMap<object, OwnEntry>();
 
 export function appendLedgerEntry(
 	pi: SandboxHost,
+	sessionId: string,
 	entry: SandboxLedgerEntry
 ): void {
-	appendTypedEntry(pi, cleanDisplayText(customType), entry);
+	const data = structuredClone(entry);
+
+	ownEntries.set(data, { sessionId, text: JSON.stringify(data) });
+	appendTypedEntry(pi, cleanDisplayText(customType), data);
 }
 
 export function formatLedger(
 	context: Pick<ExtensionContext, 'sessionManager'>,
 	filter?: string
 ): DisplayText {
+	const sessionId = context.sessionManager.getSessionId();
+	const shown = new Set<object>();
 	const entries = context.sessionManager.getEntries().flatMap((entry) => {
 		if (entry.type !== 'custom' || entry.customType !== customType) {
 			return [];
@@ -179,16 +206,35 @@ export function formatLedger(
 
 		const data: unknown = entry.data;
 
-		if (!isLedgerEntry(data)) {
+		if (!isLedgerEntry(data) && !isHistoricalViolation(data)) {
 			return [];
 		}
 
 		const toolCallId =
 			data.kind === 'escalation' ? data.request.toolCallId : data.toolCallId;
 
-		return filter === undefined || filter === toolCallId
-			? cleanFullDisplayText(JSON.stringify(data))
-			: [];
+		if (filter !== undefined && filter !== toolCallId) {
+			return [];
+		}
+
+		try {
+			const text = JSON.stringify(data);
+			const own = ownEntries.get(data);
+
+			if (own?.sessionId !== sessionId || own.text !== text) {
+				return cleanFullDisplayText('Unverified ledger entry ' + text);
+			}
+
+			if (shown.has(data)) {
+				return [];
+			}
+
+			shown.add(data);
+
+			return cleanFullDisplayText(text);
+		} catch {
+			return [];
+		}
 	});
 
 	return entries.length === 0

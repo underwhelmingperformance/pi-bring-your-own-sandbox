@@ -44,7 +44,8 @@ async function fixture(
 		| 'cleanup-failure'
 		| 'invalid-config',
 	execute: (fixture: Fixture) => Promise<void>,
-	extensions: readonly InlineExtension[] = []
+	extensions: readonly InlineExtension[] = [],
+	notify?: ExtensionContext['ui']['notify']
 ): Promise<void> {
 	const secret = 'PRIVATE_PROVIDER_TOKEN';
 	const backend = new MemoryBackend();
@@ -141,6 +142,7 @@ async function fixture(
 		},
 		{
 			includeBuiltins: true,
+			...(notify !== undefined && { notify }),
 			prepare(_directory, agentDirectory) {
 				vi.stubEnv('PI_CODING_AGENT_DIR', agentDirectory);
 				config.set(
@@ -365,7 +367,10 @@ it('prints command usage without starting a model turn', async () => {
 	});
 });
 
-it('filters the current session ledger by tool call and escapes display controls', async () => {
+const display = (value: unknown) =>
+	JSON.stringify(value).replace('\u{202E}', String.raw`\u{202e}`);
+
+it('keeps ledger output in the UI and identifies unverified entries', async () => {
 	const entry: SandboxLedgerEntry = {
 		kind: 'escalation',
 		request: {
@@ -377,30 +382,55 @@ it('filters the current session ledger by tool call and escapes display controls
 		outcome: 'denied',
 		decider: { kind: 'configuration' }
 	};
+	const foreign = { ...entry, outcome: 'allowed' };
+	const legacy = {
+		kind: 'violation',
+		toolCallId: 'selected',
+		operationId: 'older-operation',
+		providerId: 'fixture',
+		violations: [{ operation: 'open', accessProperty: 'network' }]
+	};
+	const notify = vi.fn<ExtensionContext['ui']['notify']>();
 
-	await fixture('default', async ({ runtime, pi, errors, counts }) => {
-		appendLedgerEntry(pi, {
-			...entry,
-			request: { ...entry.request, toolCallId: 'other' }
-		});
-		appendLedgerEntry(pi, entry);
-		await runtime.session.prompt('/byos log selected');
+	await fixture(
+		'default',
+		async ({ runtime, pi, context, errors, counts }) => {
+			const sessionId = context.sessionManager.getSessionId();
 
-		expect({ ...counts(), errors, output: messages(runtime) }).toStrictEqual({
-			opens: 0,
-			disposals: 0,
-			errors: [],
-			output: [
-				{
-					display: true,
-					content: JSON.stringify(entry).replace(
-						'\u{202E}',
-						String.raw`\u{202e}`
-					)
-				}
-			]
-		});
-	});
+			appendLedgerEntry(pi, sessionId, {
+				...entry,
+				request: { ...entry.request, toolCallId: 'other' }
+			});
+			appendLedgerEntry(pi, sessionId, entry);
+			pi.appendEntry('byos.ledger', foreign);
+			pi.appendEntry('byos.ledger', legacy);
+			await runtime.session.prompt('/byos log selected');
+
+			expect({
+				...counts(),
+				errors,
+				output: messages(runtime),
+				notifications: notify.mock.calls
+			}).toStrictEqual({
+				opens: 0,
+				disposals: 0,
+				errors: [],
+				output: [],
+				notifications: [
+					[
+						[
+							display(entry),
+							'Unverified ledger entry ' + display(foreign),
+							'Unverified ledger entry ' + display(legacy)
+						].join('\n'),
+						'info'
+					]
+				]
+			});
+		},
+		[],
+		notify
+	);
 });
 
 it('reports requested shell integration without claiming verified interception', async () => {

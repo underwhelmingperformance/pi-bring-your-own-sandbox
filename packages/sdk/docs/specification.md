@@ -124,22 +124,25 @@ conformance cases handle it.
 | `hostWorkspaceWrites` | Prevents all changes to the host checkout, including changes through aliases. The permission reviewer relies on this during investigations.               | Requires write access to the live checkout. Escalated `bash` uses it for commands that must edit the live checkout when the configured policy keeps it read-only. |
 | `network`             | Prevents workload network access. The permission reviewer and Docker shell profile rely on it for offline commands.                                       | Requires network access. Escalated `bash` uses it for operations such as fetching a dependency.                                                                   |
 | `hostUserData`        | Prevents reads and writes to host user data. The permission reviewer and Docker shell profile rely on it to exclude host credentials and unrelated files. | Requires read access to host user data. Escalated `bash` uses it for commands that must read user configuration outside the checkout.                             |
-| `hostSystemFiles`     | Prevents reads and writes to host system files. The Docker shell profile relies on it to run against the container image's system files.                  | Requires read access to host system files. Escalated `bash` uses it for commands that require a toolchain or configuration installed on the host.                 |
+| `hostSystemFiles`     | Prevents reads and writes to host system files. The Docker shell profile relies on it to run against the container image's system files.                  | Requires read access to host system files. Escalated `bash` uses it for commands that need files under a system root.                                             |
 
-Host system files are files installed and maintained for the host operating
-system or its system-wide runtimes. Examples are OS binaries in `/bin` or
-`/usr/bin`, machine configuration in `/etc` and macOS system files in `/System`.
-Host user data includes user files outside the checkout, such as credentials,
-other projects and user-installed tools. User data under a system-managed
-directory stays user data. Classify mixed content as user data if the provider
-cannot enforce distinct policies within it. The user gives the agent the entire
-workspace tree. Every entry in that tree is workspace content, including a hard
-link with another link outside the tree. Host file restrictions govern access to
-host paths outside the workspace. A provider that exposes the live checkout
-refuses sockets, FIFOs and device files in the checkout when it opens. A host
-process can add entries after open, which falls outside this contract. Target
-files, including a container image's operating system and dependencies, fall
-outside both host classes.
+The broker classifies host files by canonical path in this order.
+
+1. A path within the checkout is workspace content. This includes a hard link in
+   the checkout with another link outside it.
+2. A path at or below one of the platform's system roots is a host system file.
+   The file's owner and author do not affect its class.
+3. Every other host path is host user data. Canonical paths under `/usr/local`
+   and `/var` are examples.
+
+The SDK exports the fixed `hostSystemRoots` map from `/provider`. The macOS list
+includes `/private/etc`, the canonical path of `/etc`. Providers document any
+extra runtime resources that their launchers need.
+
+A provider that exposes the live checkout refuses sockets, FIFOs and device
+files in the checkout when it opens. A host process can add entries after open,
+which falls outside this contract. The host classes apply only to host files. A
+target can have its own operating system and dependencies.
 
 The pi-permission-auto-review extension sets `hostWorkspaceWrites`, `network`
 and `hostUserData` to `prevented` for investigation. It leaves `hostSystemFiles`
@@ -231,9 +234,10 @@ command can read one host configuration file without access to the rest of the
 user's home directory.
 
 A grant to a credential location outside the checkout requires an escalation
-that lists the path, and a decision for that call. An escalation of the
-`hostUserData` property alone keeps the provider's credential exclusion. If no
-provider profile can satisfy the request, the confirmation describes the
+that lists the path, and a decision for that call. The broker checks credential
+locations and their aliases independently of the file class. An escalation of
+the `hostUserData` property alone keeps the provider's credential exclusion. If
+no provider profile can satisfy the request, the confirmation describes the
 unrestricted host destination. An approval for that destination permits
 execution with no effective restrictions.
 

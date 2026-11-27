@@ -104,6 +104,7 @@ value createTargetFileOperations (target-operations.d.ts)
 value credentialLocations (credential-locations.d.ts)
 value defaultProtectedWorkspacePaths (protected-workspace-paths.d.ts)
 value encodePosixArgv (shell-transport.d.ts)
+value hostSystemRoots (host-system-roots.d.ts)
 value isProtectedWorkspacePath (protected-workspace-paths.d.ts)
 value isSandboxError (errors.d.ts)
 value mapSandboxErrno (host-error.d.ts)
@@ -1266,6 +1267,9 @@ export interface PosixProcessRunnerOptions {
 export interface ProcessSignals {
     readonly kill: (id: number, signal: NodeJS.Signals | 0) => void;
 }
+
+// host-system-roots.d.ts
+declare const hostSystemRoots: Readonly<Record<'darwin' | 'linux', readonly string[]>>;
 
 // host.d.ts
 export declare function initialiseSandboxHost(pi: SandboxHost, extensionSource: string, options: SandboxHostOptions): void;

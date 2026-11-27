@@ -1,27 +1,12 @@
 import { realpath } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { homedir, platform } from 'node:os';
 import path from 'node:path';
 
 import { credentialLocations } from './credential-locations.js';
 import { UnsupportedSandboxPolicyError } from './errors.js';
+import { hostSystemRoots } from './host-system-roots.js';
 import type { PathGrants } from './policy-model.js';
 import type { ResolvedPath } from './profile-negotiation.js';
-
-const systemRoots = [
-	'/bin',
-	'/sbin',
-	'/usr/bin',
-	'/usr/sbin',
-	'/lib',
-	'/lib64',
-	'/usr/lib',
-	'/usr/libexec',
-	'/usr/share',
-	'/System',
-	'/Library/Apple/System',
-	'/etc',
-	'/private/etc'
-];
 
 function isWithin(root: string, candidate: string): boolean {
 	const relative = path.relative(root, candidate);
@@ -73,6 +58,9 @@ export async function resolvePathGrants(
 	}
 
 	const root = await canonicalPath(workspace);
+	const host = platform();
+	const systemRoots =
+		host === 'darwin' || host === 'linux' ? hostSystemRoots[host] : [];
 	const home = homedir();
 	const excluded = credentialLocations.map((location) =>
 		path.join(home, location.slice(2))
@@ -129,8 +117,7 @@ export async function resolvePathGrants(
 			const isCredential = paths.get(candidate) === true;
 			const location = isWithin(root, candidate)
 				? 'workspace'
-				: !isCredential &&
-					  systemRoots.some((directory) => isWithin(directory, candidate))
+				: systemRoots.some((directory) => isWithin(directory, candidate))
 					? 'host-system-files'
 					: 'host-user-data';
 
@@ -138,8 +125,7 @@ export async function resolvePathGrants(
 				kind,
 				path: candidate,
 				location,
-				...(isCredential &&
-					location === 'host-user-data' && { isCredential: true })
+				...(isCredential && location !== 'workspace' && { isCredential: true })
 			});
 		}
 	}

@@ -61,6 +61,7 @@ export type {
 	PosixProcessRunnerOptions
 } from './host-process.js';
 export { PosixProcessRunner } from './host-process.js';
+export { hostSystemRoots } from './host-system-roots.js';
 export { SandboxLaunchFrames } from './launch-frames.js';
 export {
 	defaultProtectedWorkspacePaths,

@@ -460,14 +460,14 @@ The backends that one provider runs for one Pi session.
 
 ### Host system files
 
-Files installed and maintained for the host operating system or a system-wide
-runtime, such as OS binaries in `/bin` or `/usr/bin`, machine configuration in
-`/etc` and macOS system files in `/System`.
+Host files outside the checkout with canonical paths at or below a root in the
+SDK's `hostSystemRoots` list for the host platform. The file's owner and author
+do not affect its class.
 
 ### Host user data
 
-Host files outside the checkout and outside the host system files. This includes
-user data in system-managed directories. Readable policies exclude [credential
+Host files with canonical paths outside the checkout and outside the platform's
+system roots. Readable policies exclude [credential
 locations][credential-locations] unless an approved escalation specifies the
 path.
 
@@ -538,4 +538,6 @@ provider includes them in its own settings parser.
 
 ### Workspace
 
-The directory tree that a sandbox works in, normally the user's project.
+The directory tree that a sandbox works in, normally the user's project. A
+canonical host path within the checkout is workspace content. A hard link in the
+checkout follows this rule even if another link is outside it.

@@ -19,11 +19,13 @@ enforces it.
 
 ## 1. The system enforces the rules
 
-Every rule in the contract is enforced by code: by the types, by a runtime
-check, by the conformance suite, or by a repository check such as lint. A rule
-that is only written down is a defect, so enforce it or delete it. Where
-possible, make the wrong thing impossible to write. Otherwise, detect it
-automatically. Rely on review only when neither is possible.
+Types, runtime checks, conformance tests and repository checks enforce the
+contract. The [rule for adding APIs][api-additions] is the exception. Review
+checks whether a proposed API has a known use case. For the rest of the
+contract, make the wrong thing impossible to write where possible and detect it
+automatically where necessary.
+
+[api-additions]: #11-a-small-surface-split-by-audience
 
 BYOS connects code written by different people, released at different times, in
 different repositories. Someone who never read a written rule will eventually
@@ -277,13 +279,13 @@ Enforced by:
 
 ## 11. A small surface, split by audience
 
-Consumers, providers, the embedding host, the Pi tool integration and the test
-kit have their own entry points. Reviewers and permission extensions use the
-consumer client for review and escalation. Nothing is exported unless someone in
-that audience uses it. Message formats and channel names stay internal.
+Keep the public surface split by audience. Consumers, reviewers, providers,
+embedding hosts, Pi tool integrations and provider test authors each need
+different operations. The SDK keeps message formats and channel names internal.
 
-Every capability in the contract has a consumer that uses it. A capability
-without one waits until a consumer exists.
+Add a public API only for a known use case. Review checks that the proposed
+addition meets that use case. Third parties can implement, register and test a
+provider using the public API alone. BYOS keeps no list of consumers.
 
 Everything exported has to stay compatible (principle 7), so each export is a
 cost for as long as it exists. Adding to the contract later is cheap, and
@@ -309,7 +311,7 @@ impersonate a startup participant, including a build candidate, provider or
 host. Installing an extension means trusting that extension to participate in
 startup and review.
 
-Enforced by:
+The import boundary is enforced by:
 
 - the package `exports` map;
 - a committed report of the public API, which changes only when a change intends

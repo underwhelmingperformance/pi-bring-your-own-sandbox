@@ -88,21 +88,25 @@ export const readOptionsSchema = Type.Object(
 	{ additionalProperties: false }
 );
 
+const onOutput = callable<NonNullable<ProcessOptions['onOutput']>>(
+	[Type.Ref('sandbox.processOutput')],
+	Type.Undefined()
+);
+
 export const processOptionsSchema = Type.Object(
 	{
 		...operationOptionsSchema.properties,
 		maxCaptureBytes: Type.Optional(
 			Type.Integer({ minimum: 0, maximum: MAX_CAPTURE_BYTES })
 		),
-		onOutput: Type.Optional(callable<NonNullable<ProcessOptions['onOutput']>>())
+		onOutput: Type.Optional(onOutput)
 	},
 	{ additionalProperties: false }
 );
 
-export const acquireOptionsSchema = Type.Object(
+export const requirementsSchema = Type.Object(
 	{
 		terminationScope: Type.Optional(terminationScopeSchema),
-		...operationOptionsSchema.properties,
 		processKinds: Type.Optional(
 			denseArray(processKindSchema, { uniqueItems: true })
 		),
@@ -113,6 +117,11 @@ export const acquireOptionsSchema = Type.Object(
 		),
 		access: Type.Optional(accessSchema)
 	},
+	{ additionalProperties: false }
+);
+
+export const acquireOptionsSchema = Type.Object(
+	{ ...requirementsSchema.properties, ...operationOptionsSchema.properties },
 	{ additionalProperties: false }
 );
 

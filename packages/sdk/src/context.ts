@@ -1,12 +1,16 @@
 import { realpath } from 'node:fs/promises';
 import path from 'node:path';
 
+import { sandboxContextSchema } from './context-schemas.js';
 import type { SandboxContext, SandboxOperation } from './contracts.js';
 import {
 	SandboxInitialisationError,
 	StaleSandboxHandleError
 } from './errors.js';
+import { checker } from './schemas.js';
 import { isNonEmptyString } from './validation.js';
+
+const isSandboxContext = checker(sandboxContextSchema);
 
 export interface SessionIdentity {
 	readonly sessionId: string;
@@ -18,6 +22,10 @@ export function inspectContext(
 	operation: SandboxOperation
 ): SessionIdentity {
 	try {
+		if (!isSandboxContext(context)) {
+			throw new StaleSandboxHandleError({ operation });
+		}
+
 		const workspace = context.cwd;
 		const sessionId = context.sessionManager.getSessionId();
 

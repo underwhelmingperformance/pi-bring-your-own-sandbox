@@ -149,16 +149,17 @@ const reviewCopy = Type.Object({
 	policy: accessPolicySchema,
 	decider: permissionDecider
 });
-const entrySchema = Type.Union([escalation, reviewCopy]);
 
-export type SandboxLedgerEntry = ReadonlyData<Static<typeof entrySchema>>;
+export const ledgerEntrySchema = Type.Union([escalation, reviewCopy]);
+
+export type SandboxLedgerEntry = ReadonlyData<Static<typeof ledgerEntrySchema>>;
 export type EscalationEntry = Extract<
 	SandboxLedgerEntry,
 	{ kind: 'escalation' }
 >;
 
 const customType = 'byos.ledger';
-const isLedgerEntry = checker(entrySchema);
+const isLedgerEntry = checker(ledgerEntrySchema);
 
 export function appendLedgerEntry(
 	pi: SandboxHost,

@@ -41,6 +41,26 @@ import { registerFixtureProvider } from './fixtures/register-provider.js';
 import { registerSandboxProvider } from './provider-registration.js';
 import { checkedCopy } from './sandbox-copy.js';
 
+it('closes an owned copy before rejecting its malformed handle', async () => {
+	const close = vi.fn(() =>
+		Promise.resolve({ confirmed: true, failures: [], recoveries: [] })
+	);
+
+	await expect(
+		checkedCopy(
+			{ sandbox: { backendId: 'incomplete' }, close },
+			{},
+			import.meta.filename
+		)
+	).rejects.toMatchObject({
+		name: 'InvalidSandboxDeclarationError',
+		operation: 'acquire',
+		detail: { kind: 'declaration', field: 'copy' }
+	});
+
+	expect(close.mock.calls).toStrictEqual([[]]);
+});
+
 afterEach(() => {
 	vi.unstubAllEnvs();
 });

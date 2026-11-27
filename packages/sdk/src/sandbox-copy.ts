@@ -2,10 +2,10 @@ import { Type } from 'typebox';
 
 import { checkRequirements } from './acquire-options.js';
 import { settleSandboxClose } from './cleanup-report.js';
+import { ownedCopySchema } from './consumer-wire-schemas.js';
 import type {
 	Sandbox,
 	SandboxAcquireOptions,
-	SandboxCloseReport,
 	SandboxCopy,
 	SandboxErrorContext
 } from './contracts.js';
@@ -16,6 +16,7 @@ import {
 } from './errors.js';
 import type { CopySourceIdentity } from './protocol.js';
 import { checker, nonEmptyStringSchema } from './schemas.js';
+import { isRecord } from './validation.js';
 
 const hostSource = Type.Object(
 	{ kind: Type.Literal('host') },
@@ -30,6 +31,7 @@ const sandboxSource = Type.Object(
 	},
 	{ additionalProperties: false }
 );
+const isOwnedCopy = checker(ownedCopySchema);
 const isSource = checker(Type.Union([hostSource, sandboxSource]));
 
 export function copySource(input: unknown): CopySourceIdentity {
@@ -59,10 +61,33 @@ export function checkCopiedSandbox(
 }
 
 export async function checkedCopy(
-	copy: SandboxCopy,
+	copy: unknown,
 	options: SandboxAcquireOptions,
 	extensionSource: string
 ): Promise<SandboxCopy> {
+	if (!isOwnedCopy(copy)) {
+		const error = new InvalidSandboxDeclarationError({
+			operation: 'acquire',
+			extensionSource,
+			detail: { kind: 'declaration', field: 'copy' }
+		});
+		const close = isRecord(copy) ? copy['close'] : undefined;
+
+		if (typeof close === 'function') {
+			return rethrowCopyError(
+				error,
+				async () => {
+					const report: unknown = await Reflect.apply(close, copy, []);
+
+					return report;
+				},
+				{ operation: 'dispose', extensionSource }
+			);
+		}
+
+		throw error;
+	}
+
 	try {
 		checkCopiedSandbox(copy.sandbox, options, extensionSource);
 
@@ -78,7 +103,7 @@ export async function checkedCopy(
 
 export async function rethrowCopyError(
 	error: unknown,
-	close: () => Promise<SandboxCloseReport>,
+	close: () => Promise<unknown>,
 	identity: SandboxErrorContext
 ): Promise<never> {
 	const closeReport = await settleSandboxClose(close, identity);

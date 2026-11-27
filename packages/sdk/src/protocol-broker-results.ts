@@ -1,15 +1,9 @@
-import type { Sandbox, SandboxCopy } from './contracts.js';
+import { bindSandbox } from './consumer-wire-adapter.js';
 import { profileSchema, providerInfoSchema } from './policy-model.js';
 import type { BrokerService } from './protocol.js';
 import type { ProtocolIdentity } from './protocol-envelope.js';
 import { projectOffer } from './protocol-schema.js';
-import {
-	checkDemand,
-	sharedFeatureLevel,
-	unavailableFeature
-} from './protocol-version.js';
-import { acquireOptionsSchema } from './request-schemas.js';
-import { rethrowCopyError } from './sandbox-copy.js';
+import { sharedFeatureLevel, unavailableFeature } from './protocol-version.js';
 import { checker } from './schemas.js';
 
 const isProviderInfo = checker(providerInfoSchema);
@@ -26,49 +20,10 @@ export function brokerOffers(
 		return service;
 	}
 
-	async function reduceCopy(copy: SandboxCopy): Promise<SandboxCopy> {
-		try {
-			return Object.freeze({
-				sandbox: reduceSandbox(copy.sandbox),
-				close: copy.close.bind(copy)
-			});
-		} catch (error) {
-			return rethrowCopyError(error, () => copy.close(), {
-				operation: 'dispose',
-				providerId: copy.sandbox.providerId,
-				backendId: copy.sandbox.backendId
-			});
-		}
-	}
-
-	function reduceSandbox(sandbox: Sandbox): Sandbox {
-		const profile = projectOffer(profileSchema, sandbox.profile, level);
-
-		if (!isProfile(profile)) {
-			throw unavailableFeature('sandbox result', level, peer);
-		}
-
-		return Object.freeze<Sandbox>({
-			...sandbox,
-			profile,
-			async copy(options) {
-				checkDemand(
-					acquireOptionsSchema,
-					options ?? {},
-					local,
-					peer,
-					'sandbox copy'
-				);
-
-				return reduceCopy(await sandbox.copy(options));
-			}
-		});
-	}
-
 	return {
-		...service,
+		resolveReviewSource: service.resolveReviewSource.bind(service),
 		async acquire(context, options) {
-			return reduceSandbox(await service.acquire(context, options));
+			return bindSandbox(await service.acquire(context, options), local, peer);
 		},
 		async negotiate(context, options) {
 			const result = await service.negotiate(context, options);

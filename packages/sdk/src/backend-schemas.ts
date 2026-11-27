@@ -11,9 +11,12 @@ import type {
 } from './contracts.js';
 import { profileSchema } from './policy-model.js';
 import {
+	bytesSchema,
 	callable,
+	denseArray,
 	hostUserDataRootsSchema,
 	nonEmptyStringSchema,
+	nonNegativeIntegerSchema,
 	recoverySchema,
 	shellSchema,
 	targetPathSchema,
@@ -59,28 +62,77 @@ export const workspaceSchema = Type.Union([
 	workspaceShape('win32')
 ]);
 
+const operationContext = Type.Ref('provider.operationContext');
+const noResult = Type.Undefined();
+
 const fileReaderSchema = Type.Object({
-	readFile: callable<BackendFileReader['readFile']>(),
-	access: callable<BackendFileReader['access']>(),
-	stat: callable<BackendFileReader['stat']>()
+	readFile: callable<BackendFileReader['readFile']>(
+		[
+			targetPathSchema,
+			operationContext,
+			Type.Optional(nonNegativeIntegerSchema)
+		],
+		bytesSchema,
+		'async'
+	),
+	access: callable<BackendFileReader['access']>(
+		[targetPathSchema, operationContext],
+		noResult,
+		'async'
+	),
+	stat: callable<BackendFileReader['stat']>(
+		[targetPathSchema, operationContext],
+		Type.Ref('sandbox.fileStat'),
+		'async'
+	)
 });
 const fileWriterSchema = Type.Object({
-	writeFile: callable<BackendFileWriter['writeFile']>(),
-	access: callable<BackendFileWriter['access']>(),
-	mkdir: callable<BackendFileWriter['mkdir']>()
+	writeFile: callable<BackendFileWriter['writeFile']>(
+		[targetPathSchema, bytesSchema, operationContext],
+		noResult,
+		'async'
+	),
+	access: callable<BackendFileWriter['access']>(
+		[targetPathSchema, operationContext],
+		noResult,
+		'async'
+	),
+	mkdir: callable<BackendFileWriter['mkdir']>(
+		[targetPathSchema, operationContext],
+		noResult,
+		'async'
+	)
 });
 const directoryReaderSchema = Type.Object({
-	listDirectory: callable<BackendDirectoryReader['listDirectory']>(),
-	stat: callable<BackendDirectoryReader['stat']>()
+	listDirectory: callable<BackendDirectoryReader['listDirectory']>(
+		[targetPathSchema, operationContext],
+		Type.Ref('sandbox.directoryEntries'),
+		'async'
+	),
+	stat: callable<BackendDirectoryReader['stat']>(
+		[targetPathSchema, operationContext],
+		Type.Ref('sandbox.fileStat'),
+		'async'
+	)
 });
 const filesSchema = Type.Object({
 	read: Type.Optional(fileReaderSchema),
 	write: Type.Optional(fileWriterSchema),
 	list: Type.Optional(directoryReaderSchema)
 });
+const find = callable<NonNullable<BackendSearch['find']>>(
+	[Type.Ref('sandbox.findRequest'), operationContext],
+	Type.Ref('sandbox.findResult'),
+	'async'
+);
+const grep = callable<NonNullable<BackendSearch['grep']>>(
+	[Type.Ref('sandbox.grepRequest'), operationContext],
+	Type.Ref('sandbox.grepResult'),
+	'async'
+);
 const searchSchema = Type.Object({
-	find: Type.Optional(callable<NonNullable<BackendSearch['find']>>()),
-	grep: Type.Optional(callable<NonNullable<BackendSearch['grep']>>())
+	find: Type.Optional(find),
+	grep: Type.Optional(grep)
 });
 
 const pathGrantKind = Type.Union([Type.Literal('read'), Type.Literal('write')]);
@@ -93,7 +145,7 @@ const grantedPathSchema = Type.Object(
 	{ additionalProperties: false }
 );
 
-const grantedPathsSchema = Type.Array(grantedPathSchema);
+export const grantedPathsSchema = denseArray(grantedPathSchema);
 
 const backendShape = Type.Object({
 	id: nonEmptyStringSchema,
@@ -103,8 +155,16 @@ const backendShape = Type.Object({
 	hostUserDataRoots: Type.Optional(hostUserDataRootsSchema),
 	policyDescription: nonEmptyStringSchema,
 	recovery: recoverySchema,
-	exec: callable<SandboxBackend['exec']>(),
-	dispose: callable<SandboxBackend['dispose']>(),
+	exec: callable<SandboxBackend['exec']>(
+		[Type.Ref('sandbox.processRequest'), Type.Ref('provider.processContext')],
+		Type.Ref('sandbox.processOutcome'),
+		'async'
+	),
+	dispose: callable<SandboxBackend['dispose']>(
+		[operationContext],
+		noResult,
+		'async'
+	),
 	files: Type.Optional(filesSchema),
 	search: Type.Optional(searchSchema)
 });

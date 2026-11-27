@@ -2,7 +2,9 @@ import { Type } from 'typebox';
 import { expect, it } from 'vitest';
 
 import { introducedAt } from './fixtures/protocol-feature.js';
+import { protocolSchemas } from './protocol-payloads.js';
 import { protocolSnapshot } from './protocol-snapshot.js';
+import { isRecord } from './validation.js';
 
 const base = Type.String({ minLength: 1 });
 const first = Type.Object({ id: base }, { additionalProperties: false });
@@ -52,4 +54,60 @@ it('includes later fields in the fixed header at every level', () => {
 	expect(protocolSnapshot(1, 0, { envelope: compatible })).not.toStrictEqual(
 		protocolSnapshot(1, 0, { envelope: first })
 	);
+});
+
+it('records arguments, results and failures for every protocol callable', () => {
+	const missing: string[] = [];
+	const references = new Set<string>();
+	let calls = 0;
+
+	function visit(value: unknown, location: string): void {
+		if (Array.isArray(value)) {
+			const children: readonly unknown[] = value;
+
+			for (const [index, child] of children.entries()) {
+				visit(child, location + '.' + String(index));
+			}
+
+			return;
+		}
+
+		if (!isRecord(value)) {
+			return;
+		}
+
+		if (value['type'] === 'function') {
+			calls++;
+
+			const failure = value['x-byos-failure'];
+
+			if (
+				!Array.isArray(value['parameters']) ||
+				!isRecord(value['returnType']) ||
+				!isRecord(failure) ||
+				failure['$ref'] !== 'error' ||
+				!Object.hasOwn(value, 'x-byos-result-mode')
+			) {
+				missing.push(location);
+			}
+		}
+
+		if (typeof value['$ref'] === 'string' && value['$ref'].includes('.')) {
+			references.add(value['$ref']);
+		}
+
+		for (const [key, child] of Object.entries(value)) {
+			visit(child, location + '.' + key);
+		}
+	}
+
+	visit(protocolSnapshot(1, 0, protocolSchemas), 'protocol');
+
+	expect(calls).toBeGreaterThan(40);
+	expect({
+		missing,
+		unresolved: [...references].filter(
+			(reference) => !Object.hasOwn(protocolSchemas, reference)
+		)
+	}).toStrictEqual({ missing: [], unresolved: [] });
 });

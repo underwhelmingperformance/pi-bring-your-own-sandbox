@@ -87,6 +87,10 @@ import type { ProtocolIdentity } from './protocol-envelope.js';
 import { checkDemand } from './protocol-version.js';
 import type { DiagnosticStore } from './provider-diagnostics.js';
 import { ProviderDiagnostics } from './provider-diagnostics.js';
+import {
+	providerCopyRequestSchema,
+	providerOpenRequestSchema
+} from './provider-wire-schemas.js';
 import type { SaveReadRoots } from './read-root-persistence.js';
 import { acquireOptionsSchema } from './request-schemas.js';
 import { copySource, rethrowCopyError } from './sandbox-copy.js';
@@ -432,16 +436,6 @@ export class SandboxGeneration {
 		const local = this.#dependencies.protocol;
 		const peer = prepared.provider.protocol;
 
-		if (local !== undefined && peer !== undefined) {
-			checkDemand(
-				policySchema,
-				slot.profile.policy,
-				local,
-				peer,
-				'sandbox opening'
-			);
-		}
-
 		const paths = requestedPathGrants(slot.paths);
 		const isConstrained = prepared.provider.id !== passthroughProvider.id;
 		const canAccessUserData = slot.profile.policy.hostUserData !== 'denied';
@@ -453,6 +447,25 @@ export class SandboxGeneration {
 				slot.paths.some(({ location }) => location === 'host-user-data'))
 				? await this.#resolveCredentialExclusions()
 				: undefined;
+		const request = {
+			generationId: this.#id,
+			sessionId: this.#session.sessionId,
+			hostWorkspace: this.#session.workspace,
+			profile: slot.profile,
+			...(hostUserDataRoots !== undefined && { hostUserDataRoots }),
+			...(credentialExclusions !== undefined && { credentialExclusions }),
+			...(paths !== undefined && { paths })
+		};
+
+		if (local !== undefined && peer !== undefined) {
+			checkDemand(
+				providerOpenRequestSchema,
+				request,
+				local,
+				peer,
+				'sandbox opening'
+			);
+		}
 
 		scope.check();
 		scope.setCleanupBudgets(this.#cleanup);
@@ -462,34 +475,23 @@ export class SandboxGeneration {
 		let candidate: unknown;
 
 		try {
-			candidate = await prepared.configured.open(
-				{
-					generationId: this.#id,
-					sessionId: this.#session.sessionId,
-					hostWorkspace: this.#session.workspace,
-					profile: slot.profile,
-					...(hostUserDataRoots !== undefined && { hostUserDataRoots }),
-					...(credentialExclusions !== undefined && { credentialExclusions }),
-					...(paths !== undefined && { paths })
-				},
-				{
-					...scope.context,
-					reportRecovery: (recovery) => {
-						if (!isOpening || slot.isOpenCleanupConfirmed) {
-							throw new InvalidSandboxDeclarationError({ operation: 'open' });
-						}
-
-						this.#reportRecovery(slot, recovery);
-					},
-					confirmCleanup: () => {
-						if (!isOpening) {
-							throw new InvalidSandboxDeclarationError({ operation: 'open' });
-						}
-
-						slot.isOpenCleanupConfirmed = true;
+			candidate = await prepared.configured.open(request, {
+				...scope.context,
+				reportRecovery: (recovery) => {
+					if (!isOpening || slot.isOpenCleanupConfirmed) {
+						throw new InvalidSandboxDeclarationError({ operation: 'open' });
 					}
+
+					this.#reportRecovery(slot, recovery);
+				},
+				confirmCleanup: () => {
+					if (!isOpening) {
+						throw new InvalidSandboxDeclarationError({ operation: 'open' });
+					}
+
+					slot.isOpenCleanupConfirmed = true;
 				}
-			);
+			});
 		} finally {
 			isOpening = false;
 		}
@@ -1359,7 +1361,23 @@ export class SandboxGeneration {
 			const copier = (
 				request: Parameters<typeof copy>[0],
 				opening: SandboxOpenContext
-			) => copy.call(configured, request, opening);
+			) => {
+				const local = this.#dependencies.protocol;
+				const peer = provider.protocol;
+
+				if (local !== undefined && peer !== undefined) {
+					checkDemand(
+						providerCopyRequestSchema,
+						request,
+						local,
+						peer,
+						'sandbox copying'
+					);
+				}
+
+				return copy.call(configured, request, opening);
+			};
+
 			const generation = new SandboxGeneration(this.#session, {
 				diagnostics: this.#diagnostics,
 				...(this.#dependencies.protocol !== undefined && {

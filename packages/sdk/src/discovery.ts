@@ -1,6 +1,10 @@
 import type { EventBus } from '@earendil-works/pi-coding-agent';
+import { Type } from 'typebox';
 
+import { brokerStatusSchema } from './broker-status-schema.js';
 import { builtinProviders } from './builtin-providers.js';
+import { bindSandbox } from './consumer-wire-adapter.js';
+import { negotiationSchema } from './consumer-wire-schemas.js';
 import { DuplicateBrokerError, DuplicateProviderError } from './errors.js';
 import { providerInfoSchema } from './policy-model.js';
 import type { BrokerService } from './protocol.js';
@@ -19,11 +23,23 @@ import { checkDemand, sharedFeatureLevel } from './protocol-version.js';
 import { acquireOptionsSchema } from './request-schemas.js';
 import type { DiscoveredProvider } from './runtime-participant.js';
 import { areProtocolIdentitiesEqual } from './runtime-participant.js';
-import { checker } from './schemas.js';
+import { checker, denseArray } from './schemas.js';
 import { brokerServiceSchema } from './service-schemas.js';
 import { snapshotProviderInfo } from './validation.js';
 
 export const isBrokerService = checker(brokerServiceSchema);
+
+const isNegotiation = checker(negotiationSchema);
+const isStatus = checker(brokerStatusSchema);
+const isProviderList = checker(denseArray(Type.Unknown()));
+
+export function checkedNegotiation(value: unknown, peer: ProtocolIdentity) {
+	if (!isNegotiation(value)) {
+		throw invalidProtocolServiceReply(peer);
+	}
+
+	return value;
+}
 
 const isBrokerReply = checker(brokerReply);
 const isProviderAdvertisement = checker(providerAdvertisement);
@@ -85,12 +101,12 @@ function boundBroker(
 
 	return Object.freeze<BrokerService>({
 		resolveReviewSource: service.resolveReviewSource.bind(service),
-		acquire(context, options) {
+		async acquire(context, options) {
 			checkDemand(acquireOptionsSchema, options ?? {}, local, peer, 'acquire');
 
-			return service.acquire(context, options);
+			return bindSandbox(await service.acquire(context, options), local, peer);
 		},
-		negotiate(context, options) {
+		async negotiate(context, options) {
 			checkDemand(
 				acquireOptionsSchema,
 				options ?? {},
@@ -99,15 +115,26 @@ function boundBroker(
 				'negotiate'
 			);
 
-			return service.negotiate(context, options);
+			return checkedNegotiation(
+				await service.negotiate(context, options),
+				peer
+			);
 		},
 		async status(context) {
-			const status = await service.status(context);
+			const status: unknown = await service.status(context);
+
+			if (!isStatus(status)) {
+				throw invalidProtocolServiceReply(peer);
+			}
 
 			return { ...status, protocol: protocolIdentity(peer) };
 		},
 		async providers(context) {
-			const providers = await service.providers(context);
+			const providers: unknown = await service.providers(context);
+
+			if (!isProviderList(providers)) {
+				throw invalidProtocolServiceReply(peer);
+			}
 
 			return providers.flatMap((provider) => {
 				const offer = projectOffer(providerInfoSchema, provider, level);

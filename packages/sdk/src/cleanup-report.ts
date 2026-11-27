@@ -44,7 +44,7 @@ export function failedCloseReport(
 }
 
 export async function settleSandboxClose(
-	close: () => Promise<SandboxCloseReport>,
+	close: () => Promise<unknown>,
 	identity?: SandboxErrorContext
 ): Promise<SandboxCloseReport> {
 	try {

@@ -40,7 +40,7 @@ export const reviewIdentityReplySchema = Type.Union([
 	)
 ]);
 
-const reviewQuerySchema = Type.Object(
+export const reviewQuerySchema = Type.Object(
 	{
 		toolName: nonEmptyStringSchema,
 		toolCallId: nonEmptyStringSchema,

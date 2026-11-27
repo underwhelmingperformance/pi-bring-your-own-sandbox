@@ -1,3 +1,8 @@
+import {
+	readRootPersistenceSchema,
+	sandboxConfigContextSchema,
+	sandboxOpenContextSchema
+} from './context-schemas.js';
 import type {
 	AvailableSandboxProvider,
 	SandboxConfigContext,
@@ -18,6 +23,10 @@ import { onProtocolRequest, PROVIDER_CHANNEL } from './protocol-envelope.js';
 import { providerAdvertisement } from './protocol-payloads.js';
 import { projectReply } from './protocol-version.js';
 import {
+	providerCopyRequestSchema,
+	providerOpenRequestSchema
+} from './provider-wire-schemas.js';
+import {
 	invalidField,
 	providerConfigSchema,
 	sharedSettingsSchema
@@ -31,6 +40,11 @@ import {
 } from './service-schemas.js';
 import { isProviderInfo, snapshotProviderInfo } from './validation.js';
 
+const isConfigContext = checker(sandboxConfigContextSchema);
+const isOpenContext = checker(sandboxOpenContextSchema);
+const isOpenRequest = checker(providerOpenRequestSchema);
+const isCopyRequest = checker(providerCopyRequestSchema);
+const isReadRootPersistence = checker(readRootPersistenceSchema);
 const isProviderDeclaration = checker(providerDeclarationSchema);
 const isImplementation = checker(providerImplementationSchema);
 const isProviderConfig = checker(providerConfigSchema);
@@ -78,6 +92,13 @@ function bindConfig<Config>(
 		};
 
 		try {
+			if (!isConfigContext(context)) {
+				throw new InvalidSandboxConfigError({
+					...identity,
+					detail: { kind: 'config', field: 'context' }
+				});
+			}
+
 			const implementation = create();
 
 			if (
@@ -120,14 +141,39 @@ function bindConfig<Config>(
 
 			return Object.freeze<ConfiguredProviderV1>({
 				...(settings !== undefined && { settings }),
-				open: (request, running) =>
-					open({ ...request, configuration }, running),
+				async open(request, running) {
+					if (!isOpenRequest(request) || !isOpenContext(running)) {
+						throw new InvalidSandboxDeclarationError({
+							...identity,
+							operation: 'open'
+						});
+					}
+
+					return open({ ...request, configuration }, running);
+				},
 				...(copy !== undefined && {
-					copy: (request, running) =>
-						copy({ ...request, configuration }, running)
+					async copy(request, running) {
+						if (!isCopyRequest(request) || !isOpenContext(running)) {
+							throw new InvalidSandboxDeclarationError({
+								...identity,
+								operation: 'open'
+							});
+						}
+
+						return copy({ ...request, configuration }, running);
+					}
 				}),
 				...(persist !== undefined && {
-					persistReadRoot: (approval) => persist(approval, sharedSettingsSchema)
+					async persistReadRoot(approval) {
+						if (!isReadRootPersistence(approval)) {
+							throw new InvalidSandboxConfigError({
+								...identity,
+								detail: { kind: 'config', field: 'settings.readRoots' }
+							});
+						}
+
+						await persist(approval, sharedSettingsSchema);
+					}
 				})
 			});
 		} catch (error) {

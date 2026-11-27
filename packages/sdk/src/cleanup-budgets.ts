@@ -6,7 +6,7 @@ import { checker } from './schemas.js';
 
 const budgetSchema = Type.Integer({ minimum: 1, maximum: 300_000 });
 
-const cleanupBudgetsSchema = Type.Object(
+export const cleanupBudgetsSchema = Type.Object(
 	{
 		cancellationGraceMs: budgetSchema,
 		disposalTimeoutMs: budgetSchema

@@ -45,11 +45,17 @@ import {
 	localRuntimeBindings
 } from './runtime-participant.js';
 import { createRuntimeSettings } from './runtime-settings.js';
+import {
+	runtimeParticipantSchema,
+	shellSettingsSchema
+} from './runtime-wire-schemas.js';
 import { checker } from './schemas.js';
 import { publishBroker } from './service.js';
 import { ShellReviewRoutes } from './shell-review-routes.js';
 import { snapshotProviderInfo } from './validation.js';
 
+const isRuntimeParticipant = checker(runtimeParticipantSchema);
+const isShellSettings = checker(shellSettingsSchema);
 const isBuildAdvertisement = checker(buildAdvertisement);
 const isConnectRuntimeRequest = checker(connectRuntimeRequest);
 const isProtocolIdentity = checker(protocolIdentitySchema);
@@ -87,6 +93,7 @@ function connectParticipant(
 			receive(identity: ProtocolIdentity, received: RuntimeParticipant) {
 				if (
 					handoff.participant !== undefined ||
+					!isRuntimeParticipant(received) ||
 					!areProtocolIdentitiesEqual(identity, selected.identity)
 				) {
 					handoff.isInvalid = true;
@@ -208,6 +215,11 @@ export function bindFactory(pi: SandboxHost, extensionSource: string): void {
 				});
 			}
 		});
+
+		if (!isShellSettings(shellSettings)) {
+			throw invalidBootstrap();
+		}
+
 		const broker = new SandboxBroker(
 			pi,
 			{

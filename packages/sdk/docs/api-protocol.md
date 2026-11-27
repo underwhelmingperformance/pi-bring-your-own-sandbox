@@ -778,6 +778,13 @@ builds in a fresh process.
 
 [v1]: ../src/fixtures/protocol-snapshots/1.0.json
 
+The snapshot records each callable's parameters, result and failure schema. It
+records whether a call returns directly, returns a promise or permits either.
+Named references point to the schemas for nested handles, operation contexts,
+signals, byte buffers and close reports. The receiving adapters validate values
+against those contracts. If a copy returns an invalid handle and a callable
+close method, the receiver closes the copy before reporting the invalid result.
+
 The envelope header is fixed within a protocol major. The major is a positive
 integer, and the feature level is a non-negative integer. Replies repeat the
 request ID. Senders reduce offers to the lower of the two feature levels before

@@ -61,6 +61,10 @@ export function atFeatureLevel(
 		return Type.Never();
 	}
 
+	if (Type.IsRef(schema)) {
+		return schema;
+	}
+
 	const entries: [string, unknown][] = Object.entries(schema);
 
 	if (Type.IsObject(schema)) {

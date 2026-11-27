@@ -17,10 +17,21 @@ export function denseArray<Item extends TSchema>(
 	);
 }
 
-export function callable<
-	Signature extends (...arguments_: never[]) => unknown
->() {
-	return Type.Unsafe<Signature>(Type.Function([], Type.Unknown()));
+export function callable<Signature extends (...arguments_: never[]) => unknown>(
+	parameters?: readonly TSchema[],
+	returnType: TSchema = Type.Unknown(),
+	resultMode: 'sync' | 'async' | 'sync-or-async' = 'sync'
+) {
+	const signature = Type.Function([...(parameters ?? [])], returnType);
+
+	return Type.Unsafe<Signature>(
+		parameters === undefined
+			? signature
+			: Type.With(signature, {
+					'x-byos-result-mode': resultMode,
+					'x-byos-failure': Type.Ref('error')
+				})
+	);
 }
 
 export const recordSchema = Type.Record(Type.String(), Type.Unknown());
@@ -89,13 +100,55 @@ export const recoverySchema = Type.Union([
 export const bytesSchema = Type.Unsafe<Uint8Array>(
 	Type.Refine(Type.Unknown(), (value) => value instanceof Uint8Array)
 );
-export const signalSchema = Type.Unsafe<AbortSignal>(
-	Type.Object({
-		aborted: Type.Boolean(),
-		addEventListener: callable<AbortSignal['addEventListener']>(),
-		removeEventListener: callable<AbortSignal['removeEventListener']>(),
-		dispatchEvent: callable<AbortSignal['dispatchEvent']>(),
-		throwIfAborted: callable<AbortSignal['throwIfAborted']>(),
-		reason: Type.Unknown()
-	})
+
+const eventSchema = Type.Object({
+	type: nonEmptyStringSchema,
+	defaultPrevented: Type.Boolean()
+});
+const eventListener = callable<(event: Event) => void>(
+	[eventSchema],
+	Type.Undefined()
 );
+const eventListenerSchema = Type.Union([
+	eventListener,
+	Type.Object({ handleEvent: eventListener }),
+	Type.Null()
+]);
+const listenerCaptureSchema = Type.Object({
+	capture: Type.Optional(Type.Boolean())
+});
+
+const listenerSignal = Type.Optional(Type.Ref('sandbox.signal'));
+const listenerOptions = Type.Object({
+	...listenerCaptureSchema.properties,
+	once: Type.Optional(Type.Boolean()),
+	passive: Type.Optional(Type.Boolean()),
+	signal: listenerSignal
+});
+const listenerSetupOptions = Type.Optional(
+	Type.Union([Type.Boolean(), listenerOptions])
+);
+const listenerRemovalOptions = Type.Optional(
+	Type.Union([Type.Boolean(), listenerCaptureSchema])
+);
+const noListenerResult = Type.Undefined();
+
+const signalShape = Type.Object({
+	aborted: Type.Boolean(),
+	addEventListener: callable<AbortSignal['addEventListener']>(
+		[nonEmptyStringSchema, eventListenerSchema, listenerSetupOptions],
+		noListenerResult
+	),
+	removeEventListener: callable<AbortSignal['removeEventListener']>(
+		[nonEmptyStringSchema, eventListenerSchema, listenerRemovalOptions],
+		noListenerResult
+	),
+	dispatchEvent: callable<AbortSignal['dispatchEvent']>(
+		[eventSchema],
+		Type.Boolean()
+	),
+	throwIfAborted: callable<AbortSignal['throwIfAborted']>([], noListenerResult),
+	reason: Type.Unknown()
+});
+
+export const signalSchema = Type.Unsafe<AbortSignal>(signalShape);

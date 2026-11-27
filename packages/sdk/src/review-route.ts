@@ -1,4 +1,5 @@
 import { acquireOptions } from './acquire-options.js';
+import { bindOwnedCopy } from './consumer-wire-adapter.js';
 import { inspectContext } from './context.js';
 import type {
 	ReviewedToolCall,
@@ -8,6 +9,7 @@ import type {
 	ShellReviewSource
 } from './contracts.js';
 import { ensureSandboxService } from './default-broker.js';
+import { checkedNegotiation } from './discovery.js';
 import {
 	IncompatibleSandboxProtocolError,
 	InvalidSandboxDeclarationError,
@@ -22,7 +24,7 @@ import type {
 import { collectProtocolReplies, REVIEW_CHANNEL } from './protocol-envelope.js';
 import { reviewSourceSchema, sourceReply } from './protocol-payloads.js';
 import { checkDemand, sharedFeatureLevel } from './protocol-version.js';
-import { acquireOptionsSchema } from './request-schemas.js';
+import { acquireOptionsSchema, requirementsSchema } from './request-schemas.js';
 import type { ReviewUnavailableReason } from './review-identities.js';
 import { checkedCopy } from './sandbox-copy.js';
 import { checker } from './schemas.js';
@@ -179,16 +181,16 @@ function bindReviewSource(
 				signal,
 				recordDecision: recordDecision.bind(source)
 			}),
-		negotiateCopy(requirements) {
+		async negotiateCopy(requirements) {
 			checkDemand(
-				acquireOptionsSchema,
+				requirementsSchema,
 				requirements ?? {},
 				local,
 				peer,
 				'review copy'
 			);
 
-			return source.negotiateCopy(requirements);
+			return checkedNegotiation(await source.negotiateCopy(requirements), peer);
 		},
 		async copy(input) {
 			const options = acquireOptions(input, local.extensionSource);
@@ -197,7 +199,11 @@ function bindReviewSource(
 
 			const copy = await source.copy(options);
 
-			return checkedCopy(copy, options, local.extensionSource);
+			return bindOwnedCopy(
+				await checkedCopy(copy, options, local.extensionSource),
+				local,
+				peer
+			);
 		}
 	});
 }

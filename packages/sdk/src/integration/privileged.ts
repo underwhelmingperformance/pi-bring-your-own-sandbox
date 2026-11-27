@@ -11,7 +11,10 @@ import { reportCleanup } from '../cleanup-report.js';
 import type { ProcessExit } from '../contracts.js';
 import { bindFactory } from '../default-broker.js';
 import { cleanDisplayText } from '../display-text.js';
-import { SandboxInitialisationError } from '../errors.js';
+import {
+	InvalidSandboxDeclarationError,
+	SandboxInitialisationError
+} from '../errors.js';
 import type { EscalatedSandbox } from '../escalation-plan.js';
 import { describeRestrictions } from '../escalation-plan.js';
 import { passthroughProvider } from '../passthrough-provider.js';
@@ -20,6 +23,8 @@ import { createShellOperations } from '../pi-shell-operations.js';
 import { protocolAddress } from '../protocol-address.js';
 import type { ShellSettings } from '../runtime-participant.js';
 import { localRuntimeBindings, shellSettings } from '../runtime-participant.js';
+import { shellDispatchSchema } from '../runtime-wire-schemas.js';
+import { checker } from '../schemas.js';
 import {
 	escalationJustificationSchema,
 	escalationListSchema
@@ -27,6 +32,8 @@ import {
 import type { ClaimShellCall } from '../shell-review-routes.js';
 import { registerShellSystemPrompt } from '../shell-system-prompt.js';
 import { registerUserShell } from '../user-shell.js';
+
+const isShellDispatch = checker(shellDispatchSchema);
 
 type Dialect = 'bash' | 'powershell';
 
@@ -66,6 +73,10 @@ async function verifyPendingCall(
 	run: ShellExecutor
 ): ReturnType<ShellExecutor> {
 	const dispatch = claim(id, input, context);
+
+	if (!isShellDispatch(dispatch)) {
+		throw new InvalidSandboxDeclarationError({ operation: 'exec' });
+	}
 
 	const feedback: { type: 'text'; text: string }[] = [];
 	const execution: { exit?: ProcessExit } = {};

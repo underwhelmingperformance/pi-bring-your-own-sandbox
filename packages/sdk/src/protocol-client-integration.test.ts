@@ -17,6 +17,7 @@ import { initialiseSandboxHost } from './host.js';
 import { registerShellOnlyTools } from './pi-tools.js';
 import { protocolAddress } from './protocol-address.js';
 import * as provider from './provider.js';
+import * as review from './review.js';
 
 it('rejects acquisition during factory loading and client creation after loading', async () => {
 	let api: ExtensionAPI | undefined;
@@ -158,6 +159,7 @@ const nonFactoryFunctions = new Set([
 
 const factoryArguments = new Map<string, readonly unknown[]>([
 	['createSandboxClient', []],
+	['createShellReviewClient', []],
 	['initialiseSandboxHost', [{}]],
 	['registerSandboxDiagnostics', []],
 	[
@@ -189,6 +191,7 @@ const factoryExports = Object.entries<unknown>({
 	...consumer,
 	...host,
 	...provider,
+	...review,
 	registerShellOnlyTools
 }).filter(
 	([name, value]) =>

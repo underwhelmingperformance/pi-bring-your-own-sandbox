@@ -134,6 +134,7 @@ export class PendingEscalation {
 	readonly #context: ExtensionContext;
 	readonly #input: EscalationData;
 	readonly #scope: OperationScope;
+	readonly #decisionFinished = new AbortController();
 	readonly #settings: ShellSettings;
 	readonly #broker: SandboxBroker;
 	#plan: EscalationPlan | undefined;
@@ -142,6 +143,7 @@ export class PendingEscalation {
 	#failure: Error | undefined;
 	#isFinished = false;
 	#isClaimed = false;
+	readonly decisionSignal: AbortSignal;
 
 	constructor(
 		pi: ExtensionAPI,
@@ -161,6 +163,10 @@ export class PendingEscalation {
 			{},
 			60_000
 		);
+		this.decisionSignal = AbortSignal.any([
+			this.#scope.context.signal,
+			this.#decisionFinished.signal
+		]);
 	}
 
 	async #prepare(dialect: Dialect): Promise<void> {
@@ -340,6 +346,7 @@ export class PendingEscalation {
 
 		this.#isFinished = true;
 		this.#scope.dispose();
+		this.#decisionFinished.abort();
 		appendLedgerEntry(this.#pi, {
 			kind: 'escalation',
 			request: this.#request ?? this.#input,

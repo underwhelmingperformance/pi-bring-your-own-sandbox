@@ -45,6 +45,7 @@ import {
 	registerSandboxProvider,
 	StaleSandboxHandleError
 } from 'pi-bring-your-own-sandbox/provider';
+import { createShellReviewClient } from 'pi-bring-your-own-sandbox/review';
 import { Type } from 'typebox';
 import { Parse } from 'typebox/value';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -993,7 +994,10 @@ socket.on('error', error => {
 						{
 							name: 'fake-approver',
 							factory(pi) {
-								const client = createSandboxClient(pi, import.meta.filename);
+								const client = createShellReviewClient(
+									pi,
+									import.meta.filename
+								);
 
 								pi.on('tool_call', async (event, context) => {
 									const result = client.findShellReviewSource(context, event);
@@ -1018,12 +1022,8 @@ socket.on('error', error => {
 										changePrefix?.();
 									}
 
-									if (blocked && source.escalation !== undefined) {
-										client.recordEscalationDecision(
-											context,
-											source.escalation,
-											'deny'
-										);
+									if (blocked) {
+										source.recordDecision?.('deny');
 									}
 
 									return blocked

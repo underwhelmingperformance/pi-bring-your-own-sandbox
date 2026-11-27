@@ -9,6 +9,7 @@ import { registerSandboxProvider } from 'pi-bring-your-own-sandbox/provider';
 
 export { createSandboxClient } from 'pi-bring-your-own-sandbox/consumer';
 export { SandboxOperationError } from 'pi-bring-your-own-sandbox/provider';
+export { createShellReviewClient } from 'pi-bring-your-own-sandbox/review';
 
 export const providerUrl = import.meta
 	.resolve('pi-bring-your-own-sandbox/provider');

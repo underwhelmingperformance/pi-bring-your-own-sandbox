@@ -188,7 +188,10 @@ export class SandboxBroker implements BrokerService {
 			session.context,
 			escalation
 		);
-		const state = new ReviewState(pending?.decisionDeadline);
+		const state = new ReviewState(
+			pending?.decisionDeadline,
+			pending?.decisionSignal
+		);
 		const registration = this.#reviewIdentities.register(session, call, {
 			call,
 			...(escalation !== undefined && { escalation }),

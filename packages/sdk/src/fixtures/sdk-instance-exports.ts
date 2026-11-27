@@ -5,3 +5,4 @@ export {
 	SandboxCancelledError,
 	SandboxOperationError
 } from '../provider.js';
+export { createShellReviewClient } from '../review.js';

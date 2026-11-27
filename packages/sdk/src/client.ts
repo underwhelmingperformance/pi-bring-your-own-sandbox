@@ -16,11 +16,6 @@ import {
 	SandboxInitialisationError
 } from './errors.js';
 import { isPiBound, protocolAddress } from './protocol-address.js';
-import {
-	findShellReviewSource,
-	hasShellReviewRoute,
-	recordEscalationDecision
-} from './review-route.js';
 
 function identifyRequester(
 	error: SandboxErrorInfo,
@@ -122,12 +117,6 @@ export function createSandboxClient(
 
 	return Object.freeze<SandboxClient>({
 		get: (context, options) => getSandbox(pi, context, options),
-		negotiate: (context, options) => negotiateSandbox(pi, context, options),
-		hasShellReviewRoute: () => hasShellReviewRoute(pi),
-		findShellReviewSource: (context, call) =>
-			findShellReviewSource(pi, context, call),
-		recordEscalationDecision(context, request, decision) {
-			recordEscalationDecision(pi, context, request, decision);
-		}
+		negotiate: (context, options) => negotiateSandbox(pi, context, options)
 	});
 }

@@ -1,9 +1,8 @@
 import { SessionManager } from '@earendil-works/pi-coding-agent';
 import { expect, it, vi } from 'vitest';
 
-import type { BrokerReviewSource } from './broker-review.js';
 import { inspectContext } from './context.js';
-import type { SandboxHost } from './contracts.js';
+import type { SandboxHost, ShellReviewSource } from './contracts.js';
 import { publishFixtureBroker } from './fixtures/fixture-broker-service.js';
 import { fixtureEvents, respond } from './fixtures/protocol-peer.js';
 import { defaultPolicy } from './policy-model.js';
@@ -43,7 +42,7 @@ const unexpected = () =>
 
 function broker(
 	pi: SandboxHost,
-	registry: ReviewIdentities<BrokerReviewSource>
+	registry: ReviewIdentities<ShellReviewSource>
 ) {
 	return publishFixtureBroker(pi, (id) => ({
 		id,
@@ -191,8 +190,8 @@ it.each([
 	({ issuer, count, reason }) => {
 		const pi = host();
 		const scope = context();
-		const registry = new ReviewIdentities<BrokerReviewSource>();
-		const foreign = new ReviewIdentities<BrokerReviewSource>();
+		const registry = new ReviewIdentities<ShellReviewSource>();
+		const foreign = new ReviewIdentities<ShellReviewSource>();
 		const owner = issuer === 'local' ? registry : foreign;
 		const local = protocolAddress(pi.events);
 		const fixtures = Array.from({ length: count }, (_, index) =>

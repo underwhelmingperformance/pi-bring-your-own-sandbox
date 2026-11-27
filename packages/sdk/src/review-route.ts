@@ -1,5 +1,3 @@
-import type { BrokerReviewSource } from './broker-review.js';
-import type { SessionIdentity } from './context.js';
 import { inspectContext } from './context.js';
 import type {
 	ReviewedToolCall,
@@ -12,13 +10,8 @@ import { ensureSandboxService } from './default-broker.js';
 import {
 	IncompatibleSandboxProtocolError,
 	InvalidSandboxDeclarationError,
-	InvalidSandboxRequestError,
 	isSandboxError
 } from './errors.js';
-import type {
-	EscalationDecision,
-	EscalationRequest
-} from './escalation-ledger.js';
 import { snapshotEscalationRequest } from './escalation-ledger.js';
 import { protocolAddress } from './protocol-address.js';
 import type {
@@ -26,44 +19,18 @@ import type {
 	ProtocolIdentity
 } from './protocol-envelope.js';
 import { collectProtocolReplies, REVIEW_CHANNEL } from './protocol-envelope.js';
-import { copyOptionsSchema, sourceReply } from './protocol-payloads.js';
+import {
+	copyOptionsSchema,
+	reviewSourceSchema,
+	sourceReply
+} from './protocol-payloads.js';
 import { checkDemand, sharedFeatureLevel } from './protocol-version.js';
 import type { ReviewUnavailableReason } from './review-identities.js';
 import { checkedCopy, copyOptions } from './sandbox-copy.js';
 import { checker } from './schemas.js';
 
 const isSource = checker(sourceReply);
-const pending = new WeakMap<
-	EscalationRequest,
-	{
-		readonly client: SandboxHost;
-		readonly sessionId: string;
-		readonly workspace: string;
-		readonly record: (decision: EscalationDecision) => void;
-	}
->();
-
-export function recordEscalationDecision(
-	pi: SandboxHost,
-	context: SandboxContext,
-	request: EscalationRequest,
-	decision: unknown
-): void {
-	const session = inspectContext(context, 'exec');
-	const proof = pending.get(request);
-
-	if (
-		proof === undefined ||
-		proof.client !== pi ||
-		proof.sessionId !== session.sessionId ||
-		proof.workspace !== session.workspace ||
-		(decision !== 'allow' && decision !== 'deny')
-	) {
-		throw new InvalidSandboxRequestError({ operation: 'exec' });
-	}
-
-	proof.record(decision);
-}
+const isReviewSource = checker(reviewSourceSchema);
 
 /**
 Whether a loaded BYOS shell extension answers review queries. A route can still
@@ -110,7 +77,7 @@ export function findShellReviewSource(
 
 	const failures = new Set<ReviewUnavailableReason>();
 	const sources: {
-		readonly source: BrokerReviewSource;
+		readonly source: ShellReviewSource;
 		readonly peer: ProtocolEnvelope;
 	}[] = [];
 
@@ -155,7 +122,7 @@ export function findShellReviewSource(
 			payload.sourceId
 		);
 
-		if (source === undefined) {
+		if (!isReviewSource(source)) {
 			failures.add('invalid-source');
 			continue;
 		}
@@ -179,7 +146,7 @@ export function findShellReviewSource(
 
 	return {
 		ok: true,
-		source: bindReviewSource(pi, session, resolved.source, local, resolved.peer)
+		source: bindReviewSource(resolved.source, local, resolved.peer)
 	};
 }
 
@@ -194,9 +161,7 @@ const unavailableReasons = [
 ] as const satisfies readonly ReviewUnavailableReason[];
 
 function bindReviewSource(
-	pi: SandboxHost,
-	session: SessionIdentity,
-	source: BrokerReviewSource,
+	source: ShellReviewSource,
 	local: ProtocolIdentity,
 	peer: ProtocolEnvelope
 ): ShellReviewSource {
@@ -205,18 +170,17 @@ function bindReviewSource(
 			? undefined
 			: snapshotEscalationRequest(source.escalation);
 
-	if (escalation !== undefined && source.recordDecision !== undefined) {
-		pending.set(escalation, {
-			client: pi,
-			sessionId: session.sessionId,
-			workspace: session.workspace,
-			record: source.recordDecision
-		});
-	}
+	const { signal, recordDecision } = source;
 
 	return Object.freeze<ShellReviewSource>({
 		destination: source.destination,
-		...(escalation !== undefined && { escalation }),
+		...(escalation !== undefined &&
+			signal !== undefined &&
+			recordDecision !== undefined && {
+				escalation,
+				signal,
+				recordDecision: recordDecision.bind(source)
+			}),
 		negotiateCopy(requirements) {
 			checkDemand(
 				copyOptionsSchema,

@@ -10,6 +10,7 @@ function isFixtureApi(value: unknown): value is FixtureApi {
 	return (
 		isRecord(value) &&
 		typeof value['createSandboxClient'] === 'function' &&
+		typeof value['createShellReviewClient'] === 'function' &&
 		typeof value['registerSandboxProvider'] === 'function' &&
 		typeof value['isSandboxError'] === 'function' &&
 		typeof value['SandboxOperationError'] === 'function' &&

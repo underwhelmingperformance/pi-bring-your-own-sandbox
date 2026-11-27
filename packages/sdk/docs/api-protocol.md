@@ -10,7 +10,8 @@ contract. Runtime schemas define the types.
 
 | Entry point | Operations and types                                                                        |
 | ----------- | ------------------------------------------------------------------------------------------- |
-| `/consumer` | `createSandboxClient`, sandbox handles, requirements, error checks, review and escalation   |
+| `/consumer` | `createSandboxClient`, sandbox handles, requirements and error checks                       |
+| `/review`   | `createShellReviewClient`, pending shell review and escalation decisions                    |
 | `/provider` | `registerSandboxProvider`, provider and backend contracts, errors and display helpers       |
 | `/host`     | `initialiseSandboxHost`, `SandboxHostHandle`, host options and `registerSandboxDiagnostics` |
 | `/pi-tools` | Pi shell integration factory and `registerShellOnlyTools`                                   |
@@ -34,16 +35,16 @@ interface SandboxClient {
     context: SandboxContext,
     options?: SandboxAcquireOptions
   ): Promise<SandboxNegotiation>;
+}
+
+createShellReviewClient(pi: SandboxHost, extensionSource: string): ShellReviewClient;
+
+interface ShellReviewClient {
   hasShellReviewRoute(): boolean;
   findShellReviewSource(
     context: SandboxContext,
     call: ReviewedToolCall
   ): ShellReviewLookup;
-  recordEscalationDecision(
-    context: SandboxContext,
-    request: EscalationRequest,
-    decision: EscalationDecision
-  ): void;
 }
 
 registerSandboxProvider<Config, Input = Config>(
@@ -527,7 +528,7 @@ budgets. `SandboxCloseReport` contains `confirmed: boolean`,
 
 <!--
 `escalate`, `EscalationRequest`, `EscalationDestination`, the
-`escalation` field and `recordEscalationDecision` are provisional.
+`escalation` field and `recordDecision` are provisional.
 -->
 
 Bash and PowerShell accept
@@ -558,22 +559,14 @@ interface EscalationRequest {
   readonly access: Access;
   readonly destination: EscalationDestination;
 }
-
-interface SandboxClient {
-  recordEscalationDecision(
-    context: SandboxContext,
-    request: EscalationRequest,
-    decision: 'allow' | 'deny'
-  ): void;
-}
 ```
 
-Pass the request from the review source to the same client while the call is
-pending. The client checks that the request matches the pending tool call in the
-live session and records the extension path from the factory. A missing, expired
-or mismatched request fails with `InvalidSandboxRequestError`. Conflicting
-decisions fail closed. The broker uses the decision only at dispatch. The
-[specification][escalation] defines negotiation and dispatch.
+Call the review source's `recordDecision` method while the escalation is
+pending. The broker binds the method to the exact call and attributes the
+decision to the requesting extension. A late decision fails with
+`InvalidSandboxRequestError`. Repeating the same choice has no effect.
+Conflicting choices fail closed. The broker consumes the decision at dispatch.
+The [specification][escalation] defines negotiation and dispatch.
 
 [escalation]: specification.md#escalation
 
@@ -618,12 +611,18 @@ type ShellReviewLookup =
 interface ShellReviewSource {
   readonly destination: DestinationDescription;
   readonly escalation?: EscalationRequest;
+  readonly signal?: AbortSignal;
+  readonly recordDecision?: (decision: EscalationDecision) => void;
   negotiateCopy(
     requirements?: SandboxRequirements
   ): Promise<SandboxNegotiation>;
   copy(options?: SandboxAcquireOptions): Promise<SandboxCopy>;
 }
 ```
+
+An escalation source includes its decision method and signal. The signal aborts
+at expiry, revocation or completion of the pending decision. Pass it to review
+work such as the model request and permission dialogue.
 
 <!-- The optional workspace field is provisional in milestone 6. -->
 

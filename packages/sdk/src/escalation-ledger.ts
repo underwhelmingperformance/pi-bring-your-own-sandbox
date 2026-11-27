@@ -56,7 +56,7 @@ const requestFields = {
 	access: accessSchema
 };
 
-const escalationRequestSchema = Type.Object(
+export const escalationRequestSchema = Type.Object(
 	{ ...requestFields, destination: destinationSchema },
 	{ additionalProperties: false }
 );
@@ -130,7 +130,8 @@ const escalation = Type.Object({
 	outcome: Type.Enum(['allowed', 'denied', 'cancelled', 'expired']),
 	decider: Type.Optional(decider)
 });
-const destinationDescriptionSchema = Type.Object({
+
+export const destinationDescriptionSchema = Type.Object({
 	providerId: nonEmptyStringSchema,
 	label: nonEmptyStringSchema,
 	workspace: Type.Optional(workspaceSchema),

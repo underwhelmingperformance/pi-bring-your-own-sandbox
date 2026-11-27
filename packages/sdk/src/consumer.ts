@@ -1,7 +1,6 @@
 export { createSandboxClient } from './client.js';
 export type {
 	ProcessResult,
-	ReviewedToolCall,
 	Sandbox,
 	SandboxAcquireOptions,
 	SandboxClient,
@@ -12,21 +11,12 @@ export type {
 	SandboxErrorInfo,
 	SandboxHost,
 	SandboxNegotiation,
-	SandboxRequirements,
-	ShellReviewLookup,
-	ShellReviewSource
+	SandboxRequirements
 } from './contracts.js';
 export {
 	isSandboxError,
 	SandboxCleanupError,
 	SandboxProviderUnavailableError
 } from './errors.js';
-export type {
-	DestinationDescription,
-	EscalationDecision,
-	EscalationDestination,
-	EscalationRequest
-} from './escalation-ledger.js';
 export { GrepOutput } from './grep-output.js';
-export type { ReviewUnavailableReason } from './review-identities.js';
 export { sandboxRipgrepArguments } from './ripgrep-arguments.js';

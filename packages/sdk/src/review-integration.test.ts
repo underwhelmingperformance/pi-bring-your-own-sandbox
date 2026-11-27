@@ -223,23 +223,33 @@ it.each([false, true])(
 		const reviewer: InlineExtension = {
 			name: 'reviewer',
 			factory(pi) {
-				const client = sdk.createSandboxClient(pi, '<inline:reviewer>');
+				const reviewer = sdk.createShellReviewClient(pi, '<inline:reviewer>');
 				let resolved: ShellReviewSource | undefined;
 
 				if (isAlreadyOpen) {
+					const client = sdk.createSandboxClient(pi, '<inline:reviewer>');
+
 					pi.on('session_start', async (_event, context) => {
 						await client.get(context);
 					});
 				}
 
 				pi.on('tool_call', async (event, context) => {
-					const result = client.findShellReviewSource(context, event);
+					const result = reviewer.findShellReviewSource(context, event);
 
 					if (!result.ok) {
 						throw new Error('The reviewer could not resolve the route.');
 					}
 
 					resolved = result.source;
+
+					expect({
+						signal: resolved.signal,
+						decision: resolved.recordDecision
+					}).toStrictEqual({
+						signal: undefined,
+						decision: undefined
+					});
 
 					const negotiation = await resolved.negotiateCopy({
 						capabilities: ['exec']

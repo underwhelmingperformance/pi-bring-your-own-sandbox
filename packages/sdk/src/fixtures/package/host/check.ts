@@ -33,6 +33,8 @@ import {
 	registerSandboxDiagnostics
 } from 'pi-bring-your-own-sandbox/host';
 import { SandboxOperationError } from 'pi-bring-your-own-sandbox/provider';
+import type { ShellReviewClient } from 'pi-bring-your-own-sandbox/review';
+import { createShellReviewClient } from 'pi-bring-your-own-sandbox/review';
 
 import * as peer from '../provider/provider.js';
 
@@ -136,6 +138,7 @@ const live: {
 	host?: ReturnType<typeof initialiseSandboxHost>;
 	context?: ExtensionContext;
 	clients?: [SandboxClient, SandboxClient];
+	reviewers?: [ShellReviewClient, ShellReviewClient];
 } = {};
 const errors: unknown[] = [];
 
@@ -162,6 +165,10 @@ const create: CreateAgentSessionRuntimeFactory = async (options) => {
 						live.clients = [
 							createSandboxClient(pi, import.meta.filename),
 							peer.createSandboxClient(pi, import.meta.filename)
+						];
+						live.reviewers = [
+							createShellReviewClient(pi, import.meta.filename),
+							peer.createShellReviewClient(pi, import.meta.filename)
 						];
 						pi.on('session_start', (_event, context) => {
 							live.context = context;
@@ -226,11 +233,12 @@ try {
 	assert.ok(live.context);
 
 	assert.ok(live.clients);
+	assert.ok(live.reviewers);
 
 	const [local, remote] = live.clients;
 
 	assert.deepEqual(
-		[local.hasShellReviewRoute(), remote.hasShellReviewRoute()],
+		live.reviewers.map((reviewer) => reviewer.hasShellReviewRoute()),
 		[true, true]
 	);
 

@@ -45,13 +45,18 @@ export class ReviewState {
 	#isClaimed = false;
 	#decision: ReviewDecision | undefined;
 	readonly #deadline: number | undefined;
+	readonly signal: AbortSignal | undefined;
 
-	constructor(deadline?: number) {
+	constructor(deadline?: number, signal?: AbortSignal) {
 		this.#deadline = deadline;
+		this.signal = signal;
 	}
 
 	isCurrent(): boolean {
-		return this.#deadline === undefined || performance.now() < this.#deadline;
+		return (
+			this.signal?.aborted !== true &&
+			(this.#deadline === undefined || performance.now() < this.#deadline)
+		);
 	}
 
 	bind(registration: ReviewRegistration): BrokerReviewRegistration {
@@ -105,10 +110,6 @@ export interface RegisteredReview {
 	readonly state: ReviewState;
 	readonly target: ReviewDestination;
 	readonly generation: SandboxGeneration;
-}
-
-export interface BrokerReviewSource extends ShellReviewSource {
-	readonly recordDecision?: (choice: EscalationDecision) => void;
 }
 
 export async function describeReviewDestination(
@@ -194,7 +195,7 @@ export function resolvedReviewSource(
 	extension: string,
 	isCurrent: () => boolean,
 	append?: (entry: SandboxLedgerEntry) => void
-): BrokerReviewSource {
+): ShellReviewSource {
 	const { generation, call, escalation, state, target } = review;
 	const { destination, source } = target;
 	const check = () => {
@@ -203,18 +204,22 @@ export function resolvedReviewSource(
 		}
 	};
 
-	return Object.freeze<BrokerReviewSource>({
-		destination,
-		...(escalation !== undefined && { escalation }),
-		...(escalation !== undefined && {
-			recordDecision(choice: EscalationDecision) {
-				if (!isCurrent() || !state.isCurrent()) {
-					throw new InvalidSandboxRequestError({ operation: 'exec' });
-				}
+	const { signal } = state;
 
-				state.record(choice, extension);
-			}
-		}),
+	return Object.freeze<ShellReviewSource>({
+		destination,
+		...(escalation !== undefined &&
+			signal !== undefined && {
+				escalation,
+				signal,
+				recordDecision(choice: EscalationDecision) {
+					if (!isCurrent() || !state.isCurrent()) {
+						throw new InvalidSandboxRequestError({ operation: 'exec' });
+					}
+
+					state.record(choice, extension);
+				}
+			}),
 		async negotiateCopy(requirements) {
 			check();
 

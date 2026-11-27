@@ -23,6 +23,7 @@ import { resolveHostUserDataRoots } from './path-grants.js';
 import sandboxTools from './pi-tools.js';
 import { unrestrictedPolicy } from './policy-model.js';
 import { registerSandboxProvider } from './provider-registration.js';
+import { createShellReviewClient } from './review.js';
 import { isRecord } from './validation.js';
 
 afterEach(() => {
@@ -159,12 +160,12 @@ it.each([
 				{
 					name: 'credential-review',
 					factory(pi) {
-						const client = createSandboxClient(
-							pi,
-							'<inline:credential-review>'
-						);
-
 						if (route === 'ordinary') {
+							const client = createSandboxClient(
+								pi,
+								'<inline:credential-review>'
+							);
+
 							pi.on('session_start', async (_event, context) => {
 								try {
 									await client.get(context, {
@@ -186,6 +187,11 @@ it.each([
 							return;
 						}
 
+						const client = createShellReviewClient(
+							pi,
+							'<inline:credential-review>'
+						);
+
 						pi.on('tool_call', (event, context) => {
 							const review = client.findShellReviewSource(context, event);
 							const escalation = review.ok
@@ -200,7 +206,10 @@ it.each([
 								opened: [],
 								ledger: []
 							});
-							client.recordEscalationDecision(context, escalation, 'allow');
+
+							if (review.ok) {
+								review.source.recordDecision?.('allow');
+							}
 						});
 					}
 				},
@@ -395,6 +404,7 @@ it.each([
 		const { backend } = shellBackend();
 		const opens: boolean[] = [];
 		const observed: EscalationRequest[] = [];
+		const reviewSignals: AbortSignal[] = [];
 		const requests: ProcessRequest[] = [];
 		const operationIds: string[] = [];
 		const decisionsAtOpen: unknown[][] = [];
@@ -472,29 +482,44 @@ it.each([
 		const permission: InlineExtension = {
 			name: 'escalation-permission',
 			factory(pi) {
-				const client = createSandboxClient(
+				const client = createShellReviewClient(
 					pi,
 					'<inline:escalation-permission>'
 				);
+				let record:
+					| NonNullable<
+							import('./contracts.js').ShellReviewSource['recordDecision']
+					  >
+					| undefined;
 
 				pi.on('tool_call', (event, context) => {
 					const review = client.findShellReviewSource(context, event);
-					const request = review.ok ? review.source.escalation : undefined;
 
-					if (request === undefined) {
+					if (!review.ok || review.source.escalation === undefined) {
 						return;
 					}
 
-					observed.push(request);
-					client.recordEscalationDecision(
-						context,
-						request,
-						decision === 'deny' ? 'deny' : 'allow'
-					);
+					const { escalation, signal, recordDecision } = review.source;
+
+					if (signal === undefined || recordDecision === undefined) {
+						throw new Error(
+							'The escalation review must supply a signal and decision method.'
+						);
+					}
+
+					expect(signal.aborted).toBe(false);
+					reviewSignals.push(signal);
+					observed.push(escalation);
+					record = recordDecision;
+
+					const choice = decision === 'deny' ? 'deny' : 'allow';
+
+					recordDecision(choice);
+					recordDecision(choice);
 
 					if (decision === 'conflict') {
 						expect(() => {
-							client.recordEscalationDecision(context, request, 'deny');
+							recordDecision('deny');
 						}).toThrow(
 							expect.objectContaining({
 								name: InvalidSandboxRequestError.errorName,
@@ -505,12 +530,10 @@ it.each([
 						changeCommand?.();
 					}
 				});
-				pi.on('tool_result', (_event, context) => {
-					const [request] = observed;
-
-					if (request !== undefined) {
+				pi.on('tool_result', () => {
+					if (record !== undefined) {
 						expect(() => {
-							client.recordEscalationDecision(context, request, 'allow');
+							record?.('allow');
 						}).toThrow(
 							expect.objectContaining({
 								name: InvalidSandboxRequestError.errorName,
@@ -616,6 +639,7 @@ it.each([
 				expect({
 					errors,
 					observed,
+					reviewSignals: reviewSignals.map((signal) => signal.aborted),
 					opens,
 					requests,
 					entries,
@@ -626,6 +650,7 @@ it.each([
 					errors: [],
 					prompts: [],
 					observed: allowedByConfig ? [{ ...request, destination }] : [],
+					reviewSignals: allowedByConfig ? [true] : [],
 					opens: isExpectedOpen ? [true] : [],
 					requests: runs
 						? [

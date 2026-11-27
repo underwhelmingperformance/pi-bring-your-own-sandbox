@@ -16,6 +16,10 @@
 			"types": "./dist/provider.d.ts",
 			"import": "./dist/provider.js"
 		},
+		"./review": {
+			"types": "./dist/review.d.ts",
+			"import": "./dist/review.js"
+		},
 		"./host": {
 			"types": "./dist/embedding-host.d.ts",
 			"import": "./dist/embedding-host.js"

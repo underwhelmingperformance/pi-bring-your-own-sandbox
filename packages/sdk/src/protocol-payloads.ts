@@ -1,8 +1,12 @@
 import { Type } from 'typebox';
 
 import { backendSchema, workspaceSchema } from './backend-schemas.js';
-import type { SandboxContext } from './contracts.js';
+import type { SandboxContext, ShellReviewSource } from './contracts.js';
 import { closeReportSchema, errorSchema } from './error-schema.js';
+import {
+	destinationDescriptionSchema,
+	escalationRequestSchema
+} from './escalation-ledger.js';
 import {
 	accessPolicySchema as policySchema,
 	pathGrantsSchema,
@@ -36,7 +40,8 @@ import {
 	capabilitiesSchema,
 	hostUserDataRootsSchema,
 	nonEmptyStringSchema,
-	recoverySchema
+	recoverySchema,
+	signalSchema
 } from './schemas.js';
 import { brokerServiceSchema } from './service-schemas.js';
 
@@ -162,6 +167,23 @@ const providerCopySource = Type.Union([
 	Type.Object({ kind: Type.Literal('backend'), backend: backendSchema })
 ]);
 
+const recordDecision =
+	callable<NonNullable<ShellReviewSource['recordDecision']>>();
+
+export const reviewSourceSchema = Type.Refine(
+	Type.Object({
+		destination: destinationDescriptionSchema,
+		escalation: Type.Optional(escalationRequestSchema),
+		signal: Type.Optional(signalSchema),
+		recordDecision: Type.Optional(recordDecision),
+		negotiateCopy: callable<ShellReviewSource['negotiateCopy']>(),
+		copy: callable<ShellReviewSource['copy']>()
+	}),
+	({ escalation, signal, recordDecision }) =>
+		(escalation !== undefined) === (signal !== undefined) &&
+		(escalation !== undefined) === (recordDecision !== undefined)
+);
+
 export const protocolSchemas = {
 	envelope: protocolEnvelopeSchema,
 	'incompatible-major': message('incompatible-major'),
@@ -193,6 +215,7 @@ export const protocolSchemas = {
 	'review.available': reviewAvailability,
 	'review.find-source': findReviewRequest,
 	'review.source': sourceReply,
+	'broker.reviewSource': reviewSourceSchema,
 	'broker.acquireOptions': acquireOptionsSchema,
 	'broker.copyOptions': copyOptionsSchema,
 	'broker.providerInfo': providerInfoSchema,

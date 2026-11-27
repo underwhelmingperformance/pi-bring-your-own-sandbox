@@ -272,5 +272,5 @@ export interface BrokerService {
 		context: SandboxContext,
 		query: import('./review-identities.js').ReviewQuery,
 		sourceId: string
-	) => import('./broker-review.js').BrokerReviewSource | undefined;
+	) => import('./contracts.js').ShellReviewSource | undefined;
 }

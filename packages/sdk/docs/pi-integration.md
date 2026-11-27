@@ -91,13 +91,13 @@ a permission extension avoids a second prompt.
 
 Pi awaits `tool_execution_start` before running the `tool_call` permission
 hooks. BYOS records the pending call at the earlier event. A permission
-extension calls `findShellReviewSource` on a `/consumer` client with the tool
-call ID. The review route supplies an identity and the reviewer's broker
-resolves it. The resulting source describes the destination and lets the
-reviewer negotiate or create a copy. The original workload remains pending. For
-an escalation, the source also describes the chosen destination and effective
-restrictions. A permission extension calls `recordEscalationDecision` on the
-same client to decide the call before dispatch.
+extension calls `findShellReviewSource` on a `/review` client with the tool call
+ID. The review route supplies an identity and the reviewer's broker resolves it.
+The resulting source describes the destination and lets the reviewer negotiate
+or create a copy. The original workload remains pending. For an escalation, the
+source also describes the chosen destination and effective restrictions. The
+reviewer calls `source.recordDecision` before dispatch and uses `source.signal`
+to cancel review work when the decision can no longer be submitted.
 
 The pi-permission-auto-review extension can show investigation only when copy
 negotiation succeeds. An unavailable route includes a typed reason. The

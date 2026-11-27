@@ -1029,6 +1029,11 @@ that the command will see, but cannot run anything in the destination itself.
 export interface ShellReviewSource {
 	readonly destination: DestinationDescription;
 	readonly escalation?: EscalationRequest;
+	/**
+	Cancels review work when the pending escalation ends.
+	*/
+	readonly signal?: AbortSignal;
+	readonly recordDecision?: (decision: EscalationDecision) => void;
 	readonly negotiateCopy: (
 		requirements?: SandboxRequirements
 	) => Promise<SandboxNegotiation>;
@@ -1036,7 +1041,7 @@ export interface ShellReviewSource {
 	Open a private copy of the destination. The copy is checked against the
 	options in the caller's SDK, and a copy that fails the check is closed.
 	*/
-	readonly copy: (options?: SandboxCopyOptions) => Promise<SandboxCopy>;
+	readonly copy: (options?: SandboxAcquireOptions) => Promise<SandboxCopy>;
 }
 
 export type ShellReviewLookup =
@@ -1441,14 +1446,12 @@ export interface SandboxClient {
 		context: SandboxContext,
 		options?: SandboxAcquireOptions
 	) => Promise<SandboxNegotiation>;
+}
+
+export interface ShellReviewClient {
 	readonly hasShellReviewRoute: () => boolean;
 	readonly findShellReviewSource: (
 		context: SandboxContext,
 		call: ReviewedToolCall
 	) => ShellReviewLookup;
-	readonly recordEscalationDecision: (
-		context: SandboxContext,
-		request: EscalationRequest,
-		decision: EscalationDecision
-	) => void;
 }

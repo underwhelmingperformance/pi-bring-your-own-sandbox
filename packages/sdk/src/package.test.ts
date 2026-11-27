@@ -25,7 +25,14 @@ import {
 import { isRecord } from './validation.js';
 
 async function assertNodeEntryPoints(directory: string): Promise<void> {
-	const entryPoints = ['consumer', 'host', 'pi-tools', 'provider', 'testing'];
+	const entryPoints = [
+		'consumer',
+		'host',
+		'pi-tools',
+		'provider',
+		'review',
+		'testing'
+	];
 	const plainNode = await run(directory, process.execPath, [
 		'--input-type=module',
 		'-e',
@@ -159,7 +166,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 				optional: { vitest: { optional: true } },
 				pi: undefined,
 				exports: Object.fromEntries(
-					['consumer', 'host', 'pi-tools', 'provider', 'testing'].map(
+					['consumer', 'host', 'pi-tools', 'provider', 'review', 'testing'].map(
 						(entry) => [
 							`./${entry}`,
 							{

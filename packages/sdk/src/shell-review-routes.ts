@@ -165,7 +165,7 @@ export class ShellReviewRoutes {
 			}
 		);
 
-		pi.on('tool_result', (event) => {
+		pi.on('tool_execution_end', (event) => {
 			if (event.toolName === toolName) {
 				this.#delete(event.toolCallId);
 			}

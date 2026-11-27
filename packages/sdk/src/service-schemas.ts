@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import type { TObject } from 'typebox';
 import { Type } from 'typebox';
 
@@ -83,7 +85,12 @@ export const unavailableProviderDeclarationSchema = withKnownOwnFields(
 
 export const hostOptionsSchema = Type.Object(
 	{
-		cleanup: Type.Optional(cleanupSelectionSchema)
+		cleanup: Type.Optional(cleanupSelectionSchema),
+		agentDirectory: Type.Optional(
+			Type.Refine(nonEmptyStringSchema, (directory) =>
+				path.isAbsolute(directory)
+			)
+		)
 	},
 	{ additionalProperties: false }
 );

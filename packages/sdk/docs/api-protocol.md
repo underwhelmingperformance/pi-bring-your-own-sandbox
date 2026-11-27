@@ -82,6 +82,11 @@ shares Pi's session shutdown and returns the same cleanup report on every call.
 embedding defaults. The [provider's cleanup settings][provider-settings] take
 precedence.
 
+An embedder with a custom Pi agent directory passes its absolute path as
+`agentDirectory`. If the embedder omits this option, BYOS uses Pi's standard
+resolution. The elected SDK supplies the same directory to provider
+configuration and uses it for approved read persistence.
+
 [provider-settings]: #provider-settings
 
 ## Requirements and profiles

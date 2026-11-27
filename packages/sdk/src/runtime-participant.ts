@@ -95,6 +95,9 @@ export function registerHostOptions(
 	local.host = Object.freeze({
 		receive,
 		options: Object.freeze({
+			...(options.agentDirectory !== undefined && {
+				agentDirectory: options.agentDirectory
+			}),
 			...(options.cleanup !== undefined && {
 				cleanup: Object.freeze({ ...options.cleanup })
 			})

@@ -53,6 +53,11 @@ export interface SandboxHostOptions {
 	Cleanup defaults used unless the activated provider supplies overrides.
 	*/
 	readonly cleanup?: Partial<SandboxCleanupBudgets>;
+	/**
+	Absolute path to the embedding host's Pi agent directory. The SDK uses
+	Pi's standard resolution when the host omits this option.
+	*/
+	readonly agentDirectory?: string;
 }
 /**
 Closes the embedded runtime's sandbox session after startup. Repeated calls
@@ -809,11 +814,13 @@ resolvers. Cancelling an individual acquisition does not cancel this resolver.
 */
 export interface SandboxConfigContext extends SandboxOperationContext {
 	/**
-	Pi context for the runtime whose configuration is being resolved. Pi 1.5.0
-	does not expose an embedding host's custom agent directory here; providers
-	must obtain that directory from their host when needed.
+	Pi context for the runtime whose configuration is being resolved.
 	*/
 	readonly pi: SandboxContext;
+	/**
+	The effective absolute Pi agent directory for global settings.
+	*/
+	readonly agentDirectory: string;
 }
 /**
 The schema for settings shared across providers.

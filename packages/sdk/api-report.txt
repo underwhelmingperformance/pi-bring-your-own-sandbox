@@ -332,6 +332,7 @@ export interface SandboxCloseReport {
 // contracts.d.ts
 export interface SandboxConfigContext extends SandboxOperationContext {
     readonly pi: SandboxContext;
+    readonly agentDirectory: string;
 }
 
 // contracts.d.ts
@@ -374,6 +375,7 @@ export interface SandboxHostHandle {
 // contracts.d.ts
 export interface SandboxHostOptions {
     readonly cleanup?: Partial<SandboxCleanupBudgets>;
+    readonly agentDirectory?: string;
 }
 
 // contracts.d.ts

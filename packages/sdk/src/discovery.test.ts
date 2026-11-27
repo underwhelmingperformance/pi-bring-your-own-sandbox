@@ -267,6 +267,7 @@ function providerHost() {
 function configContext() {
 	return {
 		...createSandboxOperationContext(),
+		agentDirectory: '/agent',
 		pi: {
 			cwd: '/workspace',
 			sessionManager: SessionManager.inMemory('/workspace')

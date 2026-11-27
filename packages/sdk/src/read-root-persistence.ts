@@ -9,8 +9,6 @@ import {
 } from 'node:fs/promises';
 import path from 'node:path';
 
-import { getAgentDir } from '@earendil-works/pi-coding-agent';
-
 import type { SandboxReadRootPersistence } from './contracts.js';
 import { InvalidSandboxConfigError } from './errors.js';
 import { observe } from './lifecycle.js';
@@ -149,10 +147,9 @@ async function updateSettings(
 
 export function bindReadRootPersistence(
 	provider: ProviderServiceV1,
-	persist: NonNullable<ConfiguredProviderV1['persistReadRoot']>
+	persist: NonNullable<ConfiguredProviderV1['persistReadRoot']>,
+	agentDirectory: string
 ): SaveReadRoots {
-	const agentDirectory = path.resolve(getAgentDir());
-
 	return async (paths, checkout, signal) => {
 		try {
 			const directory = await realpath(agentDirectory);

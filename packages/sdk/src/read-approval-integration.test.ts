@@ -22,6 +22,7 @@ import { withPiRuntime } from './fixtures/pi-runtime.js';
 import type { FixtureProviderOptions } from './fixtures/register-provider.js';
 import { registerFixtureProvider } from './fixtures/register-provider.js';
 import { shellBackend } from './fixtures/shell-backend.js';
+import { initialiseSandboxHost } from './host.js';
 import sandboxTools from './pi-tools.js';
 import type { Profile } from './policy-model.js';
 
@@ -30,6 +31,7 @@ const filename = 'read-fixture.json';
 it.each([
 	'missing',
 	'existing',
+	'embedded',
 	'duplicate',
 	'malformed',
 	'project',
@@ -78,7 +80,9 @@ it.each([
 			name: 'persist-provider',
 			factory(pi) {
 				const registration: FixtureProviderOptions<Record<string, never>> = {
-					async configure(_context, shared) {
+					async configure(context, shared) {
+						expect(context.agentDirectory).toBe(agentDirectory);
+
 						let contents = '{}';
 
 						try {
@@ -160,6 +164,13 @@ it.each([
 				);
 			}
 		};
+		const host: InlineExtension = {
+			name: 'persist-host',
+			factory(pi) {
+				initialiseSandboxHost(pi, '<inline:persist-host>', { agentDirectory });
+			}
+		};
+		const hosts = scenario === 'embedded' ? [host] : [];
 		const commands = 'read configured document';
 		const model = new ScriptedModel([
 			{
@@ -178,7 +189,12 @@ it.each([
 		try {
 			await mkdir(agentDirectory);
 			await mkdir(root);
-			vi.stubEnv('PI_CODING_AGENT_DIR', agentDirectory);
+			vi.stubEnv(
+				'PI_CODING_AGENT_DIR',
+				scenario === 'embedded'
+					? path.join(directory, 'default-agent')
+					: agentDirectory
+			);
 
 			if (initial !== undefined) {
 				await writeFile(file, JSON.stringify(initial));
@@ -186,6 +202,7 @@ it.each([
 
 			await withPiRuntime(
 				[
+					...hosts,
 					provider,
 					{
 						name: 'persist-tools',
@@ -248,6 +265,7 @@ it.each([
 			const isSucceeded =
 				scenario === 'missing' ||
 				scenario === 'existing' ||
+				scenario === 'embedded' ||
 				scenario === 'duplicate';
 
 			expect({
@@ -306,6 +324,7 @@ it.each([
 
 			await withPiRuntime(
 				[
+					...hosts,
 					provider,
 					{
 						name: 'persist-consumer',

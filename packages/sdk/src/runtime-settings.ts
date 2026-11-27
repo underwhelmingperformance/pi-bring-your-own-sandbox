@@ -1,3 +1,7 @@
+import path from 'node:path';
+
+import { getAgentDir } from '@earendil-works/pi-coding-agent';
+
 import { builtinProviders } from './builtin-providers.js';
 import { resolveCleanupBudgets } from './cleanup-budgets.js';
 import type { SandboxConfig } from './config.js';
@@ -36,6 +40,7 @@ export function createRuntimeSettings(
 	listProviders: () => readonly RuntimeProvider[],
 	options: SandboxHostOptions | undefined
 ): RuntimeSettings {
+	const agentDirectory = path.resolve(options?.agentDirectory ?? getAgentDir());
 	const defaults = resolveCleanupBudgets(options?.cleanup);
 	const records = new ProviderDiagnostics();
 	const diagnostics: DiagnosticStore = Object.freeze({
@@ -76,7 +81,8 @@ export function createRuntimeSettings(
 
 			const resolutionContext: SandboxConfigContext = Object.freeze({
 				...scope.context,
-				pi: context
+				pi: context,
+				agentDirectory
 			});
 			const pending = observe(
 				Promise.try(async () => {
@@ -147,7 +153,11 @@ export function createRuntimeSettings(
 					const saveReadRoots =
 						provided?.persistReadRoot !== undefined &&
 						value.selection.policy.hostUserData === 'read-only'
-							? bindReadRootPersistence(provider, provided.persistReadRoot)
+							? bindReadRootPersistence(
+									provider,
+									provided.persistReadRoot,
+									agentDirectory
+								)
 							: undefined;
 
 					return Object.freeze({

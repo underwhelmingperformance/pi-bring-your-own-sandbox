@@ -162,6 +162,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 			}).toStrictEqual({
 				dependencies: { ignore: '7.0.14', re2js: '2.10.0' },
 				peers: {
+					'@earendil-works/pi-ai': '1.5.0',
 					'@earendil-works/pi-coding-agent': '1.5.0',
 					typebox: '1.3.27',
 					vitest: '5.0.5 || 5.1.0'

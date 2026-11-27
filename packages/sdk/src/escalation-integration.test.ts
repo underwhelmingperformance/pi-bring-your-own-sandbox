@@ -374,6 +374,20 @@ it.each([
 	},
 	{
 		tool: 'bash',
+		decision: 'permission-first',
+		allowedByConfig: false,
+		runs: false,
+		outcome: 'denied'
+	},
+	{
+		tool: 'bash',
+		decision: 'block',
+		allowedByConfig: true,
+		runs: false,
+		outcome: 'denied'
+	},
+	{
+		tool: 'bash',
 		decision: 'conflict',
 		allowedByConfig: true,
 		runs: false,
@@ -407,6 +421,8 @@ it.each([
 		const opens: boolean[] = [];
 		const observed: EscalationRequest[] = [];
 		const reviewSignals: AbortSignal[] = [];
+		const submittedToPermission: string[] = [];
+		const terminalReview: unknown[] = [];
 		const requests: ProcessRequest[] = [];
 		const decisionsAtOpen: unknown[][] = [];
 		const prompts: string[] = [];
@@ -486,6 +502,8 @@ it.each([
 					| undefined;
 
 				pi.on('tool_call', (event, context) => {
+					submittedToPermission.push(event.toolCallId);
+
 					const review = client.findShellReviewSource(context, event);
 
 					if (!review.ok || review.source.escalation === undefined) {
@@ -508,10 +526,15 @@ it.each([
 					observed.push(escalation);
 					record = recordDecision;
 
-					const choice = decision === 'deny' ? 'deny' : 'allow';
+					const choice =
+						decision === 'deny' || decision === 'block' ? 'deny' : 'allow';
 
 					recordDecision(choice);
 					recordDecision(choice);
+
+					if (decision === 'block') {
+						return { block: true, reason: 'The fixture declined the call.' };
+					}
 
 					if (decision === 'conflict') {
 						expect(() => {
@@ -524,6 +547,17 @@ it.each([
 						);
 					} else if (decision === 'change-command') {
 						changeCommand?.();
+					}
+
+					return;
+				});
+				pi.on('tool_execution_end', (event, context) => {
+					if (decision === 'block' && event.toolName === tool) {
+						terminalReview.push({
+							source: client.findShellReviewSource(context, event),
+							aborted: reviewSignals[0]?.aborted,
+							ledger: readLedger?.()
+						});
 					}
 				});
 				pi.on('tool_result', () => {
@@ -552,18 +586,19 @@ it.each([
 			}
 		]);
 
+		const tools: InlineExtension = {
+			name: 'sandbox-tools',
+			factory(pi) {
+				sandboxTools(pi, '<inline:sandbox-tools>');
+			}
+		};
+		const reviewOrder =
+			decision === 'permission-first'
+				? [permission, tools]
+				: [tools, permission];
+
 		await withPiRuntime(
-			[
-				provider,
-				{
-					name: 'sandbox-tools',
-					factory(pi) {
-						sandboxTools(pi, '<inline:sandbox-tools>');
-					}
-				},
-				permission,
-				model.extension
-			],
+			[provider, ...reviewOrder, model.extension],
 			async (runtime, errors) => {
 				runtime.session.setActiveToolsByName([tool]);
 				changeCommand = () => {
@@ -636,6 +671,8 @@ it.each([
 					errors,
 					observed,
 					reviewSignals: reviewSignals.map((signal) => signal.aborted),
+					submittedToPermission,
+					terminalReview,
 					opens,
 					requests,
 					entries,
@@ -647,6 +684,20 @@ it.each([
 					prompts: [],
 					observed: allowedByConfig ? [{ ...request, destination }] : [],
 					reviewSignals: allowedByConfig ? [true] : [],
+					submittedToPermission:
+						allowedByConfig || decision === 'permission-first'
+							? [toolCallId]
+							: [],
+					terminalReview:
+						decision === 'block'
+							? [
+									{
+										source: { ok: false, reason: 'unknown-call' },
+										aborted: true,
+										ledger: [escalation]
+									}
+								]
+							: [],
 					opens: isExpectedOpen ? [true] : [],
 					requests: runs
 						? [
@@ -675,7 +726,14 @@ it.each([
 											text: 'Effective restrictions: Host workspace writes allowed, network allowed, host user data denied, host system files read-only'
 										}
 									]
-								: errorContent
+								: allowedByConfig
+									? errorContent
+									: [
+											{
+												type: 'text',
+												text: 'Sandbox escalation is disabled by allowEscalation.'
+											}
+										]
 						}
 					],
 					decisionsAtOpen: isExpectedOpen ? [[escalation]] : []

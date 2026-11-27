@@ -1,6 +1,11 @@
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 
+import {
+	parseToolCallArguments,
+	validateToolArguments
+} from '@earendil-works/pi-ai';
 import type {
 	EditToolDetails,
 	EditToolInput,
@@ -39,6 +44,7 @@ import type {
 	ProcessRequest
 } from 'pi-bring-your-own-sandbox/provider';
 import {
+	InvalidSandboxRequestError,
 	isSandboxError,
 	SandboxOperationError,
 	SandboxPathNotFoundError,
@@ -765,19 +771,84 @@ export function registerSandboxFileTools(
 			workspace: FileToolWorkspace
 		) => Pick<ToolDefinition<Parameters, Details, State>, 'execute'>
 	): void {
+		const inputs = new Map<string, Static<Parameters>>();
+		const isActive = () =>
+			pi.getActiveTools().includes(base.name) &&
+			pi
+				.getAllTools()
+				.some(
+					(tool) =>
+						tool.name === base.name &&
+						tool.sourceInfo.path === extensionPath &&
+						tool.parameters === base.parameters
+				);
+
+		pi.on('tool_execution_start', (event) => {
+			if (event.toolName !== base.name || !isActive()) {
+				return;
+			}
+
+			try {
+				const arguments_: unknown = structuredClone(event.args);
+				const prepared: unknown =
+					base.prepareArguments === undefined
+						? arguments_
+						: base.prepareArguments(arguments_);
+
+				const parsed: unknown = validateToolArguments(base, {
+					type: 'toolCall',
+					id: event.toolCallId,
+					name: base.name,
+					...parseToolCallArguments(JSON.stringify(prepared))
+				});
+
+				if (Value.Check(base.parameters, parsed)) {
+					inputs.set(event.toolCallId, parsed);
+				}
+			} catch {
+				return;
+			}
+		});
+		pi.on('tool_execution_end', (event) => {
+			if (event.toolName === base.name) {
+				inputs.delete(event.toolCallId);
+			}
+		});
+		pi.on('turn_end', () => {
+			inputs.clear();
+		});
+		pi.on('session_shutdown', () => {
+			inputs.clear();
+		});
+
 		pi.registerTool(
 			defineTool({
 				...base,
 				defaultActive: false,
 				async execute(id, input, signal, update, context) {
+					const snapshot = inputs.get(id);
+
+					inputs.delete(id);
+
+					if (
+						snapshot === undefined ||
+						!isActive() ||
+						!isDeepStrictEqual(input, snapshot)
+					) {
+						throw new InvalidSandboxRequestError({
+							operation: 'acquire',
+							detail: { kind: 'request', field: 'tool arguments' }
+						});
+					}
+
 					const needed =
 						typeof requirements === 'function'
-							? requirements(input)
+							? requirements(snapshot)
 							: requirements;
 					const workspace = await getWorkspace(context, needed, signal);
 					const tool = create(workspace);
 
-					return tool.execute(id, input, signal, update, context);
+					return tool.execute(id, snapshot, signal, update, context);
 				}
 			})
 		);

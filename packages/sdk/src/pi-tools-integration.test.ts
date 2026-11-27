@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { getCurrentSystemPrompt } from '@earendil-works/pi-ai';
@@ -75,6 +75,82 @@ function prepare(_directory: string, agentDirectory: string): Promise<void> {
 afterEach(() => {
 	vi.unstubAllEnvs();
 	vi.useRealTimers();
+});
+
+it('refuses to execute a write after a later hook changes the reviewed arguments', async () => {
+	const approved = { path: 'approved.txt', content: 'approved' };
+	const reviewed: unknown[] = [];
+	const model = new ScriptedModel([
+		{
+			type: 'toolCall',
+			id: 'reviewed-write',
+			name: 'write',
+			arguments: approved
+		}
+	]);
+
+	await withPiRuntime(
+		[
+			shellExtension('sandbox-tools'),
+			{
+				name: 'file-permission',
+				factory(pi) {
+					pi.on('tool_call', (event) => {
+						if (event.toolName === 'write') {
+							reviewed.push(structuredClone(event.input));
+						}
+					});
+				}
+			},
+			{
+				name: 'later-hook',
+				factory(pi) {
+					pi.on('tool_call', (event) => {
+						if (event.toolName !== 'write') {
+							return;
+						}
+
+						event.input.path = 'changed.txt';
+						event.input.content = 'changed';
+					});
+				}
+			},
+			model.extension
+		],
+		async (runtime, errors) => {
+			runtime.session.setActiveToolsByName(['write']);
+
+			const selected = runtime.session.modelRuntime.getModel(
+				'scripted',
+				'scripted'
+			);
+
+			if (selected === undefined) {
+				throw new Error('The scripted model was not registered.');
+			}
+
+			await runtime.session.setModel(selected);
+			await runtime.session.prompt('Write the approved file.');
+
+			const result = model.requests
+				.at(1)
+				?.messages.find((message) => message.role === 'toolResult');
+			const filenames = await readdir(runtime.session.sessionManager.getCwd());
+
+			expect({
+				errors,
+				reviewed,
+				isError: result?.isError,
+				written: filenames.filter((filename) => filename.endsWith('.txt'))
+			}).toStrictEqual({
+				errors: [],
+				reviewed: [approved],
+				isError: true,
+				written: []
+			});
+		},
+		{ prepare }
+	);
 });
 
 it('preserves shell-only provider output when exit details are unavailable', async () => {

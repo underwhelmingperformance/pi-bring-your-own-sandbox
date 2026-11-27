@@ -421,7 +421,10 @@ export class SandboxPermissionDeniedError extends SandboxError<'SandboxPermissio
 	constructor(context: SandboxErrorContext, options?: ErrorOptions) {
 		super(
 			SandboxPermissionDeniedError.errorName,
-			'The sandbox denied access to the requested resource.',
+			context.detail?.kind === 'request' &&
+				context.detail.field === 'allowEscalation'
+				? 'Sandbox escalation is disabled by allowEscalation.'
+				: 'The sandbox denied access to the requested resource.',
 			context,
 			options
 		);

@@ -384,9 +384,11 @@ The broker serialises SDK writes and directory creation. Each read is a separate
 operation, so another mutation can run between a read and a write. Shell
 commands and independent processes can change files outside the queue.
 
-Pi's file tools use its built-in definitions with SDK operations. Pi runs its
-edit algorithm in its own in-process queue, keyed by host path. Pi's grep uses
-the target's `rg` when available and formats the results with Pi's truncation
+Pi's file tools use its built-in definitions with SDK operations. BYOS snapshots
+validated arguments before permission hooks run. It refuses execution if the
+arguments change and passes the snapshot to the file tool. Pi runs its edit
+algorithm in its own in-process queue, keyed by host path. Pi's grep uses the
+target's `rg` when available and formats the results with Pi's truncation
 helpers. The [adapter guide][file-adapters] describes the host-side steps and
 the limits of this integration.
 
@@ -399,8 +401,10 @@ the limits of this integration.
 A Bash or PowerShell call can request extra access through `escalate` and must
 give a justification. The tool translates listed property names into needs and
 puts the requested paths in the same access record. Calls that omit `escalate`
-use ordinary negotiation. When `allowEscalation` is false, the request fails
-with a typed reason before prompting or allocating.
+use ordinary negotiation. When `allowEscalation` is false, BYOS refuses the
+request before its confirmation or any allocation. The tool result identifies
+the setting. The refusal also skips later permission handlers. Pi 1.5 runs these
+handlers in extension order, so an earlier handler can still prompt.
 
 The broker first seeks a provider profile that supplies the requested access
 within the full-access limit. The profile must keep unlisted properties at the

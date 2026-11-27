@@ -102,6 +102,21 @@ export class ShellReviewRoutes {
 			}
 		});
 
+		pi.on('tool_call', (event) => {
+			if (event.toolName !== toolName || !this.#isActive()) {
+				return;
+			}
+
+			const refusal = this.#routes.get(event.toolCallId)?.pending
+				?.configurationRefusalMessage;
+
+			if (refusal !== undefined) {
+				return { block: true, reason: refusal };
+			}
+
+			return;
+		});
+
 		const local = registration.identity;
 
 		onProtocolRequest(

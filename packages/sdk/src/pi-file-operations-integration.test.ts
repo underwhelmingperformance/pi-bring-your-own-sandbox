@@ -58,7 +58,7 @@ function fileProvider(backend: SandboxBackend): InlineExtension {
 	};
 }
 
-function executeTool(
+async function executeTool(
 	runtime: AgentSessionRuntime,
 	name: string,
 	input: Record<string, unknown>
@@ -72,12 +72,22 @@ function executeTool(
 		throw new Error('The file tool was not registered.');
 	}
 
+	const toolCallId = 'file-operation';
+
+	runtime.session.setActiveToolsByName([name]);
+	await runner.emit({
+		type: 'tool_execution_start',
+		toolCallId,
+		toolName: name,
+		args: input
+	});
+
 	return tool.definition.execute(
-		'file-operation',
+		toolCallId,
 		input,
 		undefined,
 		undefined,
-		runner.createToolContext('file-operation', undefined)
+		runner.createToolContext(toolCallId, undefined)
 	);
 }
 

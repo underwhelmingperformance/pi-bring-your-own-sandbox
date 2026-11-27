@@ -15,6 +15,7 @@ import { cleanDisplayText, cleanFullDisplayText } from './display-text.js';
 import { chooseDisplayOption, notifyDisplay } from './display-ui.js';
 import {
 	InvalidSandboxRequestError,
+	isSandboxError,
 	SandboxPermissionDeniedError
 } from './errors.js';
 import type {
@@ -353,6 +354,16 @@ export class PendingEscalation {
 			outcome,
 			...(decider !== undefined && { decider })
 		});
+	}
+
+	get configurationRefusalMessage(): string | undefined {
+		const failure = this.#failure;
+
+		return isSandboxError(failure, SandboxPermissionDeniedError) &&
+			failure.detail?.kind === 'request' &&
+			failure.detail.field === 'allowEscalation'
+			? failure.message
+			: undefined;
 	}
 
 	get request(): EscalationRequest | undefined {

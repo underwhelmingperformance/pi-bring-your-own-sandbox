@@ -1,10 +1,12 @@
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 
 import { expect, it } from 'vitest';
 
 import { PROTOCOL_FEATURE_LEVEL, PROTOCOL_MAJOR } from './protocol-envelope.js';
+import { isRecord } from './validation.js';
 
 const directory = new URL('fixtures/protocol-snapshots/', import.meta.url);
 const execute = promisify(execFile);
@@ -16,12 +18,39 @@ const snapshotCommand = `
 	process.stdout.write(JSON.stringify(protocolSnapshot(major, level, protocolSchemas, schemaLevel)));
 `;
 
-it('uses major 1 at feature level 0 for the first release draft', async () => {
+it('identifies the first release in both packages and the compiled SDK', async () => {
+	const [sdk, docker, build] = await Promise.all(
+		[
+			'../package.json',
+			'../../provider-docker/package.json',
+			'../dist/protocol-build.json'
+		].map(async (filename): Promise<unknown> => {
+			return JSON.parse(
+				await readFile(new URL(filename, import.meta.url), 'utf8')
+			) as unknown;
+		})
+	);
+
+	expect({
+		sdk: isRecord(sdk) && sdk['version'],
+		docker: isRecord(docker) && docker['version'],
+		build: isRecord(build) && build['packageVersion']
+	}).toStrictEqual({ sdk: '1.0.0', docker: '1.0.0', build: '1.0.0' });
+});
+
+it('retains the frozen protocol 1.0 snapshot', async () => {
+	const original = await readFile(new URL('1.0.json', directory));
+	const digest = createHash('sha256').update(original).digest('hex');
+
 	expect({
 		major: PROTOCOL_MAJOR,
 		featureLevel: PROTOCOL_FEATURE_LEVEL,
-		snapshots: await readdir(directory)
-	}).toStrictEqual({ major: 1, featureLevel: 0, snapshots: ['1.0.json'] });
+		digest
+	}).toStrictEqual({
+		major: 1,
+		featureLevel: 0,
+		digest: 'edca4cb0633cf548f3fe8709825eb3e6387cccf40e887848be7fac112209dbf3'
+	});
 });
 
 async function builtSnapshot(

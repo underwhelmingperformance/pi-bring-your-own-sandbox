@@ -1,6 +1,6 @@
 {
 	"name": "pi-bring-your-own-sandbox",
-	"version": "0.0.0",
+	"version": "1.0.0",
 	"private": true,
 	"description": "A provider-neutral sandbox framework for Pi extensions",
 	"type": "module",

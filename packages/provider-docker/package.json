@@ -1,6 +1,6 @@
 {
 	"name": "pi-byos-provider-docker",
-	"version": "0.0.0",
+	"version": "1.0.0",
 	"private": true,
 	"description": "Docker sandbox provider for Pi",
 	"type": "module",

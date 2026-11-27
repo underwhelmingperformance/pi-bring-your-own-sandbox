@@ -27,7 +27,7 @@
 	"scripts": {
 		"build": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\" && tsc -b tsconfig.build.json --force && node build-matcher.ts",
 		"test": "pnpm build && vitest run",
-		"test:provider": "pnpm --filter pi-bring-your-own-sandbox build && pnpm build && vitest run --config vitest.provider.config.ts",
+		"test:provider": "pnpm --filter pi-bring-your-own-sandbox build && pnpm build && VITEST_MAX_WORKERS=1 vitest run --config vitest.provider.config.ts",
 		"test:package": "pnpm --filter pi-bring-your-own-sandbox build && pnpm build && vitest run --config vitest.package.config.ts",
 		"check:types": "tsc --noEmit"
 	},

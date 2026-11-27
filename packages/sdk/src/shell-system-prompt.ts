@@ -10,7 +10,7 @@ import { isSandboxError } from './errors.js';
 import { describeRestrictions } from './escalation-plan.js';
 import { passthroughProvider } from './passthrough-provider.js';
 import { accessOrder } from './policy-model.js';
-import { runtimeSettings } from './runtime-settings.js';
+import { shellSettings } from './runtime-participant.js';
 
 const section = 'byos_shell_restrictions';
 const escalationGuidance = [
@@ -31,16 +31,15 @@ async function describeShellPolicy(
 			throw result.error;
 		}
 
-		const config = await runtimeSettings(pi).read(context);
+		const config = await shellSettings(pi).read(context);
 		const restrictions = describeRestrictions(
 			result.profile.policy,
 			undefined,
-			config.selection.providerId === passthroughProvider.id
+			config.providerId === passthroughProvider.id
 		);
-		const escalation =
-			config.allowEscalation === false
-				? 'allowEscalation is false, so BYOS will refuse escalations.'
-				: escalationGuidance;
+		const escalation = config.allowsEscalation
+			? escalationGuidance
+			: 'allowEscalation is false, so BYOS will refuse escalations.';
 
 		return joinDisplayLines([
 			cleanDisplayText(

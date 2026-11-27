@@ -23,7 +23,6 @@ import {
 	hasShellReviewRoute,
 	recordEscalationDecision
 } from './review-route.js';
-import { runtimeSettings } from './runtime-settings.js';
 
 function identifyRequester(
 	error: SandboxErrorInfo,
@@ -120,32 +119,11 @@ export async function closeSandboxSession(
 ): Promise<SandboxCloseReport> {
 	inspectContext(context, 'dispose');
 
-	const closures: readonly (() =>
-		readonly SandboxCloseReport[] | Promise<readonly SandboxCloseReport[]>)[] =
-		[
-			() => {
-				runtimeSettings(pi).close();
-
-				return [];
-			},
-			async () => [await ensureSandboxService(pi).close(context)]
-		];
-	const settlements = await Promise.allSettled(
-		closures.map((close) => Promise.try(close))
-	);
-	const reports = settlements.flatMap(
-		(result): readonly SandboxCloseReport[] => {
-			return result.status === 'fulfilled'
-				? result.value
-				: [failedCloseReport(result.reason)];
-		}
-	);
-
-	return Object.freeze({
-		confirmed: reports.every((report) => report.confirmed),
-		failures: Object.freeze(reports.flatMap((report) => report.failures)),
-		recoveries: Object.freeze(reports.flatMap((report) => report.recoveries))
-	});
+	try {
+		return await ensureSandboxService(pi).close(context);
+	} catch (error) {
+		return failedCloseReport(error);
+	}
 }
 
 /**

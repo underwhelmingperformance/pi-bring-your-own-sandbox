@@ -34,6 +34,7 @@ function reviewCallKey(sessionId: string, call: ReviewedToolCall): string {
 
 export class SandboxBroker implements BrokerService {
 	readonly #dependencies: GenerationDependencies;
+	readonly #abortConfig: (() => void) | undefined;
 	readonly #reviewIdentities = new ReviewIdentities<RegisteredReview>();
 	readonly #liveReviewCalls = new Set<string>();
 	#current:
@@ -49,10 +50,12 @@ export class SandboxBroker implements BrokerService {
 		id: string,
 		pi: SandboxHost,
 		dependencies: GenerationDependencies,
-		session?: SandboxSession
+		session?: SandboxSession,
+		abortConfig?: () => void
 	) {
 		this.id = id;
 		this.#dependencies = dependencies;
+		this.#abortConfig = abortConfig;
 
 		pi.on('tool_execution_start', (event, context) => {
 			const { session } = this.#resolve(context);
@@ -192,6 +195,7 @@ export class SandboxBroker implements BrokerService {
 	close(context: SandboxContext): Promise<SandboxCloseReport> {
 		const { generation } = this.#resolve(context, 'dispose');
 
+		this.#abortConfig?.();
 		this.#isClosing = true;
 		this.#reviewIdentities.close();
 		this.#liveReviewCalls.clear();

@@ -14,20 +14,23 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { ScriptedModel } from '../../../test-support/scripted-model.js';
 
 import { closeSandboxSession } from './client.js';
+import { createSandboxClient } from './consumer.js';
 import type { SandboxContext, SandboxHost } from './contracts.js';
 import { discoverBroker } from './discovery.js';
 import { SandboxStartupError } from './errors.js';
 import { createSandbox } from './facade.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
+import { publishFixtureBroker } from './fixtures/fixture-broker-service.js';
 import { getSandbox, negotiateSandbox } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
+import { brokerReply, respond } from './fixtures/protocol-peer.js';
 import { loadSdkInstance } from './fixtures/sdk-instance.js';
 import { probePassthrough } from './passthrough.js';
 import { bindProtocolAddress } from './protocol-address.js';
+import { RUNTIME_CHANNEL } from './protocol-envelope.js';
 import { registerSandboxProvider } from './provider-registration.js';
-import { ensureBroker } from './service.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -119,6 +122,38 @@ it('captures the Pi session checkout before the first client call', async () => 
 			errors: []
 		});
 	});
+});
+
+it('elects the runtime without consulting a prepublished broker', async () => {
+	const calls: string[] = [];
+
+	await fixture(
+		async ({ pi, context, errors }) => {
+			expect({ calls, errors }).toStrictEqual({ calls: [], errors: [] });
+			await expect(getSandbox(pi, context)).rejects.toMatchObject({
+				name: 'DuplicateBrokerError'
+			});
+			expect(calls).toStrictEqual(['get-broker']);
+		},
+		[],
+		(pi) => {
+			createSandboxClient(pi, import.meta.filename);
+			pi.events.on(RUNTIME_CHANNEL, (message) => {
+				if (
+					typeof message === 'object' &&
+					message !== null &&
+					'payload' in message &&
+					typeof message.payload === 'object' &&
+					message.payload !== null &&
+					'type' in message.payload &&
+					message.payload.type === 'get-broker'
+				) {
+					calls.push('get-broker');
+				}
+			});
+			respond(pi.events, RUNTIME_CHANNEL, brokerReply());
+		}
+	);
 });
 
 it('provides a shared host backend with only a consumer and no configuration', async () => {
@@ -509,7 +544,7 @@ it.each([
 			[],
 			(pi) => {
 				bindProtocolAddress(pi.events, import.meta.filename);
-				ensureBroker(pi.events, (id) => ({
+				publishFixtureBroker(pi, (id) => ({
 					id,
 					copy: () => Promise.reject(new Error('Fixture does not copy.')),
 					acquire: () => Promise.resolve(sandbox),

@@ -4,6 +4,7 @@ import { expect, it, vi } from 'vitest';
 import type { BrokerReviewSource } from './broker-review.js';
 import { inspectContext } from './context.js';
 import type { SandboxHost } from './contracts.js';
+import { publishFixtureBroker } from './fixtures/fixture-broker-service.js';
 import { fixtureEvents, respond } from './fixtures/protocol-peer.js';
 import { defaultPolicy } from './policy-model.js';
 import { protocolAddress } from './protocol-address.js';
@@ -12,7 +13,6 @@ import { findReviewRequest } from './protocol-payloads.js';
 import { ReviewIdentities } from './review-identities.js';
 import { findShellReviewSource, hasShellReviewRoute } from './review-route.js';
 import { checker } from './schemas.js';
-import { ensureBroker } from './service.js';
 
 const isQuery = checker(findReviewRequest);
 const call = { toolName: 'bash', toolCallId: 'call-1' };
@@ -41,7 +41,7 @@ function broker(
 	pi: SandboxHost,
 	registry: ReviewIdentities<BrokerReviewSource>
 ) {
-	return ensureBroker(pi.events, (id) => ({
+	return publishFixtureBroker(pi, (id) => ({
 		id,
 		acquire: unexpected,
 		copy: unexpected,

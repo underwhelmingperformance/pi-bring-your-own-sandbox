@@ -16,7 +16,7 @@ import { onProtocolRequest, PROVIDER_CHANNEL } from './protocol-envelope.js';
 import { providerAdvertisement } from './protocol-payloads.js';
 import { projectReply } from './protocol-version.js';
 import { sharedSettingsSchema } from './request-schemas.js';
-import { registerProviderConfig } from './runtime-settings.js';
+import { localRuntimeBindings } from './runtime-participant.js';
 import { checker } from './schemas.js';
 import { providerDeclarationSchema } from './service-schemas.js';
 import { isRecord, snapshotProviderInfo } from './validation.js';
@@ -110,11 +110,6 @@ export function registerSandboxProvider<Config, Input = Config>(
 	}
 
 	bindFactory(pi, extensionSource);
-	registerProviderConfig(pi, provider.id, (context) =>
-		configure === undefined
-			? { configuration: {} }
-			: configure(context, sharedSettingsSchema)
-	);
 
 	const { id } = provider;
 	const validate = provider.validateConfig.bind(provider);
@@ -154,8 +149,11 @@ export function registerSandboxProvider<Config, Input = Config>(
 		}
 	};
 
+	const info = snapshotProviderInfo(provider);
+	const identity = protocolAddress(pi.events);
 	const service: ProviderServiceV1 = Object.freeze({
-		...snapshotProviderInfo(provider),
+		...info,
+		protocol: identity,
 		configure(input: unknown): ConfiguredProviderV1 {
 			const config = validateConfig(input);
 
@@ -169,7 +167,16 @@ export function registerSandboxProvider<Config, Input = Config>(
 			});
 		}
 	});
-	const identity = protocolAddress(pi.events);
+
+	localRuntimeBindings(pi).providers.push(
+		Object.freeze({
+			...service,
+			resolve: (context: import('./contracts.js').SandboxConfigContext) =>
+				configure === undefined
+					? { configuration: {} }
+					: configure(context, sharedSettingsSchema)
+		})
+	);
 
 	onProtocolRequest(
 		pi.events,
@@ -179,7 +186,7 @@ export function registerSandboxProvider<Config, Input = Config>(
 		(request) =>
 			projectReply(
 				providerAdvertisement,
-				{ type: 'provider', id, service },
+				{ type: 'provider', id, service: info },
 				identity,
 				request
 			),

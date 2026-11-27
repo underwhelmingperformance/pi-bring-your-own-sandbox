@@ -29,6 +29,11 @@ const identityFields = {
 	major: positiveIntegerSchema,
 	featureLevel: nonNegativeIntegerSchema
 };
+
+export const protocolIdentitySchema = Type.Object(identityFields, {
+	additionalProperties: false
+});
+
 const protocolPayloadSchema = Type.Object({ type: nonEmptyStringSchema });
 
 export const protocolEnvelopeSchema = Type.Object(

@@ -16,6 +16,7 @@ import { describeRestrictions } from '../escalation-plan.js';
 import { passthroughProvider } from '../passthrough-provider.js';
 import { registerShellIntegrationDiagnostics } from '../pi-integration-status.js';
 import { createShellOperations } from '../pi-shell-operations.js';
+import { registerShellSettings } from '../runtime-participant.js';
 import {
 	effectiveCommand,
 	escalationInput,
@@ -174,6 +175,7 @@ async function verifyPendingCall(
 
 export function bindShellIntegration(pi: ExtensionAPI, extensionPath: string) {
 	bindFactory(pi, extensionPath);
+	registerShellSettings(pi);
 
 	return {
 		escalationParameters,

@@ -3,7 +3,7 @@ import type { EventBus } from '@earendil-works/pi-coding-agent';
 import { builtinProviders } from './builtin-providers.js';
 import { DuplicateBrokerError, DuplicateProviderError } from './errors.js';
 import { providerInfoSchema } from './policy-model.js';
-import type { BrokerService, ProviderServiceV1 } from './protocol.js';
+import type { BrokerService } from './protocol.js';
 import { protocolAddress } from './protocol-address.js';
 import type { ProtocolIdentity } from './protocol-envelope.js';
 import {
@@ -12,10 +12,13 @@ import {
 	PROVIDER_CHANNEL,
 	RUNTIME_CHANNEL
 } from './protocol-envelope.js';
+import type { BrokerPin } from './protocol-payloads.js';
 import { brokerReply, providerAdvertisement } from './protocol-payloads.js';
 import { projectOffer } from './protocol-schema.js';
 import { checkDemand, sharedFeatureLevel } from './protocol-version.js';
 import { acquireOptionsSchema } from './request-schemas.js';
+import type { DiscoveredProvider } from './runtime-participant.js';
+import { areProtocolIdentitiesEqual } from './runtime-participant.js';
 import { checker } from './schemas.js';
 import { brokerServiceSchema } from './service-schemas.js';
 import { snapshotProviderInfo } from './validation.js';
@@ -38,7 +41,7 @@ function protocolIdentity({
 
 export function discoverProviders(
 	events: EventBus
-): readonly ProviderServiceV1[] {
+): readonly DiscoveredProvider[] {
 	const local = protocolAddress(events);
 	const ids = new Set(
 		builtinProviders.providers.map((provider) => provider.id)
@@ -71,8 +74,7 @@ export function discoverProviders(
 
 		return Object.freeze({
 			...snapshotProviderInfo(service),
-			protocol: protocolIdentity(reply),
-			configure: service.configure.bind(service)
+			protocol: Object.freeze(protocolIdentity(reply))
 		});
 	});
 }
@@ -134,7 +136,10 @@ function boundBroker(
 	});
 }
 
-export function discoverBroker(events: EventBus): BrokerService | undefined {
+export function discoverBroker(
+	events: EventBus,
+	pin?: BrokerPin
+): BrokerService | undefined {
 	const local = protocolAddress(events);
 	const replies = collectProtocolReplies(events, RUNTIME_CHANNEL, local, {
 		type: 'get-broker'
@@ -156,7 +161,11 @@ export function discoverBroker(events: EventBus): BrokerService | undefined {
 	if (
 		reply.kind !== 'reply' ||
 		!isBrokerReply(payload) ||
-		payload.service.id !== payload.id
+		payload.service.id !== payload.id ||
+		(pin !== undefined &&
+			(payload.id !== pin.brokerId ||
+				payload.candidateId !== pin.candidateId ||
+				!areProtocolIdentitiesEqual(reply, pin.identity)))
 	) {
 		throw invalidProtocolServiceReply(reply);
 	}

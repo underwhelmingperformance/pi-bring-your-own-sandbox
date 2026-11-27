@@ -2,9 +2,9 @@ import { SessionManager } from '@earendil-works/pi-coding-agent';
 import { expect, it } from 'vitest';
 
 import { discoverBroker } from './discovery.js';
+import { ensureFixtureBroker } from './fixtures/fixture-broker-service.js';
 import { fixtureEvents } from './fixtures/protocol-peer.js';
 import { brokerReply, respond } from './fixtures/protocol-peer.js';
-import { ensureBroker } from './service.js';
 
 function fixtureContext() {
 	return {
@@ -25,8 +25,8 @@ it('publishes synchronously and constructs exactly one service on first use', ()
 		return brokerReply(id).service;
 	};
 
-	const first = ensureBroker(events, create);
-	const second = ensureBroker(events, create);
+	const first = ensureFixtureBroker(events, create);
+	const second = ensureFixtureBroker(events, create);
 
 	expect({ ids: [first.id, second.id], constructions }).toStrictEqual({
 		ids: [first.id, first.id],
@@ -44,11 +44,11 @@ it('retains a failed bootstrap so a later caller cannot create a replacement', a
 		throw new Error('deliberate construction failure');
 	};
 
-	expect(() => ensureBroker(events, create)).toThrow(
+	expect(() => ensureFixtureBroker(events, create)).toThrow(
 		expect.objectContaining({ name: 'SandboxInitialisationError' })
 	);
 
-	const failed = ensureBroker(events, create);
+	const failed = ensureFixtureBroker(events, create);
 
 	await expect(failed.providers(fixtureContext())).rejects.toMatchObject({
 		name: 'SandboxInitialisationError'
@@ -60,10 +60,10 @@ it('rejects re-entrant acquisition during construction without creating another 
 	const events = fixtureEvents(import.meta.filename);
 	let reentrant: Promise<unknown> | undefined;
 	let constructions = 0;
-	const service = ensureBroker(events, (id) => {
+	const service = ensureFixtureBroker(events, (id) => {
 		constructions++;
 
-		const pending = ensureBroker(events, () => {
+		const pending = ensureFixtureBroker(events, () => {
 			throw new Error('Must reuse the published service.');
 		});
 
@@ -89,7 +89,7 @@ it('does not construct a replacement for an incompatible advertisement', () => {
 		major: 1
 	});
 	expect(() =>
-		ensureBroker(events, () => {
+		ensureFixtureBroker(events, () => {
 			throw new Error('Must not create a replacement.');
 		})
 	).toThrow(
@@ -98,7 +98,7 @@ it('does not construct a replacement for an incompatible advertisement', () => {
 });
 
 it('reports a copy against a broker without copies', async () => {
-	const service = ensureBroker(
+	const service = ensureFixtureBroker(
 		fixtureEvents(import.meta.filename),
 		(id) => brokerReply(id).service
 	);

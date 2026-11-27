@@ -1,6 +1,7 @@
 import type { SandboxHost, SandboxHostOptions } from './contracts.js';
+import { bindFactory } from './default-broker.js';
 import { InvalidSandboxRequestError } from './errors.js';
-import { bindRuntimeSettings } from './runtime-settings.js';
+import { registerHostOptions } from './runtime-participant.js';
 import { checker } from './schemas.js';
 import { hostOptionsSchema } from './service-schemas.js';
 
@@ -21,5 +22,6 @@ export function initialiseSandboxHost(
 		throw new InvalidSandboxRequestError({ operation: 'configure' });
 	}
 
-	bindRuntimeSettings(pi, extensionSource, options);
+	bindFactory(pi, extensionSource);
+	registerHostOptions(pi, options);
 }

@@ -6,11 +6,8 @@ import { Type } from 'typebox';
 
 import { ScriptedModel } from '../../../../test-support/scripted-model.js';
 import { getSandbox } from '../client.js';
-import { createSandbox } from '../facade.js';
-import { bindProtocolAddress } from '../protocol-address.js';
-import { ensureBroker } from '../service.js';
+import { registerSandboxProvider } from '../provider-registration.js';
 
-import { TestBackendOwner } from './backend-owner.js';
 import { MemoryBackend } from './memory-backend.js';
 import { withPiRuntime } from './pi-runtime.js';
 
@@ -25,7 +22,6 @@ export default async function probe(marker: string): Promise<void> {
 		}
 	]);
 	const backend = new MemoryBackend();
-	const sandbox = createSandbox(new TestBackendOwner(backend));
 
 	await withPiRuntime(
 		[
@@ -43,23 +39,13 @@ export default async function probe(marker: string): Promise<void> {
 			{
 				name: 'peer-extension',
 				factory(pi) {
-					bindProtocolAddress(pi.events, import.meta.filename);
-					ensureBroker(pi.events, (id) => ({
-						copy: () => Promise.reject(new Error('Fixture does not copy.')),
-						id,
-						acquire: () => Promise.resolve(sandbox),
-						negotiate: () =>
-							Promise.resolve({ ok: true, profile: backend.profile }),
-						close: () =>
-							Promise.resolve({
-								confirmed: true,
-								failures: [],
-								recoveries: []
-							}),
-						status: () =>
-							Promise.resolve({ generationId: 'fixture', state: 'idle' }),
-						providers: () => Promise.resolve([])
-					}));
+					registerSandboxProvider(pi, import.meta.filename, {
+						id: 'fixture',
+						label: 'Containment fixture',
+						profiles: { open: [backend.profile], copy: [] },
+						validateConfig: () => ({}),
+						open: () => Promise.resolve(backend)
+					});
 					pi.registerMcpServer('boundary', {
 						command: process.execPath,
 						args: [

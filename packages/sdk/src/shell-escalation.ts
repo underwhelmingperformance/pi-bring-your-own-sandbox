@@ -29,7 +29,7 @@ import { appendLedgerEntry } from './escalation-ledger.js';
 import type { EscalatedSandbox, EscalationPlan } from './escalation-plan.js';
 import { observe, OperationScope } from './lifecycle.js';
 import { accessPolicySchema, pathGrantsSchema } from './policy-model.js';
-import { runtimeSettings } from './runtime-settings.js';
+import { shellSettings } from './runtime-participant.js';
 import { checker, denseArray, safeTextSchema } from './schemas.js';
 
 const listItem = Type.Union([Type.KeyOf(accessPolicySchema), pathGrantsSchema]);
@@ -145,18 +145,18 @@ export class PendingEscalation {
 		this.#input = input;
 		this.#scope = new OperationScope(
 			{ operation: 'exec' },
-			runtimeSettings(pi).lifetime,
+			shellSettings(pi).lifetime,
 			{},
 			60_000
 		);
 	}
 
 	async #prepare(dialect: Dialect): Promise<void> {
-		const config = await runtimeSettings(this.#pi).read(this.#context);
+		const config = await shellSettings(this.#pi).read(this.#context);
 
 		this.#scope.check();
 
-		if (config.allowEscalation === false) {
+		if (!config.allowsEscalation) {
 			this.#complete('denied', { kind: 'configuration' });
 
 			throw this.#refusal('allowEscalation');

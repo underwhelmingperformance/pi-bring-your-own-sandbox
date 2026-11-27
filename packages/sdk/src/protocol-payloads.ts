@@ -10,7 +10,10 @@ import {
 	providerInfoSchema
 } from './policy-model.js';
 import type { ProtocolIdentity } from './protocol-envelope.js';
-import { protocolEnvelopeSchema } from './protocol-envelope.js';
+import {
+	protocolEnvelopeSchema,
+	protocolIdentitySchema
+} from './protocol-envelope.js';
 import {
 	acquireOptionsSchema,
 	findRequestSchema,
@@ -27,18 +30,14 @@ import {
 	processOutputSchema
 } from './result-schemas.js';
 import { reviewIdentityReplySchema } from './review-identities.js';
+import type { RuntimeParticipant } from './runtime-participant.js';
 import {
 	callable,
 	capabilitiesSchema,
 	nonEmptyStringSchema,
 	recoverySchema
 } from './schemas.js';
-import {
-	brokerServiceSchema,
-	hostOptionsSchema,
-	providerServiceSchema,
-	runtimeSettingsSchema
-} from './service-schemas.js';
+import { brokerServiceSchema } from './service-schemas.js';
 
 const buildRequest = Type.Object(
 	{ type: Type.Literal('get-builds') },
@@ -50,14 +49,44 @@ export const buildAdvertisement = Type.Object(
 	{ additionalProperties: false }
 );
 
-export type BrokerStarter = (context: SandboxContext) => Promise<void>;
+export interface RuntimeCandidate {
+	readonly identity: ProtocolIdentity;
+	readonly candidateId: string;
+}
+
+export type BrokerStarter = (
+	context: SandboxContext,
+	candidates: readonly RuntimeCandidate[]
+) => Promise<void>;
+
+export interface BrokerPin extends RuntimeCandidate {
+	readonly brokerId: string;
+}
 
 export const startBrokerRequest = Type.Object(
 	{
 		type: Type.Literal('start-broker'),
 		candidateId: nonEmptyStringSchema,
+		owner: protocolIdentitySchema,
+		sessionId: nonEmptyStringSchema,
 		receive:
 			callable<(identity: ProtocolIdentity, start: BrokerStarter) => void>()
+	},
+	{ additionalProperties: false }
+);
+
+export const connectRuntimeRequest = Type.Object(
+	{
+		type: Type.Literal('connect-runtime'),
+		electionId: nonEmptyStringSchema,
+		candidateId: nonEmptyStringSchema,
+		ownerCandidateId: nonEmptyStringSchema,
+		brokerId: nonEmptyStringSchema,
+		sessionId: nonEmptyStringSchema,
+		receive:
+			callable<
+				(identity: ProtocolIdentity, participant: RuntimeParticipant) => void
+			>()
 	},
 	{ additionalProperties: false }
 );
@@ -70,6 +99,7 @@ const brokerRequest = Type.Object(
 export const brokerReply = Type.Object(
 	{
 		type: Type.Literal('broker'),
+		candidateId: nonEmptyStringSchema,
 		id: nonEmptyStringSchema,
 		service: brokerServiceSchema
 	},
@@ -85,7 +115,7 @@ export const providerAdvertisement = Type.Object(
 	{
 		type: Type.Literal('provider'),
 		id: nonEmptyStringSchema,
-		service: providerServiceSchema
+		service: providerInfoSchema
 	},
 	{ additionalProperties: false }
 );
@@ -99,19 +129,7 @@ export const findReviewRequest = Type.Object(
 	{ additionalProperties: false }
 );
 export const sourceReply = reviewIdentityReplySchema;
-export const configBindingSchema = Type.Object(
-	{
-		id: nonEmptyStringSchema,
-		resolve: callable<import('./contracts.js').SandboxConfigResolver<unknown>>()
-	},
-	{ additionalProperties: false }
-);
 export const copyOptionsSchema = acquireOptionsSchema;
-
-export const hostBindingSchema = Type.Object(
-	{ id: nonEmptyStringSchema, options: hostOptionsSchema },
-	{ additionalProperties: false }
-);
 
 const reviewAvailability = Type.Object(
 	{ type: Type.Literal('available') },
@@ -125,17 +143,6 @@ const shellIntegration = Type.Object(
 function message(type: string) {
 	return Type.Object(
 		{ type: Type.Literal(type) },
-		{ additionalProperties: false }
-	);
-}
-
-function runtimeService(type: string, service: import('typebox').TSchema) {
-	return Type.Object(
-		{
-			type: Type.Literal(type),
-			id: nonEmptyStringSchema,
-			service
-		},
 		{ additionalProperties: false }
 	);
 }
@@ -177,17 +184,9 @@ export const protocolSchemas = {
 	'runtime.get-builds': buildRequest,
 	'runtime.build': buildAdvertisement,
 	'runtime.start-broker': startBrokerRequest,
+	'runtime.connect-runtime': connectRuntimeRequest,
 	'runtime.get-broker': brokerRequest,
 	'runtime.broker': brokerReply,
-	'runtime.get-settings': message('get-settings'),
-	'runtime.settings': runtimeService('settings', runtimeSettingsSchema),
-	'runtime.get-host-options': message('get-host-options'),
-	'runtime.host-options': runtimeService('host-options', hostBindingSchema),
-	'runtime.get-configuration-providers': message('get-configuration-providers'),
-	'runtime.configuration-providers': runtimeService(
-		'configuration-providers',
-		configBindingSchema
-	),
 	'runtime.get-shell-integration': message('get-shell-integration'),
 	'runtime.shell-integration': shellIntegration,
 	'provider.get-providers': providerRequest,

@@ -25,6 +25,8 @@ import {
 	SandboxOperationError,
 	UnsupportedSandboxCapabilityError
 } from './errors.js';
+import { createSandbox } from './facade.js';
+import { TestBackendOwner } from './fixtures/backend-owner.js';
 import {
 	closeSandboxSession,
 	fixtureTools,
@@ -35,8 +37,8 @@ import { copyHostWorkspace } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import type { FixturePolicyChoices } from './fixtures/profile-fixture.js';
 import { fixtureProfile, fixtureProfiles } from './fixtures/profile-fixture.js';
-import { brokerReply, respond } from './fixtures/protocol-peer.js';
 import { registerSandboxProvider } from './provider-registration.js';
+import { checkedCopy } from './sandbox-copy.js';
 
 afterEach(() => {
 	vi.unstubAllEnvs();
@@ -444,72 +446,54 @@ it.each([
 	});
 });
 
-it('retains the entire close report when an independent broker returns an unusable copy', async () => {
-	await fixture(async (pi, context) => {
-		const reply = brokerReply();
-		const recoveries = ['first', 'second'].map((id) => ({
-			kind: 'allocation' as const,
-			id,
-			lease: 'manual',
-			instructions: `Remove ${id}.`
-		}));
-		const failures = [
-			new SandboxOperationError({ operation: 'dispose', backendId: 'first' }),
-			new SandboxCleanupError({ operation: 'dispose', backendId: 'second' })
-		];
-		const report = { confirmed: false, failures, recoveries };
+it('retains the entire close report when a copy fails validation', async () => {
+	const recoveries = ['first', 'second'].map((id) => ({
+		kind: 'allocation' as const,
+		id,
+		lease: 'manual',
+		instructions: `Remove ${id}.`
+	}));
+	const failures = [
+		new SandboxOperationError({ operation: 'dispose', backendId: 'first' }),
+		new SandboxCleanupError({ operation: 'dispose', backendId: 'second' })
+	];
+	const report = { confirmed: false, failures, recoveries };
 
-		Object.assign(reply.service, {
-			copy: () =>
-				Promise.resolve({
-					sandbox: {
-						providerId: 'independent',
-						backendId: 'remaining',
-						workspace: { relationship: 'shared' },
-						policy: {
-							hostWorkspaceWrites: false,
-							network: false,
-							hostUserData: 'denied',
-							hostSystemFiles: 'denied'
-						},
-						capabilities: {
-							processKinds: [],
-							operations: [],
-							shells: [],
-							terminationScope: 'none',
-							exitStatus: 'optional'
-						}
-					},
-					close: () => Promise.resolve(report)
-				})
-		});
-		respond(pi.events, 'pi-byos:runtime', reply);
-
-		const [outcome] = await Promise.allSettled([
-			copyHostWorkspace(pi, context, { capabilities: ['exec'] })
-		]);
-		const rejected: unknown =
-			outcome.status === 'rejected' ? outcome.reason : undefined;
-
-		if (!isSandboxError(rejected, SandboxCleanupError)) {
-			throw new Error('Expected copy cleanup to fail.', { cause: rejected });
-		}
-
-		expect({
-			operation: rejected.operation,
-			providerId: rejected.providerId,
-			backendId: rejected.backendId,
-			closeReport: rejected.closeReport,
-			hasOriginalCause: isSandboxError(
-				rejected.cause,
-				UnsupportedSandboxCapabilityError
-			)
-		}).toStrictEqual({
-			operation: 'dispose',
+	const target = createSandbox(new TestBackendOwner(new MemoryBackend()));
+	const copy = {
+		sandbox: {
+			...target,
 			providerId: 'independent',
 			backendId: 'remaining',
-			closeReport: report,
-			hasOriginalCause: true
-		});
+			capabilities: { ...target.capabilities, operations: [] }
+		},
+		close: () => Promise.resolve(report)
+	};
+
+	const [outcome] = await Promise.allSettled([
+		checkedCopy(copy, { capabilities: ['exec'] }, import.meta.filename)
+	]);
+	const rejected: unknown =
+		outcome.status === 'rejected' ? outcome.reason : undefined;
+
+	if (!isSandboxError(rejected, SandboxCleanupError)) {
+		throw new Error('Expected copy cleanup to fail.', { cause: rejected });
+	}
+
+	expect({
+		operation: rejected.operation,
+		providerId: rejected.providerId,
+		backendId: rejected.backendId,
+		closeReport: rejected.closeReport,
+		hasOriginalCause: isSandboxError(
+			rejected.cause,
+			UnsupportedSandboxCapabilityError
+		)
+	}).toStrictEqual({
+		operation: 'dispose',
+		providerId: 'independent',
+		backendId: 'remaining',
+		closeReport: report,
+		hasOriginalCause: true
 	});
 });

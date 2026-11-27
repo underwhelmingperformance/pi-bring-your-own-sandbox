@@ -16,7 +16,13 @@ import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfile } from './fixtures/profile-fixture.js';
 import { loadSdkInstance } from './fixtures/sdk-instance.js';
-import { bindProtocolAddress } from './protocol-address.js';
+import { initialiseSandboxHost } from './host.js';
+import { bindProtocolAddress, protocolAddress } from './protocol-address.js';
+import {
+	collectProtocolReplies,
+	PROVIDER_CHANNEL,
+	RUNTIME_CHANNEL
+} from './protocol-envelope.js';
 
 it.each(['denied', 'read-only'] as const)(
 	'shares profile contracts across SDK copies with host system files %s',
@@ -171,6 +177,67 @@ it.each(['denied', 'read-only'] as const)(
 		);
 	}
 );
+
+it('publishes provider metadata and keeps resolvers and settings out of discovery', async () => {
+	const snapshot: unknown[] = [];
+	const config = new FixtureConfig();
+
+	await withPiRuntime(
+		[
+			{
+				name: 'private-provider',
+				factory(pi) {
+					initialiseSandboxHost(pi, import.meta.filename, {});
+					config.activate(pi, imageProvider);
+					pi.on('session_start', () => {
+						const local = protocolAddress(pi.events);
+						const [entry] = collectProtocolReplies(
+							pi.events,
+							PROVIDER_CHANNEL,
+							local,
+							{
+								type: 'get-providers'
+							}
+						);
+						const provider = entry?.payload;
+						const services = [
+							'get-settings',
+							'get-configuration-providers',
+							'get-host-options'
+						].map((type) =>
+							collectProtocolReplies(pi.events, RUNTIME_CHANNEL, local, {
+								type
+							})
+						);
+
+						snapshot.push({ provider, services });
+					});
+				}
+			}
+		],
+		(_runtime, errors) => {
+			expect({ snapshot, errors }).toStrictEqual({
+				snapshot: [
+					{
+						provider: {
+							type: 'provider',
+							id: imageProvider.id,
+							service: {
+								id: imageProvider.id,
+								label: imageProvider.label,
+								profiles: imageProvider.profiles
+							}
+						},
+						services: [[], [], []]
+					}
+				],
+				errors: []
+			});
+
+			return Promise.resolve();
+		}
+	);
+});
 
 it('interoperates across independent SDK instances and removes failed-factory responders in Pi', async () => {
 	const directory = await mkdtemp(path.join(tmpdir(), 'pi-byos-registration-'));

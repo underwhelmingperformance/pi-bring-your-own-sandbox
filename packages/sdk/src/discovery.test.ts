@@ -1,5 +1,4 @@
 import { SessionManager } from '@earendil-works/pi-coding-agent';
-import { Type } from 'typebox';
 import { expect, it, vi } from 'vitest';
 
 import { discoverBroker, discoverProviders } from './discovery.js';
@@ -15,6 +14,7 @@ import {
 	providerReply,
 	respond
 } from './fixtures/protocol-peer.js';
+import { protocolAddress } from './protocol-address.js';
 import {
 	onProtocolRequest,
 	PROTOCOL_MAJOR,
@@ -22,10 +22,9 @@ import {
 	RUNTIME_CHANNEL
 } from './protocol-envelope.js';
 import { registerSandboxProvider } from './provider-registration.js';
-import { discoverRuntimeServices } from './runtime-services.js';
-import { checker, nonEmptyStringSchema } from './schemas.js';
+import { localRuntimeBindings } from './runtime-participant.js';
 
-it('accepts an independently authored provider on the actual Pi event bus', () => {
+it('reads an independent provider declaration on the actual Pi event bus', () => {
 	const events = fixtureEvents(import.meta.filename);
 	const reply = providerReply();
 
@@ -36,14 +35,14 @@ it('accepts an independently authored provider on the actual Pi event bus', () =
 			id: service.id,
 			label: service.label,
 			profiles: service.profiles,
-			configureType: typeof service.configure
+			fields: Object.keys(service).toSorted((a, b) => a.localeCompare(b))
 		}))
 	).toStrictEqual([
 		{
 			id: reply.id,
 			label: 'Independent protocol fixture',
 			profiles: reply.service.profiles,
-			configureType: 'function'
+			fields: ['id', 'label', 'profiles', 'protocol']
 		}
 	]);
 	expect(discoverBroker(events)).toBeUndefined();
@@ -96,6 +95,37 @@ it('accepts an independent broker service and preserves its method receiver', as
 	});
 });
 
+it.each(['candidateId', 'brokerId', 'extensionSource'] as const)(
+	'rejects an advertisement outside the broker pin when %s differs',
+	(field) => {
+		const events = fixtureEvents(import.meta.filename);
+		const reply = brokerReply();
+		const local = protocolAddress(events);
+		const identity = {
+			...local,
+			extensionSource: '/fixture-peer.ts',
+			buildId: 'fixture',
+			packageVersion: '1.0.0'
+		};
+		const pin = {
+			brokerId: reply.id,
+			candidateId: reply.candidateId,
+			identity
+		};
+		const mismatched =
+			field === 'extensionSource'
+				? { ...pin, identity: { ...identity, extensionSource: '/other.ts' } }
+				: { ...pin, [field]: 'different' };
+
+		respond(events, RUNTIME_CHANNEL, reply);
+
+		expect(discoverBroker(events, pin)?.id).toBe(reply.id);
+		expect(() => discoverBroker(events, mismatched)).toThrow(
+			expect.objectContaining({ name: 'InvalidSandboxDeclarationError' })
+		);
+	}
+);
+
 it('collects every synchronous reply before validating and ignores late replies', async () => {
 	const events = fixtureEvents(import.meta.filename);
 	const late = providerReply('late');
@@ -141,10 +171,10 @@ it.each([
 		'InvalidSandboxDeclarationError'
 	],
 	[
-		'missing method',
+		'missing label',
 		{
 			...providerReply(),
-			service: { ...providerReply().service, configure: undefined }
+			service: { ...providerReply().service, label: undefined }
 		},
 		'InvalidSandboxDeclarationError'
 	],
@@ -217,32 +247,30 @@ it('registers a typed provider without allocating or validating configuration', 
 	const events = fixtureEvents(import.meta.filename);
 	let opens = 0;
 
-	registerSandboxProvider(
-		{
-			events,
-			getActiveTools() {
-				throw new Error('Factory loading.');
-			},
-			sendMessage() {
-				throw new Error('Unexpected diagnostic message.');
-			},
-			appendEntry() {
-				throw new Error('Unexpected diagnostic entry.');
-			},
-			on: vi.fn(() => vi.fn())
+	const pi = {
+		events,
+		getActiveTools() {
+			throw new Error('Factory loading.');
 		},
-		import.meta.filename,
-		{
-			...imageProvider,
-			open(request, context) {
-				opens++;
+		sendMessage() {
+			throw new Error('Unexpected diagnostic message.');
+		},
+		appendEntry() {
+			throw new Error('Unexpected diagnostic entry.');
+		},
+		on: vi.fn(() => vi.fn())
+	};
 
-				return imageProvider.open(request, context);
-			}
+	registerSandboxProvider(pi, import.meta.filename, {
+		...imageProvider,
+		open(request, context) {
+			opens++;
+
+			return imageProvider.open(request, context);
 		}
-	);
+	});
 
-	const [service] = discoverProviders(events);
+	const [service] = localRuntimeBindings(pi).providers;
 
 	expect({ id: service?.id, opens }).toStrictEqual({
 		id: 'fixture.image',
@@ -256,33 +284,31 @@ it('registers a typed provider without allocating or validating configuration', 
 it('preserves explicit provider configuration provenance through registration', () => {
 	const events = fixtureEvents(import.meta.filename);
 
-	registerSandboxProvider(
-		{
-			events,
-			getActiveTools() {
-				throw new Error('Factory loading.');
-			},
-			sendMessage() {
-				throw new Error('Unexpected diagnostic message.');
-			},
-			appendEntry() {
-				throw new Error('Unexpected diagnostic entry.');
-			},
-			on: vi.fn(() => vi.fn())
+	const pi = {
+		events,
+		getActiveTools() {
+			throw new Error('Factory loading.');
 		},
-		import.meta.filename,
-		{
-			...imageProvider,
-			validateConfig() {
-				throw new InvalidSandboxConfigError({
-					operation: 'configure',
-					configurationSource: 'extension'
-				});
-			}
-		}
-	);
+		sendMessage() {
+			throw new Error('Unexpected diagnostic message.');
+		},
+		appendEntry() {
+			throw new Error('Unexpected diagnostic entry.');
+		},
+		on: vi.fn(() => vi.fn())
+	};
 
-	const [service] = discoverProviders(events);
+	registerSandboxProvider(pi, import.meta.filename, {
+		...imageProvider,
+		validateConfig() {
+			throw new InvalidSandboxConfigError({
+				operation: 'configure',
+				configurationSource: 'extension'
+			});
+		}
+	});
+
+	const [service] = localRuntimeBindings(pi).providers;
 
 	expect(() => service?.configure({})).toThrow(
 		expect.objectContaining({
@@ -306,32 +332,30 @@ it.each([
 	({ validateConfig }) => {
 		const events = fixtureEvents(import.meta.filename);
 
-		registerSandboxProvider(
-			{
-				events,
-				getActiveTools() {
-					throw new Error('Factory loading.');
-				},
-				sendMessage() {
-					throw new Error('Unexpected diagnostic message.');
-				},
-				appendEntry() {
-					throw new Error('Unexpected diagnostic entry.');
-				},
-				on: vi.fn(() => vi.fn())
+		const pi = {
+			events,
+			getActiveTools() {
+				throw new Error('Factory loading.');
 			},
-			import.meta.filename,
-			{
-				id: imageProvider.id,
-				label: imageProvider.label,
-				profiles: imageProvider.profiles,
+			sendMessage() {
+				throw new Error('Unexpected diagnostic message.');
+			},
+			appendEntry() {
+				throw new Error('Unexpected diagnostic entry.');
+			},
+			on: vi.fn(() => vi.fn())
+		};
 
-				validateConfig,
-				open: () => Promise.reject(new Error('Opening must not occur.'))
-			}
-		);
+		registerSandboxProvider(pi, import.meta.filename, {
+			id: imageProvider.id,
+			label: imageProvider.label,
+			profiles: imageProvider.profiles,
 
-		const [service] = discoverProviders(events);
+			validateConfig,
+			open: () => Promise.reject(new Error('Opening must not occur.'))
+		});
+
+		const [service] = localRuntimeBindings(pi).providers;
 
 		expect(() => service?.configure({})).toThrow(
 			expect.objectContaining({ name: 'InvalidSandboxConfigError' })
@@ -350,16 +374,6 @@ it('rejects an independent broker without a copy method', () => {
 	);
 });
 
-const serviceSchema = Type.Object({ id: nonEmptyStringSchema });
-const isService = checker(serviceSchema);
-const runtimeReply = {
-	type: 'fixture',
-	id: 'registered',
-	service: { id: 'registered' }
-};
-const discoverFixture = (events: Parameters<typeof discoverBroker>[0]) =>
-	discoverRuntimeServices(events, 'fixture', serviceSchema, isService);
-
 it.each([
 	{
 		label: 'provider declaration',
@@ -374,20 +388,6 @@ it.each([
 		request: 'get-broker',
 		replies: [{ ...brokerReply(), id: 'mismatch' }],
 		discover: discoverBroker
-	},
-	{
-		label: 'runtime service',
-		channel: RUNTIME_CHANNEL,
-		request: 'get-fixture',
-		replies: [{ ...runtimeReply, id: 'mismatch' }],
-		discover: discoverFixture
-	},
-	{
-		label: 'duplicate runtime service',
-		channel: RUNTIME_CHANNEL,
-		request: 'get-fixture',
-		replies: [runtimeReply, runtimeReply],
-		discover: discoverFixture
 	}
 ] as const)(
 	'identifies the peer in an error for a $label',

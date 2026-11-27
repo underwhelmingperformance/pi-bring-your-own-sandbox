@@ -6,7 +6,6 @@ import { expect, it, vi } from 'vitest';
 
 import { ScriptedModel } from '../../../test-support/scripted-model.js';
 
-import { SandboxBroker } from './broker.js';
 import { getSandbox } from './client.js';
 import type {
 	BackendProcessContext,
@@ -20,9 +19,7 @@ import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfile, fixtureProfiles } from './fixtures/profile-fixture.js';
 import { observe } from './lifecycle.js';
-import type { ProviderServiceV1 } from './protocol.js';
-import { bindProtocolAddress } from './protocol-address.js';
-import { ensureBroker } from './service.js';
+import { registerSandboxProvider } from './provider-registration.js';
 import { registerUserShell } from './user-shell.js';
 import { profileCapabilities } from './validation.js';
 
@@ -84,49 +81,41 @@ function fixture(
 		},
 		dispose: () => Promise.resolve()
 	};
-	const provider: ProviderServiceV1 = {
-		id: 'fixture',
-		label: 'Fixture',
-		profiles: fixtureProfiles(profileCapabilities(backend.profile), {
-			hostWorkspaceWrites: [true],
-			hostUserData: ['denied'],
-			hostSystemFiles: ['read-only'],
-			network: [false]
-		}),
-
-		configure() {
-			return {
-				open: async () => {
-					counts.opens++;
-					await opening?.();
-
-					return backend;
-				}
-			};
-		}
-	};
+	const profiles = fixtureProfiles(profileCapabilities(backend.profile), {
+		hostWorkspaceWrites: [true],
+		hostUserData: ['denied'],
+		hostSystemFiles: ['read-only'],
+		network: [false]
+	});
 	const extension: InlineExtension = {
 		name: 'sandbox-user-shell',
 		factory(pi) {
-			bindProtocolAddress(pi.events, import.meta.filename);
-			ensureBroker(
-				pi.events,
-				(id) =>
-					new SandboxBroker(id, pi, {
-						readConfig: () =>
-							Promise.resolve({
-								selection: {
-									providerId: 'fixture',
-									source: 'extension',
-									policy: template.policy,
-									...(config.userShell !== undefined && {
-										userShell: config.userShell
-									})
-								},
-								providerConfig: {}
-							}),
-						providers: () => [provider]
+			registerSandboxProvider(
+				pi,
+				import.meta.filename,
+				{
+					id: 'fixture',
+					label: 'Fixture',
+					profiles,
+					validateConfig: () => ({}),
+					open: async () => {
+						counts.opens++;
+						await opening?.();
+
+						return backend;
+					}
+				},
+				{
+					configure: () => ({
+						configuration: {},
+						settings: {
+							policy: template.policy,
+							...(config.userShell !== undefined && {
+								userShell: config.userShell
+							})
+						}
 					})
+				}
 			);
 			binding.pi = pi;
 			pi.on('session_start', (_event, context) => {

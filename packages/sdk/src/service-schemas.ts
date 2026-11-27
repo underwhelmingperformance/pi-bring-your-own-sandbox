@@ -4,17 +4,8 @@ import { builtinProviders } from './builtin-providers.js';
 import { cleanupSelectionSchema } from './cleanup-budgets.js';
 import type { SandboxProvider } from './contracts.js';
 import { providerInfoSchema } from './policy-model.js';
-import type { BrokerService, ProviderServiceV1 } from './protocol.js';
-import type { DiagnosticStore } from './provider-diagnostics.js';
-import type { RuntimeSettingsV1 } from './runtime-settings.js';
-import { callable, nonEmptyStringSchema, signalSchema } from './schemas.js';
-
-export const providerServiceSchema = Type.Intersect([
-	providerInfoSchema,
-	Type.Object({
-		configure: callable<ProviderServiceV1['configure']>()
-	})
-]);
+import type { BrokerService } from './protocol.js';
+import { callable, nonEmptyStringSchema } from './schemas.js';
 
 export const brokerServiceSchema = Type.Object({
 	copy: callable<BrokerService['copy']>(),
@@ -52,18 +43,6 @@ export const providerDeclarationSchema = Type.Refine(
 	(provider) =>
 		provider.profiles.copy.length > 0 === (provider.copy !== undefined)
 );
-
-export const runtimeSettingsSchema = Type.Object({
-	diagnostics: Type.Object({
-		record: callable<DiagnosticStore['record']>(),
-		snapshot: callable<DiagnosticStore['snapshot']>()
-	}),
-	assertConfigurable: callable<RuntimeSettingsV1['assertConfigurable']>(),
-	id: nonEmptyStringSchema,
-	lifetime: signalSchema,
-	close: callable<RuntimeSettingsV1['close']>(),
-	read: callable<RuntimeSettingsV1['read']>()
-});
 
 export const hostOptionsSchema = Type.Object(
 	{

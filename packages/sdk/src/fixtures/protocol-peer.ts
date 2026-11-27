@@ -37,11 +37,7 @@ export function providerReply(id = 'independent') {
 					hostSystemFiles: ['read-only'],
 					network: [false]
 				}
-			),
-
-			configure: (_input: unknown) => ({
-				open: () => Promise.reject(new Error('Fixture only.'))
-			})
+			)
 		}
 	};
 }
@@ -89,6 +85,7 @@ class IndependentBroker {
 export function brokerReply(id = 'independent') {
 	return {
 		type: 'broker',
+		candidateId: 'fixture-candidate',
 		id,
 		service: new IndependentBroker(id)
 	};

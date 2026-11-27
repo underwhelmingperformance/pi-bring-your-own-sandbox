@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { EventBus } from '@earendil-works/pi-coding-agent';
 
-import { discoverBroker, isBrokerService } from './discovery.js';
+import { isBrokerService } from './discovery.js';
 import {
 	InvalidSandboxDeclarationError,
 	isSandboxError,
@@ -17,17 +17,12 @@ import { onProtocolRequest, RUNTIME_CHANNEL } from './protocol-envelope.js';
 import { brokerReply } from './protocol-payloads.js';
 import { projectReply } from './protocol-version.js';
 
-export function ensureBroker(
+export function publishBroker(
 	events: EventBus,
-	create: (id: string) => BrokerService
+	candidateId: string,
+	create: (id: string) => BrokerService,
+	id = randomUUID()
 ): BrokerService {
-	const existing = discoverBroker(events);
-
-	if (existing !== undefined) {
-		return existing;
-	}
-
-	const id = randomUUID();
 	let target: BrokerService | undefined;
 	let failure = new SandboxInitialisationError({
 		operation: 'discover'
@@ -106,6 +101,7 @@ export function ensureBroker(
 					brokerReply,
 					{
 						type: 'broker',
+						candidateId,
 						id,
 						service: offer(request)
 					},

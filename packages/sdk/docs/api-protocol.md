@@ -1,21 +1,20 @@
 # API and protocol appendix
 
-This appendix specifies the shapes for the target SDK, protocol major 1 at
-feature level 0. The [specification][spec] defines behaviour and identifies the
-consumers of the contract. Runtime schemas define the types when the
-implementation reaches this design.
+This appendix specifies protocol major 2 at feature level 0. The
+[specification][spec] defines behaviour and identifies the consumers of the
+contract. Runtime schemas define the types.
 
 [spec]: specification.md
 
 ## Public entry points
 
-| Entry point | Operations and types                                                                          |
-| ----------- | --------------------------------------------------------------------------------------------- |
-| `/consumer` | `createSandboxClient`, sandbox handles, requirements, error checks, review and escalation     |
-| `/provider` | `registerSandboxProvider`, provider and backend contracts, errors and display helpers         |
-| `/host`     | `initialiseSandboxHost`, `closeSandboxSession`, host options and `registerSandboxDiagnostics` |
-| `/pi-tools` | Pi shell integration factory and `registerShellOnlyTools`                                     |
-| `/testing`  | `defineSandboxProviderTests` and `SandboxProviderTestFixture`                                 |
+| Entry point | Operations and types                                                                        |
+| ----------- | ------------------------------------------------------------------------------------------- |
+| `/consumer` | `createSandboxClient`, sandbox handles, requirements, error checks, review and escalation   |
+| `/provider` | `registerSandboxProvider`, provider and backend contracts, errors and display helpers       |
+| `/host`     | `initialiseSandboxHost`, `SandboxHostHandle`, host options and `registerSandboxDiagnostics` |
+| `/pi-tools` | Pi shell integration factory and `registerShellOnlyTools`                                   |
+| `/testing`  | `defineSandboxProviderTests` and `SandboxProviderTestFixture`                               |
 
 The package prefix is `pi-bring-your-own-sandbox`. Wire schemas, channel
 constants, broker objects and identity constructors are internal.
@@ -53,19 +52,25 @@ registerSandboxProvider<Config, Input = Config>(
 ): void;
 initialiseSandboxHost(
   pi: SandboxHost, extensionSource: string, options: SandboxHostOptions
-): void;
-closeSandboxSession(pi: SandboxHost, context: SandboxContext): Promise<SandboxCloseReport>;
+): SandboxHostHandle;
+
+interface SandboxHostHandle {
+  readonly close: () => Promise<SandboxCloseReport>;
+}
 ```
 
 Create the client in the extension factory. Pass `import.meta.filename` for
 `extensionSource`. The client uses that path for build election, errors and
-ledger entries. Provider registration, the Pi tools and standalone settings
-publishers register their builds through their factory entry points. Standalone
-registration accepts the extension source as the second argument.
+ledger entries. Provider registration, the Pi tools and host initialisation
+register their builds through their factory entry points.
 
-`/host` is for embedding hosts. `SandboxHostOptions` has only
-`cleanup?: Partial<SandboxCleanupBudgets>` for embedding defaults. The
-[provider's cleanup settings][provider-settings] take precedence.
+`/host` is for embedding hosts. Call `initialiseSandboxHost` from an extension
+factory. The returned handle is frozen. After startup, its `close()` method
+shares Pi's session shutdown and returns the same cleanup report on every call.
+
+`SandboxHostOptions` accepts `cleanup?: Partial<SandboxCleanupBudgets>` for
+embedding defaults. The [provider's cleanup settings][provider-settings] take
+precedence.
 
 [provider-settings]: #provider-settings
 
@@ -512,7 +517,7 @@ Pass the request from the review source to the same client while the call is
 pending. The client checks that the request matches the pending tool call in the
 live session and records the extension path from the factory. A missing, expired
 or mismatched request fails with `InvalidSandboxRequestError`. Conflicting
-decisions fail closed. Recording a decision does not execute the command. The
+decisions fail closed. The broker uses the decision only at dispatch. The
 [specification][escalation] defines negotiation and dispatch.
 
 [escalation]: specification.md#escalation
@@ -626,16 +631,11 @@ accepts an optional tool call ID filter.
 
 ## Internal protocol
 
-<!--
-Channel names and the envelope and payload shapes are provisional in
-milestone 1.
--->
-
-| Channel            | Operations                                                                    |
-| ------------------ | ----------------------------------------------------------------------------- |
-| `pi-byos:runtime`  | Build election, broker, settings, configuration, requirements and diagnostics |
-| `pi-byos:provider` | Provider advertisements and registration exchange                             |
-| `pi-byos:review`   | Pending call queries and review source replies                                |
+| Channel            | Operations                                              |
+| ------------------ | ------------------------------------------------------- |
+| `pi-byos:runtime`  | Build election, private startup, broker and diagnostics |
+| `pi-byos:provider` | Descriptive provider advertisements                     |
+| `pi-byos:review`   | Pending call queries and review source replies          |
 
 ```typescript
 interface BuildIdentity {
@@ -656,18 +656,28 @@ type Envelope<Payload> = BuildIdentity & {
 | Channel  | Envelope kind   | Example payload                                            |
 | -------- | --------------- | ---------------------------------------------------------- |
 | Runtime  | `request`       | `{ type: 'get-builds' }`                                   |
-| Runtime  | `advertisement` | `{ type: 'build', activate }`                              |
+| Runtime  | `advertisement` | `{ type: 'build', candidateId }`                           |
 | Runtime  | `request`       | `{ type: 'get-broker' }`                                   |
-| Runtime  | `reply`         | `{ type: 'broker', id, service }`                          |
+| Runtime  | `reply`         | `{ type: 'broker', candidateId, id, service }`             |
 | Provider | `request`       | `{ type: 'get-providers' }`                                |
 | Provider | `advertisement` | `{ type: 'provider', id, service }`                        |
 | Review   | `request`       | `{ type: 'find-source', toolName, toolCallId, sessionId }` |
-| Review   | `reply`         | `{ type: 'source', copy }`                                 |
+| Review   | `reply`         | `{ type: 'source', ok: true, toolCallId, sourceId }`       |
 
-Settings, configuration and requirements use runtime queries. Their replies
-contain `type`, `id` and `service`. The shell integration query returns
-`{ type: 'shell-integration' }` when an extension registers the Pi tools.
-Provider profiles and review source identities arrive in later milestones.
+A review refusal replies with `ok: false` and a reason. Startup uses
+`start-broker` and `connect-runtime` with direct receiver callbacks. The elected
+owner receives the provider configuration and backend functions. The embedding
+host receives its close function. The tool integration receives its dispatch
+callbacks. The runtime offers no settings service. The shell integration query
+returns `{ type: 'shell-integration' }` when an extension registers the Pi
+tools.
+
+Protocol 2 keeps the envelope and build census verb. SDK copies use the census
+to detect a major mismatch before bootstrap. The [2.0 snapshot][v2] records the
+current schemas. The [1.0 snapshot][v1] records the pinned contract.
+
+[v2]: ../src/fixtures/protocol-snapshots/2.0.json
+[v1]: ../src/fixtures/protocol-snapshots/1.0.json
 
 The envelope header is fixed within a protocol major. The major is a positive
 integer, and the feature level is a non-negative integer. Replies repeat the

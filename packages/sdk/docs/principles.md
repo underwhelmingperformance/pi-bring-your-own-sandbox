@@ -289,12 +289,23 @@ removing something after release is not. Mixing audiences in one entry point
 also gives callers operations meant for someone else, such as letting any
 consumer close the user's session.
 
-Integrations outside the SDK use only the public entry points. The SDK's Pi
-integration reaches internal code through `src/integration/privileged.ts`. That
-module binds the broker, registers review routes, prepares escalations and
-verifies pending calls. These operations protect the review route and its
-decisions. Exposing them publicly would give callers authority beyond
-principle 2.
+Integrations outside the SDK use the public entry points. The elected broker
+publishes acquisition, negotiation, status, provider metadata and review source
+resolution. A sandbox handle or a review source can request a copy of its own
+source.
+
+The elected SDK copy prepares shell calls and owns escalation planning, review
+registration and dispatch. Providers pass their configuration and backend
+operations directly to the elected copy during session startup. The embedding
+host receives a close handle from `initialiseSandboxHost`. The broker keeps
+settings private. The Pi tool adapter receives its dispatch callbacks in
+`src/integration/privileged.ts`.
+
+The private startup exchange limits the operations that discovery exposes. Pi's
+event bus accepts sender identities from extensions. An extension can therefore
+impersonate a startup participant, including a build candidate, provider or
+host. Installing an extension means trusting that extension to participate in
+startup and review.
 
 Enforced by:
 
@@ -391,8 +402,11 @@ Enforced by:
 ## 17. Record every decision that changes isolation
 
 Record each decision that changes isolation in the session's [ledger]. The
-record identifies who made the decision and what happened. If the call ends
-before anyone decides, record the outcome.
+record identifies who made the decision and what happened. The elected broker
+uses its pending record for the command, destination and restrictions. It
+consumes the decision at dispatch and records the outcome before it opens the
+escalation destination. If the call ends before anyone decides, record the
+outcome.
 
 Users need to see why a command ran with more access. Reviewers need to relate
 review copies and reported violations to the tool call that produced them.

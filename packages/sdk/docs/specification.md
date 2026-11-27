@@ -380,17 +380,24 @@ still apply. A native provider can report the original host home path while
 using scratch space for the target home. A provider that denies host user data
 omits the field. Docker omits it because its profiles deny host user data.
 
-The broker presents the command, justification, requested properties and paths,
+The elected broker prepares each shell call from Pi's `tool_execution_start`
+event. It checks the active tool's source path and the identity of its parameter
+schema. The broker keeps the command, arguments and plan in a pending record for
+that call. Review and confirmation use that record.
+
+The broker presents the effective command, justification, requested access,
 chosen destination and effective restrictions before a decision. For the host,
-the effective restrictions are `none`. A permission extension receives the same
-broker-resolved request that the confirmation would show. The decision function
-can allow or deny only this pending tool call. The broker checks the request
-against the pending call in the live session. The integration asks the user only
-if there is no recorded permission extension decision. The prompt identifies the
-provider by its label. The call runs only after an allow decision. Denial,
-dismissal, cancellation and expiry prevent dispatch. The user and permission
-extension can rely on the reviewed command and destination remaining fixed
-through execution. The added access applies only to that command.
+the effective restrictions are `none`. Any installed extension can allow or deny
+a pending escalation through a review source and its consumer client. Installing
+a permission extension delegates that choice to it. Conflicting decisions fail
+closed. When no extension has recorded a decision, BYOS asks the user for
+confirmation and shows the provider label.
+
+Before dispatch, the broker checks the selected tool and arguments against the
+pending record, consumes the decision once and records the outcome. An allow
+decision permits the broker to open the planned destination. A denial,
+dismissal, cancellation or expiry prevents dispatch. The extra access applies to
+that call alone.
 
 Before a run with a BYOS shell, the system prompt describes the negotiated
 policy for ordinary shell commands and explains whether escalation is available.
@@ -412,14 +419,13 @@ independence to inspect the pending call's environment. A copy need not reflect
 one atomic instant of the source. If its profile cannot satisfy the request, the
 broker reports why before allocating it.
 
-The review route records pending calls on `tool_execution_start` so a permission
-gate can find the relevant call regardless of extension load order. It replies
-with the identity of a review source tied to the pending call and destination,
-or a typed reason for unavailability. The reviewer resolves the identity through
-its own broker. The review source lets the reviewer check whether a suitable
-copy is available without allocating one, and then request that copy. The
-reviewer gets no access to the live sandbox. The broker rejects unsolicited or
-mismatched identities. A reply's shape alone does not establish isolation.
+The elected broker derives review from the pending call. For an ordinary call,
+the broker negotiates the destination under the configured policy. For an
+escalation, it uses its escalation plan. The review route replies with an
+identity for that source or a typed reason for unavailability. The reviewer
+resolves the identity through the elected broker. The review source can
+negotiate and request a private copy of its destination. The broker rejects
+unsolicited or mismatched identities.
 
 The broker reports the target workspace after it verifies an open backend. For a
 host destination, the broker already knows the workspace. Lookup and copy
@@ -437,19 +443,35 @@ fields and identity envelopes.
 
 [wire]: api-protocol.md#internal-protocol
 
-<!-- Factory entry points and the build election are provisional. -->
-
 During the Pi extension factory, consumers create a client with
-`createSandboxClient(pi, import.meta.filename)`. Provider registration and the
-Pi tool integration register their own builds. Embedding hosts can supply
-defaults outside an extension factory and do not enter the election.
+`createSandboxClient(pi, import.meta.filename)`. Provider registration, the Pi
+tool integration and `initialiseSandboxHost` join the build census from their
+respective factories. Protocol 2 removes the outside-factory exception for
+embedding hosts. Calling `createSandboxClient` or `initialiseSandboxHost` after
+the factories have run raises `SandboxInitialisationError`.
 
-The broker starts after Pi binds actions for the loaded extensions. The build
-with the highest feature level supplies the broker. Ties use the SDK package
-version in SemVer order, then the build ID and extension source path in code
-unit order. Creating a client after Pi binds actions fails with
-`SandboxInitialisationError`. Calling `get` before Pi binds actions raises the
-same error.
+The first BYOS `session_start` handler elects the build with the highest feature
+level. Ties use the SDK package version in SemVer order, then the build ID and
+extension source path in code unit order. The broker captures the session ID and
+canonical absolute checkout from Pi's event before it publishes a service. It
+uses that checkout for settings, grants and allocation. A caller must supply the
+captured session ID and either the original Pi working directory or its
+canonical spelling. Requests before startup fail with
+`SandboxInitialisationError`. A mismatched context fails with
+`StaleSandboxHandleError`.
+
+Consumer clients pin the elected build, candidate and broker instance. Broker
+discovery offers acquisition, negotiation, status, provider metadata and review
+source resolution. Provider advertisements contain only descriptive data. During
+startup, providers transfer their resolver and backend operations directly to
+the elected owner. The owner keeps settings private and passes the tool
+integration callbacks for its registered tools.
+
+The private startup exchange keeps owner operations out of ordinary discovery.
+Pi's event bus forwards messages without authenticating the sender. An installed
+extension can therefore impersonate a startup participant by answering the build
+census or offering a provider or host receiver. Installing an extension means
+trusting that extension to participate in startup and review.
 
 ## Lifetime and recovery
 
@@ -459,19 +481,20 @@ and workspace. Separate sessions and reloads get fresh generations. A resumed
 transcript does not restore old resources. Consumers with cached facades receive
 an error after the generation closes.
 
-The generation stops accepting work when the broker observes shutdown. The
-embedding host closes the session before disposing of the Pi runtime. The broker
-rejects new work, cancels pending and active operations and disposes of
-ordinary, copy and escalated backends within bounded cleanup budgets. The
-embedding host relies on those budgets to finish shutdown when a transport
-stalls. Each allocation has one owner and each close is idempotent. Providers
-clean up partial allocations on failed startup and dispose of any allocation
-that finishes after the request has expired. Cleanup timeouts mean cleanup is
-unconfirmed. Providers record recovery instructions for resources that require
-intervention. The host and reviewer rely on the close report to distinguish
-confirmed disposal from outstanding work. The user relies on status to find the
-affected allocation without revealing secrets. Provider leases or documented
-recovery cover crashes that prevent orderly shutdown.
+The generation stops accepting work when the broker observes shutdown. An
+embedding host calls `close()` on the handle from `initialiseSandboxHost` before
+disposing of the Pi runtime. Pi's `session_shutdown` handler shares the same
+cleanup operation and report. The broker rejects new work, cancels pending and
+active operations and disposes of ordinary, copy and escalated backends within
+bounded cleanup budgets. The embedding host relies on those budgets to finish
+shutdown when a transport stalls. Each allocation has one owner and each close
+is idempotent. Providers clean up partial allocations on failed startup and
+dispose of any allocation that finishes after the request has expired. Cleanup
+timeouts mean cleanup is unconfirmed. Providers record recovery instructions for
+resources that require intervention. The host and reviewer rely on the close
+report to distinguish confirmed disposal from outstanding work. The user relies
+on status to find the affected allocation without revealing secrets. Provider
+leases or documented recovery cover crashes that prevent orderly shutdown.
 
 ## Ledger
 

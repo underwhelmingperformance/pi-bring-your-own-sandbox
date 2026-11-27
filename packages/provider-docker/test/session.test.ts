@@ -582,56 +582,84 @@ process.stdout.write(JSON.stringify([
 			30_000
 		);
 
-		it('takes fresh independent copies of a sandbox and the host checkout', async () => {
-			await withDockerSession(async ({ fixture, sandbox }) => {
-				await sandbox.files.writeFile('source.txt', Buffer.from('first'));
-
+		it('takes fresh independent copies of the active sandbox', async () => {
+			await withDockerSession(async ({ sandbox }) => {
 				const first = await sandbox.copy();
 
-				await sandbox.files.writeFile('source.txt', Buffer.from('second'));
+				try {
+					await sandbox.files.writeFile('source.txt', Buffer.from('changed'));
 
-				const second = await sandbox.copy();
-				const { backend: host, read, write } = await copyHostCheckout(fixture);
-				const readHost = async () =>
-					new TextDecoder().decode(
-						await read.readFile('source.txt', operationContext())
-					);
+					const second = await sandbox.copy();
+
+					try {
+						expect(
+							await Promise.all([readCopy(first), readCopy(second)])
+						).toStrictEqual(['original', 'changed']);
+						await first.close();
+
+						const shell = await second.sandbox.exec({
+							kind: 'shell',
+							dialect: 'sh',
+							command: 'cat source.txt'
+						});
+
+						expect(new TextDecoder().decode(shell.stdout)).toBe('changed');
+					} finally {
+						await second.close();
+					}
+				} finally {
+					await first.close();
+				}
+			});
+		}, 30_000);
+
+		it('takes a private copy of the current host checkout', async () => {
+			const fixture = await DockerFixture.create();
+			const source = path.join(fixture.workspace, 'source.txt');
+
+			try {
+				await writeFile(source, 'current');
+
+				const { backend, read, write } = await copyHostCheckout(fixture);
 
 				try {
-					expect(
-						await Promise.all([readCopy(first), readCopy(second), readHost()])
-					).toStrictEqual(['first', 'second', 'second']);
-					expect(host.profile.policy).toStrictEqual({
-						hostWorkspaceWrites: false,
-						hostUserData: 'denied',
-						hostSystemFiles: 'denied',
-						network: false
-					});
-					await first.close();
+					const contents = await read.readFile(
+						'source.txt',
+						operationContext()
+					);
 
-					const shell = await second.sandbox.exec({
-						kind: 'shell',
-						dialect: 'sh',
-						command: 'cat source.txt'
-					});
-
-					expect(new TextDecoder().decode(shell.stdout)).toBe('second');
 					await write.writeFile(
 						'source.txt',
 						Buffer.from('private'),
 						operationContext()
 					);
-					expect(
-						await Promise.all([readHost(), readCopy(second)])
-					).toStrictEqual(['private', 'second']);
+
+					const updated = await read.readFile('source.txt', operationContext());
+
+					expect({
+						initial: new TextDecoder().decode(contents),
+						copy: new TextDecoder().decode(updated),
+						source: await readFile(source, 'utf8'),
+						policy: backend.profile.policy
+					}).toStrictEqual({
+						initial: 'current',
+						copy: 'private',
+						source: 'current',
+						policy: {
+							hostWorkspaceWrites: false,
+							hostUserData: 'denied',
+							hostSystemFiles: 'denied',
+							network: false
+						}
+					});
 				} finally {
-					await Promise.all([
-						first.close(),
-						second.close(),
-						host.dispose(operationContext())
-					]);
+					await backend.dispose(operationContext());
 				}
-			});
+
+				await fixture.verifyDisposed();
+			} finally {
+				await fixture.cleanup();
+			}
 		}, 30_000);
 
 		it('rejects a copy requirement to write the live checkout and grants writes inside the copy', async () => {
@@ -1184,32 +1212,65 @@ socket.on('error', error => {
 			async (reason) => {
 				await withDockerSession(async ({ sandbox, fixture }) => {
 					const controller = new AbortController();
+					const timeoutMs = reason === 'deadline' ? 3000 : 15_000;
+					const decoder = new TextDecoder();
+					let output = '';
 					let hasStarted = false;
-					const running = sandbox.exec(cancellationRequest, {
-						signal: controller.signal,
-						timeoutMs: reason === 'deadline' ? 3000 : 15_000,
-						onOutput() {
-							hasStarted = true;
 
-							if (reason === 'output') {
-								throw new Error('The consumer rejected output.');
+					if (reason === 'deadline') {
+						vi.useFakeTimers({
+							toFake: ['performance', 'setTimeout', 'clearTimeout']
+						});
+					}
+
+					try {
+						const running = sandbox.exec(cancellationRequest, {
+							signal: controller.signal,
+							timeoutMs,
+							onOutput(event) {
+								if (hasStarted || event.stream !== 'stdout') {
+									return;
+								}
+
+								output += decoder.decode(event.data, { stream: true });
+
+								if (!output.includes('ready')) {
+									return;
+								}
+
+								hasStarted = true;
+
+								switch (reason) {
+									case 'caller': {
+										controller.abort();
+										break;
+									}
+
+									case 'deadline': {
+										vi.advanceTimersByTime(timeoutMs);
+										break;
+									}
+
+									case 'output': {
+										throw new Error('The consumer rejected output.');
+									}
+								}
 							}
+						});
 
-							if (reason === 'caller') {
-								controller.abort();
-							}
-						}
-					});
+						await expect(running).rejects.toMatchObject({
+							name:
+								reason === 'deadline'
+									? 'SandboxTimeoutError'
+									: reason === 'output'
+										? 'SandboxOutputCallbackError'
+										: 'SandboxCancelledError',
+							completion: 'confirmed'
+						});
+					} finally {
+						vi.useRealTimers();
+					}
 
-					await expect(running).rejects.toMatchObject({
-						name:
-							reason === 'deadline'
-								? 'SandboxTimeoutError'
-								: reason === 'output'
-									? 'SandboxOutputCallbackError'
-									: 'SandboxCancelledError',
-						completion: 'confirmed'
-					});
 					await fixture.noJobContainers();
 
 					const next = await sandbox.exec({

@@ -163,6 +163,7 @@ it.skipIf(path.sep !== '/')(
 		const library = '/System/Library/byos';
 		const cryptex = '/System/Cryptexes/OS/byos';
 		const preboot = '/System/Volumes/Preboot/Cryptexes/OS/byos';
+		const otherPreboot = '/System/Volumes/Preboot/byos';
 		const aliases = new Map([
 			[linkedCredential, credentialTarget],
 			[cryptex, preboot]
@@ -192,7 +193,8 @@ it.skipIf(path.sep !== '/')(
 					linkedCredential,
 					checkoutFile,
 					library,
-					cryptex
+					cryptex,
+					otherPreboot
 				]
 			});
 			const selection = selectProfile({
@@ -212,7 +214,8 @@ it.skipIf(path.sep !== '/')(
 					},
 					{ kind: 'read', path: checkoutFile, location: 'workspace' },
 					{ kind: 'read', path: ordinary, location: 'host-user-data' },
-					{ kind: 'read', path: preboot, location: 'host-user-data' },
+					{ kind: 'read', path: preboot, location: 'host-system-files' },
+					{ kind: 'read', path: otherPreboot, location: 'host-user-data' },
 					{
 						kind: 'read',
 						path: credentialTarget,

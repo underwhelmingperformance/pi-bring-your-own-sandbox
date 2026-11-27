@@ -147,9 +147,9 @@ ordinary path and a path under `/System/Volumes/Data`. The broker removes that
 prefix when it compares paths for workspace, system and credential checks. The
 provider receives the path that the filesystem resolved.
 
+The macOS list also includes `/System/Volumes/Preboot/Cryptexes`. macOS manages
+this directory and uses it for runtime files such as the dyld shared cache.
 Other paths under `/System/Volumes` outside the checkout are host user data.
-Cryptex targets in Preboot, including the dyld shared cache, are launcher
-runtime resources that providers document when they need them.
 
 [apfs-firmlinks]:
   https://developer.apple.com/documentation/system/fileflags/firmlink

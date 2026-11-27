@@ -28,6 +28,7 @@ export const hostSystemRoots: Readonly<
 		'/System/DriverKit',
 		'/System/KernelKit',
 		'/System/Library',
+		'/System/Volumes/Preboot/Cryptexes',
 		'/System/iOSSupport',
 		'/System/x86Support',
 		'/Library/Apple/System',

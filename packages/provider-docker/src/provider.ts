@@ -278,46 +278,55 @@ class DockerBackend implements SandboxBackend {
 			providerId: 'example.docker',
 			recovery: this.recovery
 		});
-		// A different launcher UID prevents the child from writing control frames through /proc.
-		const result = await this.#resources.job(
-			[
-				'--pull=never',
-				'--network=none',
-				'--read-only',
-				'--cap-drop=ALL',
-				'--cap-add=SETUID',
-				'--cap-add=SETGID',
-				'--cap-add=DAC_OVERRIDE',
-				'--security-opt=no-new-privileges',
-				'--pids-limit=64',
-				'--memory=128m',
-				'--cpus=1',
-				'--log-driver=none',
-				'--user=0:0',
-				'--workdir=/',
-				'--tmpfs=/tmp:rw,nosuid,nodev,size=16m',
-				'--mount',
-				this.#mount(this.#isWorkspaceReadOnly()),
-				...(guards?.args ?? []),
-				'--entrypoint=/usr/local/bin/node',
-				this.#image,
-				'--input-type=module-typescript',
-				'--eval',
-				this.#launcher,
-				'--',
-				JSON.stringify(invocation)
-			],
-			{
-				...context,
-				signal: AbortSignal.any([context.signal, this.#lifetime.signal]),
-				onOutput: (output) => {
-					frames.accept(output);
-				}
-			},
-			operation
-		);
 
-		return result.kind === 'cancelled' ? result : frames.finish();
+		// A different launcher UID prevents the child from writing control frames through /proc.
+		try {
+			const result = await this.#resources.job(
+				[
+					'--pull=never',
+					'--network=none',
+					'--read-only',
+					'--cap-drop=ALL',
+					'--cap-add=SETUID',
+					'--cap-add=SETGID',
+					'--cap-add=DAC_OVERRIDE',
+					'--security-opt=no-new-privileges',
+					'--pids-limit=64',
+					'--memory=128m',
+					'--cpus=1',
+					'--log-driver=none',
+					'--user=0:0',
+					'--workdir=/',
+					'--tmpfs=/tmp:rw,nosuid,nodev,size=16m',
+					'--mount',
+					this.#mount(this.#isWorkspaceReadOnly()),
+					...(guards?.args ?? []),
+					'--entrypoint=/usr/local/bin/node',
+					this.#image,
+					'--input-type=module-typescript',
+					'--eval',
+					this.#launcher,
+					'--',
+					JSON.stringify(invocation)
+				],
+				{
+					...context,
+					signal: AbortSignal.any([context.signal, this.#lifetime.signal]),
+					onOutput: (output) => {
+						frames.accept(output);
+					}
+				},
+				operation
+			);
+
+			return result.kind === 'cancelled' ? result : frames.finish();
+		} finally {
+			await this.#shared?.checkForNewProtectedEntries(
+				this.id,
+				context,
+				operation
+			);
+		}
 	}
 
 	async #import(
@@ -463,6 +472,8 @@ class DockerBackend implements SandboxBackend {
 				backendId: this.id
 			});
 		}
+
+		await this.#shared?.checkForNewProtectedEntries(this.id, context, 'open');
 
 		const signal = AbortSignal.any([context.signal, this.#lifetime.signal]);
 		const copying = backend.initialise(

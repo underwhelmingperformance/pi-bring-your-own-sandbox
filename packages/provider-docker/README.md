@@ -72,6 +72,12 @@ root. An ancestor mount blocks renaming that directory. The ancestor uses the
 checkout's access mode, so a writable checkout still permits edits to
 unprotected siblings.
 
+A job can create a protected entry such as `.envrc` if it was absent when Docker
+opened the writable checkout. Docker checks for such entries after each job and
+SDK write. If an entry appears, Docker reports its path and refuses further work
+on the backend. The entry stays on the host until you remove it. Reopen the
+sandbox after removing the entry.
+
 Milestone 5 adds `escalate` for Bash, the `allowEscalation` setting and the
 `/byos log` command for inspecting decisions.
 

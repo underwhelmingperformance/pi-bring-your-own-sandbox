@@ -410,7 +410,21 @@ export class DockerFileWorker implements TargetFileOperations {
 			throw error;
 		} finally {
 			signal.removeEventListener('abort', cancel);
-			await removal;
+
+			try {
+				await removal;
+			} finally {
+				if (
+					hasDispatched &&
+					(operation === 'mkdir' || operation === 'writeFile')
+				) {
+					await this.#workspace.shared?.checkForNewProtectedEntries(
+						this.#resources.volume,
+						context,
+						operation
+					);
+				}
+			}
 		}
 	}
 

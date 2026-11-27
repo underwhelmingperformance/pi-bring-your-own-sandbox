@@ -206,6 +206,12 @@ On systems that block renaming mount points, providers can mount each ancestor
 below the checkout root onto itself. An ancestor mount uses the checkout's
 access mode, and the protected path stays read-only.
 
+Docker's writable shared checkout prevents writes to existing protected entries.
+A job can create a protected entry that was absent when the checkout opened.
+Docker checks for new entries after each job and SDK write. If an entry appears,
+Docker reports its path and refuses further work on the backend. The entry stays
+on the host until the user removes it.
+
 ### Default toolchain roots
 
 The SDK exports `hostToolchainRoots` from `/provider`. Both `read-only` and

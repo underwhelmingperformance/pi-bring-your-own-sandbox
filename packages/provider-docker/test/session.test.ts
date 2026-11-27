@@ -355,6 +355,38 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 			);
 		}, 30_000);
 
+		it('refuses further work after a job creates a previously absent protected entry', async () => {
+			await withDockerSession(async ({ sandbox, fixture }) => {
+				const created = await Promise.allSettled([
+					sandbox.exec({
+						kind: 'shell',
+						dialect: 'sh',
+						command: "printf '# fixture' > .envrc"
+					})
+				]);
+				const filename = path.join(fixture.workspace, '.envrc');
+				const contents = await readFile(filename, 'utf8');
+				const next = await Promise.allSettled([
+					sandbox.files.readFile('source.txt')
+				]);
+
+				const failure: unknown = expect.objectContaining({
+					name: 'UnsupportedSandboxPolicyError',
+					detail: { kind: 'request', field: 'protectedPath', value: '.envrc' }
+				});
+
+				expect({
+					created,
+					next,
+					contents
+				}).toStrictEqual({
+					created: [{ status: 'rejected', reason: failure }],
+					next: [{ status: 'rejected', reason: failure }],
+					contents: '# fixture'
+				});
+			});
+		}, 30_000);
+
 		it('shares editor saves across shell and SDK requests while each review retains its inputs', async () => {
 			await withDockerSession(
 				async ({ sandbox, fixture, host }) => {

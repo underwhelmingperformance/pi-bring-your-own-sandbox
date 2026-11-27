@@ -10,6 +10,7 @@ import type {
 } from 'pi-bring-your-own-sandbox/provider';
 import { UnsupportedSandboxPolicyError } from 'pi-bring-your-own-sandbox/provider';
 import {
+	cleanDisplayText,
 	defaultProtectedWorkspacePaths,
 	isProtectedWorkspacePath
 } from 'pi-bring-your-own-sandbox/provider-kit';
@@ -130,6 +131,8 @@ export class SharedCheckout {
 			return guards;
 		}
 
+		checkout.#absent = guards.absent;
+
 		const version = await client.command({
 			args: [
 				'version',
@@ -174,6 +177,9 @@ export class SharedCheckout {
 
 		return checkout;
 	}
+
+	#absent: readonly string[] = [];
+	#created: string | undefined;
 
 	private constructor(
 		readonly root: string,
@@ -266,6 +272,7 @@ export class SharedCheckout {
 		}
 
 		const guards: WorkspaceGuard[] = [];
+		const absent: string[] = [];
 
 		for (const name of paths) {
 			if (
@@ -282,6 +289,8 @@ export class SharedCheckout {
 				if (name === '.pi') {
 					return 'The checkout has no .pi directory to mount read-only.';
 				}
+
+				absent.push(name);
 
 				continue;
 			}
@@ -341,7 +350,56 @@ export class SharedCheckout {
 		return (settings && (!settings.isFile() || settings.nlink !== 1n)) ||
 			(extensions && !extensions.isDirectory())
 			? 'Pi project extension registration uses a linked or nonstandard path.'
-			: guards.toSorted((left, right) => left.name.length - right.name.length);
+			: {
+					absent,
+					guards: guards.toSorted(
+						(left, right) => left.name.length - right.name.length
+					)
+				};
+	}
+
+	async #findNewProtectedEntry(): Promise<string | undefined> {
+		for (const name of this.#absent) {
+			if (await entry(path.join(this.root, name))) {
+				return name;
+			}
+		}
+
+		return;
+	}
+
+	async checkForNewProtectedEntries(
+		volume: string,
+		context: SandboxOperationContext,
+		operation: SandboxOperation
+	): Promise<void> {
+		const appeared =
+			this.#created === undefined
+				? await this.#findNewProtectedEntry()
+				: undefined;
+
+		if (appeared !== undefined && this.#created === undefined) {
+			this.#created = appeared;
+
+			const quoted = cleanDisplayText(JSON.stringify(appeared));
+
+			context.reportWarning(
+				`The protected path ${quoted} appeared after the Docker checkout opened. Remove the entry and reopen the sandbox.`
+			);
+		}
+
+		if (this.#created !== undefined) {
+			throw new UnsupportedSandboxPolicyError({
+				operation,
+				providerId: 'example.docker',
+				backendId: volume,
+				detail: {
+					kind: 'request',
+					field: 'protectedPath',
+					value: this.#created
+				}
+			});
+		}
 	}
 
 	async mounts(
@@ -350,16 +408,20 @@ export class SharedCheckout {
 		operation: SandboxOperation,
 		isWorkspaceReadOnly: boolean
 	) {
-		const guards = await this.#guards(context);
+		await this.checkForNewProtectedEntries(volume, context, operation);
 
-		if (typeof guards === 'string') {
-			context.reportWarning(guards + ' Reopen the sandbox before editing.');
+		const selection = await this.#guards(context);
+
+		if (typeof selection === 'string') {
+			context.reportWarning(selection + ' Reopen the sandbox before editing.');
 
 			throw new UnsupportedSandboxPolicyError({
 				operation,
 				providerId: 'example.docker'
 			});
 		}
+
+		const { guards } = selection;
 
 		return {
 			key: JSON.stringify(guards),

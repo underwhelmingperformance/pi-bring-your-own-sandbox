@@ -21,6 +21,7 @@ import { isRecord } from '../validation.js';
 
 import { fixtureProfile } from './profile-fixture.js';
 import { fixtureProfiles } from './profile-fixture.js';
+import { visibilityFixture } from './visibility-fixture.js';
 
 interface PendingProcess {
 	readonly context: BackendProcessContext;
@@ -50,7 +51,10 @@ class MessageBackend implements SandboxBackend {
 	readonly policyDescription = 'Test double without OS isolation.';
 	readonly recovery = { kind: 'none' } as const;
 
-	constructor(policy: SandboxPolicy) {
+	constructor(
+		policy: SandboxPolicy,
+		private readonly visibility: ReturnType<typeof visibilityFixture>
+	) {
 		this.policy = policy;
 		this.workspace = {
 			root: '/message/project',
@@ -65,11 +69,11 @@ class MessageBackend implements SandboxBackend {
 			this.#receive(message);
 		});
 		this.#channel.port2.on('message', (message: unknown) => {
-			this.#dispatch(message);
+			void this.#dispatch(message);
 		});
 	}
 
-	#dispatch(message: unknown): void {
+	async #dispatch(message: unknown): Promise<void> {
 		assert.ok(isRecord(message));
 
 		if (message['kind'] === 'dispose') {
@@ -104,6 +108,24 @@ class MessageBackend implements SandboxBackend {
 			assert.ok(isRecord(message['request']));
 
 			const request = message['request'];
+			const pending = this.#pending.get(id);
+
+			if (
+				pending !== undefined &&
+				(await this.visibility.execute(
+					request['kind'] === 'argv'
+						? request['executable']
+						: request['command'],
+					(data) => {
+						reply({ kind: 'output', stream: 'stdout', data });
+					},
+					pending.context.signal
+				))
+			) {
+				reply({ kind: 'exited', code: 0 });
+
+				return;
+			}
 
 			if (request['kind'] === 'argv' && request['executable'] === 'wait') {
 				this.#jobs.add(id);
@@ -291,6 +313,14 @@ class MessageBackend implements SandboxBackend {
 
 export function messageScenario(): SandboxProviderTestOptions<undefined> {
 	const connections: MessageBackend[] = [];
+	let source: Uint8Array = encode('original');
+	const visibility = visibilityFixture(
+		'source',
+		() => source,
+		(bytes) => {
+			source = bytes;
+		}
+	);
 	const provider: SandboxProvider<undefined> = {
 		id: 'fixture.message',
 		label: 'Message-channel provider without OS isolation',
@@ -316,7 +346,7 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 		open(request, context) {
 			context.reportRecovery({ kind: 'none' });
 
-			const backend = new MessageBackend(request.profile.policy);
+			const backend = new MessageBackend(request.profile.policy, visibility);
 			const grantedPaths = request.paths?.read?.map((hostPath) => ({
 				kind: 'read' as const,
 				hostPath,
@@ -346,6 +376,8 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 		label: provider.id,
 		provider,
 		async createFixture() {
+			source = encode('original');
+
 			const directory = await mkdtemp(
 				path.join(tmpdir(), 'byos-message-contract-')
 			);
@@ -355,6 +387,7 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 				configuration: {},
 				hostWorkspace: workspace,
 				policy: unrestrictedPolicy,
+				visibility: visibility.probe(),
 				processes: [
 					{
 						...probe,

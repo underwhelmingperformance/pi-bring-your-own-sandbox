@@ -11,6 +11,7 @@ import type { SandboxProviderTestOptions } from '../provider-test-contracts.js';
 
 import { MemoryBackend } from './memory-backend.js';
 import { fixtureProfiles } from './profile-fixture.js';
+import { visibilityFixture } from './visibility-fixture.js';
 
 const encode = (text: string) => new TextEncoder().encode(text);
 
@@ -18,6 +19,11 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 	let memory: MemoryBackend | undefined;
 	let isDisposed = false;
 	let isRunning = false;
+	const visibility = visibilityFixture(
+		'seed',
+		() => memory?.bytes('seed') ?? new Uint8Array(),
+		(bytes) => memory?.seed('seed', bytes)
+	);
 	const provider: SandboxProvider<undefined> = {
 		id: 'fixture.memory',
 		label: 'Contract test double without OS isolation',
@@ -75,6 +81,21 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 				...(memory.files !== undefined && { files: memory.files }),
 				profile: request.profile,
 				exec: async (request, execution) => {
+					const command =
+						request.kind === 'argv' ? request.executable : request.command;
+
+					if (
+						await visibility.execute(
+							command,
+							(data) => {
+								execution.onOutput({ stream: 'stdout', data });
+							},
+							execution.signal
+						)
+					) {
+						return { kind: 'exited', exit: { kind: 'code', code: 0 } };
+					}
+
 					const target = request;
 
 					if (target.kind === 'argv' && target.executable === 'pwd') {
@@ -161,6 +182,7 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 				configuration: undefined,
 				hostWorkspace: workspace ?? '/host',
 				policy: unrestrictedPolicy,
+				visibility: visibility.probe(selection?.profile.processKinds[0]),
 				processes: [
 					{
 						...probe,

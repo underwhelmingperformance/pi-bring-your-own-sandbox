@@ -884,7 +884,9 @@ export function providerContractCases<Config>(
 		});
 	}
 
-	const relationship = options.workspaceVisibility;
+	const relationship =
+		options.workspaceVisibility ??
+		(selection?.mode === 'open' ? 'shared' : undefined);
 
 	if (relationship !== undefined) {
 		cases.push({

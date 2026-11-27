@@ -224,6 +224,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 
 			const result: unknown = JSON.parse(await readFile(report, 'utf8'));
 			const workspaceCases = [
+				'open profile 1: workspace visibility (shared)',
 				'open profile 1: grants a reachable read path in the workspace',
 				...(process.platform === 'win32'
 					? []

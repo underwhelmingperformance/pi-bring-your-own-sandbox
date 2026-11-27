@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readdir, realpath, rm } from 'node:fs/promises';
+import {
+	mkdtemp,
+	readdir,
+	readFile,
+	realpath,
+	rename,
+	rm,
+	writeFile
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -41,7 +49,22 @@ defineSandboxProviderTests({
 
 			return {
 				...backend,
-				...(grantedPaths !== undefined && { grantedPaths })
+				...(grantedPaths !== undefined && { grantedPaths }),
+				async exec(invocation, execution) {
+					if (
+						invocation.kind !== 'argv' ||
+						invocation.executable !== 'read-source'
+					) {
+						return backend.exec(invocation, execution);
+					}
+
+					execution.onOutput({
+						stream: 'stdout',
+						data: await readFile(path.join(request.hostWorkspace, 'source'))
+					});
+
+					return { kind: 'exited', exit: { kind: 'code', code: 0 } };
+				}
 			};
 		}
 	},
@@ -56,6 +79,10 @@ defineSandboxProviderTests({
 			path.join(tmpdir(), 'byos-packed-contract-')
 		);
 		const workspace = await realpath(directory);
+		const source = path.join(workspace, 'source');
+		const temporary = path.join(workspace, 'replacement');
+
+		await writeFile(source, 'original');
 
 		return {
 			configuration: {},
@@ -70,6 +97,20 @@ defineSandboxProviderTests({
 				assert.equal(backend.profile.policy.hostWorkspaceWrites, false);
 
 				return Promise.resolve();
+			},
+			visibility: {
+				targetPath: 'source',
+				readSource: () => readFile(source),
+				async replaceSource(bytes) {
+					await writeFile(temporary, bytes);
+					await rename(temporary, source);
+				},
+				readTarget: { kind: 'argv', executable: 'read-source', args: [] },
+				writeTarget: () => ({
+					kind: 'argv',
+					executable: 'replace-sample',
+					args: []
+				})
 			},
 			policyEffects: {
 				'read-only': () =>

@@ -7,49 +7,89 @@ export interface SearchOutput<Result> {
 	readonly finish: () => Result;
 }
 
+interface SearchIdentity {
+	readonly operation: 'find' | 'grep';
+	readonly providerId: string;
+}
+
+const maximumRecordBytes = 1_048_576;
+const decoderChunkBytes = 16_384;
+
 export class DelimitedOutput {
 	readonly #decoder = new TextDecoder('utf-8', { fatal: true });
 	readonly #delimiter: string;
-	readonly #operation: 'find' | 'grep';
+	readonly #identity: SearchIdentity;
 	readonly #accept: (entry: string) => void;
 	#pending = '';
+	#pendingBytes = 0;
 
 	constructor(
-		operation: 'find' | 'grep',
+		identity: SearchIdentity,
 		delimiter: string,
 		accept: (entry: string) => void
 	) {
-		this.#operation = operation;
+		this.#identity = identity;
 		this.#delimiter = delimiter;
 		this.#accept = accept;
 	}
 
 	#consume(text: string): void {
-		this.#pending += text;
+		let start = 0;
 
-		let offset = this.#pending.indexOf(this.#delimiter);
+		while (start < text.length) {
+			const separator = text.indexOf(this.#delimiter, start);
+			const fragment = text.slice(
+				start,
+				separator === -1 ? text.length : separator
+			);
 
-		while (offset !== -1) {
-			const entry = this.#pending.slice(0, offset);
+			this.#pendingBytes += Buffer.byteLength(fragment);
 
-			this.#pending = this.#pending.slice(offset + this.#delimiter.length);
-			this.#accept(entry);
-			offset = this.#pending.indexOf(this.#delimiter);
+			if (this.#pendingBytes > maximumRecordBytes) {
+				throw new SandboxOperationError(this.#identity);
+			}
+
+			this.#pending += fragment;
+
+			if (separator === -1) {
+				return;
+			}
+
+			const record = this.#pending;
+
+			this.#pending = '';
+			this.#pendingBytes = 0;
+			this.#accept(record);
+
+			start = separator + this.#delimiter.length;
 		}
 	}
 
 	write(data: Uint8Array): void {
-		this.#consume(this.#decoder.decode(data, { stream: true }));
+		try {
+			for (
+				let offset = 0;
+				offset < data.byteLength;
+				offset += decoderChunkBytes
+			) {
+				const chunk = data.subarray(offset, offset + decoderChunkBytes);
+
+				this.#consume(this.#decoder.decode(chunk, { stream: true }));
+			}
+		} catch (error) {
+			throw new SandboxOperationError(this.#identity, { cause: error });
+		}
 	}
 
 	finish(): void {
-		this.#consume(this.#decoder.decode());
+		try {
+			this.#consume(this.#decoder.decode());
+		} catch (error) {
+			throw new SandboxOperationError(this.#identity, { cause: error });
+		}
 
 		if (this.#pending !== '') {
-			throw new SandboxOperationError({
-				operation: this.#operation,
-				providerId: 'passthrough'
-			});
+			throw new SandboxOperationError(this.#identity);
 		}
 	}
 }
@@ -62,16 +102,20 @@ export class FindOutput implements SearchOutput<FindResult> {
 		this.#paths = new OrderedResults(limit, (left, right) =>
 			Buffer.compare(Buffer.from(left), Buffer.from(right))
 		);
-		this.#output = new DelimitedOutput('find', '\0', (entry) => {
-			if (entry === '') {
-				throw new SandboxOperationError({
-					operation: 'find',
-					providerId: 'passthrough'
-				});
-			}
+		this.#output = new DelimitedOutput(
+			{ operation: 'find', providerId: 'passthrough' },
+			'\0',
+			(entry) => {
+				if (entry === '') {
+					throw new SandboxOperationError({
+						operation: 'find',
+						providerId: 'passthrough'
+					});
+				}
 
-			this.#paths.add(entry.replace(/^\.\//u, ''));
-		});
+				this.#paths.add(entry.replace(/^\.\//u, ''));
+			}
+		);
 	}
 
 	write(data: Uint8Array): void {

@@ -115,7 +115,7 @@ it.skipIf(!hasRipgrep)(
 						GIT_CONFIG_GLOBAL: '/dev/null'
 					}
 				});
-				const output = new GrepOutput(0, 100);
+				const output = new GrepOutput(0, 100, 'fixture.host');
 
 				output.write(Buffer.from(stdout));
 				expect(
@@ -126,6 +126,70 @@ it.skipIf(!hasRipgrep)(
 		});
 	}
 );
+
+it('bounds incomplete grep records before a newline arrives', () => {
+	const output = new GrepOutput(0, 100, 'fixture.search');
+	const segment = new Uint8Array(524_288).fill(0x20);
+
+	output.write(segment);
+	output.write(segment);
+
+	expect(() => {
+		output.write(new Uint8Array([0x20]));
+	}).toThrow(
+		expect.objectContaining({
+			name: 'SandboxOperationError',
+			operation: 'grep',
+			providerId: 'fixture.search'
+		})
+	);
+});
+
+it('reports the selected provider when a grep record is invalid', () => {
+	const output = new GrepOutput(0, 100, 'fixture.search');
+
+	expect(() => {
+		output.write(Buffer.from('{}\n'));
+	}).toThrow(
+		expect.objectContaining({
+			name: 'SandboxOperationError',
+			operation: 'grep',
+			providerId: 'fixture.search'
+		})
+	);
+});
+
+it('bounds retained grep text across individually valid records', () => {
+	const output = new GrepOutput(0, 100, 'fixture.search');
+	const filename = { text: 'fixture.txt' };
+	const lines = { text: 'x'.repeat(524_288) + '\n' };
+
+	output.write(
+		Buffer.from(
+			JSON.stringify({
+				type: 'begin',
+				data: { path: filename }
+			}) + '\n'
+		)
+	);
+
+	expect(() => {
+		for (let line = 1; line <= 17; line++) {
+			const event = {
+				type: 'match',
+				data: { path: filename, lines, line_number: line }
+			};
+
+			output.write(Buffer.from(JSON.stringify(event) + '\n'));
+		}
+	}).toThrow(
+		expect.objectContaining({
+			name: 'SandboxOperationError',
+			operation: 'grep',
+			providerId: 'fixture.search'
+		})
+	);
+});
 
 it.skipIf(!isDarwin)(
 	'refuses Darwin search unless the provider opts in',

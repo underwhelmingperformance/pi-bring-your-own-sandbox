@@ -5,24 +5,32 @@ import type { SearchOutput } from './search-output.js';
 import { DelimitedOutput } from './search-output.js';
 import { isRecord } from './validation.js';
 
+const maximumRetainedBytes = 8_388_608;
+
+interface RetainedMatch {
+	readonly match: GrepMatch;
+	readonly bytes: number;
+}
+
 interface FileLines {
 	readonly path: string;
 	readonly lines: Map<number, string>;
 	readonly matches: Set<number>;
 	lastLine: number;
 	lastMatch: number;
+	bytes: number;
 }
 
-function invalidOutput(): SandboxOperationError {
+function invalidOutput(providerId: string): SandboxOperationError {
 	return new SandboxOperationError({
 		operation: 'grep',
-		providerId: 'passthrough'
+		providerId
 	});
 }
 
-function decode(value: unknown, isPath = false): string {
+function decode(value: unknown, providerId: string, isPath = false): string {
 	if (!isRecord(value)) {
-		throw invalidOutput();
+		throw invalidOutput(providerId);
 	}
 
 	if (typeof value['text'] === 'string' && value['bytes'] === undefined) {
@@ -30,20 +38,20 @@ function decode(value: unknown, isPath = false): string {
 	}
 
 	if (typeof value['bytes'] !== 'string' || value['text'] !== undefined) {
-		throw invalidOutput();
+		throw invalidOutput(providerId);
 	}
 
 	const bytes = Buffer.from(value['bytes'], 'base64');
 
 	if (bytes.toString('base64') !== value['bytes']) {
-		throw invalidOutput();
+		throw invalidOutput(providerId);
 	}
 
 	return new TextDecoder('utf-8', { fatal: isPath }).decode(bytes);
 }
 
-function lineText(value: unknown): string {
-	let text = decode(value);
+function lineText(value: unknown, providerId: string): string {
+	let text = decode(value, providerId);
 
 	if (text.endsWith('\n')) {
 		text = text.slice(0, -1);
@@ -54,7 +62,7 @@ function lineText(value: unknown): string {
 	}
 
 	if (text.includes('\n')) {
-		throw invalidOutput();
+		throw invalidOutput(providerId);
 	}
 
 	return text;
@@ -84,23 +92,32 @@ function adjacent(
 export class GrepOutput implements SearchOutput<GrepResult> {
 	readonly #context: number;
 	readonly #limit: number;
-	readonly #matches: OrderedResults<GrepMatch>;
+	readonly #matches: OrderedResults<RetainedMatch>;
+	readonly #providerId: string;
+	#matchBytes = 0;
 	readonly #output: DelimitedOutput;
 	#file: FileLines | undefined;
 	#hasSummary = false;
 
-	constructor(context: number, limit: number) {
+	constructor(context: number, limit: number, providerId: string) {
+		this.#providerId = providerId;
 		this.#context = context;
 		this.#limit = limit;
 		this.#matches = new OrderedResults(
 			limit,
 			(left, right) =>
-				Buffer.compare(Buffer.from(left.path), Buffer.from(right.path)) ||
-				left.line - right.line
+				Buffer.compare(
+					Buffer.from(left.match.path),
+					Buffer.from(right.match.path)
+				) || left.match.line - right.match.line
 		);
-		this.#output = new DelimitedOutput('grep', '\n', (row) => {
-			this.#accept(row);
-		});
+		this.#output = new DelimitedOutput(
+			{ operation: 'grep', providerId },
+			'\n',
+			(row) => {
+				this.#accept(row);
+			}
+		);
 	}
 
 	#end(data: Record<string, unknown>, file: FileLines): void {
@@ -110,7 +127,7 @@ export class GrepOutput implements SearchOutput<GrepResult> {
 				!Number.isSafeInteger(data['binary_offset']) ||
 				data['binary_offset'] < 0)
 		) {
-			throw invalidOutput();
+			throw invalidOutput(this.#providerId);
 		}
 
 		this.#file = undefined;
@@ -123,35 +140,45 @@ export class GrepOutput implements SearchOutput<GrepResult> {
 			const text = file.lines.get(line);
 
 			if (text === undefined) {
-				throw invalidOutput();
+				throw invalidOutput(this.#providerId);
 			}
 
-			this.#matches.add({
+			const match = {
 				path: file.path,
 				line,
 				text,
 				before: adjacent(file.lines, line, this.#context, -1),
 				after: adjacent(file.lines, line, this.#context, 1)
-			});
+			};
+			let bytes = Buffer.byteLength(file.path) + 64;
+
+			for (const row of [text, ...match.before, ...match.after]) {
+				bytes += Buffer.byteLength(row) + 8;
+			}
+
+			const discarded = this.#matches.add({ match, bytes });
+
+			this.#matchBytes += bytes - (discarded?.bytes ?? 0);
+			this.#checkBudget(file);
 		}
 	}
 
 	#accept(row: string): void {
 		if (this.#hasSummary) {
-			throw invalidOutput();
+			throw invalidOutput(this.#providerId);
 		}
 
 		const event: unknown = JSON.parse(row);
 
 		if (!isRecord(event) || !isRecord(event['data'])) {
-			throw invalidOutput();
+			throw invalidOutput(this.#providerId);
 		}
 
 		const { data } = event;
 
 		if (event['type'] === 'summary') {
 			if (this.#file !== undefined) {
-				throw invalidOutput();
+				throw invalidOutput(this.#providerId);
 			}
 
 			this.#hasSummary = true;
@@ -159,11 +186,14 @@ export class GrepOutput implements SearchOutput<GrepResult> {
 			return;
 		}
 
-		const filename = decode(data['path'], true).replace(/^\.\//u, '');
+		const filename = decode(data['path'], this.#providerId, true).replace(
+			/^\.\//u,
+			''
+		);
 
 		if (event['type'] === 'begin') {
 			if (this.#file !== undefined) {
-				throw invalidOutput();
+				throw invalidOutput(this.#providerId);
 			}
 
 			this.#file = {
@@ -171,7 +201,8 @@ export class GrepOutput implements SearchOutput<GrepResult> {
 				lines: new Map(),
 				matches: new Set(),
 				lastLine: 0,
-				lastMatch: 0
+				lastMatch: 0,
+				bytes: 0
 			};
 
 			return;
@@ -180,7 +211,7 @@ export class GrepOutput implements SearchOutput<GrepResult> {
 		const file = this.#file;
 
 		if (file?.path !== filename) {
-			throw invalidOutput();
+			throw invalidOutput(this.#providerId);
 		}
 
 		if (event['type'] === 'end') {
@@ -195,7 +226,7 @@ export class GrepOutput implements SearchOutput<GrepResult> {
 			!Number.isSafeInteger(data['line_number']) ||
 			data['line_number'] <= file.lastLine
 		) {
-			throw invalidOutput();
+			throw invalidOutput(this.#providerId);
 		}
 
 		file.lastLine = data['line_number'];
@@ -206,7 +237,11 @@ export class GrepOutput implements SearchOutput<GrepResult> {
 			canRetainMatch ||
 			data['line_number'] - file.lastMatch <= this.#context
 		) {
-			file.lines.set(data['line_number'], lineText(data['lines']));
+			const text = lineText(data['lines'], this.#providerId);
+
+			file.bytes += Buffer.byteLength(text) + 64;
+			this.#checkBudget(file);
+			file.lines.set(data['line_number'], text);
 		}
 
 		if (!(canRetainMatch && event['type'] === 'match')) {
@@ -217,6 +252,12 @@ export class GrepOutput implements SearchOutput<GrepResult> {
 		file.lastMatch = data['line_number'];
 	}
 
+	#checkBudget(file: FileLines): void {
+		if (file.bytes + this.#matchBytes > maximumRetainedBytes) {
+			throw invalidOutput(this.#providerId);
+		}
+	}
+
 	write(data: Uint8Array): void {
 		this.#output.write(data);
 	}
@@ -225,11 +266,11 @@ export class GrepOutput implements SearchOutput<GrepResult> {
 		this.#output.finish();
 
 		if (!this.#hasSummary || this.#file !== undefined) {
-			throw invalidOutput();
+			throw invalidOutput(this.#providerId);
 		}
 
 		return {
-			matches: this.#matches.values,
+			matches: this.#matches.values.map(({ match }) => match),
 			truncated: this.#matches.isTruncated
 		};
 	}

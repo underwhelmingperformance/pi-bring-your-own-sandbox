@@ -310,8 +310,7 @@ async function targetGrep(
 	const { sandbox, options } = workspace;
 	const { capabilities } = sandbox.profile;
 	const canUseRipgrep =
-		capabilities.includes('files.read') ||
-		((request.context ?? 0) === 0 && capabilities.includes('files.list'));
+		capabilities.includes('files.read') || capabilities.includes('files.list');
 	const ripgrep = canUseRipgrep ? ripgrepRequest(sandbox) : undefined;
 
 	if (ripgrep === undefined) {
@@ -344,19 +343,23 @@ async function targetGrep(
 	const isDirectory = stat.kind === 'directory';
 	const cwd = isDirectory ? target : flavor.dirname(target);
 	const operand = isDirectory ? '.' : flavor.basename(target);
-	const output = new GrepOutput(0, request.limit ?? 100);
-	const result = await sandbox.exec(
-		ripgrep(sandboxRipgrepArguments(request, operand), cwd),
-		{
-			...options,
-			maxCaptureBytes: 16_384,
-			onOutput(frame) {
-				if (frame.stream === 'stdout') {
-					output.write(frame.data);
-				}
+	const context = request.context ?? 0;
+	const output = new GrepOutput(
+		context,
+		request.limit ?? 100,
+		sandbox.providerId
+	);
+	const flags = context === 0 ? [] : ['--context', String(context)];
+	const arguments_ = sandboxRipgrepArguments(request, operand, flags);
+	const result = await sandbox.exec(ripgrep(arguments_, cwd), {
+		...options,
+		maxCaptureBytes: 16_384,
+		onOutput(frame) {
+			if (frame.stream === 'stdout') {
+				output.write(frame.data);
 			}
 		}
-	);
+	});
 
 	if (result.exit.kind !== 'code' || ![0, 1].includes(result.exit.code)) {
 		throw new SandboxOperationError(
@@ -365,56 +368,7 @@ async function targetGrep(
 		);
 	}
 
-	const matches = output.finish();
-	const context = request.context ?? 0;
-
-	if (context === 0) {
-		return matches;
-	}
-
-	const files = new Map<string, readonly string[]>();
-
-	for (const match of matches.matches) {
-		if (files.has(match.path)) {
-			continue;
-		}
-
-		const name = isDirectory ? flavor.resolve(target, match.path) : target;
-		const relative = flavor.relative(target, name);
-
-		if (
-			relative === '..' ||
-			relative.startsWith('..' + flavor.sep) ||
-			flavor.isAbsolute(relative)
-		) {
-			throw new SandboxOperationError({
-				operation: 'grep',
-				providerId: sandbox.providerId
-			});
-		}
-
-		const data = await sandbox.files.readFile(name, options);
-
-		files.set(
-			match.path,
-			Buffer.from(data).toString('utf8').replaceAll('\r\n', '\n').split('\n')
-		);
-	}
-
-	return {
-		...matches,
-		matches: matches.matches.map((match) => {
-			const lines = files.get(match.path) ?? [];
-			const index = match.line - 1;
-
-			return {
-				...match,
-				text: lines[index] ?? match.text,
-				before: lines.slice(Math.max(0, index - context), index),
-				after: lines.slice(index + 1, index + 1 + context)
-			};
-		})
-	};
+	return output.finish();
 }
 
 function grepResult(result: GrepResult, limit: number) {
@@ -485,11 +439,8 @@ function grepResult(result: GrepResult, limit: number) {
 	};
 }
 
-function grepRequirements(input: GrepToolInput): FileRequirements {
-	const stat =
-		Math.floor(input.context ?? 0) > 0
-			? (['files.read'] as const)
-			: (['files.list', 'files.read'] as const);
+function grepRequirements(): FileRequirements {
+	const stat = ['files.list', 'files.read'] as const;
 	const ripgrep = stat.flatMap((capability): SandboxRequirements[] => [
 		{ capabilities: [capability], processKinds: ['argv'] },
 		{ capabilities: [capability], shells: ['sh'] },

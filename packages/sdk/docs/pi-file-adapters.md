@@ -32,6 +32,8 @@ tool execution.
 `find` uses the facade's glob operation. `grep` uses Pi's schema, display format
 and output truncation. BYOS probes for `rg` inside the target and runs it with
 Pi's flags. If the target lacks `rg`, BYOS uses the facade's portable search.
+Target `rg` emits matches and context in the same stream. The SDK refuses
+records larger than 1 MiB and limits retained match and context data to 8 MiB.
 The [specification][grep] describes the fallback scope.
 
 [grep]: specification.md#grep

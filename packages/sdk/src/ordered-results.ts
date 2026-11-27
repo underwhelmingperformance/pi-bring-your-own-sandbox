@@ -9,7 +9,7 @@ export class OrderedResults<Value> {
 		this.#compare = compare;
 	}
 
-	add(value: Value): void {
+	add(value: Value): Value | undefined {
 		let start = 0;
 		let end = this.#values.length;
 
@@ -30,14 +30,12 @@ export class OrderedResults<Value> {
 		}
 
 		if (start >= this.#limit) {
-			return;
+			return value;
 		}
 
 		this.#values.splice(start, 0, value);
 
-		if (this.#values.length > this.#limit) {
-			this.#values.pop();
-		}
+		return this.#values.length > this.#limit ? this.#values.pop() : undefined;
 	}
 
 	get values(): readonly Value[] {

@@ -19,6 +19,7 @@ import sandboxTools from './pi-tools.js';
 
 it.each([
 	{ dialect: undefined, probe: 'available' },
+	{ dialect: undefined, probe: 'available', context: 1 },
 	{ dialect: undefined, probe: 'missing' },
 	{ dialect: 'sh', probe: 'available' },
 	{ dialect: 'sh', probe: 'missing' },
@@ -26,8 +27,10 @@ it.each([
 	{ dialect: 'bash', probe: 'unsupported' },
 	{ dialect: 'powershell', probe: 'unsupported' }
 ] as const)(
-	'runs target grep with dialect $dialect and probe $probe',
-	async ({ dialect, probe }) => {
+	'runs target grep with dialect $dialect, probe $probe and context $context',
+	async (scenario) => {
+		const { dialect, probe } = scenario;
+		const contextLines = 'context' in scenario ? scenario.context : 0;
 		const memory = new MemoryBackend();
 		const providerId = 'fixture.pi-file-tools';
 		const profile: Profile = {
@@ -63,7 +66,8 @@ it.each([
 					pattern,
 					literal: true,
 					ignoreCase: true,
-					glob: '*.txt'
+					glob: '*.txt',
+					context: contextLines
 				}
 			}))
 		);
@@ -77,6 +81,18 @@ it.each([
 					lines: { text: pattern + '\n' }
 				}
 			}),
+			...(contextLines === 1
+				? [
+						JSON.stringify({
+							type: 'context',
+							data: {
+								path: { text: file },
+								line_number: 2,
+								lines: { text: 'target context\n' }
+							}
+						})
+					]
+				: []),
 			'{"type":"end","data":{"path":{"text":"marker.txt"},"binary_offset":null}}',
 			'{"type":"summary","data":{}}'
 		];
@@ -209,6 +225,7 @@ it.each([
 									'--line-number',
 									'--color=never',
 									'--hidden',
+									...(contextLines === 1 ? ['--context', '1'] : []),
 									'--ignore-case',
 									'--fixed-strings',
 									'--glob',
@@ -228,8 +245,15 @@ it.each([
 									"'needle'\\''s $value' 'marker.txt'"
 							};
 
-				expect({ errors, requests, portable, results }).toStrictEqual({
+				expect({
+					errors,
+					requests,
+					portable,
+					results,
+					fileReads: memory.calls
+				}).toStrictEqual({
 					errors: [],
+					fileReads: [],
 					requests: [
 						...(dialect === 'powershell' ? [] : [expectedProbe]),
 						...(hasNativeGrep ? searches.map(() => expectedSearch) : [])
@@ -247,7 +271,16 @@ it.each([
 							})),
 					results: searches.map(() => ({
 						isError: false,
-						content: [{ type: 'text', text: file + ':1: ' + pattern }]
+						content: [
+							{
+								type: 'text',
+								text:
+									file +
+									':1: ' +
+									pattern +
+									(contextLines === 1 ? '\nmarker.txt-2- target context' : '')
+							}
+						]
 					}))
 				});
 			}

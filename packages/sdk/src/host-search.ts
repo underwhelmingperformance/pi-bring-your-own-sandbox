@@ -259,7 +259,11 @@ export class HostSearch {
 					}
 				},
 				running,
-				new GrepOutput(request.context ?? 0, request.limit ?? 100)
+				new GrepOutput(
+					request.context ?? 0,
+					request.limit ?? 100,
+					'passthrough'
+				)
 			);
 		});
 	}

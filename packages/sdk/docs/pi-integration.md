@@ -65,14 +65,27 @@ restrictions from the policy and path grants. Provider `violations` appear
 separately from command output.
 
 The system prompt and `/byos status` describe the effective host user-data
-policy. A readable policy excludes [credential locations][credentials]. An
-escalation must request a specific credential path to grant that access in the
-provider.
+policy. The default permits reads under [toolchain roots][toolchain-roots] and
+the provider's configured read roots. [Credential exclusions][credentials] take
+precedence. Access to a specific credential path requires approval for each
+call.
+
+Eligible read grants can apply to the current call, the session or **Always**.
+The prompt defaults to the current call. **Always** records the path in the
+provider's configured read roots. Directory grants keep credential exclusions.
+Write and network grants apply only to the current call.
 
 [credentials]: specification.md#credential-locations
 [escalation]: specification.md#escalation
+[toolchain-roots]: specification.md#default-toolchain-roots
 
 ## Permission review
+
+With a sandbox active, configure pi-permission-system to allow ordinary
+sandboxed commands. BYOS asks when a call requires access beyond the ordinary
+policy, whether the call uses an expanded provider profile, an extra path grant
+or host execution. A matching remembered read grant or an existing decision from
+a permission extension avoids a second prompt.
 
 Pi awaits `tool_execution_start` before running the `tool_call` permission
 hooks. BYOS records the pending call at the earlier event. A permission

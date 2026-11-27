@@ -48,9 +48,10 @@ redesign is complete.
   Otherwise the broker chooses the provider profile with the least extra access
   that satisfies the request. If no provider profile can provide that access,
   the host is an unrestricted destination.
-- BYOS confirms escalations unless a permission extension has recorded a
-  decision for the pending call. BYOS has no approval-policy registry, approval
-  channels or built-in approval policies.
+- BYOS asks for approval of extra access unless a matching remembered read grant
+  applies or a permission extension has recorded a decision for the pending
+  call. BYOS has no approval-policy registry, approval channels or built-in
+  approval policies.
 - The ledger records escalations, outcomes, review copies and reported
   violations as typed Pi session entries. The diagnostics command can filter
   entries by tool call ID.

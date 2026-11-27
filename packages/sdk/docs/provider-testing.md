@@ -89,10 +89,16 @@ configured policy.
 
 For every profile that permits host user data reads, create one case per
 [credential location][credentials]. Use a disposable host home with synthetic
-markers outside the checkout. Verify that the profile permits reads of ordinary
-user data and denies reads of each credential marker and its aliases. A
-read-write profile must also refuse writes to credential markers and their
-aliases. The suite locates the markers under `workspace.hostUserDataRoot`.
+markers outside the checkout. Put an ordinary marker under a readable [toolchain
+root][toolchain-roots] and put another outside every readable root. Verify that
+the default permits the first read and denies the second. Check that a
+configured read root permits the second read.
+
+Place synthetic credential markers under an allowed directory and check that
+reads fail through the original paths and their aliases. A read-write profile
+must also refuse writes to those markers. The suite locates the markers under
+`workspace.hostUserDataRoot`. Override Pi's agent directory and verify that both
+Pi credential files are excluded at the effective paths.
 
 For a read-only profile, attempt writes to the ordinary marker and the
 credential marker through the file API. If the profile omits `files.write`, the
@@ -105,6 +111,7 @@ property-only escalation keeps the exclusion in the provider. Exercise a
 separate decision for an escalation that grants a credential path.
 
 [credentials]: specification.md#credential-locations
+[toolchain-roots]: specification.md#default-toolchain-roots
 
 ## Paired access cases
 
@@ -157,6 +164,12 @@ with independent target and host observations. Assert that unlisted paths remain
 inaccessible and that an undeclared kind cannot be granted by that provider
 profile. Include a grant of one host user file under a policy that denies the
 rest of the home directory.
+
+Exercise the default one-call approval, session approval and **Always** for an
+eligible read path. Verify that a session grant expires when the session ends
+and that **Always** adds the path to the provider's configured read roots. Check
+that remembered directory grants keep credential exclusions and that a specific
+credential read, write grant or network grant requires a decision for each call.
 
 ## Broker and lifecycle cases
 

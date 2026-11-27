@@ -45,13 +45,14 @@ workspace nor the policy. Settings take effect on reload.
 <!-- `allowEscalation` is provisional. -->
 
 When the user supplies no policy, the SDK permits live checkout writes and reads
-of host system files. It permits reads of host user data except [credential
-locations][credentials]. This allows tools installed in the user's home
-directory to run. The default denies network access and writes to host user
-data. It enables `allowEscalation`. A session with no selected provider uses
-unrestricted passthrough.
+of host system files. It permits host user data reads under the [default
+toolchain roots][toolchain-roots] and any read roots in the provider's settings.
+[Credential exclusions][credentials] take precedence. The default denies network
+access and host user data writes. It enables `allowEscalation`. A session with
+no selected provider uses unrestricted passthrough.
 
 [credentials]: #credential-locations
+[toolchain-roots]: #default-toolchain-roots
 
 A provider can narrow a default access setting only when it has no eligible
 ordinary profile that can supply the default settings together. The broker ranks
@@ -200,17 +201,35 @@ On systems that block renaming mount points, providers can mount each ancestor
 below the checkout root onto itself. An ancestor mount uses the checkout's
 access mode, and the protected path stays read-only.
 
+### Default toolchain roots
+
+The SDK exports one list of built-in read roots for providers. Under the default
+policy, ordinary host user data reads are limited to these roots and any
+additional read roots in the provider's settings.
+
+| Platform        | Default toolchain roots                                                                                                                                            |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Linux and macOS | `~/.cargo`, `~/.rustup`, `~/.local/share/mise`, `~/.nvm`, `~/.local/bin`, `~/.bun`, `~/.deno`, `~/.pyenv`, `~/.volta`, `/opt/homebrew`, `/usr/local`, `/opt/local` |
+| Linux           | `~/.local/share/pnpm`                                                                                                                                              |
+| macOS           | `~/Library/pnpm`                                                                                                                                                   |
+
+The list uses fixed paths and resolves `~` against the host user's home. A
+relocated toolchain, a cache or a Go workspace needs a configured read root or
+an explicit grant. A `hostUserData: prevented` requirement denies access to host
+user data even under these roots.
+
 ### Credential locations
 
-For host user data outside the checkout, `read-only` permits reads except at
-credential locations. `read-write` permits reads and writes with the same
-exclusion. `denied` prevents access to all host user data. A profile that
-permits reads or writes must enforce every applicable exclusion. Docker provides
-`denied` because its backend does not mount the home directory.
+Both policies that permit host user data access exclude credential locations. An
+exclusion takes precedence over a built-in or configured read root. A `denied`
+policy prevents access to all host user data. Docker provides `denied` because
+its backend does not mount the home directory.
 
-Providers can import the list from `/provider`. Each exclusion applies to the
-listed path and its descendants. The broker evaluates each resolved grant path.
-The workspace contract still applies inside the checkout.
+Providers can import the exclusion list from `/provider`. Each exclusion applies
+to the listed path and its descendants. The broker evaluates each resolved grant
+path. It resolves Pi's credential files under the effective agent directory
+through Pi's own directory lookup, which accounts for an override. The workspace
+contract still applies inside the checkout.
 
 | Location                                      | Reason                                                               |
 | --------------------------------------------- | -------------------------------------------------------------------- |
@@ -225,6 +244,14 @@ The workspace contract still applies inside the checkout.
 | `~/.config/gcloud`                            | Google Cloud credentials and cached sessions.                        |
 | `~/.azure`                                    | Azure CLI credentials and cached sessions.                           |
 | `~/.pypirc`                                   | Authentication for Python package indexes.                           |
+| `~/.cargo/credentials.toml`                   | [Cargo registry authentication tokens][cargo-login].                 |
+| `~/.cargo/credentials`                        | [Legacy Cargo registry credentials][cargo-config].                   |
+| `~/.npmrc`                                    | [npm registry authentication settings][npmrc].                       |
+| `~/.gem/credentials`                          | [RubyGems API keys][gem-config].                                     |
+| `~/.yarnrc.yml`                               | [Yarn registry authentication settings][yarn-config].                |
+| `~/.terraform.d/credentials.tfrc.json`        | [Terraform CLI tokens for remote services][terraform-login].         |
+| `auth.json` in Pi's agent directory           | API keys and OAuth credentials for Pi's model providers.             |
+| `mcp-auth.json` in Pi's agent directory       | OAuth state and tokens for Pi's MCP servers.                         |
 | `~/.password-store`                           | Password store entries.                                              |
 | `~/Library/Keychains`                         | User keychains on macOS.                                             |
 | `~/.local/share/keyrings`                     | Desktop keyring files on Linux.                                      |
@@ -239,6 +266,12 @@ The workspace contract still applies inside the checkout.
 The [Chromium profile guide][chromium-profiles] and [Firefox profile
 guide][firefox-profiles] describe the standard locations on Linux and macOS.
 
+[cargo-login]: https://doc.rust-lang.org/cargo/commands/cargo-login.html
+[cargo-config]: https://doc.rust-lang.org/cargo/reference/config.html
+[npmrc]: https://docs.npmjs.com/files/npmrc/
+[gem-config]: https://guides.rubygems.org/configuration/
+[yarn-config]: https://yarnpkg.com/configuration/yarnrc/
+[terraform-login]: https://developer.hashicorp.com/terraform/cli/commands/login
 [chromium-profiles]:
   https://chromium.googlesource.com/chromium/src/+/HEAD/docs/user_data_dir.md
 [firefox-profiles]:
@@ -390,14 +423,25 @@ chosen destination and effective restrictions before a decision. For the host,
 the effective restrictions are `none`. Any installed extension can allow or deny
 a pending escalation through a review source and its consumer client. Installing
 a permission extension delegates that choice to it. Conflicting decisions fail
-closed. When no extension has recorded a decision, BYOS asks the user for
-confirmation and shows the provider label.
+closed. If extra access still requires approval, BYOS asks the user for
+confirmation and shows the provider label. A matching remembered read grant or a
+decision from a permission extension removes the need for a second prompt.
 
 Before dispatch, the broker checks the selected tool and arguments against the
 pending record, consumes the decision once and records the outcome. An allow
 decision permits the broker to open the planned destination. A denial,
-dismissal, cancellation or expiry prevents dispatch. The extra access applies to
-that call alone.
+dismissal, cancellation or expiry prevents dispatch.
+
+### Read grant duration
+
+Approval defaults to the current call. For an eligible read grant, the user can
+choose the session or choose **Always**. A session grant expires with that Pi
+session. **Always** adds the path to the provider's configured read roots so
+later sessions can read it under the provider's ordinary policy.
+
+Access to a specific credential path requires approval for that call. Directory
+grants keep credential exclusions at every duration. Write and network grants
+apply only to the current call.
 
 Before a run with a BYOS shell, the system prompt describes the negotiated
 policy for ordinary shell commands and explains whether escalation is available.

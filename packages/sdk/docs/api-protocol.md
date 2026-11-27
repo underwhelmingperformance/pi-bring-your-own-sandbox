@@ -176,7 +176,8 @@ same identifier.
 
 For host user data outside the checkout, both readable values exclude the
 [credential locations][credentials]. An escalation must specify a credential
-path to grant access to that path in the provider.
+path and receive approval for that call to grant access to the credential.
+Directory grants keep the exclusions.
 
 [credentials]: specification.md#credential-locations
 
@@ -367,9 +368,13 @@ The SDK's default `policy` has these values.
 ```
 
 The [specification][settings-behaviour] describes how provider support can
-narrow these defaults and when passthrough applies.
+narrow these defaults and when passthrough applies. The default read scope
+includes the [built-in toolchain roots][toolchain-roots] and read roots in the
+provider's settings. A user who chooses **Always** for an eligible read grant
+adds that path to the configured read roots.
 
 [settings-behaviour]: specification.md#default-configured-policy
+[toolchain-roots]: specification.md#default-toolchain-roots
 
 ## Process, files and search
 

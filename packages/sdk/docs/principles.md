@@ -256,10 +256,12 @@ Enforced by:
 
 ## 10. Each escalation is decided once
 
-BYOS asks the user to confirm an escalation unless a [permission extension] has
-recorded a decision for the pending call. Either decision applies to one tool
-call ID and to the negotiated destination and restrictions for that call. The
-configuration can prohibit escalation before any prompt.
+BYOS asks the user to confirm access beyond the ordinary policy unless a
+matching remembered read grant applies or a [permission extension] has recorded
+a decision for the pending call. A new decision applies to the tool call ID and
+the negotiated destination and restrictions. The user can choose to retain an
+eligible read grant. The configuration can prohibit escalation before any
+prompt.
 
 A permission extension can review the same command and destination that the user
 would see. Reusing the recorded verdict avoids a second prompt or a

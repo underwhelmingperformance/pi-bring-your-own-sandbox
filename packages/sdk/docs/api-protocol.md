@@ -282,9 +282,11 @@ type RecoveryDescriptor =
 ```
 
 The provider's `copy` method is present exactly when its copy profiles are
-non-empty. A copy profile always has `hostWorkspaceWrites: false` because a copy
-cannot change the host checkout. The provider decides whether the copy's own
-files accept writes.
+non-empty. A provider with an empty copy list returns
+`UnsupportedSandboxCapabilityError` with `detail.kind` set to `copy-unavailable`
+when a client requests a copy. A copy profile always has
+`hostWorkspaceWrites: false` because a copy cannot change the host checkout. The
+provider decides whether the copy's own files accept writes.
 
 On an unsupported platform, the extension factory calls
 `registerUnavailableSandboxProvider` with its ID, label and `unavailable`

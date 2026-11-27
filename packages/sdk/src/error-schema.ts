@@ -110,6 +110,7 @@ const requestValue = Type.Union([Type.String(), Type.Boolean(), Type.Number()]);
 
 export const errorDetailSchema = Type.Union([
 	...needDetails,
+	Type.Object({ kind: Type.Literal('copy-unavailable') }),
 	Type.Object({
 		kind: Type.Literal('policy'),
 		reason: Type.Literal('profile')

@@ -2069,6 +2069,18 @@
 										{
 											"properties": {
 												"kind": {
+													"const": "copy-unavailable",
+													"type": "string",
+													"~kind": "Literal"
+												}
+											},
+											"required": ["kind"],
+											"type": "object",
+											"~kind": "Object"
+										},
+										{
+											"properties": {
+												"kind": {
 													"const": "policy",
 													"type": "string",
 													"~kind": "Literal"
@@ -6010,6 +6022,18 @@
 												}
 											},
 											"required": ["kind", "field", "value"],
+											"type": "object",
+											"~kind": "Object"
+										},
+										{
+											"properties": {
+												"kind": {
+													"const": "copy-unavailable",
+													"type": "string",
+													"~kind": "Literal"
+												}
+											},
+											"required": ["kind"],
 											"type": "object",
 											"~kind": "Object"
 										},

@@ -1112,7 +1112,10 @@ export class SandboxGeneration {
 		this.#checkDemand(provider, options);
 
 		if (typeof copy !== 'function') {
-			throw new UnsupportedSandboxCapabilityError(identity);
+			throw new UnsupportedSandboxCapabilityError({
+				...identity,
+				detail: { kind: 'copy-unavailable' }
+			});
 		}
 
 		const origin = this.#copyOrigin(source, provider.id);

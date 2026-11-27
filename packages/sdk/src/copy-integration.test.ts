@@ -402,12 +402,14 @@ it('rejects copies from a provider without copy profiles', async () => {
 		await expect(target.copy()).rejects.toMatchObject({
 			name: 'UnsupportedSandboxCapabilityError',
 			operation: 'acquire',
-			providerId: 'ordinary'
+			providerId: 'ordinary',
+			detail: { kind: 'copy-unavailable' }
 		});
 		await expect(copyHostWorkspace(pi, context)).rejects.toMatchObject({
 			name: 'UnsupportedSandboxCapabilityError',
 			operation: 'acquire',
-			providerId: 'ordinary'
+			providerId: 'ordinary',
+			detail: { kind: 'copy-unavailable' }
 		});
 	});
 });

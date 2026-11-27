@@ -6,15 +6,16 @@ Consumers state restrictions, needs and path grants without depending on the
 provider's implementation. With no selected provider, the SDK uses passthrough.
 Failure of a selected provider stops execution.
 
-These documents describe the target design. See the [design
-principles][principles], [specification][spec] and [API appendix][api]. The SDK
-routes operations that use its facade. An [outer sandbox][outer] can restrict
-the Pi process.
+See the [design principles][principles], [specification][spec] and [API
+appendix][api]. The SDK routes operations that use its facade. An [outer
+sandbox][outer] can restrict the Pi process. Follow the [1.0 upgrade
+guide][upgrade] when replacing a development build.
 
 [principles]: docs/principles.md
 [spec]: docs/specification.md
 [api]: docs/api-protocol.md
 [outer]: docs/outer-runtime.md
+[upgrade]: docs/upgrade-1.0.md
 
 ## Extend Pi
 

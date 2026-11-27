@@ -776,12 +776,13 @@ The shell integration query returns `{ type: 'shell-integration' }` when an
 extension registers the Pi tools.
 
 SDK copies use the build census to detect a major mismatch before bootstrap. The
-[1.0 snapshot][v1] records the draft schemas until the first release. Earlier
-drafts also claimed protocol 1.0 and are incompatible with the release. Upgrade
-every extension that bundles BYOS together, then restart Pi to load the released
-builds in a fresh process.
+first released schema registry is fixed in the [protocol 1.0 snapshot][v1].
+Earlier drafts also claimed protocol 1.0 and are incompatible with the release.
+Follow the [upgrade guide][upgrade] to replace every extension that bundles BYOS
+and restart Pi in a fresh process.
 
 [v1]: ../src/fixtures/protocol-snapshots/1.0.json
+[upgrade]: upgrade-1.0.md
 
 The snapshot records each callable's parameters, result and failure schema. It
 records whether a call returns directly, returns a promise or permits either.

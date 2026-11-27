@@ -288,9 +288,9 @@ when a client requests a copy. A copy profile always has
 `hostWorkspaceWrites: false` because a copy cannot change the host checkout. The
 provider decides whether the copy's own files accept writes.
 
-On an unsupported platform, the extension factory calls
-`registerUnavailableSandboxProvider` with its ID, label and `unavailable`
-reason.
+On an unsupported platform, the extension factory passes an unavailable
+declaration to `registerSandboxProvider`. The declaration includes the
+provider's ID, label and `unavailable` reason.
 
 ```typescript
 interface SandboxProviderUnavailability {

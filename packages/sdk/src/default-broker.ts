@@ -200,7 +200,7 @@ export function bindFactory(pi: SandboxHost, extensionSource: string): void {
 				const config = await settings.read(session.context);
 
 				return Object.freeze({
-					allowsEscalation: config.allowEscalation ?? true,
+					allowEscalation: config.allowEscalation ?? true,
 					providerId: config.selection.providerId,
 					...(config.hostUserDataRoots !== undefined && {
 						hostUserDataRoots: config.hostUserDataRoots
@@ -209,7 +209,6 @@ export function bindFactory(pi: SandboxHost, extensionSource: string): void {
 			}
 		});
 		const broker = new SandboxBroker(
-			brokerId,
 			pi,
 			{
 				diagnostics: settings.diagnostics,
@@ -239,7 +238,7 @@ export function bindFactory(pi: SandboxHost, extensionSource: string): void {
 					shellSettings
 				);
 
-				route.receive(routes.claim.bind(routes));
+				route.receive(routes.claim.bind(routes), shellSettings);
 			}
 		}
 
@@ -252,7 +251,7 @@ export function bindFactory(pi: SandboxHost, extensionSource: string): void {
 		hosts[0]?.receive(broker.close.bind(broker));
 
 		for (const participant of participants) {
-			participant.commit(shellSettings);
+			participant.commit();
 		}
 	}
 
@@ -339,16 +338,12 @@ export function bindFactory(pi: SandboxHost, extensionSource: string): void {
 					providers: Object.freeze([...bindings.providers]),
 					shellRoutes: Object.freeze([...bindings.shellRoutes]),
 					...(bindings.host !== undefined && { host: bindings.host }),
-					commit(settings) {
+					commit() {
 						if (bindings.pin !== undefined) {
 							throw invalidBootstrap();
 						}
 
 						bindings.pin = owner;
-
-						if (bindings.wantsShellSettings === true) {
-							bindings.shellSettings = settings;
-						}
 					}
 				})
 			);

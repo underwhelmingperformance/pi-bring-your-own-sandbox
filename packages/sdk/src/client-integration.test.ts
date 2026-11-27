@@ -162,7 +162,7 @@ it('elects the runtime without consulting a prepublished broker', async () => {
 
 it('provides a shared host backend with only a consumer and no configuration', async () => {
 	await fixture(async ({ pi, context, errors }) => {
-		expect(discoverBroker(pi.events)?.id).toBeDefined();
+		expect(discoverBroker(pi.events)).toBeDefined();
 
 		const [first, second] = await Promise.all([
 			getSandbox(pi, context),
@@ -551,14 +551,16 @@ it.each([
 			[],
 			(pi) => {
 				bindProtocolAddress(pi.events, import.meta.filename);
-				publishFixtureBroker(pi, (id) => ({
-					id,
+				publishFixtureBroker(pi, () => ({
 					acquire: () => Promise.resolve(sandbox),
 					negotiate: () =>
 						Promise.resolve({ ok: true, profile: backend.profile }),
 					status: () =>
 						Promise.resolve({ generationId: 'independent', state: 'idle' }),
-					providers: () => Promise.resolve([])
+					providers: () => Promise.resolve([]),
+					resolveReviewSource(): undefined {
+						return;
+					}
 				}));
 			}
 		);

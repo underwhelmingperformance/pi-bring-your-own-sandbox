@@ -14,17 +14,20 @@ import type { BrokerService, ConfiguredProviderV1 } from './protocol.js';
 import { sharedSettingsSchema } from './request-schemas.js';
 import { callable, nonEmptyStringSchema } from './schemas.js';
 
-export const brokerServiceSchema = Type.Object({
-	id: nonEmptyStringSchema,
+const brokerServiceShape = Type.Object({
 	acquire: callable<BrokerService['acquire']>(),
 	negotiate: callable<BrokerService['negotiate']>(),
-	resolveReviewSource:
-		Type.Optional(
-			callable<NonNullable<BrokerService['resolveReviewSource']>>()
-		),
+	resolveReviewSource: callable<BrokerService['resolveReviewSource']>(),
 	status: callable<BrokerService['status']>(),
 	providers: callable<BrokerService['providers']>()
 });
+
+// TypeBox counts own keys for compiled closed objects. Services can inherit methods.
+export const brokerServiceSchema = Type.Refine(brokerServiceShape, (service) =>
+	Object.keys(service).every((key) =>
+		Object.hasOwn(brokerServiceShape.properties, key)
+	)
+);
 
 const providerIdSchema = Type.Refine(
 	nonEmptyStringSchema,

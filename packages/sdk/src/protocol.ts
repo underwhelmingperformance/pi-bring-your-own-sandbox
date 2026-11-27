@@ -225,12 +225,6 @@ The session generation allocates a backend for each policy on demand.
 */
 export interface BrokerService {
 	/**
-	Runtime service identity shared across independently installed SDK
-	copies.
-	*/
-	readonly id: string;
-
-	/**
 	Negotiate the requested policy, then acquire the generation's backend for
 	that policy and validate the remaining requirements. Concurrent callers for
 	one policy share startup with independent waiter cancellation.
@@ -255,15 +249,14 @@ export interface BrokerService {
 	readonly status: (context: SandboxContext) => Promise<SandboxStatus>;
 
 	/**
-	Validate configuration and enumerate providers without provisioning
-	resources. Backend startup or operation failures do not prevent
-	enumeration of the validated declarations.
+	List validated declarations. This call leaves provider configuration and
+	allocation to status and acquisition.
 	*/
 	readonly providers: (
 		context: SandboxContext
 	) => Promise<readonly ProviderInfo[]>;
 
-	readonly resolveReviewSource?: (
+	readonly resolveReviewSource: (
 		context: SandboxContext,
 		query: import('./review-identities.js').ReviewQuery,
 		sourceId: string

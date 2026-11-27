@@ -108,7 +108,7 @@ export function findShellReviewSource(
 		}
 
 		const broker = ensureSandboxService(pi);
-		const source = broker.resolveReviewSource?.(
+		const source = broker.resolveReviewSource(
 			context,
 			{
 				toolName: call.toolName,

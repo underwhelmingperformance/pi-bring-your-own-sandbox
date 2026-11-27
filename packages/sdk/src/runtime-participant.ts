@@ -25,7 +25,7 @@ export interface RuntimeProvider extends ProviderInfo {
 export interface ShellSettings {
 	readonly lifetime: AbortSignal;
 	readonly read: (context: SandboxContext) => Promise<{
-		readonly allowsEscalation: boolean;
+		readonly allowEscalation: boolean;
 		readonly providerId: string;
 		readonly hostUserDataRoots?: readonly string[];
 	}>;
@@ -40,7 +40,7 @@ export interface RuntimeParticipant {
 	readonly providers: readonly RuntimeProvider[];
 	readonly host?: HostRegistration;
 	readonly shellRoutes: readonly ShellRouteRegistration[];
-	readonly commit: (settings: ShellSettings) => void;
+	readonly commit: () => void;
 }
 
 interface RuntimeBindings {
@@ -48,7 +48,6 @@ interface RuntimeBindings {
 	readonly shellRoutes: ShellRouteRegistration[];
 	owner?: SandboxBroker;
 	host?: HostRegistration;
-	wantsShellSettings?: true;
 	shellSettings?: ShellSettings;
 	pin?: BrokerPin;
 }
@@ -101,10 +100,6 @@ export function registerHostOptions(
 			})
 		})
 	});
-}
-
-export function registerShellSettings(pi: SandboxHost): void {
-	localRuntimeBindings(pi).wantsShellSettings = true;
 }
 
 export function shellSettings(pi: SandboxHost): ShellSettings {

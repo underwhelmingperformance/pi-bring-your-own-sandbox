@@ -53,15 +53,12 @@ export function discoverProviders(
 		const level = sharedFeatureLevel(local, reply);
 		const value = projectOffer(providerAdvertisement, reply.payload, level);
 
-		if (
-			reply.kind !== 'advertisement' ||
-			!isProviderAdvertisement(value) ||
-			value.service.id !== value.id
-		) {
+		if (reply.kind !== 'advertisement' || !isProviderAdvertisement(value)) {
 			throw invalidProtocolServiceReply(reply);
 		}
 
-		const { id, service } = value;
+		const { service } = value;
+		const { id } = service;
 
 		if (ids.has(id)) {
 			throw new DuplicateProviderError({
@@ -87,10 +84,7 @@ function boundBroker(
 	const level = sharedFeatureLevel(local, peer);
 
 	return Object.freeze<BrokerService>({
-		id: service.id,
-		...(service.resolveReviewSource !== undefined && {
-			resolveReviewSource: service.resolveReviewSource.bind(service)
-		}),
+		resolveReviewSource: service.resolveReviewSource.bind(service),
 		acquire(context, options) {
 			checkDemand(acquireOptionsSchema, options ?? {}, local, peer, 'acquire');
 
@@ -149,7 +143,6 @@ export function discoverBroker(
 	if (
 		reply.kind !== 'reply' ||
 		!isBrokerReply(payload) ||
-		payload.service.id !== payload.id ||
 		(pin !== undefined &&
 			(payload.id !== pin.brokerId ||
 				payload.candidateId !== pin.candidateId ||

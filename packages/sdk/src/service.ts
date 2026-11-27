@@ -53,13 +53,12 @@ export function publishBroker(
 	};
 
 	const service = Object.freeze<BrokerService>({
-		id,
 		acquire: (context, options) =>
 			invoke((broker) => broker.acquire(context, options)),
 		negotiate: (context, options) =>
 			invoke((broker) => broker.negotiate(context, options)),
 		resolveReviewSource: (context, query, id) =>
-			target?.resolveReviewSource?.(context, query, id),
+			target?.resolveReviewSource(context, query, id),
 		status: (context) => invoke((broker) => broker.status(context)),
 		providers: (context) => invoke((broker) => broker.providers(context))
 	});
@@ -92,7 +91,7 @@ export function publishBroker(
 
 		const created: unknown = create(id);
 
-		if (!isBrokerService(created) || created.id !== id) {
+		if (!isBrokerService(created)) {
 			throw new InvalidSandboxDeclarationError({
 				operation: 'discover'
 			});

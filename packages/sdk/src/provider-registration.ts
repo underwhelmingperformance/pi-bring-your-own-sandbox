@@ -49,7 +49,7 @@ function advertiseProvider(
 		(request) =>
 			projectReply(
 				providerAdvertisement,
-				{ type: 'provider', id: info.id, service: info },
+				{ type: 'provider', service: info },
 				identity,
 				request
 			),

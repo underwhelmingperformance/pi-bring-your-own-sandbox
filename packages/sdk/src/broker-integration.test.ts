@@ -466,7 +466,7 @@ it.each([
 		const extension: InlineExtension = {
 			name: 'shutdown-fixture',
 			factory(pi) {
-				const broker = new SandboxBroker('broker', pi, {
+				const broker = new SandboxBroker(pi, {
 					readConfig: () =>
 						Promise.resolve({
 							selection: {

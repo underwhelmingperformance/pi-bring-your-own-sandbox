@@ -44,8 +44,7 @@ function broker(
 	pi: SandboxHost,
 	registry: ReviewIdentities<ShellReviewSource>
 ) {
-	return publishFixtureBroker(pi, (id) => ({
-		id,
+	return publishFixtureBroker(pi, () => ({
 		acquire: unexpected,
 		negotiate: unexpected,
 		status: unexpected,

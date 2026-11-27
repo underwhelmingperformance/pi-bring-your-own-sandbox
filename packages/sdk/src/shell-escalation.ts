@@ -174,7 +174,7 @@ export class PendingEscalation {
 
 		this.#scope.check();
 
-		if (!config.allowsEscalation) {
+		if (!config.allowEscalation) {
 			this.#complete('denied', { kind: 'configuration' });
 
 			throw this.#refusal('allowEscalation');

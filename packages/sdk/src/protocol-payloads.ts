@@ -120,7 +120,6 @@ const providerRequest = Type.Object(
 export const providerAdvertisement = Type.Object(
 	{
 		type: Type.Literal('provider'),
-		id: nonEmptyStringSchema,
 		service: providerInfoSchema
 	},
 	{ additionalProperties: false }
@@ -186,7 +185,6 @@ export const reviewSourceSchema = Type.Refine(
 export const protocolSchemas = {
 	envelope: protocolEnvelopeSchema,
 	'incompatible-major': message('incompatible-major'),
-	'incompatible-demand': message('unrepresentable-demand'),
 	'unrepresentable-offer': Type.Object(
 		{
 			type: Type.Literal('unrepresentable-offer'),
@@ -218,7 +216,7 @@ export const protocolSchemas = {
 	'broker.acquireOptions': acquireOptionsSchema,
 	'broker.providerInfo': providerInfoSchema,
 	'sandbox.profile': profileSchema,
-	'sandbox.profile.policy': policySchema,
+	'sandbox.policy': policySchema,
 	'sandbox.workspace': workspaceSchema,
 	'sandbox.recovery': recoverySchema,
 	'sandbox.processRequest': processRequestSchema,

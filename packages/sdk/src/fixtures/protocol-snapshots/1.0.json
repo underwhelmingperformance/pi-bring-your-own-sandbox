@@ -2773,19 +2773,6 @@
 			"~kind": "Cyclic",
 			"~unsafe": null
 		},
-		"incompatible-demand": {
-			"additionalProperties": false,
-			"properties": {
-				"type": {
-					"const": "unrepresentable-demand",
-					"type": "string",
-					"~kind": "Literal"
-				}
-			},
-			"required": ["type"],
-			"type": "object",
-			"~kind": "Object"
-		},
 		"incompatible-major": {
 			"additionalProperties": false,
 			"properties": {
@@ -4579,11 +4566,6 @@
 		"provider.provider": {
 			"additionalProperties": false,
 			"properties": {
-				"id": {
-					"minLength": 1,
-					"type": "string",
-					"~kind": "String"
-				},
 				"service": {
 					"properties": {
 						"id": {
@@ -5257,7 +5239,7 @@
 					"~kind": "Literal"
 				}
 			},
-			"required": ["type", "id", "service"],
+			"required": ["type", "service"],
 			"type": "object",
 			"~kind": "Object"
 		},
@@ -5435,11 +5417,6 @@
 							"~kind": "Function",
 							"~unsafe": null
 						},
-						"id": {
-							"minLength": 1,
-							"type": "string",
-							"~kind": "String"
-						},
 						"negotiate": {
 							"parameters": [],
 							"returnType": {
@@ -5465,7 +5442,6 @@
 							},
 							"type": "function",
 							"~kind": "Function",
-							"~optional": true,
 							"~unsafe": null
 						},
 						"status": {
@@ -5478,9 +5454,25 @@
 							"~unsafe": null
 						}
 					},
-					"required": ["id", "acquire", "negotiate", "status", "providers"],
+					"required": [
+						"acquire",
+						"negotiate",
+						"resolveReviewSource",
+						"status",
+						"providers"
+					],
 					"type": "object",
-					"~kind": "Object"
+					"~kind": "Object",
+					"~refine": [
+						{
+							"check": {
+								"implementation": "93a5e175856e0f2ab70414445404f7bbf25ea7ead79c71f3224341f7e5ed2751"
+							},
+							"error": {
+								"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
+							}
+						}
+					]
 				},
 				"type": {
 					"const": "broker",
@@ -6872,6 +6864,68 @@
 			"type": "object",
 			"~kind": "Object"
 		},
+		"sandbox.policy": {
+			"additionalProperties": false,
+			"properties": {
+				"hostSystemFiles": {
+					"anyOf": [
+						{
+							"const": "denied",
+							"type": "string",
+							"~kind": "Literal"
+						},
+						{
+							"const": "read-only",
+							"type": "string",
+							"~kind": "Literal"
+						},
+						{
+							"const": "read-write",
+							"type": "string",
+							"~kind": "Literal"
+						}
+					],
+					"~kind": "Union"
+				},
+				"hostUserData": {
+					"anyOf": [
+						{
+							"const": "denied",
+							"type": "string",
+							"~kind": "Literal"
+						},
+						{
+							"const": "read-only",
+							"type": "string",
+							"~kind": "Literal"
+						},
+						{
+							"const": "read-write",
+							"type": "string",
+							"~kind": "Literal"
+						}
+					],
+					"~kind": "Union"
+				},
+				"hostWorkspaceWrites": {
+					"type": "boolean",
+					"~kind": "Boolean"
+				},
+				"network": {
+					"type": "boolean",
+					"~kind": "Boolean"
+				}
+			},
+			"required": [
+				"hostWorkspaceWrites",
+				"network",
+				"hostUserData",
+				"hostSystemFiles"
+			],
+			"type": "object",
+			"x-byos-whole-offer": true,
+			"~kind": "Object"
+		},
 		"sandbox.processOptions": {
 			"additionalProperties": false,
 			"properties": {
@@ -7528,68 +7582,6 @@
 					}
 				}
 			]
-		},
-		"sandbox.profile.policy": {
-			"additionalProperties": false,
-			"properties": {
-				"hostSystemFiles": {
-					"anyOf": [
-						{
-							"const": "denied",
-							"type": "string",
-							"~kind": "Literal"
-						},
-						{
-							"const": "read-only",
-							"type": "string",
-							"~kind": "Literal"
-						},
-						{
-							"const": "read-write",
-							"type": "string",
-							"~kind": "Literal"
-						}
-					],
-					"~kind": "Union"
-				},
-				"hostUserData": {
-					"anyOf": [
-						{
-							"const": "denied",
-							"type": "string",
-							"~kind": "Literal"
-						},
-						{
-							"const": "read-only",
-							"type": "string",
-							"~kind": "Literal"
-						},
-						{
-							"const": "read-write",
-							"type": "string",
-							"~kind": "Literal"
-						}
-					],
-					"~kind": "Union"
-				},
-				"hostWorkspaceWrites": {
-					"type": "boolean",
-					"~kind": "Boolean"
-				},
-				"network": {
-					"type": "boolean",
-					"~kind": "Boolean"
-				}
-			},
-			"required": [
-				"hostWorkspaceWrites",
-				"network",
-				"hostUserData",
-				"hostSystemFiles"
-			],
-			"type": "object",
-			"x-byos-whole-offer": true,
-			"~kind": "Object"
 		},
 		"sandbox.recovery": {
 			"anyOf": [

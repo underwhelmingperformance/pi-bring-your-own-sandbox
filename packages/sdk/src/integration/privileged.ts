@@ -18,11 +18,8 @@ import { passthroughProvider } from '../passthrough-provider.js';
 import { registerShellIntegrationDiagnostics } from '../pi-integration-status.js';
 import { createShellOperations } from '../pi-shell-operations.js';
 import { protocolAddress } from '../protocol-address.js';
-import {
-	localRuntimeBindings,
-	registerShellSettings,
-	shellSettings
-} from '../runtime-participant.js';
+import type { ShellSettings } from '../runtime-participant.js';
+import { localRuntimeBindings, shellSettings } from '../runtime-participant.js';
 import {
 	escalationJustificationSchema,
 	escalationListSchema
@@ -141,21 +138,23 @@ async function verifyPendingCall(
 
 export function bindShellIntegration(pi: ExtensionAPI, extensionPath: string) {
 	bindFactory(pi, extensionPath);
-	registerShellSettings(pi);
+
+	const bindings = localRuntimeBindings(pi);
 
 	return {
 		escalationParameters,
 		registerRoute(dialect: Dialect, parameters: TSchema) {
 			let claim: ClaimShellCall | undefined;
 
-			localRuntimeBindings(pi).shellRoutes.push(
+			bindings.shellRoutes.push(
 				Object.freeze({
 					pi,
 					toolName: dialect,
 					identity: protocolAddress(pi.events),
 					parameters,
-					receive(connected: ClaimShellCall) {
+					receive(connected: ClaimShellCall, settings: ShellSettings) {
 						claim = connected;
+						bindings.shellSettings = settings;
 					}
 				})
 			);

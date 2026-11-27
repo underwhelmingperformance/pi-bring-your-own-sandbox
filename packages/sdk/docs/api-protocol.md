@@ -710,7 +710,7 @@ type Envelope<Payload> = BuildIdentity & {
 | Runtime  | `request`       | `{ type: 'get-broker' }`                                   |
 | Runtime  | `reply`         | `{ type: 'broker', candidateId, id, service }`             |
 | Provider | `request`       | `{ type: 'get-providers' }`                                |
-| Provider | `advertisement` | `{ type: 'provider', id, service }`                        |
+| Provider | `advertisement` | `{ type: 'provider', service }`                            |
 | Review   | `request`       | `{ type: 'find-source', toolName, toolCallId, sessionId }` |
 | Review   | `reply`         | `{ type: 'source', ok: true, toolCallId, sourceId }`       |
 
@@ -721,7 +721,12 @@ A review refusal replies with `ok: false` and a reason. Startup uses
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Runtime provider | Supplies its declaration and build identity. An available provider also supplies `configure(context)`, which returns shared `settings?`, `open`, `copy?` and `persistReadRoot?`. The registering SDK keeps typed configuration in the allocation closures. The broker offers Always only when the result includes a persistence method. |
 | Embedding host   | Receives the broker's close function.                                                                                                                                                                                                                                                                                                   |
-| Tool integration | Receives the callbacks for dispatching shell calls.                                                                                                                                                                                                                                                                                     |
+| Tool integration | Receives a claim callback and the shell settings through its route. The settings include the lifetime signal and a reader for `allowEscalation`, the provider ID and resolved user data roots.                                                                                                                                          |
+
+Each participant's one-shot `commit()` publishes the accepted broker identity
+after handoff. The broker service implements `acquire`, `negotiate`, `status`,
+`providers` and `resolveReviewSource`. The review resolver returns `undefined`
+when no current source matches.
 
 The shell integration query returns `{ type: 'shell-integration' }` when an
 extension registers the Pi tools.

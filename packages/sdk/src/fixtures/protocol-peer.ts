@@ -18,7 +18,6 @@ export function fixtureEvents(extensionSource: string) {
 export function providerReply(id = 'independent') {
 	return {
 		type: 'provider',
-		id,
 		service: {
 			id,
 			label: 'Independent protocol fixture',
@@ -43,10 +42,8 @@ export function providerReply(id = 'independent') {
 
 class IndependentBroker {
 	readonly #identity: string;
-	readonly id: string;
 
 	constructor(id: string) {
-		this.id = id;
 		this.#identity = id;
 	}
 
@@ -56,6 +53,10 @@ class IndependentBroker {
 
 	negotiate() {
 		return Promise.reject(new Error('Fixture only.'));
+	}
+
+	resolveReviewSource(): undefined {
+		return;
 	}
 
 	status() {

@@ -21,12 +21,13 @@ export function publishFixtureBroker(
 	create: (id: string) => BrokerService
 ): BrokerService {
 	const candidateId = randomUUID();
-	const service = publishBroker(pi.events, candidateId, create);
+	const brokerId = randomUUID();
+	const service = publishBroker(pi.events, candidateId, create, brokerId);
 
 	localRuntimeBindings(pi).pin = {
 		identity: protocolAddress(pi.events),
 		candidateId,
-		brokerId: service.id
+		brokerId
 	};
 
 	return service;

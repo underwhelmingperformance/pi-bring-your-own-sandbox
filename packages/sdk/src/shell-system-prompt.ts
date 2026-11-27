@@ -38,7 +38,7 @@ async function describeShellPolicy(
 				hostUserDataRoots: config.hostUserDataRoots
 			})
 		});
-		const escalation = config.allowsEscalation
+		const escalation = config.allowEscalation
 			? escalationGuidance
 			: 'allowEscalation is false, so BYOS will refuse escalations.';
 

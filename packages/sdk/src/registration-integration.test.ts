@@ -225,7 +225,6 @@ it('publishes provider metadata and keeps resolvers and settings out of discover
 					{
 						provider: {
 							type: 'provider',
-							id: imageProvider.id,
 							service: {
 								id: imageProvider.id,
 								label: imageProvider.label,

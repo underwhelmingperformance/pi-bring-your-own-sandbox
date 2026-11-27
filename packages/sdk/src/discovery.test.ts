@@ -37,7 +37,7 @@ it('reads an independent provider declaration on the actual Pi event bus', () =>
 		}))
 	).toStrictEqual([
 		{
-			id: reply.id,
+			id: reply.service.id,
 			label: 'Independent protocol fixture',
 			profiles: reply.service.profiles,
 			fields: ['id', 'label', 'profiles', 'protocol']
@@ -85,11 +85,11 @@ it('accepts an independent broker service and preserves its method receiver', as
 	});
 
 	expect({
-		id: service?.id,
+		hasDuplicateId: service !== undefined && 'id' in service,
 		generationId: status?.generationId,
 		state: status?.state
 	}).toStrictEqual({
-		id: 'independent',
+		hasDuplicateId: false,
 		generationId: 'independent',
 		state: 'idle'
 	});
@@ -119,7 +119,7 @@ it.each(['candidateId', 'brokerId', 'extensionSource'] as const)(
 
 		respond(events, RUNTIME_CHANNEL, reply);
 
-		expect(discoverBroker(events, pin)?.id).toBe(reply.id);
+		expect(discoverBroker(events, pin)).toBeDefined();
 		expect(() => discoverBroker(events, mismatched)).toThrow(
 			expect.objectContaining({ name: 'InvalidSandboxDeclarationError' })
 		);
@@ -166,7 +166,7 @@ it.each([
 		'InvalidSandboxDeclarationError'
 	],
 	[
-		'mismatched id',
+		'retired outer provider id',
 		{ ...providerReply(), id: 'different' },
 		'InvalidSandboxDeclarationError'
 	],
@@ -345,16 +345,19 @@ it.each([
 	}
 );
 
-it('rejects an independent broker without a status method', () => {
-	const events = fixtureEvents(import.meta.filename);
-	const reply = brokerReply();
+it.each(['status', 'resolveReviewSource'])(
+	'rejects an independent broker without %s',
+	(method) => {
+		const events = fixtureEvents(import.meta.filename);
+		const reply = brokerReply();
 
-	Object.defineProperty(reply.service, 'status', { value: undefined });
-	respond(events, 'pi-byos:runtime', reply);
-	expect(() => discoverBroker(events)).toThrow(
-		expect.objectContaining({ name: 'InvalidSandboxDeclarationError' })
-	);
-});
+		Object.defineProperty(reply.service, method, { value: undefined });
+		respond(events, 'pi-byos:runtime', reply);
+		expect(() => discoverBroker(events)).toThrow(
+			expect.objectContaining({ name: 'InvalidSandboxDeclarationError' })
+		);
+	}
+);
 
 it.each([
 	{
@@ -368,7 +371,12 @@ it.each([
 		label: 'broker service',
 		channel: RUNTIME_CHANNEL,
 		request: 'get-broker',
-		replies: [{ ...brokerReply(), id: 'mismatch' }],
+		replies: [
+			{
+				...brokerReply(),
+				service: Object.assign(brokerReply().service, { id: 'mismatch' })
+			}
+		],
 		discover: discoverBroker
 	}
 ] as const)(

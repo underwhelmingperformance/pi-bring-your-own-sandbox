@@ -44,16 +44,13 @@ export class SandboxBroker implements BrokerService {
 		  }
 		| undefined;
 	#isClosing = false;
-	readonly id: string;
 
 	constructor(
-		id: string,
 		pi: SandboxHost,
 		dependencies: GenerationDependencies,
 		session?: SandboxSession,
 		abortConfig?: () => void
 	) {
-		this.id = id;
 		this.#dependencies = dependencies;
 		this.#abortConfig = abortConfig;
 

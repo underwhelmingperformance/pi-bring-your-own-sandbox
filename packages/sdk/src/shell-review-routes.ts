@@ -67,7 +67,7 @@ export interface ShellRouteRegistration {
 	readonly toolName: Dialect;
 	readonly identity: ProtocolIdentity;
 	readonly parameters: TSchema;
-	readonly receive: (claim: ClaimShellCall) => void;
+	readonly receive: (claim: ClaimShellCall, settings: ShellSettings) => void;
 }
 
 const isReviewQuery = checker(findReviewRequest);

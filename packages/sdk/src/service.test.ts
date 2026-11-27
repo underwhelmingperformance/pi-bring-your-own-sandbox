@@ -5,6 +5,7 @@ import { discoverBroker } from './discovery.js';
 import { ensureFixtureBroker } from './fixtures/fixture-broker-service.js';
 import { fixtureEvents } from './fixtures/protocol-peer.js';
 import { brokerReply, respond } from './fixtures/protocol-peer.js';
+import { protocolAddress } from './protocol-address.js';
 import { PROTOCOL_MAJOR } from './protocol-envelope.js';
 
 function fixtureContext() {
@@ -15,13 +16,15 @@ function fixtureContext() {
 	};
 }
 
-it('publishes synchronously and constructs exactly one service on first use', () => {
+it('publishes synchronously and constructs exactly one service on first use', async () => {
 	const events = fixtureEvents(import.meta.filename);
 	let constructions = 0;
+	let generationId: string | undefined;
 
 	const create = (id: string) => {
 		constructions++;
-		expect(discoverBroker(events)?.id).toBe(id);
+		generationId = id;
+		expect(discoverBroker(events)).toBeDefined();
 
 		return brokerReply(id).service;
 	};
@@ -29,9 +32,17 @@ it('publishes synchronously and constructs exactly one service on first use', ()
 	const first = ensureFixtureBroker(events, create);
 	const second = ensureFixtureBroker(events, create);
 
-	expect({ ids: [first.id, second.id], constructions }).toStrictEqual({
-		ids: [first.id, first.id],
-		constructions: 1
+	const statuses = await Promise.all([
+		first.status(fixtureContext()),
+		second.status(fixtureContext())
+	]);
+
+	expect({
+		constructions,
+		generations: statuses.map((status) => status.generationId)
+	}).toStrictEqual({
+		constructions: 1,
+		generations: [generationId, generationId]
 	});
 });
 
@@ -76,8 +87,14 @@ it('rejects re-entrant acquisition during construction without creating another 
 	await expect(reentrant).rejects.toMatchObject({
 		name: 'SandboxInitialisationError'
 	});
-	expect({ id: discoverBroker(events)?.id, constructions }).toStrictEqual({
-		id: service.id,
+
+	const status = await service.status(fixtureContext());
+
+	expect({
+		status: await discoverBroker(events)?.status(fixtureContext()),
+		constructions
+	}).toStrictEqual({
+		status: { ...status, protocol: protocolAddress(events) },
 		constructions: 1
 	});
 });

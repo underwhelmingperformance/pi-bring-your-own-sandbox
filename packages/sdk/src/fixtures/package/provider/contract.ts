@@ -11,66 +11,83 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { UnsupportedSandboxPolicyError } from 'pi-bring-your-own-sandbox/provider';
+import type {
+	SandboxPolicy,
+	SandboxProvider
+} from 'pi-bring-your-own-sandbox/provider';
+import {
+	registerSandboxProvider,
+	UnsupportedSandboxPolicyError
+} from 'pi-bring-your-own-sandbox/provider';
 import { defineSandboxProviderTests } from 'pi-bring-your-own-sandbox/testing';
 
 import { provider, state } from './provider.js';
+
+const policy: SandboxPolicy = {
+	hostWorkspaceWrites: false,
+	network: false,
+	hostUserData: 'denied',
+	hostSystemFiles: 'read-only'
+};
+
+const contractProvider = {
+	...provider,
+	profiles: {
+		...provider.profiles,
+		open: provider.profiles.open.filter(
+			(profile) => !profile.policy.hostWorkspaceWrites
+		)
+	},
+	create: () => ({
+		...provider.create(),
+		configure: () => ({ configuration: undefined, settings: { policy } }),
+		async open(request, context) {
+			const entries = await readdir(request.hostWorkspace, {
+				withFileTypes: true
+			});
+
+			if (entries.some((entry) => entry.isFIFO())) {
+				throw new UnsupportedSandboxPolicyError({ operation: 'open' });
+			}
+
+			const backend = await provider.create().open(request, context);
+			const grantedPaths = request.paths?.read?.map((hostPath) => ({
+				kind: 'read' as const,
+				hostPath,
+				targetPath: path.posix.join(
+					backend.workspace.root,
+					path.basename(hostPath)
+				)
+			}));
+
+			return {
+				...backend,
+				...(grantedPaths !== undefined && { grantedPaths }),
+				async exec(invocation, execution) {
+					if (
+						invocation.kind !== 'argv' ||
+						invocation.executable !== 'read-source'
+					) {
+						return backend.exec(invocation, execution);
+					}
+
+					execution.onOutput({
+						stream: 'stdout',
+						data: await readFile(path.join(request.hostWorkspace, 'source'))
+					});
+
+					return { kind: 'exited', exit: { kind: 'code', code: 0 } };
+				}
+			};
+		}
+	})
+} satisfies SandboxProvider<undefined>;
 
 defineSandboxProviderTests({
 	verifyRecoveryAfterCancellation: true,
 	policyEffects: ['read-only'],
 	label: 'installed provider using its own Vitest peer',
-	provider: {
-		...provider,
-		profiles: {
-			...provider.profiles,
-			open: provider.profiles.open.filter(
-				(profile) => !profile.policy.hostWorkspaceWrites
-			)
-		},
-		create: () => ({
-			...provider.create(),
-			async open(request, context) {
-				const entries = await readdir(request.hostWorkspace, {
-					withFileTypes: true
-				});
-
-				if (entries.some((entry) => entry.isFIFO())) {
-					throw new UnsupportedSandboxPolicyError({ operation: 'open' });
-				}
-
-				const backend = await provider.create().open(request, context);
-				const grantedPaths = request.paths?.read?.map((hostPath) => ({
-					kind: 'read' as const,
-					hostPath,
-					targetPath: path.posix.join(
-						backend.workspace.root,
-						path.basename(hostPath)
-					)
-				}));
-
-				return {
-					...backend,
-					...(grantedPaths !== undefined && { grantedPaths }),
-					async exec(invocation, execution) {
-						if (
-							invocation.kind !== 'argv' ||
-							invocation.executable !== 'read-source'
-						) {
-							return backend.exec(invocation, execution);
-						}
-
-						execution.onOutput({
-							stream: 'stdout',
-							data: await readFile(path.join(request.hostWorkspace, 'source'))
-						});
-
-						return { kind: 'exited', exit: { kind: 'code', code: 0 } };
-					}
-				};
-			}
-		})
-	},
+	provider: contractProvider,
 	async createFixture() {
 		assert.equal(state.isRunning, false);
 		state.sample = 'original';
@@ -90,11 +107,9 @@ defineSandboxProviderTests({
 		return {
 			configuration: undefined,
 			hostWorkspace: workspace,
-			policy: {
-				hostWorkspaceWrites: false,
-				network: false,
-				hostUserData: 'denied',
-				hostSystemFiles: 'read-only'
+			policy,
+			register(pi, extensionSource) {
+				registerSandboxProvider(pi, extensionSource, contractProvider);
 			},
 			verifyPolicy(backend) {
 				assert.equal(backend.profile.policy.hostWorkspaceWrites, false);
@@ -162,14 +177,16 @@ defineSandboxProviderTests({
 					return Promise.resolve();
 				}
 			},
-			verifyDisposed() {
+			verifyDisposed(backend) {
+				const expected = backend === undefined ? 0 : 1;
+
 				assert.deepEqual(
 					{
 						opens: state.opens,
 						disposals: state.disposals,
 						isRunning: state.isRunning
 					},
-					{ opens: 1, disposals: 1, isRunning: false }
+					{ opens: expected, disposals: expected, isRunning: false }
 				);
 
 				return Promise.resolve();

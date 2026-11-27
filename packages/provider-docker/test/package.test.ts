@@ -197,6 +197,7 @@ it.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 				provider + '/test/provider.test.ts',
 				'-t',
 				String.raw`workspace visibility \(copied\)`,
+				'--reporter=default',
 				'--reporter=json',
 				'--outputFile',
 				report

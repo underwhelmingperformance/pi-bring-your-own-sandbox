@@ -239,7 +239,10 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 			]);
 
 			const result: unknown = JSON.parse(await readFile(report, 'utf8'));
-			const workspaceCases = [
+			const contractCases = [
+				'uses the shipped provider registration and preset settings',
+				'open profile 1: checks credential read grant eligibility',
+				'open profile 1: checks credential write grant eligibility',
 				'open profile 1: workspace visibility (shared)',
 				'open profile 1: grants a reachable read path in the workspace',
 				...(process.platform === 'win32'
@@ -249,8 +252,8 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 
 			expect(result).toMatchObject({
 				success: true,
-				numTotalTests: 14 + workspaceCases.length,
-				numPassedTests: 14 + workspaceCases.length,
+				numTotalTests: 8 + contractCases.length,
+				numPassedTests: 8 + contractCases.length,
 				testResults: [
 					{
 						assertionResults: expect.arrayContaining([
@@ -263,7 +266,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 								title: 'open profile 1: policy effects (read-only)',
 								status: 'passed'
 							}),
-							...workspaceCases.map((title): unknown =>
+							...contractCases.map((title): unknown =>
 								expect.objectContaining({ title, status: 'passed' })
 							)
 						]) as unknown

@@ -86,6 +86,11 @@ precedence.
 
 ## Requirements and profiles
 
+A sandbox handle exposes the verified `profile` for its allocation. Status
+includes the profile after the default backend opens and reports
+provider-specific boundary text separately. Provider operation contexts include
+the resolved cleanup budgets.
+
 <!-- `violations` is provisional in milestone 1. -->
 <!--
 Types `AccessProperty`, `Access`, `PathGrants`, `FileAccess` and `Profile`

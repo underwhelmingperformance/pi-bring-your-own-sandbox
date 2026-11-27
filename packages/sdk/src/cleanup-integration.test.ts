@@ -10,10 +10,10 @@ import type {
 import { FixtureConfig } from './fixtures/config.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
+import { profileCapabilities } from './fixtures/profile-fixture.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import { initialiseSandboxHost } from './host.js';
 import { observe } from './lifecycle.js';
-import { profileCapabilities } from './validation.js';
 
 afterEach(() => {
 	vi.useRealTimers();
@@ -99,11 +99,6 @@ it('uses the generation cleanup budgets for sandbox execution and disposal', asy
 
 							const executor = await getSandbox(pi, context);
 
-							expect(executor.cleanupBudgets).toStrictEqual({
-								cancellationGraceMs: 8000,
-								disposalTimeoutMs: 9000
-							});
-
 							vi.useFakeTimers();
 							vi.setSystemTime(1000);
 
@@ -120,7 +115,16 @@ it('uses the generation cleanup budgets for sandbox execution and disposal', asy
 								const completion = observe(running);
 
 								await vi.advanceTimersByTimeAsync(0);
-								expect(isRunning).toBe(true);
+								expect({
+									isRunning,
+									cleanup: execution?.cleanupBudgets
+								}).toStrictEqual({
+									isRunning: true,
+									cleanup: {
+										cancellationGraceMs: 8000,
+										disposalTimeoutMs: 9000
+									}
+								});
 								caller.abort();
 								expect(execution?.cleanup.deadline).toBe(9000);
 								await vi.advanceTimersByTimeAsync(6000);

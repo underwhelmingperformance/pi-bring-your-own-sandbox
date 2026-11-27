@@ -219,12 +219,12 @@ type RipgrepRequest = (
 	cwd?: string
 ) => ProcessRequest;
 
-function ripgrepRequest({ capabilities }: Sandbox): RipgrepRequest | undefined {
-	if (!capabilities.operations.includes('exec')) {
+function ripgrepRequest({ profile }: Sandbox): RipgrepRequest | undefined {
+	if (!profile.capabilities.includes('exec')) {
 		return;
 	}
 
-	if (capabilities.processKinds.includes('argv')) {
+	if (profile.processKinds.includes('argv')) {
 		return (arguments_, cwd) => ({
 			kind: 'argv',
 			executable: 'rg',
@@ -233,11 +233,11 @@ function ripgrepRequest({ capabilities }: Sandbox): RipgrepRequest | undefined {
 		});
 	}
 
-	const dialect = capabilities.shells.find(
+	const dialect = profile.shells.find(
 		(shell) => shell === 'sh' || shell === 'bash'
 	);
 
-	if (dialect !== undefined && capabilities.processKinds.includes('shell')) {
+	if (dialect !== undefined && profile.processKinds.includes('shell')) {
 		return (arguments_, cwd) => ({
 			kind: 'shell',
 			dialect,

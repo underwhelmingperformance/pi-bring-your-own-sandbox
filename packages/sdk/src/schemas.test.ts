@@ -2,16 +2,13 @@ import { Compile } from 'typebox/compile';
 import { Value } from 'typebox/value';
 import { expect, it } from 'vitest';
 
+import { defaultPolicy, profileSchema } from './policy-model.js';
 import {
 	acquireOptionsSchema,
 	processRequestSchema,
 	providerConfigSchema
 } from './request-schemas.js';
-import {
-	capabilitiesSchema,
-	recoverySchema,
-	safeIntegerSchema
-} from './schemas.js';
+import { recoverySchema, safeIntegerSchema } from './schemas.js';
 
 const sparse: string[] = ['exec'];
 
@@ -41,45 +38,49 @@ it.each([
 	},
 
 	{
-		schema: capabilitiesSchema,
+		schema: profileSchema,
 		input: {
+			policy: defaultPolicy,
 			processKinds: ['argv'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			operations: ['exec'],
+			capabilities: ['exec'],
 			shells: []
 		},
 		expected: true
 	},
 	{
-		schema: capabilitiesSchema,
+		schema: profileSchema,
 		input: {
+			policy: defaultPolicy,
 			processKinds: ['argv'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			operations: sparse,
+			capabilities: sparse,
 			shells: []
 		},
 		expected: false
 	},
 	{
-		schema: capabilitiesSchema,
+		schema: profileSchema,
 		input: {
+			policy: defaultPolicy,
 			processKinds: ['argv'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			operations: ['files.read'],
+			capabilities: ['files.read'],
 			shells: []
 		},
 		expected: false
 	},
 	{
-		schema: capabilitiesSchema,
+		schema: profileSchema,
 		input: {
+			policy: defaultPolicy,
 			processKinds: ['argv'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			operations: ['exec', 'exec'],
+			capabilities: ['exec', 'exec'],
 			shells: []
 		},
 		expected: false

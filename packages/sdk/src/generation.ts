@@ -91,12 +91,7 @@ import type { SaveReadRoots } from './read-root-persistence.js';
 import { acquireOptionsSchema } from './request-schemas.js';
 import { copyOptions, copySource, rethrowCopyError } from './sandbox-copy.js';
 import { callable, checker } from './schemas.js';
-import {
-	isRecord,
-	isRecovery,
-	profileCapabilities,
-	snapshotProviderInfo
-} from './validation.js';
+import { isRecord, isRecovery, snapshotProviderInfo } from './validation.js';
 
 export interface GenerationDependencies {
 	readonly diagnostics?: DiagnosticStore;
@@ -1553,8 +1548,7 @@ export class SandboxGeneration {
 			...(backend !== undefined && {
 				backendId: backend.id,
 				workspace: backend.workspace,
-				capabilities: profileCapabilities(backend.profile),
-				policy: backend.profile.policy,
+				profile: backend.profile,
 				policyDescription: backend.policyDescription
 			}),
 			...(failure !== undefined && { failure }),

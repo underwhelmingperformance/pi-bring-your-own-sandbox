@@ -248,7 +248,7 @@ export function resolvedReviewSource(
 					kind: 'review-copy',
 					toolCallId: call.toolCallId,
 					source: destination,
-					policy: copy.sandbox.policy,
+					policy: copy.sandbox.profile.policy,
 					decider: { kind: 'permission-extension', extension }
 				});
 

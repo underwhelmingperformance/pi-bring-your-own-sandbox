@@ -45,8 +45,7 @@ it('shows a configured shell that the ready backend does not support', () => {
 			},
 			backendId: backend.id,
 			workspace: backend.workspace,
-			capabilities: backend.capabilities,
-			policy: backend.policy,
+			profile: backend.profile,
 			policyDescription: backend.policyDescription
 		})
 	).toBe(
@@ -123,7 +122,7 @@ it.each(['closing', 'closed'] as const)(
 			},
 			backendId: backend.id,
 			workspace: backend.workspace,
-			policy: backend.policy,
+			profile: backend.profile,
 			policyDescription: 'Base boundary.',
 			backends: [
 				{ policy: backend.policy, state: 'ready', backendId: backend.id },
@@ -139,6 +138,9 @@ it.each(['closing', 'closed'] as const)(
 				'Backend: memory',
 				'Target: /remote/project (shared)',
 				'Effective policy: workspace read-write (shared), network denied, host user data denied, host system files read-only',
+				'Operations: exec, files.read, files.write, files.list',
+				'Termination scope: workload',
+				'Shells: none',
 				'User shell: unavailable',
 				'Boundary: Base boundary.',
 				'Additional backend (last state: opening)',

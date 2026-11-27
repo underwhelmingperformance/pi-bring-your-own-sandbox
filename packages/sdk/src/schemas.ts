@@ -69,35 +69,11 @@ export const processKindSchema = Type.Union([
 	Type.Literal('shell')
 ]);
 
-const exitStatusSchema = Type.Union([
-	Type.Literal('guaranteed'),
-	Type.Literal('optional')
-]);
-
 export const terminationScopeSchema = Type.Union([
 	Type.Literal('none'),
 	Type.Literal('process-group'),
 	Type.Literal('workload')
 ]);
-
-const capabilitiesShape = Type.Object({
-	operations: denseArray(capabilitySchema, {
-		uniqueItems: true,
-		contains: Type.Literal('exec')
-	}),
-	shells: denseArray(shellSchema, { uniqueItems: true }),
-	processKinds: denseArray(processKindSchema, {
-		minItems: 1,
-		uniqueItems: true
-	}),
-	exitStatus: exitStatusSchema,
-	terminationScope: terminationScopeSchema
-});
-
-export const capabilitiesSchema = Type.Refine(
-	capabilitiesShape,
-	(value) => value.processKinds.includes('shell') === value.shells.length > 0
-);
 
 export const workspaceRelationshipSchema = Type.Union([
 	Type.Literal('shared'),

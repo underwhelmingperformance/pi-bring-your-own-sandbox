@@ -157,7 +157,7 @@ export async function verifyCredentialExclusion<Config>(
 				const isReadOnly =
 					selection.profile.policy.hostUserData === 'read-only';
 				const canWriteFiles =
-					sandbox.capabilities.operations.includes('files.write');
+					sandbox.profile.capabilities.includes('files.write');
 				const isWriteRefused =
 					isReadOnly && !canWriteFiles
 						? (error: unknown) =>

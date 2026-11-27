@@ -10,7 +10,6 @@ import type {
 	ProcessRequest,
 	Profile,
 	SandboxBackend,
-	SandboxCapabilities,
 	SandboxCopySource,
 	SandboxOpenContext,
 	SandboxOpenRequest,
@@ -95,7 +94,7 @@ const defaultCapabilities = {
 	processKinds: ['argv', 'shell'],
 	terminationScope: 'workload',
 	exitStatus: 'guaranteed',
-	operations: [
+	capabilities: [
 		'exec',
 		'files.read',
 		'files.write',
@@ -713,12 +712,12 @@ class DockerBackend implements SandboxBackend {
 }
 
 function dockerProviderProfiles(powerShellImage?: string) {
-	const capabilities: SandboxCapabilities =
+	const capabilities =
 		powerShellImage === undefined
 			? defaultCapabilities
 			: {
 					...defaultCapabilities,
-					shells: [...defaultCapabilities.shells, 'powershell']
+					shells: [...defaultCapabilities.shells, 'powershell' as const]
 				};
 	const restricted: Profile = {
 		policy: {
@@ -727,11 +726,7 @@ function dockerProviderProfiles(powerShellImage?: string) {
 			hostUserData: 'denied',
 			hostSystemFiles: 'denied'
 		},
-		capabilities: capabilities.operations,
-		processKinds: capabilities.processKinds,
-		shells: capabilities.shells,
-		exitStatus: capabilities.exitStatus,
-		terminationScope: capabilities.terminationScope
+		...capabilities
 	};
 	const profiles = {
 		open: [

@@ -55,7 +55,6 @@ type ProcessRequest (contracts.d.ts)
 type Profile (policy-model.d.ts)
 type RecoveryDescriptor (contracts.d.ts)
 type SandboxBackend (contracts.d.ts)
-type SandboxCapabilities (contracts.d.ts)
 type SandboxCleanupBudgets (contracts.d.ts)
 type SandboxCleanupContext (contracts.d.ts)
 type SandboxConfigContext (contracts.d.ts)
@@ -281,15 +280,12 @@ export interface ReviewedToolCall {
 
 // contracts.d.ts
 export interface Sandbox {
-    readonly cleanupBudgets: SandboxCleanupBudgets;
     readonly providerId: string;
     readonly backendId: string;
     readonly generationId: string;
     readonly workspace: SandboxWorkspace;
     readonly grantedPaths?: readonly GrantedPath[];
-    readonly capabilities: SandboxCapabilities;
-    readonly policy: SandboxPolicy;
-    readonly policyDescription: string;
+    readonly profile: Profile;
     readonly exec: (request: ProcessRequest, options?: ProcessOptions) => Promise<ProcessResult>;
     readonly files: SandboxFiles;
     readonly search: SandboxSearch;
@@ -313,15 +309,6 @@ export interface SandboxBackend {
     readonly files?: BackendFiles;
     readonly search?: BackendSearch;
     readonly dispose: (context: SandboxOperationContext) => Promise<void>;
-}
-
-// contracts.d.ts
-export interface SandboxCapabilities {
-    readonly terminationScope: TerminationScope;
-    readonly processKinds: readonly ProcessKind[];
-    readonly exitStatus: 'guaranteed' | 'optional';
-    readonly operations: readonly SandboxCapability[];
-    readonly shells: readonly ShellDialect[];
 }
 
 // contracts.d.ts
@@ -638,9 +625,6 @@ export type ShellReviewLookup = {
 };
 
 // contracts.d.ts
-export type TerminationScope = Static<typeof terminationScopeSchema>;
-
-// contracts.d.ts
 interface ProcessLocation {
     readonly cwd?: string;
     readonly env?: ProcessEnvironment;
@@ -655,12 +639,6 @@ interface UnavailableSandboxProvider {
 
 // contracts.d.ts
 type OrdinarySandboxErrorName = Static<typeof ordinaryErrorNameSchema>;
-
-// contracts.d.ts
-type ProcessKind = ProcessRequest['kind'];
-
-// contracts.d.ts
-type SandboxCapability = Static<typeof capabilitySchema>;
 
 // contracts.d.ts
 type SandboxViolation = Readonly<Static<typeof violationsSchema>[number]>;
@@ -1592,7 +1570,7 @@ export interface SandboxProviderTestOptions<Config> {
     readonly workspaceVisibility?: 'shared' | 'copied';
     readonly label: string;
     readonly provider: AvailableSandboxProvider<Config>;
-    readonly capabilities?: SandboxCapabilities;
+    readonly capabilities?: Pick<Profile, 'capabilities' | 'processKinds' | 'shells' | 'exitStatus' | 'terminationScope'>;
     readonly createFixture: (selection?: SandboxProviderTestSelection) => Promise<SandboxProviderTestFixture<Config> & {
         readonly provider?: AvailableSandboxProvider<Config>;
     }>;
@@ -1724,29 +1702,10 @@ export type ReviewUnavailableReason = Static<typeof reasonSchema>;
 export declare function sandboxRipgrepArguments(request: GrepRequest, target: string, extra?: readonly string[]): string[];
 
 // schemas.d.ts
-declare const capabilitySchema: Type.TUnion<[
-    Type.TLiteral<"exec">,
-    Type.TLiteral<"files.read">,
-    Type.TLiteral<"files.write">,
-    Type.TLiteral<"files.list">,
-    Type.TLiteral<"search.find">,
-    Type.TLiteral<"search.grep">,
-    Type.TLiteral<"copy">,
-    Type.TLiteral<"violations">
-]>;
-
-// schemas.d.ts
 declare const shellSchema: Type.TUnion<[
     Type.TLiteral<"bash">,
     Type.TLiteral<"sh">,
     Type.TLiteral<"powershell">
-]>;
-
-// schemas.d.ts
-declare const terminationScopeSchema: Type.TUnion<[
-    Type.TLiteral<"none">,
-    Type.TLiteral<"process-group">,
-    Type.TLiteral<"workload">
 ]>;
 
 // search-output.d.ts

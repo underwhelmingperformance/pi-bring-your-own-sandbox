@@ -1,4 +1,4 @@
-import type { SandboxCapabilities, SandboxPolicy } from './contracts.js';
+import type { SandboxPolicy } from './contracts.js';
 import type { Profile } from './policy-model.js';
 import { accessPolicySchema, providerInfoSchema } from './policy-model.js';
 import type { ProviderInfo } from './protocol.js';
@@ -16,16 +16,6 @@ export const isShell = checker(shellSchema);
 export const isPolicy = checker(accessPolicySchema);
 export const isProviderInfo = checker(providerInfoSchema);
 export const isRecovery = checker(recoverySchema);
-
-function snapshotCapabilities(value: SandboxCapabilities): SandboxCapabilities {
-	return Object.freeze({
-		terminationScope: value.terminationScope,
-		processKinds: Object.freeze([...value.processKinds]),
-		exitStatus: value.exitStatus,
-		operations: Object.freeze([...value.operations]),
-		shells: Object.freeze([...value.shells])
-	});
-}
 
 export function snapshotPolicy(policy: SandboxPolicy): SandboxPolicy {
 	return Object.freeze({ ...policy });
@@ -48,10 +38,6 @@ export function snapshotProfile(profile: Profile): Profile {
 			])
 		})
 	});
-}
-
-export function profileCapabilities(profile: Profile): SandboxCapabilities {
-	return snapshotCapabilities({ ...profile, operations: profile.capabilities });
 }
 
 export function snapshotProviderInfo(provider: ProviderInfo): ProviderInfo {

@@ -125,7 +125,7 @@ it('uses the same profile to negotiate and open, with no allocation during negot
 
 		const sandbox = await client.get(context);
 
-		expect({ effective: sandbox.policy, opens }).toStrictEqual({
+		expect({ effective: sandbox.profile.policy, opens }).toStrictEqual({
 			effective: profile.policy,
 			opens: [profile]
 		});

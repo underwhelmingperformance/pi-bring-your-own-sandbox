@@ -42,7 +42,7 @@ import {
 	isTerminationScopeSatisfied,
 	settleProcess
 } from './termination-scope.js';
-import { isProviderInfo, profileCapabilities } from './validation.js';
+import { isProviderInfo } from './validation.js';
 import { checkWorkspaceVisibility } from './workspace-visibility-suite.js';
 
 function compareEntries(left: DirectoryEntry, right: DirectoryEntry): number {
@@ -241,7 +241,7 @@ export async function usingProviderFixture<Config>(
 
 		const backend = await open();
 
-		const capabilities = options.capabilities ?? profileCapabilities(declared);
+		const capabilities = options.capabilities ?? declared;
 
 		expect(
 			isTerminationScopeSatisfied(
@@ -250,7 +250,7 @@ export async function usingProviderFixture<Config>(
 			)
 		).toBe(true);
 
-		for (const capability of capabilities.operations) {
+		for (const capability of capabilities.capabilities) {
 			expect(backend.profile.capabilities).toContain(capability);
 		}
 
@@ -722,7 +722,7 @@ export function providerContractCases<Config>(
 		throw new Error('The fixture provider declares no open profile.');
 	}
 
-	const capabilities = options.capabilities ?? profileCapabilities(declared);
+	const capabilities = options.capabilities ?? declared;
 	const cleanup = resolveCleanupBudgets(options.cleanup);
 
 	if (
@@ -810,7 +810,7 @@ export function providerContractCases<Config>(
 
 	const restrictions = options.policyEffects ?? [];
 
-	if (capabilities.operations.includes('copy')) {
+	if (capabilities.capabilities.includes('copy')) {
 		cases.push({
 			label: 'copies from an existing backend',
 			async run(fixture, _backend, context, _afterDisposal, subject) {
@@ -833,7 +833,7 @@ export function providerContractCases<Config>(
 
 					if (
 						fixture.read !== undefined &&
-						copy.sandbox.capabilities.operations.includes('files.read')
+						copy.sandbox.profile.capabilities.includes('files.read')
 					) {
 						expect(
 							await copy.sandbox.files.readFile(fixture.read.path)
@@ -897,7 +897,7 @@ export function providerContractCases<Config>(
 					fixture,
 					backend,
 					context,
-					capabilities,
+					capabilities.capabilities,
 					cleanup,
 					afterDisposal
 				)
@@ -941,7 +941,7 @@ export function providerContractCases<Config>(
 		});
 	}
 
-	if (capabilities.operations.includes('files.read')) {
+	if (capabilities.capabilities.includes('files.read')) {
 		cases.push({
 			label: 'file reading',
 			run: async (fixture, backend, context) => {
@@ -971,7 +971,7 @@ export function providerContractCases<Config>(
 		});
 	}
 
-	if (capabilities.operations.includes('files.write')) {
+	if (capabilities.capabilities.includes('files.write')) {
 		cases.push({
 			label: 'file mutation',
 			run: async (fixture, backend, context) => {
@@ -1015,7 +1015,7 @@ export function providerContractCases<Config>(
 		});
 	}
 
-	if (capabilities.operations.includes('files.list')) {
+	if (capabilities.capabilities.includes('files.list')) {
 		cases.push({
 			label: 'directory listing',
 			run: async (fixture, backend, context) => {
@@ -1045,7 +1045,7 @@ export function providerContractCases<Config>(
 		});
 	}
 
-	if (capabilities.operations.includes('search.find')) {
+	if (capabilities.capabilities.includes('search.find')) {
 		cases.push({
 			label: 'glob search',
 			run: async (fixture, backend, context) => {
@@ -1072,7 +1072,7 @@ export function providerContractCases<Config>(
 		});
 	}
 
-	if (capabilities.operations.includes('search.grep')) {
+	if (capabilities.capabilities.includes('search.grep')) {
 		cases.push({
 			label: 'line search',
 			run: async (fixture, backend, context) => {

@@ -21,7 +21,6 @@ export type {
 	Profile,
 	RecoveryDescriptor,
 	SandboxBackend,
-	SandboxCapabilities,
 	SandboxCleanupBudgets,
 	SandboxCleanupContext,
 	SandboxConfigContext,

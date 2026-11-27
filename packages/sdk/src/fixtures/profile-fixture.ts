@@ -1,10 +1,19 @@
-import type { SandboxCapabilities, SandboxPolicy } from '../contracts.js';
+import type { SandboxPolicy } from '../contracts.js';
 import type { Profile } from '../policy-model.js';
 import { defaultPolicy } from '../policy-model.js';
 
+export type FixtureCapabilities = Pick<
+	Profile,
+	'processKinds' | 'shells' | 'exitStatus' | 'terminationScope'
+> & { readonly operations: Profile['capabilities'] };
+
+export function profileCapabilities(profile: Profile): FixtureCapabilities {
+	return { ...profile, operations: profile.capabilities };
+}
+
 export function fixtureProfile(
 	policy: SandboxPolicy,
-	capabilities: SandboxCapabilities
+	capabilities: FixtureCapabilities
 ): Profile {
 	return {
 		policy,
@@ -23,7 +32,7 @@ export type FixturePolicyChoices = {
 };
 
 export function fixtureProfiles(
-	capabilities: SandboxCapabilities,
+	capabilities: FixtureCapabilities,
 	choices: FixturePolicyChoices
 ): { readonly open: readonly Profile[]; readonly copy: readonly Profile[] } {
 	const workspace = choices.hostWorkspaceWrites ?? [

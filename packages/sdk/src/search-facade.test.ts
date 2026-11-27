@@ -1,20 +1,17 @@
 import { expect, it } from 'vitest';
 
 import { validateBackend } from './backend-validation.js';
-import type {
-	FindRequest,
-	GrepRequest,
-	SandboxCapabilities
-} from './contracts.js';
+import type { FindRequest, GrepRequest } from './contracts.js';
 import { createSandbox } from './facade.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
+import type { FixtureCapabilities } from './fixtures/profile-fixture.js';
 import { fixtureProfile } from './fixtures/profile-fixture.js';
 
 function fixture(findResult: unknown, grepResult: unknown) {
 	const memory = new MemoryBackend('exec');
 	const calls: unknown[] = [];
-	const capabilities: SandboxCapabilities = {
+	const capabilities: FixtureCapabilities = {
 		processKinds: ['argv'],
 		terminationScope: 'workload',
 		exitStatus: 'guaranteed',

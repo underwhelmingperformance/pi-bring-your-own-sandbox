@@ -1,6 +1,5 @@
 import path from 'node:path';
 
-import { resolveCleanupBudgets } from './cleanup-budgets.js';
 import type {
 	BackendDirectoryReader,
 	BackendFileReader,
@@ -46,7 +45,7 @@ import {
 } from './file-result.js';
 import type { MutationQueue } from './mutation-queue.js';
 import { runOperation } from './operation-runner.js';
-import { isRecord, profileCapabilities, snapshotPolicy } from './validation.js';
+import { isRecord, snapshotProfile } from './validation.js';
 
 export interface SandboxOwner extends BackendOwner {
 	readonly identity: {
@@ -429,17 +428,14 @@ export function createSandbox(owner: SandboxOwner): Sandbox {
 	const backend = owner.backend;
 
 	return Object.freeze({
-		cleanupBudgets: resolveCleanupBudgets(owner.cleanup),
 		providerId: owner.identity.providerId,
 		backendId: owner.identity.backendId,
 		generationId: owner.generationId,
 		workspace: Object.freeze({ ...backend.workspace }),
-		capabilities: profileCapabilities(backend.profile),
-		policy: snapshotPolicy(backend.profile.policy),
+		profile: snapshotProfile(backend.profile),
 		...(backend.grantedPaths !== undefined && {
 			grantedPaths: backend.grantedPaths
 		}),
-		policyDescription: backend.policyDescription,
 		exec: (request, options) => executeProcess(owner, request, options),
 		files: Object.freeze(new Files(owner)),
 		search: Object.freeze(new Search(owner)),

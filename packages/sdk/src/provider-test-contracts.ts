@@ -11,7 +11,6 @@ import type {
 	Profile,
 	RecoveryDescriptor,
 	SandboxBackend,
-	SandboxCapabilities,
 	SandboxCleanupBudgets,
 	SandboxOperationContext,
 	SandboxPolicy,
@@ -400,7 +399,14 @@ export interface SandboxProviderTestOptions<Config> {
 	/**
 	Operation groups and shells to test; defaults to the provider declaration.
 	*/
-	readonly capabilities?: SandboxCapabilities;
+	readonly capabilities?: Pick<
+		Profile,
+		| 'capabilities'
+		| 'processKinds'
+		| 'shells'
+		| 'exitStatus'
+		| 'terminationScope'
+	>;
 	/**
 	Prepare fresh resources and target probes for each case. Clean up partial
 	setup within this callback if setup fails before returning a fixture.

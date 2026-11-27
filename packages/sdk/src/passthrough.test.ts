@@ -256,7 +256,7 @@ it('shares host files, preserves byte ownership and follows filesystem links', a
 
 	expect({
 		workspace: sandbox.workspace,
-		policy: sandbox.policy,
+		policy: sandbox.profile.policy,
 		update,
 		content: await readFile(path.join(directory, 'nested/file'), 'utf8'),
 		entries
@@ -316,7 +316,7 @@ it.each(['file', 'directory'] as const)(
 			await mkdir(filename);
 		});
 
-		expect(sandbox.capabilities.shells).toStrictEqual(
+		expect(sandbox.profile.shells).toStrictEqual(
 			entry === 'file' ? ['bash'] : []
 		);
 	}

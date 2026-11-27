@@ -9,7 +9,11 @@ import {
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { createSandboxClient } from './client.js';
-import type { SandboxConfigContext, SandboxHost } from './contracts.js';
+import type {
+	SandboxConfigContext,
+	SandboxHost,
+	SandboxOpenContext
+} from './contracts.js';
 import { formatStatus } from './diagnostics.js';
 import { discoverBroker } from './discovery.js';
 import { connectionProvider } from './fixtures/connection-provider.js';
@@ -248,10 +252,21 @@ it('applies provider cleanup overrides to host defaults', async () => {
 		initialiseSandboxHost(pi, import.meta.filename, {
 			cleanup: { cancellationGraceMs: 200, disposalTimeoutMs: 400 }
 		});
+
+		const backend = new MemoryBackend();
+		const budgets: SandboxOpenContext['cleanupBudgets'][] = [];
+
 		registerFixtureProvider(
 			pi,
 			import.meta.filename,
-			provider('active', new MemoryBackend()),
+			{
+				...provider('active', backend),
+				open(_request, opening) {
+					budgets.push(opening.cleanupBudgets);
+
+					return Promise.resolve(backend);
+				}
+			},
 			{
 				configure: () => ({
 					configuration: {},
@@ -260,12 +275,14 @@ it('applies provider cleanup overrides to host defaults', async () => {
 			}
 		);
 
-		const sandbox = await getSandbox(pi, context);
+		await getSandbox(pi, context);
 
-		expect(sandbox.cleanupBudgets).toStrictEqual({
-			cancellationGraceMs: 300,
-			disposalTimeoutMs: 400
-		});
+		expect(budgets).toStrictEqual([
+			{
+				cancellationGraceMs: 300,
+				disposalTimeoutMs: 400
+			}
+		]);
 	});
 });
 

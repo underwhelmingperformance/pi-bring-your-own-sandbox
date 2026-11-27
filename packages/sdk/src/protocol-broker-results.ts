@@ -1,9 +1,5 @@
 import type { Sandbox, SandboxCopy } from './contracts.js';
-import {
-	accessPolicySchema as policySchema,
-	profileSchema,
-	providerInfoSchema
-} from './policy-model.js';
+import { profileSchema, providerInfoSchema } from './policy-model.js';
 import type { BrokerService } from './protocol.js';
 import type { ProtocolIdentity } from './protocol-envelope.js';
 import { copyOptionsSchema } from './protocol-payloads.js';
@@ -14,11 +10,9 @@ import {
 	unavailableFeature
 } from './protocol-version.js';
 import { rethrowCopyError } from './sandbox-copy.js';
-import { capabilitiesSchema, checker } from './schemas.js';
+import { checker } from './schemas.js';
 
-const isCapabilities = checker(capabilitiesSchema);
 const isProviderInfo = checker(providerInfoSchema);
-const isPolicy = checker(policySchema);
 const isProfile = checker(profileSchema);
 
 export function brokerOffers(
@@ -48,21 +42,15 @@ export function brokerOffers(
 	}
 
 	function reduceSandbox(sandbox: Sandbox): Sandbox {
-		const capabilities = projectOffer(
-			capabilitiesSchema,
-			sandbox.capabilities,
-			level
-		);
-		const policy = projectOffer(policySchema, sandbox.policy, level);
+		const profile = projectOffer(profileSchema, sandbox.profile, level);
 
-		if (!isCapabilities(capabilities) || !isPolicy(policy)) {
+		if (!isProfile(profile)) {
 			throw unavailableFeature('sandbox result', level, peer);
 		}
 
 		return Object.freeze<Sandbox>({
 			...sandbox,
-			capabilities,
-			policy,
+			profile,
 			async copy(options) {
 				checkDemand(
 					copyOptionsSchema,
@@ -100,21 +88,17 @@ export function brokerOffers(
 		async status(context) {
 			const status = await service.status(context);
 
-			if (status.capabilities === undefined) {
+			if (status.profile === undefined) {
 				return status;
 			}
 
-			const capabilities = projectOffer(
-				capabilitiesSchema,
-				status.capabilities,
-				level
-			);
+			const profile = projectOffer(profileSchema, status.profile, level);
 
-			if (!isCapabilities(capabilities)) {
+			if (!isProfile(profile)) {
 				throw unavailableFeature('sandbox status', level, peer);
 			}
 
-			return Object.freeze({ ...status, capabilities });
+			return Object.freeze({ ...status, profile });
 		},
 		async providers(context) {
 			const providers = await service.providers(context);

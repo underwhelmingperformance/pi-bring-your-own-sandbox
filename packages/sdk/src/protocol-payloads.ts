@@ -36,7 +36,6 @@ import { reviewIdentityReplySchema } from './review-identities.js';
 import type { RuntimeParticipant } from './runtime-participant.js';
 import {
 	callable,
-	capabilitiesSchema,
 	hostUserDataRootsSchema,
 	nonEmptyStringSchema,
 	recoverySchema,
@@ -221,8 +220,8 @@ export const protocolSchemas = {
 	'broker.acquireOptions': acquireOptionsSchema,
 	'broker.copyOptions': copyOptionsSchema,
 	'broker.providerInfo': providerInfoSchema,
-	'sandbox.capabilities': capabilitiesSchema,
-	'sandbox.policy': policySchema,
+	'sandbox.profile': profileSchema,
+	'sandbox.profile.policy': policySchema,
 	'sandbox.workspace': workspaceSchema,
 	'sandbox.recovery': recoverySchema,
 	'sandbox.processRequest': processRequestSchema,

@@ -9,6 +9,7 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { expect, it } from 'vitest';
 
+import type { SandboxOpenContext } from './contracts.js';
 import { discoverBroker, discoverProviders } from './discovery.js';
 import { FixtureConfig } from './fixtures/config.js';
 import { imageProvider } from './fixtures/image-provider.js';
@@ -51,6 +52,8 @@ it.each(['denied', 'read-only'] as const)(
 							exitStatus: 'optional'
 						});
 
+						const budgets: SandboxOpenContext['cleanupBudgets'][] = [];
+
 						first.initialiseSandboxHost(pi, import.meta.filename, {
 							cleanup: { disposalTimeoutMs: 9000 }
 						});
@@ -62,8 +65,10 @@ it.each(['denied', 'read-only'] as const)(
 
 								profiles: { open: [profile], copy: [] },
 								validateConfig: () => ({ image: 'fixture' }),
-								open: () =>
-									Promise.resolve({
+								open(_request, opening) {
+									budgets.push(opening.cleanupBudgets);
+
+									return Promise.resolve({
 										id: template.id,
 										workspace: template.workspace,
 
@@ -79,7 +84,8 @@ it.each(['denied', 'read-only'] as const)(
 											});
 										},
 										dispose: () => Promise.resolve()
-									})
+									});
+								}
 							},
 							first.registerSandboxProvider,
 							import.meta.filename
@@ -94,7 +100,7 @@ it.each(['denied', 'read-only'] as const)(
 									terminationScope: 'process-group'
 								});
 
-								expect(sandbox.policy).toStrictEqual(policy);
+								expect(sandbox.profile.policy).toStrictEqual(policy);
 
 								await expect(
 									secondClient.get(context, {
@@ -132,10 +138,12 @@ it.each(['denied', 'read-only'] as const)(
 										backendId: template.id
 									}
 								]);
-								expect(sandbox.cleanupBudgets).toStrictEqual({
-									cancellationGraceMs: 8000,
-									disposalTimeoutMs: 9000
-								});
+								expect(budgets).toStrictEqual([
+									{
+										cancellationGraceMs: 8000,
+										disposalTimeoutMs: 9000
+									}
+								]);
 
 								expect({ ...result, durationMs: 0 }).toStrictEqual({
 									exit: { kind: 'unavailable' },

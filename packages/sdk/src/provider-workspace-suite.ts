@@ -89,7 +89,7 @@ export async function verifyWorkspaceCase<Config>(
 				{ kind: 'read', hostPath: canonical, targetPath: target }
 			]);
 
-			if (sandbox.capabilities.operations.includes('files.read')) {
+			if (sandbox.profile.capabilities.includes('files.read')) {
 				expect(await sandbox.files.readFile(target)).toStrictEqual(contents);
 			}
 		} finally {

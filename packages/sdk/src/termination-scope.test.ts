@@ -11,9 +11,10 @@ import { createSandbox } from './facade.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { observe } from './lifecycle.js';
-import { capabilitiesSchema, checker } from './schemas.js';
+import { profileSchema } from './policy-model.js';
+import { checker } from './schemas.js';
 
-const isCapabilities = checker(capabilitiesSchema);
+const isProfile = checker(profileSchema);
 
 afterEach(() => {
 	vi.useRealTimers();
@@ -65,9 +66,7 @@ it.each([undefined, 'tree', 0])(
 	(terminationScope) => {
 		const backend = new MemoryBackend('exec');
 
-		expect(isCapabilities({ ...backend.capabilities, terminationScope })).toBe(
-			false
-		);
+		expect(isProfile({ ...backend.profile, terminationScope })).toBe(false);
 	}
 );
 

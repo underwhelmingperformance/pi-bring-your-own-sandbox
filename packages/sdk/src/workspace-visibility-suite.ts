@@ -7,11 +7,11 @@ import { expect } from 'vitest';
 import type {
 	ProcessRequest,
 	SandboxBackend,
-	SandboxCapabilities,
 	SandboxCleanupBudgets,
 	SandboxOperationContext
 } from './contracts.js';
 import { OperationScope } from './lifecycle.js';
+import type { Profile } from './policy-model.js';
 import type { SandboxProviderTestFixture } from './provider-test-contracts.js';
 import { settleProcess } from './termination-scope.js';
 
@@ -139,7 +139,7 @@ export async function checkWorkspaceVisibility(
 	fixture: SandboxProviderTestFixture,
 	backend: SandboxBackend,
 	context: SandboxOperationContext,
-	capabilities: SandboxCapabilities,
+	capabilities: Profile['capabilities'],
 	cleanup: SandboxCleanupBudgets,
 	afterDisposal: (verify: () => Promise<void>) => void
 ): Promise<void> {
@@ -204,7 +204,7 @@ export async function checkWorkspaceVisibility(
 		).toStrictEqual(initial);
 	}
 
-	const reader = capabilities.operations.includes('files.read')
+	const reader = capabilities.includes('files.read')
 		? backend.files?.read
 		: undefined;
 
@@ -339,7 +339,7 @@ export async function checkWorkspaceVisibility(
 	const targetPath = probe.targetPath;
 
 	async function checkGrep(bytes: Buffer) {
-		if (!capabilities.operations.includes('search.grep')) {
+		if (!capabilities.includes('search.grep')) {
 			return;
 		}
 
@@ -368,7 +368,7 @@ export async function checkWorkspaceVisibility(
 	await checkReader(observed);
 	await checkGrep(observed);
 
-	const writer = capabilities.operations.includes('files.write')
+	const writer = capabilities.includes('files.write')
 		? backend.files?.write
 		: undefined;
 
@@ -382,10 +382,7 @@ export async function checkWorkspaceVisibility(
 	await checkReader(content);
 	await checkGrep(content);
 
-	if (
-		capabilities.operations.includes('search.find') &&
-		probe.findTarget !== undefined
-	) {
+	if (capabilities.includes('search.find') && probe.findTarget !== undefined) {
 		const basename = paths.basename(probe.findTarget);
 		const directory = paths.dirname(probe.findTarget);
 

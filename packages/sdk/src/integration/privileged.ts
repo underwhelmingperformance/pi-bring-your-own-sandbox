@@ -86,7 +86,7 @@ async function verifyPendingCall(
 		}),
 		onSandbox: (sandbox) => {
 			const paths = sandbox.grantedPaths;
-			const restrictions = describeRestrictions(sandbox.policy, {
+			const restrictions = describeRestrictions(sandbox.profile.policy, {
 				...(paths !== undefined && {
 					paths: {
 						read: paths

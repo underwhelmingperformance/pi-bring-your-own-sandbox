@@ -45,8 +45,8 @@ function userShell(status: SandboxStatus): string {
 	const configured = status.selection?.userShell;
 
 	if (configured !== undefined) {
-		return status.capabilities === undefined ||
-			status.capabilities.shells.includes(configured)
+		return status.profile === undefined ||
+			status.profile.shells.includes(configured)
 			? `${configured} (configured)`
 			: `${configured} (configured; unavailable on this backend)`;
 	}
@@ -153,23 +153,23 @@ export function formatStatus(status: SandboxStatus): DisplayText {
 			: `Target: ${status.workspace.root} (${status.workspace.relationship})`
 	);
 
-	if (status.policy !== undefined) {
+	if (status.profile !== undefined) {
 		lines.push(
-			`Effective policy: ${policy(status.policy, selection?.providerId, status.workspace?.relationship)}`
+			`Effective policy: ${policy(status.profile.policy, selection?.providerId, status.workspace?.relationship)}`
 		);
 	}
 
-	if (selection !== undefined && status.policy === undefined) {
+	if (selection !== undefined && status.profile === undefined) {
 		lines.push(
 			`Requested policy: ${policy(selection.policy, selection.providerId)}`
 		);
 	}
 
-	if (status.capabilities !== undefined) {
+	if (status.profile !== undefined) {
 		lines.push(
-			`Operations: ${list(status.capabilities.operations)}`,
-			`Termination scope: ${status.capabilities.terminationScope}`,
-			`Shells: ${list(status.capabilities.shells)}`
+			`Operations: ${list(status.profile.capabilities)}`,
+			`Termination scope: ${status.profile.terminationScope}`,
+			`Shells: ${list(status.profile.shells)}`
 		);
 	}
 

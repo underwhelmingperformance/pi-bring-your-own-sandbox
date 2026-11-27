@@ -2,7 +2,6 @@ import type {
 	Sandbox,
 	SandboxAcquireOptions,
 	SandboxBackend,
-	SandboxCapabilities,
 	SandboxCloseReport,
 	SandboxContext,
 	SandboxCopySource,
@@ -159,15 +158,9 @@ export interface SandboxStatus {
 	readonly workspace?: SandboxWorkspace;
 
 	/**
-	Effective operation groups after successful backend validation.
+	Verified profile after successful backend validation.
 	*/
-	readonly capabilities?: SandboxCapabilities;
-
-	/**
-	Effective base policy after backend validation, including the workspace
-	relationship. Before startup, only the requested policy in `selection` is available.
-	*/
-	readonly policy?: SandboxPolicy;
+	readonly profile?: Profile;
 
 	/**
 	Provider explanation of the effective boundary.

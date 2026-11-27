@@ -7,11 +7,11 @@ import { expect, it } from 'vitest';
 import { FixtureConfig } from './fixtures/config.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfiles } from './fixtures/profile-fixture.js';
+import { profileCapabilities } from './fixtures/profile-fixture.js';
 import { shellBackend } from './fixtures/shell-backend.js';
 import { initialiseSandboxHost } from './host.js';
 import { createShellOperations } from './pi-shell-operations.js';
 import { registerUserShell } from './user-shell.js';
-import { profileCapabilities } from './validation.js';
 
 it.each([
 	{ route: 'sandbox', dialect: 'bash' },

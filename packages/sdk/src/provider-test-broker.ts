@@ -9,6 +9,7 @@ import type {
 	RecoveryDescriptor,
 	SandboxAcquireOptions,
 	SandboxBackend,
+	SandboxCleanupBudgets,
 	SandboxContext,
 	SandboxHost,
 	SandboxOpenContext,
@@ -26,6 +27,7 @@ function ignoreEvent(): void {
 }
 
 export interface FixtureAttempt {
+	cleanupBudgets?: SandboxCleanupBudgets;
 	backend?: SandboxBackend;
 	recovery?: RecoveryDescriptor;
 	followups?: FixtureAttempt[];
@@ -72,6 +74,10 @@ export async function fixtureBroker<Config>(
 		if (attempt.backend !== undefined) {
 			observation = {};
 			(attempt.followups ??= []).push(observation);
+		}
+
+		if (running.cleanupBudgets !== undefined) {
+			observation.cleanupBudgets = running.cleanupBudgets;
 		}
 
 		const backend = await run({

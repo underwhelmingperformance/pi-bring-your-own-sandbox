@@ -12,12 +12,7 @@ import type {
 } from '../provider-test-contracts.js';
 import { bounded, fixtureProfile } from '../provider-test-harness.js';
 import { isTerminationScopeSatisfied } from '../termination-scope.js';
-import {
-	isProviderInfo,
-	isRecord,
-	isRecovery,
-	profileCapabilities
-} from '../validation.js';
+import { isProviderInfo, isRecord, isRecovery } from '../validation.js';
 
 function openFixture<Config>(
 	options: SandboxProviderTestOptions<Config>,
@@ -105,7 +100,7 @@ export async function usingRawProviderFixture<Config>(
 			throw new Error('The fixture provider declares no open profile.');
 		}
 
-		const capabilities = options.capabilities ?? profileCapabilities(declared);
+		const capabilities = options.capabilities ?? declared;
 
 		expect(
 			isTerminationScopeSatisfied(
@@ -114,7 +109,7 @@ export async function usingRawProviderFixture<Config>(
 			)
 		).toBe(true);
 
-		for (const capability of capabilities.operations) {
+		for (const capability of capabilities.capabilities) {
 			expect(backend.profile.capabilities).toContain(capability);
 		}
 

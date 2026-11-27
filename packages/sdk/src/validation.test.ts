@@ -1,27 +1,29 @@
 import { Type } from 'typebox';
 import { expect, it } from 'vitest';
 
-import { capabilitiesSchema, checker, denseArray } from './schemas.js';
+import { defaultPolicy, profileSchema } from './policy-model.js';
+import { checker, denseArray } from './schemas.js';
 
-const isCapabilities = checker(capabilitiesSchema);
+const isProfile = checker(profileSchema);
 
-it.each(['operations', 'shells'] as const)(
+it.each(['capabilities', 'shells'] as const)(
 	'rejects holes in capability %s arrays',
 	(field) => {
-		const sparse: string[] = field === 'operations' ? ['exec'] : [];
+		const sparse: string[] = field === 'capabilities' ? ['exec'] : [];
 
 		sparse.length++;
 
-		const capabilities = {
+		const profile = {
+			policy: defaultPolicy,
 			processKinds: ['argv'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			operations: ['exec', 'search.find'],
+			capabilities: ['exec', 'search.find'],
 			shells: [],
 			[field]: sparse
 		};
 
-		expect(isCapabilities(capabilities)).toBe(false);
+		expect(isProfile(profile)).toBe(false);
 	}
 );
 

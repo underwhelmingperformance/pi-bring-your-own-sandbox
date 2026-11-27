@@ -16,6 +16,7 @@ import { remainingBudget } from '../../../test-support/remaining-budget.js';
 import { createSandbox } from './facade.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
 import { openPassthrough } from './passthrough.js';
+import { unrestrictedPolicy } from './policy-model.js';
 
 const releases: (() => Promise<void>)[] = [];
 
@@ -406,11 +407,12 @@ it('omits search capabilities when ripgrep is unavailable and never downloads a 
 		vi.stubEnv('PATH', directory);
 	});
 
-	expect(sandbox.capabilities).toStrictEqual({
+	expect(sandbox.profile).toStrictEqual({
+		policy: unrestrictedPolicy,
 		processKinds: ['argv'],
 		terminationScope: 'process-group',
 		exitStatus: 'guaranteed',
-		operations: ['exec', 'files.read', 'files.write', 'files.list'],
+		capabilities: ['exec', 'files.read', 'files.write', 'files.list'],
 		shells: []
 	});
 	await expect(sandbox.search.find({ pattern: '*' })).rejects.toMatchObject({

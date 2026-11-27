@@ -33,11 +33,7 @@ import type {
 	sharedSettingsSchema
 } from './request-schemas.js';
 import type { processExitSchema, violationsSchema } from './result-schemas.js';
-import type {
-	capabilitySchema,
-	shellSchema,
-	terminationScopeSchema
-} from './schemas.js';
+import type { shellSchema, terminationScopeSchema } from './schemas.js';
 
 /**
 Pi's event bus, lifecycle handlers and diagnostic writers, supplied by a live
@@ -84,10 +80,6 @@ execution.
 */
 export type ShellDialect = Static<typeof shellSchema>;
 /**
-Request forms accepted by a provider. Shell dialects are advertised separately.
-*/
-type ProcessKind = ProcessRequest['kind'];
-/**
 Processes that must have stopped before execution completes or cancellation is
 acknowledged. `none` waits for the command's normal result but promises no
 termination on cancellation. `process-group` covers the direct process and its
@@ -95,40 +87,6 @@ supervised POSIX group. `workload` also covers descendants that change group or
 session. Access restrictions and allocation disposal are independent.
 */
 export type TerminationScope = Static<typeof terminationScopeSchema>;
-/**
-Operation groups that consumers can require before using a shared backend.
-*/
-type SandboxCapability = Static<typeof capabilitySchema>;
-
-/**
-Implemented operations and shell dialects from the chosen profile.
-*/
-export interface SandboxCapabilities {
-	/**
-	Minimum termination scope guaranteed for every invocation.
-	*/
-	readonly terminationScope: TerminationScope;
-	/**
-	Accepted request forms. At least one form must be available.
-	*/
-	readonly processKinds: readonly ProcessKind[];
-	/**
-	Whether every completed invocation includes an exit code or signal.
-	Optional status permits a completed result with unavailable exit details.
-	*/
-	readonly exitStatus: 'guaranteed' | 'optional';
-	/**
-	Contains unique operation literals and always includes `exec`.
-	*/
-	readonly operations: readonly SandboxCapability[];
-
-	/**
-	Shell dialects accepted by execution. Non-empty exactly when shell
-	requests are supported.
-	*/
-	readonly shells: readonly ShellDialect[];
-}
-
 export type SandboxPolicy = Policy;
 
 /**
@@ -1208,10 +1166,6 @@ broker.
 */
 export interface Sandbox {
 	/**
-	Effective cleanup budgets fixed for this generation.
-	*/
-	readonly cleanupBudgets: SandboxCleanupBudgets;
-	/**
 	Selected provider identity, including `passthrough` for host execution.
 	*/
 	readonly providerId: string;
@@ -1233,19 +1187,9 @@ export interface Sandbox {
 	readonly grantedPaths?: readonly GrantedPath[];
 
 	/**
-	Readonly snapshot used to check consumer requirements.
+	Verified policy and operations for this allocation.
 	*/
-	readonly capabilities: SandboxCapabilities;
-
-	/**
-	Effective protections established when the backend opened.
-	*/
-	readonly policy: SandboxPolicy;
-
-	/**
-	Operator-facing description of the effective isolation boundary.
-	*/
-	readonly policyDescription: string;
+	readonly profile: Profile;
 
 	/**
 	Run argv or an explicit shell command with bounded capture and

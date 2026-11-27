@@ -191,7 +191,7 @@ it.each([
 							protocol: status?.protocol,
 							provider: sandbox.providerId,
 							hasNewCapability:
-								sandbox.capabilities.operations.includes(capability),
+								sandbox.profile.capabilities.includes(capability),
 							hasNewOffer: providers
 								?.find((entry) => entry.id === 'fixture')
 								?.profiles.open.some((profile) =>

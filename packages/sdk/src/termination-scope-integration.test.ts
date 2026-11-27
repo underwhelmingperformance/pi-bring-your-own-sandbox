@@ -8,9 +8,9 @@ import { FixtureConfig } from './fixtures/config.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
 import { withPiRuntime } from './fixtures/pi-runtime.js';
 import { fixtureProfile, fixtureProfiles } from './fixtures/profile-fixture.js';
+import { profileCapabilities } from './fixtures/profile-fixture.js';
 import { initialiseSandboxHost } from './host.js';
 import { observe } from './lifecycle.js';
-import { profileCapabilities } from './validation.js';
 
 it('keeps sandbox execution usable after cancellation without a termination guarantee', async () => {
 	const template = new MemoryBackend('exec');

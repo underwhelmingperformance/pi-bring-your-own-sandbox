@@ -83,14 +83,9 @@ export function checkRequirements(
 		backendId: sandbox.backendId,
 		...(extensionSource !== undefined && { extensionSource })
 	};
-	const profile = {
-		...sandbox.capabilities,
-		capabilities: sandbox.capabilities.operations,
-		policy: sandbox.policy
-	};
 	const result = selectProfile({
-		profiles: [profile],
-		limit: sandbox.policy,
+		profiles: [sandbox.profile],
+		limit: sandbox.profile.policy,
 		requirements: options
 	});
 

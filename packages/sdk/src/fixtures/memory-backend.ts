@@ -6,13 +6,13 @@ import type {
 	DirectoryEntry,
 	ProcessRequest,
 	SandboxBackend,
-	SandboxCapabilities,
 	SandboxOperationContext,
 	SandboxPolicy,
 	SandboxWorkspace
 } from '../contracts.js';
 import { SandboxCancelledError, SandboxPathNotFoundError } from '../errors.js';
 
+import type { FixtureCapabilities } from './profile-fixture.js';
 import { fixtureProfile } from './profile-fixture.js';
 
 export class MemoryBackend implements SandboxBackend {
@@ -33,7 +33,7 @@ export class MemoryBackend implements SandboxBackend {
 	};
 	readonly policyDescription = 'In-memory test fixture; no OS isolation.';
 	readonly recovery = { kind: 'none' } as const;
-	readonly capabilities: SandboxCapabilities;
+	readonly capabilities: FixtureCapabilities;
 	declare readonly files?: BackendFiles;
 	beforeWrite:
 		| ((

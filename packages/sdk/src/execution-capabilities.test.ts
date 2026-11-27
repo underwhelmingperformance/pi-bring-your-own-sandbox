@@ -9,9 +9,10 @@ import { createSandbox } from './facade.js';
 import { TestBackendOwner } from './fixtures/backend-owner.js';
 import { fixtureProfile } from './fixtures/profile-fixture.js';
 import { shellBackend } from './fixtures/shell-backend.js';
-import { capabilitiesSchema, checker } from './schemas.js';
+import { defaultPolicy, profileSchema } from './policy-model.js';
+import { checker } from './schemas.js';
 
-const isCapabilities = checker(capabilitiesSchema);
+const isProfile = checker(profileSchema);
 
 function fixture(exitStatus: 'guaranteed' | 'optional' = 'optional') {
 	const { backend } = shellBackend();
@@ -100,8 +101,9 @@ it.each([
 	{ processKinds: ['shell', 'shell'], shells: ['sh'] }
 ])('rejects inconsistent execution metadata: %j', (capabilities) => {
 	expect(
-		isCapabilities({
-			operations: ['exec'],
+		isProfile({
+			policy: defaultPolicy,
+			capabilities: ['exec'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			...capabilities

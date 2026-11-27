@@ -335,7 +335,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 					});
 
 					expect({
-						policy: sandbox.policy,
+						policy: sandbox.profile.policy,
 						result: { ...result, durationMs: 0 }
 					}).toStrictEqual({
 						policy: {
@@ -661,7 +661,7 @@ process.stdout.write(JSON.stringify([
 				try {
 					await copy.sandbox.files.writeFile('source.txt', Buffer.from('copy'));
 					expect({
-						policy: copy.sandbox.policy,
+						policy: copy.sandbox.profile.policy,
 						copy: await readCopy(copy),
 						source: await readFile(
 							path.join(fixture.workspace, 'source.txt'),

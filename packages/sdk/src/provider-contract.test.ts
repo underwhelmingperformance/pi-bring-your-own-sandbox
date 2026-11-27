@@ -23,7 +23,6 @@ import {
 import { verifyUndeclaredCredentialGrant } from './provider-credential-suite.js';
 import type { SandboxProviderTestOptions } from './provider-test-contracts.js';
 import { defineSandboxProviderTests } from './testing.js';
-import { profileCapabilities } from './validation.js';
 
 defineSandboxProviderTests(contractScenario());
 
@@ -812,8 +811,8 @@ it.each([
 		timeoutMs: hasPollingProbe || defect === 'a stale shared read' ? 2000 : 500,
 		cleanup: { cancellationGraceMs: 5, disposalTimeoutMs: 100 },
 		capabilities: {
-			...profileCapabilities(firstOpenProfile(base.provider)),
-			operations: ['exec', 'files.read'] as const
+			...firstOpenProfile(base.provider),
+			capabilities: ['exec', 'files.read'] as const
 		},
 		provider: {
 			...base.provider,
@@ -1002,7 +1001,7 @@ it('rejects a recovery scenario without a termination guarantee before opening',
 		providerContractCases({
 			...base,
 			capabilities: {
-				...profileCapabilities(firstOpenProfile(base.provider)),
+				...firstOpenProfile(base.provider),
 				terminationScope: 'none'
 			},
 			verifyRecoveryAfterCancellation: true

@@ -11,7 +11,6 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { createSandboxClient } from './client.js';
 import type {
 	SandboxBackend,
-	SandboxCapabilities,
 	SandboxCopySource,
 	SandboxHost,
 	SandboxPolicy,
@@ -34,6 +33,7 @@ import {
 import { getSandbox } from './fixtures/fixture-client.js';
 import { copyHostWorkspace } from './fixtures/fixture-client.js';
 import { MemoryBackend } from './fixtures/memory-backend.js';
+import type { FixtureCapabilities } from './fixtures/profile-fixture.js';
 import type { FixturePolicyChoices } from './fixtures/profile-fixture.js';
 import { fixtureProfile, fixtureProfiles } from './fixtures/profile-fixture.js';
 import type { FixtureProvider } from './fixtures/register-provider.js';
@@ -52,7 +52,7 @@ const ALL_POLICIES: FixturePolicyChoices = {
 	network: [false]
 };
 
-const capabilities: SandboxCapabilities = {
+const capabilities: FixtureCapabilities = {
 	processKinds: ['argv', 'shell'],
 	terminationScope: 'workload',
 	exitStatus: 'guaranteed',
@@ -190,7 +190,7 @@ it('copies a sandbox into private allocations with the highest-ranked supported 
 			sandboxes: [first.sandbox, second.sandbox].map((sandbox) => ({
 				backendId: sandbox.backendId,
 				relationship: sandbox.workspace.relationship,
-				policy: sandbox.policy
+				policy: sandbox.profile.policy
 			}))
 		}).toStrictEqual({
 			copies: [0, 1].map(() => ({
@@ -229,7 +229,7 @@ it('satisfies a copy need for readable host system files within the configured p
 
 		expect({
 			requested: copies.map(({ policy }) => policy),
-			effective: copy.sandbox.policy
+			effective: copy.sandbox.profile.policy
 		}).toStrictEqual({ requested: [expected], effective: expected });
 	});
 });
@@ -254,7 +254,7 @@ it('limits needs in a copy of a copy by the configured policy', async () => {
 		expect({
 			source: source?.kind === 'backend' ? source.backend.id : source,
 			requested: copies[1]?.policy,
-			effective: nested.sandbox.policy
+			effective: nested.sandbox.profile.policy
 		}).toStrictEqual({
 			source: 'copy-1',
 			requested: policy,
@@ -293,7 +293,7 @@ it('uses the strictest scope that a provider offers when it lacks the strongest'
 		const target = await getSandbox(pi, context);
 		const copy = await target.copy({ access: { hostUserData: 'prevented' } });
 
-		expect(copy.sandbox.policy.hostSystemFiles).toBe('read-only');
+		expect(copy.sandbox.profile.policy.hostSystemFiles).toBe('read-only');
 	});
 });
 
@@ -473,7 +473,7 @@ it('retains the entire close report when a copy fails validation', async () => {
 			...target,
 			providerId: 'independent',
 			backendId: 'remaining',
-			capabilities: { ...target.capabilities, operations: [] }
+			profile: { ...target.profile, capabilities: [] }
 		},
 		close: () => Promise.resolve(report)
 	};

@@ -286,7 +286,7 @@ it.each([false, true])(
 
 					expect({
 						workspace: copy.sandbox.workspace,
-						policy: copy.sandbox.policy,
+						policy: copy.sandbox.profile.policy,
 						report: await copy.close()
 					}).toStrictEqual({
 						workspace: location,

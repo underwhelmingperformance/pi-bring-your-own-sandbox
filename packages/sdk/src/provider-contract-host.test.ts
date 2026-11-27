@@ -19,7 +19,6 @@ import { firstOpenProfile } from './fixtures/profile-fixture.js';
 import { fixtureProvider } from './fixtures/register-provider.js';
 import { openPassthrough, probePassthrough } from './passthrough.js';
 import { unrestrictedPolicy } from './policy-model.js';
-import { profileCapabilities } from './validation.js';
 
 const hostProfile = await probePassthrough(process.cwd());
 
@@ -49,8 +48,8 @@ defineSandboxProviderTests({
 	label: 'compiled contract suite against host processes and files',
 	provider,
 	capabilities: {
-		...profileCapabilities(firstOpenProfile(provider)),
-		operations: [
+		...firstOpenProfile(provider),
+		capabilities: [
 			'exec',
 			'files.read',
 			'files.write',

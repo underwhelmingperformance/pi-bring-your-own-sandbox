@@ -119,12 +119,9 @@ export async function verifyFixtureSettings<Config>(
 				detail: { kind: 'request', field: 'allowEscalation', value: false }
 			});
 
-			const sandbox = await runtime.acquire(
-				{ timeoutMs: options.timeoutMs ?? 10_000 },
-				'open'
-			);
+			await runtime.acquire({ timeoutMs: options.timeoutMs ?? 10_000 }, 'open');
 
-			expect(sandbox.cleanupBudgets).toStrictEqual(supplied.cleanup);
+			expect(attempt.cleanupBudgets).toStrictEqual(supplied.cleanup);
 		} finally {
 			expect(await runtime.close()).toStrictEqual({
 				confirmed: true,

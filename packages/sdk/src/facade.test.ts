@@ -50,16 +50,32 @@ it('uses target-only files and owns returned metadata and bytes', async () => {
 		providerId: sandbox.providerId,
 		backendId: sandbox.backendId,
 		generationId: sandbox.generationId,
+		profile: sandbox.profile,
+		fields: Object.keys(sandbox).toSorted((left, right) =>
+			left.localeCompare(right)
+		),
 		frozen: [
 			sandbox,
 			sandbox.workspace,
-			sandbox.capabilities,
-			sandbox.policy
+			sandbox.profile,
+			sandbox.profile.policy
 		].map((value) => Object.isFrozen(value))
 	}).toStrictEqual({
 		providerId: 'fixture',
 		backendId: 'memory',
 		generationId: 'generation',
+		profile: backend.profile,
+		fields: [
+			'backendId',
+			'copy',
+			'exec',
+			'files',
+			'generationId',
+			'profile',
+			'providerId',
+			'search',
+			'workspace'
+		],
 		frozen: [true, true, true, true]
 	});
 	invalidate();

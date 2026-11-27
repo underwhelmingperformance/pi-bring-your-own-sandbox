@@ -268,8 +268,6 @@ export interface ProcessResult {
         readonly stdout: number;
         readonly stderr: number;
     };
-    readonly durationMs: number;
-    readonly violations?: readonly SandboxViolation[];
 }
 
 // contracts.d.ts
@@ -490,10 +488,9 @@ export interface TextUpdate {
 export type BackendProcessOutcome = {
     readonly kind: 'exited';
     readonly exit: ProcessExit;
-    readonly violations?: readonly SandboxViolation[];
 } | {
     readonly kind: 'cancelled';
-    readonly termination: 'confirmed' | 'unconfirmed' | 'not-guaranteed';
+    readonly termination: 'confirmed' | 'unconfirmed';
 };
 
 // contracts.d.ts
@@ -503,7 +500,7 @@ export type CancellationReason = 'caller' | 'deadline' | 'shutdown' | 'output';
 export type FileKind = 'file' | 'directory' | 'symlink' | 'other';
 
 // contracts.d.ts
-export type OperationCompletion = 'not-started' | 'confirmed' | 'unknown' | 'not-guaranteed';
+export type OperationCompletion = 'not-started' | 'confirmed' | 'unknown';
 
 // contracts.d.ts
 export type ProcessEnvironment = Readonly<Static<typeof environmentSchema>>;
@@ -640,9 +637,6 @@ interface UnavailableSandboxProvider {
 // contracts.d.ts
 type OrdinarySandboxErrorName = Static<typeof ordinaryErrorNameSchema>;
 
-// contracts.d.ts
-type SandboxViolation = Readonly<Static<typeof violationsSchema>[number]>;
-
 // display-text.d.ts
 declare const displayTextBrand: unique symbol;
 
@@ -663,14 +657,11 @@ declare const errorDetailSchema: Type.TUnion<[
         kind: Type.TLiteral<"capability">;
         field: Type.TLiteral<"capabilities">;
         value: Type.TUnion<[
-            Type.TLiteral<"exec">,
             Type.TLiteral<"files.read">,
             Type.TLiteral<"files.write">,
             Type.TLiteral<"files.list">,
             Type.TLiteral<"search.find">,
-            Type.TLiteral<"search.grep">,
-            Type.TLiteral<"copy">,
-            Type.TLiteral<"violations">
+            Type.TLiteral<"search.grep">
         ]>;
     }>,
     Type.TObject<{
@@ -699,7 +690,6 @@ declare const errorDetailSchema: Type.TUnion<[
         kind: Type.TLiteral<"capability">;
         field: Type.TLiteral<"terminationScope">;
         value: Type.TUnion<[
-            Type.TLiteral<"none">,
             Type.TLiteral<"process-group">,
             Type.TLiteral<"workload">
         ]>;
@@ -1355,14 +1345,11 @@ declare const profileSchema: Type.TRefine<Type.TObject<{
         readonly "x-byos-whole-offer": true;
     }>;
     capabilities: Type.TRefine<Type.TArray<Type.TUnion<[
-        Type.TLiteral<"exec">,
         Type.TLiteral<"files.read">,
         Type.TLiteral<"files.write">,
         Type.TLiteral<"files.list">,
         Type.TLiteral<"search.find">,
-        Type.TLiteral<"search.grep">,
-        Type.TLiteral<"copy">,
-        Type.TLiteral<"violations">
+        Type.TLiteral<"search.grep">
     ]>>>;
     processKinds: Type.TRefine<Type.TArray<Type.TUnion<[
         Type.TLiteral<"argv">,
@@ -1378,7 +1365,6 @@ declare const profileSchema: Type.TRefine<Type.TObject<{
         Type.TLiteral<"optional">
     ]>;
     terminationScope: Type.TUnion<[
-        Type.TLiteral<"none">,
         Type.TLiteral<"process-group">,
         Type.TLiteral<"workload">
     ]>;
@@ -1668,18 +1654,6 @@ declare const processExitSchema: Type.TUnion<[
         signalNumber: Type.TInteger;
     }>
 ]>;
-
-// result-schemas.d.ts
-declare const violationsSchema: Type.TRefine<Type.TArray<Type.TObject<{
-    operation: Type.TString;
-    accessProperty: Type.TUnion<[
-        Type.TLiteral<"hostSystemFiles">,
-        Type.TLiteral<"hostUserData">,
-        Type.TLiteral<"hostWorkspaceWrites">,
-        Type.TLiteral<"network">
-    ]>;
-    resource: Type.TOptional<Type.TString>;
-}>>>;
 
 // review-client.d.ts
 export declare function createShellReviewClient(pi: SandboxHost, extensionSource: string): ShellReviewClient;

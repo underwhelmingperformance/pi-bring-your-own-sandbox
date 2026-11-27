@@ -10,10 +10,9 @@ import type {
 	SandboxCleanupBudgets,
 	SandboxOperationContext
 } from './contracts.js';
-import { OperationScope } from './lifecycle.js';
+import { OperationScope, settleOperation } from './lifecycle.js';
 import type { Profile } from './policy-model.js';
 import type { SandboxProviderTestFixture } from './provider-test-contracts.js';
-import { settleProcess } from './termination-scope.js';
 
 async function execute(
 	backend: SandboxBackend,
@@ -312,11 +311,7 @@ export async function checkWorkspaceVisibility(
 			controller.abort();
 
 			try {
-				await settleProcess(
-					execution,
-					running,
-					backend.profile.terminationScope
-				);
+				await settleOperation(execution, running);
 			} finally {
 				execution.dispose();
 			}

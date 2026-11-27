@@ -336,7 +336,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 
 					expect({
 						policy: sandbox.profile.policy,
-						result: { ...result, durationMs: 0 }
+						result: result
 					}).toStrictEqual({
 						policy: {
 							hostWorkspaceWrites: true,
@@ -348,8 +348,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 							exit: { kind: 'code', code: 0 },
 							stdout: new Uint8Array(),
 							stderr: new Uint8Array(),
-							omittedBytes: { stdout: 0, stderr: 0 },
-							durationMs: 0
+							omittedBytes: { stdout: 0, stderr: 0 }
 						}
 					});
 				},

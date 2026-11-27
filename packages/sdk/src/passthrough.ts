@@ -43,7 +43,7 @@ async function executable(
 
 export const basePassthroughProfile: Profile = Object.freeze({
 	policy: unrestrictedPolicy,
-	capabilities: ['exec', 'files.read', 'files.write', 'files.list'] as const,
+	capabilities: ['files.read', 'files.write', 'files.list'] as const,
 	processKinds: ['argv'] as const,
 	terminationScope: 'process-group',
 	exitStatus: 'guaranteed',

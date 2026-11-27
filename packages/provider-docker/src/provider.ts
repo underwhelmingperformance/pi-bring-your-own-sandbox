@@ -95,13 +95,11 @@ const defaultCapabilities = {
 	terminationScope: 'workload',
 	exitStatus: 'guaranteed',
 	capabilities: [
-		'exec',
 		'files.read',
 		'files.write',
 		'files.list',
 		'search.find',
-		'search.grep',
-		'copy'
+		'search.grep'
 	],
 	shells: ['sh', 'bash']
 } as const;

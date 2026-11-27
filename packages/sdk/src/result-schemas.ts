@@ -4,7 +4,6 @@ import { Type } from 'typebox';
 import { Value } from 'typebox/value';
 
 import type { SandboxWorkspace } from './contracts.js';
-import { accessPolicySchema } from './policy-model.js';
 import {
 	bytesSchema,
 	denseArray,
@@ -147,25 +146,13 @@ export const processExitSchema = Type.Union([
 
 const processTerminationSchema = Type.Union([
 	Type.Literal('confirmed'),
-	Type.Literal('unconfirmed'),
-	Type.Literal('not-guaranteed')
+	Type.Literal('unconfirmed')
 ]);
-
-const violationAccessProperty = Type.KeyOf(accessPolicySchema);
-
-const violation = Type.Object({
-	operation: nonEmptyStringSchema,
-	accessProperty: violationAccessProperty,
-	resource: Type.Optional(Type.String())
-});
-
-export const violationsSchema = denseArray(violation);
 
 export const processOutcomeSchema = Type.Union([
 	Type.Object({
 		kind: Type.Literal('exited'),
-		exit: processExitSchema,
-		violations: Type.Optional(violationsSchema)
+		exit: processExitSchema
 	}),
 	Type.Object({
 		kind: Type.Literal('cancelled'),

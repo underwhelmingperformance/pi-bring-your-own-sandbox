@@ -188,8 +188,6 @@ before it chooses a destination and that no allocation starts.
 
 ## Operation cases
 
-<!-- `violations` is provisional in milestone 1. -->
-
 - For `exec`, run every declared dialect and process kind. Check literal argv
   boundaries, target cwd, streamed bytes, capture limits, normal and non-zero
   exits, unavailable optional status, and the declared termination scope.
@@ -210,11 +208,8 @@ before it chooses a destination and that no allocation starts.
   complete result fields for the same supported glob or regex, including paths,
   line numbers, context and truncation. Normalise provider-defined result order.
   Check missing roots, cancellation and results at the limit.
-- For `copy`, run the copy case family and the operation cases for that copy's
-  own declared capabilities.
-- For `violations`, attempt an operation that policy denies. Assert that the
-  provider reports the actual restriction in structured data and that the Pi
-  adapter includes it separately from output.
+- If the provider declares copy profiles, run the copy case family and the
+  operation cases for each copy profile.
 - For diagnostics, report valid warnings, invalid and oversized messages and
   more warnings than the generation can retain. Assert that warnings stay out of
   stdout and stderr, the count and message bounds apply and `diagnosticsDropped`

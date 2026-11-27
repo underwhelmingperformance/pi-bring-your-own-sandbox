@@ -13,7 +13,7 @@ export const connectionProvider: FixtureProvider<ConnectionConfig> = {
 			processKinds: ['argv', 'shell'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			operations: ['exec'],
+			operations: [],
 			shells: ['sh']
 		},
 		{
@@ -52,7 +52,7 @@ export const connectionProvider: FixtureProvider<ConnectionConfig> = {
 				processKinds: ['argv', 'shell'],
 				terminationScope: 'workload',
 				exitStatus: 'guaranteed',
-				operations: ['exec'],
+				operations: [],
 				shells: ['sh']
 			}),
 

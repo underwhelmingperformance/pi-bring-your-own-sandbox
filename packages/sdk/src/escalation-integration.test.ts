@@ -406,14 +406,8 @@ it.each([
 		const observed: EscalationRequest[] = [];
 		const reviewSignals: AbortSignal[] = [];
 		const requests: ProcessRequest[] = [];
-		const operationIds: string[] = [];
 		const decisionsAtOpen: unknown[][] = [];
 		const prompts: string[] = [];
-		const violation = {
-			operation: 'open\u{1B}[31m',
-			accessProperty: 'hostUserData',
-			resource: '/data'
-		} as const;
 		let changeCommand: (() => void) | undefined;
 		let readLedger: (() => unknown[]) | undefined;
 		const ordinary = backend.profile;
@@ -423,7 +417,6 @@ it.each([
 			exitStatus: isExitUnavailable
 				? ('optional' as const)
 				: ordinary.exitStatus,
-			capabilities: [...ordinary.capabilities, 'violations' as const],
 			policy: { ...ordinary.policy, network: true }
 		};
 		const provider: InlineExtension = {
@@ -450,7 +443,6 @@ it.each([
 								profile: request.profile,
 								async exec(command, context) {
 									requests.push(command);
-									operationIds.push(context.operationId);
 
 									const result = await backend.exec(command, context);
 
@@ -459,8 +451,7 @@ it.each([
 												...result,
 												exit: isExitUnavailable
 													? { kind: 'unavailable' }
-													: result.exit,
-												violations: [violation]
+													: result.exit
 											}
 										: result;
 								}
@@ -662,20 +653,7 @@ it.each([
 								}
 							]
 						: [],
-					entries: [
-						escalation,
-						...(runs
-							? [
-									{
-										kind: 'violation',
-										operationId: operationIds[0],
-										toolCallId,
-										providerId: 'fixture.escalation',
-										violations: [violation]
-									}
-								]
-							: [])
-					],
+					entries: [escalation],
 					results: [
 						{
 							isError: !runs || isExitUnavailable,
@@ -690,10 +668,6 @@ it.each([
 										{
 											type: 'text',
 											text: 'Effective restrictions: Host workspace writes allowed, network allowed, host user data denied, host system files read-only'
-										},
-										{
-											type: 'text',
-											text: String.raw`Restriction violation: open\x1b[31m (hostUserData) on /data`
 										}
 									]
 								: errorContent

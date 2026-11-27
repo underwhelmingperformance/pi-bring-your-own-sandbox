@@ -10,7 +10,7 @@ import {
 } from './request-schemas.js';
 import { recoverySchema, safeIntegerSchema } from './schemas.js';
 
-const sparse: string[] = ['exec'];
+const sparse: string[] = ['files.read'];
 
 sparse.length++;
 
@@ -44,7 +44,7 @@ it.each([
 			processKinds: ['argv'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			capabilities: ['exec'],
+			capabilities: [],
 			shells: []
 		},
 		expected: true
@@ -71,7 +71,7 @@ it.each([
 			capabilities: ['files.read'],
 			shells: []
 		},
-		expected: false
+		expected: true
 	},
 	{
 		schema: profileSchema,
@@ -80,7 +80,7 @@ it.each([
 			processKinds: ['argv'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			capabilities: ['exec', 'exec'],
+			capabilities: ['files.read', 'files.read'],
 			shells: []
 		},
 		expected: false

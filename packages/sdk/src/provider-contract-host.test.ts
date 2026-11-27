@@ -50,7 +50,6 @@ defineSandboxProviderTests({
 	capabilities: {
 		...firstOpenProfile(provider),
 		capabilities: [
-			'exec',
 			'files.read',
 			'files.write',
 			'files.list',

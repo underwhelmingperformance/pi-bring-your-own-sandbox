@@ -317,23 +317,20 @@ execution with no effective restrictions.
 
 ## Execution and capabilities
 
-<!-- `violations` is provisional in milestone 1. -->
+| Capability    | Consumer and purpose                                                                            |
+| ------------- | ----------------------------------------------------------------------------------------------- |
+| `files.read`  | Pi's `read` and `edit` read target bytes. The permission reviewer reads evidence from its copy. |
+| `files.write` | Pi's `write` and `edit` change target files.                                                    |
+| `files.list`  | Pi's `ls` inspects target entries.                                                              |
+| `search.find` | Pi's `find` locates files under a target root.                                                  |
+| `search.grep` | Pi's `grep` gets matches and context in the target.                                             |
 
-| Capability    | Consumer and purpose                                                                                                                       |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `exec`        | Pi's `bash` and `user_bash` run shell commands. The example consumer runs argv commands. The permission reviewer runs `sh` for inspection. |
-| `files.read`  | Pi's `read` and `edit` read target bytes. The permission reviewer reads evidence from its copy.                                            |
-| `files.write` | Pi's `write` and `edit` change target files.                                                                                               |
-| `files.list`  | Pi's `ls` inspects target entries.                                                                                                         |
-| `search.find` | Pi's `find` locates files under a target root.                                                                                             |
-| `search.grep` | Pi's `grep` gets matches and context in the target.                                                                                        |
-| `copy`        | The permission reviewer gets an independent workspace for inspection.                                                                      |
-| `violations`  | The Pi integration appends structured restriction violations to a tool result so the model can decide how to proceed.                      |
-
-The facade checks capabilities before dispatch. Pi uses the same workspace for
-shell, file and search operations. Paths, executable lookup and environment
-overrides refer to the destination. Providers enforce access inside the backend,
-including through symlinks.
+Every backend supports execution. The facade checks file and search capabilities
+before dispatch. A provider's copy profiles determine whether an independent
+workspace is available for review. Pi uses the same workspace for shell, file
+and search operations. Paths, executable lookup and environment overrides refer
+to the destination. Providers enforce access inside the backend, including
+through symlinks.
 
 The example consumer relies on literal argv boundaries. A transport shell must
 use lossless encoding and never expand or interpret caller data. Bootstrap tools
@@ -365,10 +362,8 @@ successful probes from failed probes. Pi reports unavailable optional status
 with the collected output as a failure. The reviewer also requires at least
 process-group termination. That scope includes the direct process and its
 supervised group. Workload termination also covers descendants that create new
-groups or sessions. Pi uses the scope when reporting cancellation. With scope
-`none`, cancellation returns `not-guaranteed` without waiting for confirmation
-and leaves the backend usable. With a promised scope, cancellation waits within
-the cleanup allowance for confirmation. Unconfirmed termination or an unknown
+groups or sessions. Cancellation waits within the cleanup allowance for
+confirmation under the declared scope. Unconfirmed termination or an unknown
 mutation outcome makes the backend unusable. The broker cancels before dispatch
 when possible and never replays work. The example consumer can continue using
 the backend after an ordinary non-zero exit.
@@ -478,10 +473,9 @@ apply only to the current call.
 Before a run with a BYOS shell, the system prompt describes the negotiated
 policy and roots for ordinary shell commands and explains whether escalation is
 available. An escalation prompt and a shell result describe the effective
-policy, roots and path grants for that call. Providers can report structured
-violations for the tool result. The cleaning function returns the display text
-type for model, provider and extension text. User interfaces require that type
-and diagnostics omit raw settings.
+policy, roots and path grants for that call. The cleaning function returns the
+display text type for model, provider and extension text. User interfaces
+require that type and diagnostics omit raw settings.
 
 The [API appendix][escalation-api] defines the tool arguments, pending request
 and decision function.
@@ -591,11 +585,10 @@ describe the same destination and effective restrictions, including `none` on
 the host.
 
 For each review copy, the broker records the requesting extension and the
-negotiated policy. A violation entry identifies the provider that reported it.
-Users can inspect the current session with `/byos log` and filter by tool call
-ID. Users rely on the ledger to see who approved added access. Permission
-extensions can correlate the executed destination, review copy and violations
-with the pending call that they reviewed.
+negotiated policy. Users can inspect the current session with `/byos log` and
+filter by tool call ID. Users rely on the ledger to see who approved added
+access. Permission extensions can correlate the executed destination and review
+copy with the pending call.
 
 ## Diagnostics
 

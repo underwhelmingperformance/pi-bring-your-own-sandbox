@@ -20,7 +20,7 @@ function fixture(exitStatus: 'guaranteed' | 'optional' = 'optional') {
 
 	Object.assign(backend, {
 		profile: fixtureProfile(backend.profile.policy, {
-			operations: ['exec'],
+			operations: [],
 			processKinds: ['shell'],
 			shells: ['bash'],
 			terminationScope: 'workload',
@@ -58,12 +58,11 @@ it('preserves completed output with unavailable exit details without quarantinin
 		command: 'echo'
 	});
 
-	expect({ ...result, durationMs: 0 }).toStrictEqual({
+	expect(result).toStrictEqual({
 		exit: { kind: 'unavailable' },
 		stdout: new Uint8Array([1, 2]),
 		stderr: new Uint8Array(),
-		omittedBytes: { stdout: 0, stderr: 0 },
-		durationMs: 0
+		omittedBytes: { stdout: 0, stderr: 0 }
 	});
 	expect(owner.failures).toStrictEqual([]);
 	await sandbox.exec({ kind: 'shell', dialect: 'bash', command: 'again' });
@@ -103,7 +102,7 @@ it.each([
 	expect(
 		isProfile({
 			policy: defaultPolicy,
-			capabilities: ['exec'],
+			capabilities: [],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			...capabilities

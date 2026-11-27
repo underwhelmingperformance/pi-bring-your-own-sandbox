@@ -91,7 +91,6 @@ includes the profile after the default backend opens and reports
 provider-specific boundary text separately. Provider operation contexts include
 the resolved cleanup budgets.
 
-<!-- `violations` is provisional in milestone 1. -->
 <!--
 Types `AccessProperty`, `Access`, `PathGrants`, `FileAccess` and `Profile`
 are provisional.
@@ -112,17 +111,10 @@ interface PathGrants {
 }
 
 type Capability =
-  | 'exec'
-  | 'files.read'
-  | 'files.write'
-  | 'files.list'
-  | 'search.find'
-  | 'search.grep'
-  | 'copy'
-  | 'violations';
+  'files.read' | 'files.write' | 'files.list' | 'search.find' | 'search.grep';
 type ProcessKind = 'argv' | 'shell';
 type ExitStatus = 'guaranteed' | 'optional';
-type TerminationScope = 'none' | 'process-group' | 'workload';
+type TerminationScope = 'process-group' | 'workload';
 
 interface SandboxRequirements {
   readonly access?: Access;
@@ -471,13 +463,13 @@ type ProcessExit =
     }
   | { readonly kind: 'unavailable' };
 
-type Completion = 'not-started' | 'confirmed' | 'unknown' | 'not-guaranteed';
+type Completion = 'not-started' | 'confirmed' | 'unknown';
 
 type BackendProcessOutcome =
   | { readonly kind: 'exited'; readonly exit: ProcessExit }
   | {
       readonly kind: 'cancelled';
-      readonly termination: 'confirmed' | 'unconfirmed' | 'not-guaranteed';
+      readonly termination: 'confirmed' | 'unconfirmed';
     };
 ```
 
@@ -490,25 +482,19 @@ signal numbers are positive integers from the target.
 Execution options add
 `onOutput(chunk: { stream: 'stdout' | 'stderr'; data: Uint8Array }): void` and
 `maxCaptureBytes`. The latter is a safe integer from 0 to 1,048,576 and defaults
-to 1,048,576. The result contains `exit`, `stdout`, `stderr`,
-`omittedBytes: { stdout: number; stderr: number }`, `durationMs` and optional
-`violations`.
+to 1,048,576. The result contains `exit`, `stdout`, `stderr`, and
+`omittedBytes: { stdout: number; stderr: number }`.
 
-| Capability    | Backend operations                                    |
-| ------------- | ----------------------------------------------------- |
-| `exec`        | `exec`                                                |
-| `files.read`  | `files.read.readFile`, `access`, `stat`               |
-| `files.write` | `files.write.writeFile`, `access`, `mkdir`            |
-| `files.list`  | `files.list.listDirectory`, `stat`                    |
-| `search.find` | `search.find`                                         |
-| `search.grep` | `search.grep`                                         |
-| `copy`        | Provider `copy` with a matching copy profile          |
-| `violations`  | Optional structured `violations` on execution results |
+Every backend implements `exec`. A provider with copy profiles implements `copy`
+for the host checkout and its own backends from the same session and generation.
 
-<!-- Violation fields are provisional in milestone 1. -->
-
-Each violation includes an `operation: string`, an
-`accessProperty: AccessProperty` and an optional `resource: string`.
+| Capability    | Backend operations                         |
+| ------------- | ------------------------------------------ |
+| `files.read`  | `files.read.readFile`, `access`, `stat`    |
+| `files.write` | `files.write.writeFile`, `access`, `mkdir` |
+| `files.list`  | `files.list.listDirectory`, `stat`         |
+| `search.find` | `search.find`                              |
+| `search.grep` | `search.grep`                              |
 
 The facade adds `files.updateText(path, transform, options)` when both file read
 and file write are available. The synchronous transform maps strict UTF-8 text
@@ -686,22 +672,14 @@ type SandboxLedgerEntry =
         readonly kind: 'permission-extension';
         readonly extension: string;
       };
-    }
-  | {
-      readonly kind: 'violation';
-      readonly toolCallId?: string;
-      readonly operationId: string;
-      readonly providerId: string;
-      readonly violations: NonNullable<ProcessResult['violations']>;
     };
 ```
 
 One runtime schema defines the typed Pi session entries. The escalation entry
 uses the same destination and effective restrictions as the decision function
 input. When a reviewer opens a copy, the broker records the requesting extension
-and the negotiated copy policy. Provider violation entries identify the
-reporting provider. `/byos log [tool-call-id]` lists current-session entries and
-accepts an optional tool call ID filter.
+and the negotiated copy policy. `/byos log [tool-call-id]` lists entries for the
+current session and accepts an optional tool call ID filter.
 
 ## Internal protocol
 

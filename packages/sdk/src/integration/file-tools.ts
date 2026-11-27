@@ -220,10 +220,6 @@ type RipgrepRequest = (
 ) => ProcessRequest;
 
 function ripgrepRequest({ profile }: Sandbox): RipgrepRequest | undefined {
-	if (!profile.capabilities.includes('exec')) {
-		return;
-	}
-
 	if (profile.processKinds.includes('argv')) {
 		return (arguments_, cwd) => ({
 			kind: 'argv',

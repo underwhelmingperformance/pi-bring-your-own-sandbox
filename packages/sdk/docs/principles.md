@@ -301,11 +301,11 @@ resolution. A sandbox handle or a review source can request a copy of its own
 source.
 
 The elected SDK copy prepares shell calls and owns escalation planning, review
-registration and dispatch. Providers pass their configuration and backend
-operations directly to the elected copy during session startup. The embedding
-host receives a close handle from `initialiseSandboxHost`. The broker keeps
-settings private. The Pi tool adapter receives its dispatch callbacks in
-`src/integration/privileged.ts`.
+registration and dispatch. A provider's SDK passes shared settings and bound
+backend operations to the elected copy. The registering SDK keeps the provider's
+typed configuration in those operations. The embedding host receives a close
+handle from `initialiseSandboxHost`. The broker keeps settings private. The Pi
+tool adapter receives its dispatch callbacks in `src/integration/privileged.ts`.
 
 The private startup exchange limits the operations that discovery exposes. Pi's
 event bus accepts sender identities from extensions. An extension can therefore
@@ -415,7 +415,7 @@ escalation destination. If the call ends before anyone decides, record the
 outcome.
 
 Users need to see why a command ran with more access. Reviewers need to relate
-review copies and reported violations to the tool call that produced them.
+review copies to their tool calls.
 
 Enforced by:
 
@@ -498,7 +498,7 @@ path.
 ### Ledger
 
 The typed decision records in a Pi session. Entries describe escalations, review
-copies and provider-reported violations.
+copies.
 
 ### Need
 

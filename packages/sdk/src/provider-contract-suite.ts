@@ -38,10 +38,7 @@ import type {
 	SandboxProviderTestSelection
 } from './provider-test-contracts.js';
 import { bounded, fixtureProfile } from './provider-test-harness.js';
-import {
-	isTerminationScopeSatisfied,
-	settleProcess
-} from './termination-scope.js';
+import { isTerminationScopeSatisfied } from './termination-scope.js';
 import { isProviderInfo } from './validation.js';
 import { checkWorkspaceVisibility } from './workspace-visibility-suite.js';
 
@@ -84,17 +81,14 @@ function facadeBackend(
 
 				return {
 					kind: 'exited',
-					exit: result.exit,
-					...(result.violations !== undefined && {
-						violations: result.violations
-					})
+					exit: result.exit
 				};
 			} catch (error) {
 				if (isSandboxError(error, SandboxCancelledError)) {
 					return {
 						kind: 'cancelled',
 						termination:
-							error.completion === 'confirmed' ? 'confirmed' : 'not-guaranteed'
+							error.completion === 'confirmed' ? 'confirmed' : 'unconfirmed'
 					};
 				}
 
@@ -548,13 +542,9 @@ async function cancelReadyJob(
 	);
 	const stdout: Uint8Array[] = [];
 	let outcome: BackendProcessOutcome;
-	const expectedTermination =
-		backend.profile.terminationScope === 'none'
-			? 'not-guaranteed'
-			: 'confirmed';
 
 	try {
-		const result = await settleProcess(
+		const result = await settleOperation(
 			execution,
 			backend.exec(probe.request, {
 				...execution.context,
@@ -569,8 +559,7 @@ async function cancelReadyJob(
 						controller.abort();
 					}
 				}
-			}),
-			backend.profile.terminationScope
+			})
 		);
 
 		if (result.kind === 'rejected') {
@@ -587,12 +576,12 @@ async function cancelReadyJob(
 	} catch (error) {
 		if (
 			!isSandboxError(error, SandboxCancelledError) ||
-			error.completion !== expectedTermination
+			error.completion !== 'confirmed'
 		) {
 			throw error;
 		}
 
-		outcome = { kind: 'cancelled', termination: expectedTermination };
+		outcome = { kind: 'cancelled', termination: 'confirmed' };
 	} finally {
 		execution.dispose();
 	}
@@ -602,7 +591,7 @@ async function cancelReadyJob(
 		outcome
 	}).toStrictEqual({
 		hasStarted: true,
-		outcome: { kind: 'cancelled', termination: expectedTermination }
+		outcome: { kind: 'cancelled', termination: 'confirmed' }
 	});
 }
 
@@ -694,7 +683,7 @@ async function checkConcurrentCancellation(
 		controller.abort();
 
 		try {
-			await settleProcess(scope, running, backend.profile.terminationScope);
+			await settleOperation(scope, running);
 		} finally {
 			scope.dispose();
 		}
@@ -725,14 +714,6 @@ export function providerContractCases<Config>(
 	const capabilities = options.capabilities ?? declared;
 	const cleanup = resolveCleanupBudgets(options.cleanup);
 
-	if (
-		(options.verifyRecoveryAfterCancellation ||
-			options.verifyConcurrentCancellation) &&
-		capabilities.terminationScope === 'none'
-	) {
-		throw new Error('Continued use requires confirmed termination.');
-	}
-
 	const cases: ContractCase[] = [
 		{
 			label: 'metadata and policy',
@@ -754,19 +735,13 @@ export function providerContractCases<Config>(
 
 		{
 			label:
-				capabilities.terminationScope === 'none'
-					? 'cancellation without a termination guarantee'
-					: options.verifyRecoveryAfterCancellation === true
-						? 'confirmed cancellation and continued use'
-						: 'confirmed cancellation',
+				options.verifyRecoveryAfterCancellation === true
+					? 'confirmed cancellation and continued use'
+					: 'confirmed cancellation',
 			run: async (fixture, backend, context) => {
 				const probe = fixture.cancellation;
 
 				await cancelReadyJob(fixture, backend, context, cleanup);
-
-				if (backend.profile.terminationScope === 'none') {
-					return;
-				}
 
 				expect(
 					probe.verifyStopped,
@@ -810,7 +785,7 @@ export function providerContractCases<Config>(
 
 	const restrictions = options.policyEffects ?? [];
 
-	if (capabilities.capabilities.includes('copy')) {
+	if (options.provider.profiles.copy.length > 0) {
 		cases.push({
 			label: 'copies from an existing backend',
 			async run(fixture, _backend, context, _afterDisposal, subject) {

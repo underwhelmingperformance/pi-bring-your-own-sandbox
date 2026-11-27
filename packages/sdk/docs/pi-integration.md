@@ -48,7 +48,7 @@ local MCP servers.
 
 ## Escalation and model descriptions
 
-<!-- `escalate`, `allowEscalation` and `violations` are provisional. -->
+<!-- `escalate` and `allowEscalation` are provisional. -->
 
 A `bash` call can request extra access with `escalate` and a justification. For
 example, it can request network access and permission to read one configuration
@@ -61,8 +61,7 @@ The confirmation identifies the provider by its label and shows the command,
 justification, requested access and paths, destination and restrictions. A
 permission extension can record its decision for that pending call. The
 integration then uses the recorded verdict. The model sees effective
-restrictions from the policy and path grants. Provider `violations` appear
-separately from command output.
+restrictions from the policy and path grants.
 
 The system prompt describes the effective host user data policy and roots.
 `/byos status` shows the policy mode. Read-only and read-write access apply
@@ -110,9 +109,8 @@ extension must inspect copy cleanup and report unconfirmed disposal. See the
 
 <!-- `/byos log` is provisional. -->
 
-Use `/byos log` to inspect escalation decisions, review copies and reported
-violations for the current Pi session. Pass a tool call ID to filter the
-[ledger][ledger].
+Use `/byos log` to inspect escalation decisions and review copies for the
+current Pi session. Pass a tool call ID to filter the [ledger][ledger].
 
 [ledger]: specification.md#ledger
 

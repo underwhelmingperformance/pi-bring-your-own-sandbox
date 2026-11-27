@@ -85,8 +85,8 @@ async function loadBuild(
 
 		await rewrite(
 			schemas,
-			"Type.Literal('copy')",
-			"Type.Literal('copy'), Type.With(Type.Literal('fixture-trace'), { 'x-byos-feature-level': 1 })"
+			"Type.Literal('search.grep')",
+			"Type.Literal('search.grep'), Type.With(Type.Literal('fixture-trace'), { 'x-byos-feature-level': 1 })"
 		);
 	}
 

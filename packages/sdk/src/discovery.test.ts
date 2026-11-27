@@ -61,7 +61,7 @@ it('snapshots whole profiles from an independent peer before asynchronous work',
 
 	const expected = { ...offered };
 
-	Object.assign(offered, { capabilities: ['exec', 'files.write'] });
+	Object.assign(offered, { capabilities: ['files.write'] });
 
 	expect({
 		profiles: service.profiles,
@@ -181,15 +181,20 @@ it.each([
 	...(
 		[
 			[
-				'missing exec capability',
-				[{ ...providerReply().service.profiles.open[0], capabilities: [] }]
+				'retired exec capability',
+				[
+					{
+						...providerReply().service.profiles.open[0],
+						capabilities: ['exec']
+					}
+				]
 			],
 			[
 				'unknown capability',
 				[
 					{
 						...providerReply().service.profiles.open[0],
-						capabilities: ['exec', 'pty']
+						capabilities: ['pty']
 					}
 				]
 			],

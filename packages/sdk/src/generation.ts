@@ -685,9 +685,6 @@ export class SandboxGeneration {
 			generationId: this.#id,
 			cleanup: this.#cleanup,
 			reportWarning: this.#diagnostics.record.bind(this.#diagnostics),
-			...(this.#dependencies.appendLedger !== undefined && {
-				appendLedger: this.#dependencies.appendLedger
-			}),
 			backend,
 			lifetime: this.#lifetime.signal,
 			operations: this.#operations,
@@ -963,14 +960,6 @@ export class SandboxGeneration {
 			throw new StaleSandboxHandleError({ operation: 'acquire' });
 		}
 
-		if (!slot.provided.profile.capabilities.includes('copy')) {
-			throw new UnsupportedSandboxCapabilityError({
-				operation: 'acquire',
-				providerId,
-				backendId: slot.provided.id
-			});
-		}
-
 		return { kind: 'backend', backend: slot.provided };
 	}
 
@@ -1120,10 +1109,7 @@ export class SandboxGeneration {
 		this.#checkDemand(provider, options);
 
 		if (typeof copy !== 'function') {
-			throw new UnsupportedSandboxCapabilityError({
-				...identity,
-				detail: { kind: 'capability', field: 'capabilities', value: 'copy' }
-			});
+			throw new UnsupportedSandboxCapabilityError(identity);
 		}
 
 		const origin = this.#copyOrigin(source, provider.id);

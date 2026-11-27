@@ -29,7 +29,7 @@ export default function rpcFixture(pi: ExtensionAPI): void {
 		processKinds: ['argv', 'shell'],
 		terminationScope: 'workload',
 		exitStatus: 'guaranteed',
-		operations: ['exec'],
+		operations: [],
 		shells: ['sh']
 	};
 

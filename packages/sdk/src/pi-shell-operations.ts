@@ -31,13 +31,11 @@ export function createShellOperations(
 			command: string,
 			options?: SandboxAcquireOptions
 		) => Promise<Sandbox>;
-		readonly toolCallId?: string;
 		readonly onSandbox?: (sandbox: Sandbox) => void;
 		readonly onResult?: (result: ProcessResult) => void;
 	}
 ): BashOperations {
 	const acquire = options?.getSandbox;
-	const toolCallId = options?.toolCallId;
 	const onSandbox = options?.onSandbox;
 	const onResult = options?.onResult;
 
@@ -59,7 +57,6 @@ export function createShellOperations(
 				const result = await shell.execute(pi, context, {
 					command,
 					dialect,
-					...(toolCallId !== undefined && { toolCallId }),
 					...(onSandbox !== undefined && { onSandbox }),
 					...(options.signal !== undefined && { signal: options.signal }),
 					...(options.timeout !== undefined && {

@@ -76,7 +76,6 @@ async function verifyPendingCall(
 	let hostUserDataRoots: readonly string[] = [];
 	const open = dispatch.open;
 	const operations = createShellOperations(pi, context, dialect, {
-		toolCallId: id,
 		...(open !== undefined && {
 			getSandbox: async (command, options) => {
 				allocation = await open(command, options ?? {});
@@ -108,16 +107,6 @@ async function verifyPendingCall(
 		},
 		onResult: (result) => {
 			execution.exit = result.exit;
-
-			const violations = result.violations ?? [];
-
-			for (const violation of violations) {
-				const target =
-					violation.resource === undefined ? '' : ' on ' + violation.resource;
-				const text = `Restriction violation: ${violation.operation} (${violation.accessProperty})${target}`;
-
-				feedback.push({ type: 'text', text: cleanDisplayText(text) });
-			}
 		}
 	});
 

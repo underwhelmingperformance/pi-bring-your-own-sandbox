@@ -74,8 +74,7 @@ const profileShape = Type.Object(
 	{
 		policy: accessPolicySchema,
 		capabilities: denseArray(capabilitySchema, {
-			uniqueItems: true,
-			contains: Type.Literal('exec')
+			uniqueItems: true
 		}),
 		processKinds: denseArray(processKindSchema, {
 			uniqueItems: true,
@@ -189,13 +188,7 @@ export const providerInfoSchema = Type.Refine(
 						profiles.open.length &&
 					new Set(profiles.copy.map((profile) => profileKey(profile))).size ===
 						profiles.copy.length &&
-					profiles.copy.every(
-						(profile) => !profile.policy.hostWorkspaceWrites
-					) &&
-					[...profiles.open, ...profiles.copy].every(
-						(profile) =>
-							!profile.capabilities.includes('copy') || profiles.copy.length > 0
-					)
+					profiles.copy.every((profile) => !profile.policy.hostWorkspaceWrites)
 			: profiles.open.length === 0 && profiles.copy.length === 0;
 	}
 );

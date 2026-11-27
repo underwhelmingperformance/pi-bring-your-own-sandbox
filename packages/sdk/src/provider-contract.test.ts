@@ -129,7 +129,7 @@ defineSandboxProviderTests({
 			open: [
 				{
 					...firstOpenProfile(shellOnly.provider),
-					capabilities: ['exec'],
+					capabilities: [],
 					processKinds: ['shell'],
 					shells: ['sh'],
 					terminationScope: 'workload',
@@ -180,56 +180,6 @@ defineSandboxProviderTests({
 				request: { kind: 'shell', dialect: 'sh', command: 'wait' }
 			}
 		};
-	}
-});
-
-const unmanaged = contractScenario();
-const unmanagedOpen = unmanaged.provider.create().open;
-
-defineSandboxProviderTests({
-	...unmanaged,
-	label: 'provider without a termination guarantee',
-	provider: {
-		...unmanaged.provider,
-		profiles: {
-			open: [
-				{
-					...firstOpenProfile(unmanaged.provider),
-					terminationScope: 'none'
-				}
-			],
-			copy: []
-		},
-		create: () => ({
-			...unmanaged.provider.create(),
-			async open(request, context) {
-				const backend = await unmanagedOpen(request, context);
-
-				return {
-					...backend,
-					profile: request.profile,
-					exec(request, execution) {
-						if (request.kind === 'argv' && request.executable === 'wait') {
-							execution.onOutput({
-								stream: 'stdout',
-								data: new TextEncoder().encode('ready')
-							});
-
-							return Promise.withResolvers<never>().promise;
-						}
-
-						return backend.exec(request, execution);
-					}
-				};
-			}
-		})
-	},
-	async createFixture(selection) {
-		const fixture = await unmanaged.createFixture(selection);
-		const { verifyStopped: _verifyStopped, ...cancellation } =
-			fixture.cancellation;
-
-		return { ...fixture, cancellation };
 	}
 });
 
@@ -812,7 +762,7 @@ it.each([
 		cleanup: { cancellationGraceMs: 5, disposalTimeoutMs: 100 },
 		capabilities: {
 			...firstOpenProfile(base.provider),
-			capabilities: ['exec', 'files.read'] as const
+			capabilities: ['files.read'] as const
 		},
 		provider: {
 			...base.provider,
@@ -993,21 +943,6 @@ it.each(['successful', 'missing', 'wrong output', 'failed command'] as const)(
 		);
 	}
 );
-
-it('rejects a recovery scenario without a termination guarantee before opening', () => {
-	const base = contractScenario();
-
-	expect(() =>
-		providerContractCases({
-			...base,
-			capabilities: {
-				...firstOpenProfile(base.provider),
-				terminationScope: 'none'
-			},
-			verifyRecoveryAfterCancellation: true
-		})
-	).toThrow('Continued use requires confirmed termination.');
-});
 
 it('detects disposal that also closes a second allocation from the same source', async () => {
 	const base = contractScenario();

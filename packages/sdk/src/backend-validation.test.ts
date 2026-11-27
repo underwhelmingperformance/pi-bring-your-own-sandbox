@@ -35,7 +35,7 @@ it.each([
 		label: 'policy',
 		override: { policy: { ...new MemoryBackend().policy, network: true } }
 	},
-	{ label: 'capabilities', override: { capabilities: ['exec'] } },
+	{ label: 'capabilities', override: { capabilities: [] } },
 	{
 		label: 'shells',
 		override: { processKinds: ['argv', 'shell'], shells: ['bash'] }

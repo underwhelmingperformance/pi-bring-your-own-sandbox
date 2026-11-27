@@ -442,13 +442,6 @@ export function createSandbox(owner: SandboxOwner): Sandbox {
 		copy: async (options) => {
 			owner.assertLive('acquire');
 
-			if (!backend.profile.capabilities.includes('copy')) {
-				throw new UnsupportedSandboxCapabilityError({
-					...owner.identity,
-					operation: 'acquire'
-				});
-			}
-
 			return owner.copy(options);
 		}
 	} satisfies Sandbox);

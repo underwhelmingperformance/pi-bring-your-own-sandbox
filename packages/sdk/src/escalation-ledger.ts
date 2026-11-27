@@ -13,7 +13,6 @@ import {
 import { appendTypedEntry } from './display-ui.js';
 import { InvalidSandboxDeclarationError } from './errors.js';
 import { accessPolicySchema, accessSchema } from './policy-model.js';
-import { violationsSchema } from './result-schemas.js';
 import {
 	checker,
 	denseArray,
@@ -150,14 +149,7 @@ const reviewCopy = Type.Object({
 	policy: accessPolicySchema,
 	decider: permissionDecider
 });
-const violation = Type.Object({
-	kind: Type.Literal('violation'),
-	toolCallId: Type.Optional(nonEmptyStringSchema),
-	operationId: nonEmptyStringSchema,
-	providerId: nonEmptyStringSchema,
-	violations: violationsSchema
-});
-const entrySchema = Type.Union([escalation, reviewCopy, violation]);
+const entrySchema = Type.Union([escalation, reviewCopy]);
 
 export type SandboxLedgerEntry = ReadonlyData<Static<typeof entrySchema>>;
 export type EscalationEntry = Extract<
@@ -167,8 +159,6 @@ export type EscalationEntry = Extract<
 
 const customType = 'byos.ledger';
 const isLedgerEntry = checker(entrySchema);
-
-export const processToolCallId = Symbol.for('pi-byos:ledger-tool-call-id');
 
 export function appendLedgerEntry(
 	pi: SandboxHost,

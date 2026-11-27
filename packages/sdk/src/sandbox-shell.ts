@@ -13,7 +13,6 @@ import {
 	SandboxCancelledError,
 	SandboxTimeoutError
 } from './errors.js';
-import { processToolCallId } from './escalation-ledger.js';
 import { OperationScope } from './lifecycle.js';
 import { isSafeText, snapshotProcessRequest } from './process-input.js';
 import { isShell } from './validation.js';
@@ -29,7 +28,6 @@ export interface ShellInvocation {
 	readonly timeoutSeconds?: number;
 	readonly signal?: AbortSignal;
 	readonly onOutput: (output: ProcessOutput) => void;
-	readonly toolCallId?: string;
 	readonly onSandbox?: (sandbox: Sandbox) => void;
 }
 
@@ -118,10 +116,7 @@ export class SandboxShell {
 				...(invocation.signal !== undefined && { signal: invocation.signal }),
 				...(remaining !== undefined && { timeoutMs: remaining }),
 				maxCaptureBytes: 0,
-				onOutput: invocation.onOutput,
-				...(invocation.toolCallId !== undefined && {
-					[processToolCallId]: invocation.toolCallId
-				})
+				onOutput: invocation.onOutput
 			};
 
 			return await sandbox.exec(

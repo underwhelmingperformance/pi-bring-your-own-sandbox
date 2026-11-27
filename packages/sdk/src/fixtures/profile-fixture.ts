@@ -33,7 +33,8 @@ export type FixturePolicyChoices = {
 
 export function fixtureProfiles(
 	capabilities: FixtureCapabilities,
-	choices: FixturePolicyChoices
+	choices: FixturePolicyChoices,
+	hasCopy = false
 ): { readonly open: readonly Profile[]; readonly copy: readonly Profile[] } {
 	const workspace = choices.hostWorkspaceWrites ?? [
 		defaultPolicy.hostWorkspaceWrites
@@ -61,14 +62,14 @@ export function fixtureProfiles(
 	}
 
 	const open = policies.map((policy) => fixtureProfile(policy, capabilities));
-	const copy = capabilities.operations.includes('copy')
+	const copy = hasCopy
 		? open.filter((profile) => !profile.policy.hostWorkspaceWrites)
 		: [];
 
 	return {
 		open,
 		copy:
-			capabilities.operations.includes('copy') && copy.length === 0
+			hasCopy && copy.length === 0
 				? [
 						fixtureProfile(
 							{ ...defaultPolicy, hostWorkspaceWrites: false },

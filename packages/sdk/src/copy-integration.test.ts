@@ -56,7 +56,7 @@ const capabilities: FixtureCapabilities = {
 	processKinds: ['argv', 'shell'],
 	terminationScope: 'workload',
 	exitStatus: 'guaranteed',
-	operations: ['exec', 'files.read', 'files.write', 'files.list', 'copy'],
+	operations: ['files.read', 'files.write', 'files.list'],
 	shells: ['sh']
 };
 
@@ -133,7 +133,11 @@ function registerCopyProvider(pi: SandboxHost, options?: CopyProviderOptions) {
 		id: 'active',
 		label: 'active',
 
-		profiles: fixtureProfiles(capabilities, options?.policies ?? ALL_POLICIES),
+		profiles: fixtureProfiles(
+			capabilities,
+			options?.policies ?? ALL_POLICIES,
+			true
+		),
 
 		validateConfig: () => ({}),
 		open: (request) => {
@@ -374,7 +378,7 @@ it('rejects a copy whose backend does not report a copied workspace and disposes
 	});
 });
 
-it('rejects copies from a provider without the copy capability', async () => {
+it('rejects copies from a provider without copy profiles', async () => {
 	await fixture(async (pi, context) => {
 		const backend = new MemoryBackend();
 
@@ -424,18 +428,14 @@ it.each([
 				id: 'inconsistent',
 				label: 'inconsistent',
 				profiles: fixtureProfiles(
-					{
-						...backend.capabilities,
-						operations: declared
-							? [...backend.capabilities.operations, 'copy']
-							: backend.capabilities.operations
-					},
+					backend.capabilities,
 					{
 						hostWorkspaceWrites: [true],
 						hostUserData: ['denied'],
 						hostSystemFiles: ['read-only'],
 						network: [false]
-					}
+					},
+					declared
 				),
 				create: () => ({ configure, open, ...(implemented && { copy }) })
 			});
@@ -479,7 +479,7 @@ it('retains the entire close report when a copy fails validation', async () => {
 	};
 
 	const [outcome] = await Promise.allSettled([
-		checkedCopy(copy, { capabilities: ['exec'] }, import.meta.filename)
+		checkedCopy(copy, { capabilities: ['files.read'] }, import.meta.filename)
 	]);
 	const rejected: unknown =
 		outcome.status === 'rejected' ? outcome.reason : undefined;

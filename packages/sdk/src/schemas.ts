@@ -55,14 +55,11 @@ export const shellSchema = Type.Union([
 	Type.Literal('powershell')
 ]);
 export const capabilitySchema = Type.Union([
-	Type.Literal('exec'),
 	Type.Literal('files.read'),
 	Type.Literal('files.write'),
 	Type.Literal('files.list'),
 	Type.Literal('search.find'),
-	Type.Literal('search.grep'),
-	Type.Literal('copy'),
-	Type.Literal('violations')
+	Type.Literal('search.grep')
 ]);
 export const processKindSchema = Type.Union([
 	Type.Literal('argv'),
@@ -70,7 +67,6 @@ export const processKindSchema = Type.Union([
 ]);
 
 export const terminationScopeSchema = Type.Union([
-	Type.Literal('none'),
 	Type.Literal('process-group'),
 	Type.Literal('workload')
 ]);

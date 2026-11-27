@@ -20,7 +20,7 @@ export function shellBackend(output = 'target output') {
 			processKinds: ['argv', 'shell'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			operations: ['exec'],
+			operations: [],
 			shells: ['bash', 'powershell']
 		}),
 		exec(request: ProcessRequest, context: BackendProcessContext) {

@@ -52,22 +52,19 @@ redesign is complete.
   applies or a permission extension has recorded a decision for the pending
   call. BYOS has no approval-policy registry, approval channels or built-in
   approval policies.
-- The ledger records escalations, outcomes, review copies and reported
-  violations as typed Pi session entries. The diagnostics command can filter
-  entries by tool call ID.
+- The ledger records escalation outcomes and review copies as typed Pi session
+  entries. The diagnostics command can filter entries by tool call ID.
 - The Pi integration describes the effective restrictions of each destination to
-  the model. It generates the description from the negotiated policy. Providers
-  can report sandbox violations as structured data through an optional
-  capability, and BYOS appends them to the tool result.
+  the model. It uses the negotiated policy and path grants.
 - The review route replies with source identities. The reviewer resolves an
   identity through its own broker, can negotiate a copy without allocating it,
   and receives a typed reason when no source is available. The route records
   pending calls on `tool_execution_start`.
 - The SDK routes Pi's file tools through the facade, so file tools and `bash`
   always use the same workspace. MXC's own file tools are retired.
-- Entry points are split by audience: `/consumer`, `/provider`, `/host`,
-  `/pi-tools` and `/testing`. Review and escalation use the consumer client. The
-  Docker provider moves to `packages/provider-docker`.
+- The SDK has separate entry points for acquisition, review, registration,
+  provider helpers, embedding, Pi tools and conformance tests. The Docker
+  provider is in `packages/provider-docker`.
 - Providers ship presets as extension entry points with their own defaults in
   shared settings. Remove the user-written guard and the guard package.
 - The SDK provides a provider kit: argv encoding over a POSIX shell, a process
@@ -110,9 +107,9 @@ changes use red/green TDD.
    with structured detail.
 5. Escalation and model feedback: extend `bash` with an escalation request,
    including path grants. Decide once per call, record decisions in the ledger,
-   and describe effective restrictions and reported violations to the model.
-   Delete the legacy approval, approval-policy and outside-execution channels.
-   Add a repository check for remaining legacy version fields and channel names.
+   and describe effective restrictions to the model. Delete the legacy approval,
+   approval-policy and outside-execution channels. Add a repository check for
+   remaining legacy version fields and channel names.
 6. Review route: identity replies, copies through the reviewer's broker,
    negotiation without allocation, typed reasons and a destination description.
 7. Surface: audience entry points, a committed public API report, import

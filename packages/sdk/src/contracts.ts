@@ -32,7 +32,7 @@ import type {
 	environmentSchema,
 	sharedSettingsSchema
 } from './request-schemas.js';
-import type { processExitSchema, violationsSchema } from './result-schemas.js';
+import type { processExitSchema } from './result-schemas.js';
 import type { shellSchema, terminationScopeSchema } from './schemas.js';
 
 /**
@@ -80,11 +80,9 @@ execution.
 */
 export type ShellDialect = Static<typeof shellSchema>;
 /**
-Processes that must have stopped before execution completes or cancellation is
-acknowledged. `none` waits for the command's normal result but promises no
-termination on cancellation. `process-group` covers the direct process and its
-supervised POSIX group. `workload` also covers descendants that change group or
-session. Access restrictions and allocation disposal are independent.
+Processes that must stop before execution completes or cancellation is
+acknowledged. `process-group` covers the direct process and its supervised
+POSIX group. `workload` also covers descendants that change group or session.
 */
 export type TerminationScope = Static<typeof terminationScopeSchema>;
 export type SandboxPolicy = Policy;
@@ -441,7 +439,7 @@ export type ProcessExit = Readonly<Static<typeof processExitSchema>>;
 Provider execution result under its declared termination scope. Normal results
 include the command's exit details. Confirmed cancellation certifies termination
 within `process-group` or `workload`; it never means merely submitting a signal.
-Providers declaring `none` report `not-guaranteed` for cancellation. Descendants
+Descendants
 outside a guaranteed scope may continue changing permitted files after the call
 returns. Unconfirmed termination within a promised scope makes the backend
 unhealthy; the operation must not be replayed.
@@ -450,11 +448,10 @@ export type BackendProcessOutcome =
 	| {
 			readonly kind: 'exited';
 			readonly exit: ProcessExit;
-			readonly violations?: readonly SandboxViolation[];
 	  }
 	| {
 			readonly kind: 'cancelled';
-			readonly termination: 'confirmed' | 'unconfirmed' | 'not-guaranteed';
+			readonly termination: 'confirmed' | 'unconfirmed';
 	  };
 
 /**
@@ -490,11 +487,8 @@ completion. Non-zero codes remain successful SDK results.
 	/**
 	Non-negative execution duration measured with a monotonic clock.
 	*/
-	readonly durationMs: number;
-	readonly violations?: readonly SandboxViolation[];
 }
 
-type SandboxViolation = Readonly<Static<typeof violationsSchema>[number]>;
 /**
 Filesystem entry kinds; directory listings report links without following
 them.
@@ -1023,7 +1017,6 @@ export interface SandboxBackend {
 	/**
 	Run a command under the advertised termination scope. Normal completion
 	requires the command's result and termination within any promised scope.
-	Cancellation under `none` need not wait for termination acknowledgement.
 	Detached jobs are excluded as specified by `BackendProcessOutcome`.
 	*/
 	readonly exec: (
@@ -1213,9 +1206,8 @@ export interface Sandbox {
 	readonly search: SandboxSearch;
 
 	/**
-	Copy this sandbox's workspace into a private sandbox. Rejects with
-	`UnsupportedSandboxCapabilityError` unless `capabilities.operations`
-	includes `copy`.
+	Copy this sandbox's workspace into an independent allocation. The provider
+	must declare a copy profile that meets the requirements.
 	*/
 	readonly copy: (options?: SandboxCopyOptions) => Promise<SandboxCopy>;
 }
@@ -1228,13 +1220,11 @@ export type CancellationReason = 'caller' | 'deadline' | 'shutdown' | 'output';
 /**
 Whether provider work began and whether completion was acknowledged.
 `not-started` excludes provider invocation. For execution, `confirmed` excludes
-later effects within the backend's declared termination scope. `not-guaranteed`
-is valid only for execution under scope `none` and does not make the backend
-unhealthy. File mutations still require that all effects have stopped.
+later effects within the backend's declared termination scope. File mutations
+require that all effects have stopped.
 `unknown` requires quarantining the backend for mutations or execution.
 */
-export type OperationCompletion =
-	'not-started' | 'confirmed' | 'unknown' | 'not-guaranteed';
+export type OperationCompletion = 'not-started' | 'confirmed' | 'unknown';
 /**
 SDK operations recorded in error context and provider operation identities.
 */

@@ -44,7 +44,7 @@ class MessageBackend implements SandboxBackend {
 		processKinds: ['argv', 'shell'],
 		terminationScope: 'workload',
 		exitStatus: 'guaranteed',
-		operations: ['exec'],
+		operations: [],
 		shells: ['sh']
 	} as const;
 	readonly policy: SandboxPolicy;
@@ -329,7 +329,7 @@ export function messageScenario(): SandboxProviderTestOptions<undefined> {
 				processKinds: ['argv', 'shell'],
 				terminationScope: 'workload',
 				exitStatus: 'guaranteed',
-				operations: ['exec'],
+				operations: [],
 				shells: ['sh']
 			},
 			{

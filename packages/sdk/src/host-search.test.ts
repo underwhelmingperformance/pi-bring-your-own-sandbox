@@ -412,7 +412,7 @@ it('omits search capabilities when ripgrep is unavailable and never downloads a 
 		processKinds: ['argv'],
 		terminationScope: 'process-group',
 		exitStatus: 'guaranteed',
-		capabilities: ['exec', 'files.read', 'files.write', 'files.list'],
+		capabilities: ['files.read', 'files.write', 'files.list'],
 		shells: []
 	});
 	await expect(sandbox.search.find({ pattern: '*' })).rejects.toMatchObject({

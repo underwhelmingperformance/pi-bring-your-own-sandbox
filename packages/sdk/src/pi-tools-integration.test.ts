@@ -82,7 +82,7 @@ it('preserves shell-only provider output when exit details are unavailable', asy
 	const unavailable: SandboxBackend = {
 		...backend,
 		profile: fixtureProfile(backend.profile.policy, {
-			operations: ['exec'],
+			operations: [],
 			processKinds: ['shell'],
 			shells: ['bash'],
 			terminationScope: 'workload',

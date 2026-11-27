@@ -167,7 +167,7 @@ export function formatStatus(status: SandboxStatus): DisplayText {
 
 	if (status.profile !== undefined) {
 		lines.push(
-			`Operations: ${list(status.profile.capabilities)}`,
+			`Operations: ${list(['exec', ...status.profile.capabilities])}`,
 			`Termination scope: ${status.profile.terminationScope}`,
 			`Shells: ${list(status.profile.shells)}`
 		);
@@ -272,7 +272,7 @@ export function formatProviders(
 			for (const profile of profiles) {
 				lines.push(
 					`  ${mode}: ${policy(profile.policy, provider.id, mode === 'copy' ? 'copied' : 'shared')}`,
-					`    Operations: ${list(profile.capabilities)}`,
+					`    Operations: ${list(['exec', ...profile.capabilities])}`,
 					`    Termination scope: ${profile.terminationScope}`,
 					`    Shells: ${list(profile.shells)}`
 				);

@@ -18,7 +18,7 @@ import { checker } from './schemas.js';
 
 const profile: Profile = {
 	policy: unrestrictedPolicy,
-	capabilities: ['exec'],
+	capabilities: [],
 	processKinds: ['argv'],
 	shells: [],
 	exitStatus: 'guaranteed',
@@ -353,7 +353,7 @@ it('chooses a stable profile for equal policies regardless of declaration or met
 	};
 	const alternative: Profile = {
 		...profile,
-		capabilities: ['exec', 'files.read']
+		capabilities: ['files.read']
 	};
 	const equivalent: Profile = {
 		...shell,
@@ -385,7 +385,10 @@ it('checks profile metadata consistency', () => {
 
 	expect({
 		valid: isProfile(profile),
-		duplicates: isProfile({ ...profile, capabilities: ['exec', 'exec'] }),
+		duplicates: isProfile({
+			...profile,
+			capabilities: ['files.read', 'files.read']
+		}),
 		inconsistentShells: isProfile({ ...profile, shells: ['sh'] })
 	}).toStrictEqual({
 		valid: true,

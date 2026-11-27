@@ -9,7 +9,7 @@ const isProfile = checker(profileSchema);
 it.each(['capabilities', 'shells'] as const)(
 	'rejects holes in capability %s arrays',
 	(field) => {
-		const sparse: string[] = field === 'capabilities' ? ['exec'] : [];
+		const sparse: string[] = field === 'capabilities' ? ['files.read'] : [];
 
 		sparse.length++;
 
@@ -18,7 +18,7 @@ it.each(['capabilities', 'shells'] as const)(
 			processKinds: ['argv'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			capabilities: ['exec', 'search.find'],
+			capabilities: ['search.find'],
 			shells: [],
 			[field]: sparse
 		};

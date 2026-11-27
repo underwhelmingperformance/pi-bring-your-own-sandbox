@@ -550,7 +550,7 @@ it('reports the native signal number for a signal-terminated process', async () 
 		args: ['-e', 'process.kill(process.pid, "SIGTERM")']
 	});
 
-	expect({ ...result, durationMs: 0 }).toStrictEqual({
+	expect(result).toStrictEqual({
 		exit: {
 			kind: 'signal',
 			signal: 'SIGTERM',
@@ -558,7 +558,6 @@ it('reports the native signal number for a signal-terminated process', async () 
 		},
 		stdout: new Uint8Array(),
 		stderr: new Uint8Array(),
-		omittedBytes: { stdout: 0, stderr: 0 },
-		durationMs: 0
+		omittedBytes: { stdout: 0, stderr: 0 }
 	});
 });

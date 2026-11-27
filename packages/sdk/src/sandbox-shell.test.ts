@@ -65,7 +65,7 @@ function fixture(
 			processKinds: ['argv', 'shell'] as const,
 			terminationScope: 'workload' as const,
 			exitStatus: 'guaranteed' as const,
-			operations: ['exec'] as const,
+			operations: [] as const,
 			shells: ['bash', 'powershell'] as const
 		}),
 

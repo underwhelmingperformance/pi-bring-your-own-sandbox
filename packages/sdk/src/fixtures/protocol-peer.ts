@@ -27,7 +27,7 @@ export function providerReply(id = 'independent') {
 					processKinds: ['argv'],
 					terminationScope: 'workload',
 					exitStatus: 'guaranteed',
-					operations: ['exec'],
+					operations: [],
 					shells: []
 				},
 				{

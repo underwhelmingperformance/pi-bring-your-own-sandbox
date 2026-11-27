@@ -61,7 +61,7 @@ function fixture(
 			processKinds: config.shells.length === 0 ? ['argv'] : ['argv', 'shell'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			operations: ['exec'],
+			operations: [],
 			shells: config.shells
 		}),
 

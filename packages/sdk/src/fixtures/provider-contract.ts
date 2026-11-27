@@ -33,7 +33,7 @@ export function contractScenario(): SandboxProviderTestOptions<undefined> {
 				processKinds: ['argv', 'shell'],
 				terminationScope: 'workload',
 				exitStatus: 'guaranteed',
-				operations: ['exec', 'files.read', 'files.write', 'files.list'],
+				operations: ['files.read', 'files.write', 'files.list'],
 				shells: ['sh']
 			},
 			{

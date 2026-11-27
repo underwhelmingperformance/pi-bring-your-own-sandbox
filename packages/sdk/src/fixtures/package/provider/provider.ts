@@ -43,7 +43,7 @@ export const provider = {
 			processKinds: ['argv'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			capabilities: ['exec'],
+			capabilities: [],
 			shells: []
 		})),
 		copy: []

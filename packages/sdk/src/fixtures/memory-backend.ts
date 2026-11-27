@@ -53,9 +53,7 @@ export class MemoryBackend implements SandboxBackend {
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			operations:
-				mode === 'files'
-					? ['exec', 'files.read', 'files.write', 'files.list']
-					: ['exec'],
+				mode === 'files' ? ['files.read', 'files.write', 'files.list'] : [],
 			shells: []
 		};
 

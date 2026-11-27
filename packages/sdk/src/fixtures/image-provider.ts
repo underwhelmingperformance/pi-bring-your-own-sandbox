@@ -13,7 +13,7 @@ export const imageProvider: FixtureProvider<ImageConfig> = {
 			processKinds: ['argv'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			operations: ['exec'],
+			operations: [],
 			shells: []
 		},
 		{
@@ -51,7 +51,7 @@ export const imageProvider: FixtureProvider<ImageConfig> = {
 				processKinds: ['argv'],
 				terminationScope: 'workload',
 				exitStatus: 'guaranteed',
-				operations: ['exec'],
+				operations: [],
 				shells: []
 			}),
 

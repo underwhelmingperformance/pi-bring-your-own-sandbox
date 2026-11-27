@@ -15,7 +15,7 @@ function fixture(findResult: unknown, grepResult: unknown) {
 		processKinds: ['argv'],
 		terminationScope: 'workload',
 		exitStatus: 'guaranteed',
-		operations: ['exec', 'search.find', 'search.grep'],
+		operations: ['search.find', 'search.grep'],
 		shells: []
 	};
 	const backend = validateBackend(

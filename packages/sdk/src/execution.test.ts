@@ -41,7 +41,7 @@ function fixture(
 				processKinds: ['argv', 'shell'],
 				terminationScope: 'workload',
 				exitStatus: 'guaranteed',
-				operations: ['exec'],
+				operations: [],
 				shells: ['sh']
 			}
 		),
@@ -129,14 +129,12 @@ it('streams independent bytes, captures a combined bound and drains excess outpu
 		}
 	});
 
-	expect({ ...result, durationMs: 0 }).toStrictEqual({
+	expect(result).toStrictEqual({
 		exit: { kind: 'code', code: 7 },
 		stdout: new Uint8Array([1, 2, 3]),
 		stderr: new Uint8Array([4]),
-		omittedBytes: { stdout: 1, stderr: 2 },
-		durationMs: 0
+		omittedBytes: { stdout: 1, stderr: 2 }
 	});
-	expect(result.durationMs).toBeGreaterThanOrEqual(0);
 	expect(delivered).toStrictEqual([
 		{ stream: 'stdout', bytes: [1, 2, 3] },
 		{ stream: 'stderr', bytes: [4, 5, 6] },
@@ -384,12 +382,11 @@ it('preserves known target failures and allows later calls', async () => {
 
 	const result = await executeProcess(owner, request);
 
-	expect({ ...result, durationMs: 0, calls, failures }).toStrictEqual({
+	expect({ ...result, calls, failures }).toStrictEqual({
 		exit: { kind: 'signal', signal: 'SIGTERM', signalNumber: 15 },
 		stdout: new Uint8Array(),
 		stderr: new Uint8Array(),
 		omittedBytes: { stdout: 0, stderr: 0 },
-		durationMs: 0,
 		calls: 2,
 		failures: []
 	});
@@ -419,7 +416,7 @@ it.each([0, 4])(
 			}
 		});
 
-		expect({ ...result, durationMs: 0, delivered }).toStrictEqual({
+		expect({ ...result, delivered }).toStrictEqual({
 			exit: { kind: 'code', code: 0 },
 			stdout: new Uint8Array(maxCaptureBytes / 2).fill(1),
 			stderr: new Uint8Array(maxCaptureBytes / 2).fill(1),
@@ -427,7 +424,6 @@ it.each([0, 4])(
 				stdout: 2000 - maxCaptureBytes / 2,
 				stderr: 2000 - maxCaptureBytes / 2
 			},
-			durationMs: 0,
 			delivered: 4000
 		});
 	}
@@ -482,7 +478,6 @@ it.each(['code', 'signal'] as const)(
 
 		expect({
 			...result,
-			durationMs: 0,
 			isFrozen: Object.isFrozen(result),
 			isExitFrozen: Object.isFrozen(result.exit),
 			areCountsFrozen: Object.isFrozen(result.omittedBytes),
@@ -492,7 +487,6 @@ it.each(['code', 'signal'] as const)(
 			stdout: new Uint8Array(),
 			stderr: new Uint8Array(),
 			omittedBytes: { stdout: 0, stderr: 0 },
-			durationMs: 0,
 			isFrozen: true,
 			isExitFrozen: true,
 			areCountsFrozen: true,

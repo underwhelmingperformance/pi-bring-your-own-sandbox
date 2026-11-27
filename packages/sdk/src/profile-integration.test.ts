@@ -34,7 +34,7 @@ const source = '<inline:policy-provider>';
 const consumer = '<inline:policy-consumer>';
 const profile: Profile = {
 	policy: { ...defaultPolicy, hostSystemFiles: 'denied' },
-	capabilities: ['exec'],
+	capabilities: [],
 	processKinds: ['argv'],
 	shells: [],
 	exitStatus: 'guaranteed',
@@ -719,7 +719,7 @@ it.each([
 	async ({ mode, echo }) => {
 		const openProfile: Profile = {
 			...profile,
-			capabilities: [...profile.capabilities, 'copy']
+			capabilities: [...profile.capabilities]
 		};
 		const copyProfile: Profile = {
 			...openProfile,

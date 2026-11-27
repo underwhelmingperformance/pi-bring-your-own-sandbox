@@ -45,7 +45,7 @@ it.each(['denied', 'read-only'] as const)(
 						const template = new MemoryBackend('exec');
 						const policy = { ...template.policy, hostSystemFiles };
 						const profile = fixtureProfile(policy, {
-							operations: ['exec'],
+							operations: [],
 							processKinds: ['shell'],
 							shells: ['sh'],
 							terminationScope: 'process-group',
@@ -114,7 +114,7 @@ it.each(['denied', 'read-only'] as const)(
 										new first.SandboxCancelledError({
 											operation: 'exec',
 											reason: 'caller',
-											completion: 'not-guaranteed'
+											completion: 'confirmed'
 										}),
 										second.SandboxCancelledError
 									)
@@ -145,12 +145,11 @@ it.each(['denied', 'read-only'] as const)(
 									}
 								]);
 
-								expect({ ...result, durationMs: 0 }).toStrictEqual({
+								expect(result).toStrictEqual({
 									exit: { kind: 'unavailable' },
 									stdout: new Uint8Array(),
 									stderr: new Uint8Array(),
-									omittedBytes: { stdout: 0, stderr: 0 },
-									durationMs: 0
+									omittedBytes: { stdout: 0, stderr: 0 }
 								});
 								await expect(
 									secondClient.get(context, { processKinds: ['argv'] })

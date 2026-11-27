@@ -67,7 +67,7 @@ describe.skipIf(process.env['BYOS_DOCKER_TESTS'] !== '1')(
 			capabilities: {
 				exitStatus: profile.exitStatus,
 				terminationScope: profile.terminationScope,
-				capabilities: ['exec'],
+				capabilities: [],
 				processKinds: ['shell'],
 				shells: ['powershell']
 			},

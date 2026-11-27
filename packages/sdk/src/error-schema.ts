@@ -37,8 +37,7 @@ export const operationSchema = Type.Union([
 const completionSchema = Type.Union([
 	Type.Literal('not-started'),
 	Type.Literal('confirmed'),
-	Type.Literal('unknown'),
-	Type.Literal('not-guaranteed')
+	Type.Literal('unknown')
 ]);
 const reasonSchema = Type.Union([
 	Type.Literal('caller'),
@@ -198,12 +197,7 @@ const errorVariantsSchema = Type.Union([
 	})
 ]);
 
-const errorShape = Type.Refine(
-	Type.Intersect([errorContextSchema, errorVariantsSchema]),
-	(error) =>
-		!('completion' in error && error.completion === 'not-guaranteed') ||
-		error.operation === 'exec'
-);
+const errorShape = Type.Intersect([errorContextSchema, errorVariantsSchema]);
 
 const closeReportShape = Type.Object({
 	confirmed: Type.Boolean(),

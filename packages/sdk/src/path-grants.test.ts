@@ -177,7 +177,7 @@ it.skipIf(path.sep !== '/')(
 		]);
 		const profile = {
 			policy: defaultPolicy,
-			capabilities: ['exec'],
+			capabilities: [],
 			processKinds: ['argv'],
 			shells: [],
 			exitStatus: 'guaranteed',

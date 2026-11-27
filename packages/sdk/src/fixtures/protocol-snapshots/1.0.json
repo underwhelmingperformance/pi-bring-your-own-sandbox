@@ -133,11 +133,6 @@
 					"items": {
 						"anyOf": [
 							{
-								"const": "exec",
-								"type": "string",
-								"~kind": "Literal"
-							},
-							{
 								"const": "files.read",
 								"type": "string",
 								"~kind": "Literal"
@@ -159,16 +154,6 @@
 							},
 							{
 								"const": "search.grep",
-								"type": "string",
-								"~kind": "Literal"
-							},
-							{
-								"const": "copy",
-								"type": "string",
-								"~kind": "Literal"
-							},
-							{
-								"const": "violations",
 								"type": "string",
 								"~kind": "Literal"
 							}
@@ -324,11 +309,6 @@
 				},
 				"terminationScope": {
 					"anyOf": [
-						{
-							"const": "none",
-							"type": "string",
-							"~kind": "Literal"
-						},
 						{
 							"const": "process-group",
 							"type": "string",
@@ -485,11 +465,6 @@
 					"items": {
 						"anyOf": [
 							{
-								"const": "exec",
-								"type": "string",
-								"~kind": "Literal"
-							},
-							{
 								"const": "files.read",
 								"type": "string",
 								"~kind": "Literal"
@@ -511,16 +486,6 @@
 							},
 							{
 								"const": "search.grep",
-								"type": "string",
-								"~kind": "Literal"
-							},
-							{
-								"const": "copy",
-								"type": "string",
-								"~kind": "Literal"
-							},
-							{
-								"const": "violations",
 								"type": "string",
 								"~kind": "Literal"
 							}
@@ -677,11 +642,6 @@
 				"terminationScope": {
 					"anyOf": [
 						{
-							"const": "none",
-							"type": "string",
-							"~kind": "Literal"
-						},
-						{
 							"const": "process-group",
 							"type": "string",
 							"~kind": "Literal"
@@ -726,18 +686,8 @@
 								"additionalProperties": false,
 								"properties": {
 									"capabilities": {
-										"contains": {
-											"const": "exec",
-											"type": "string",
-											"~kind": "Literal"
-										},
 										"items": {
 											"anyOf": [
-												{
-													"const": "exec",
-													"type": "string",
-													"~kind": "Literal"
-												},
 												{
 													"const": "files.read",
 													"type": "string",
@@ -760,16 +710,6 @@
 												},
 												{
 													"const": "search.grep",
-													"type": "string",
-													"~kind": "Literal"
-												},
-												{
-													"const": "copy",
-													"type": "string",
-													"~kind": "Literal"
-												},
-												{
-													"const": "violations",
 													"type": "string",
 													"~kind": "Literal"
 												}
@@ -997,11 +937,6 @@
 									},
 									"terminationScope": {
 										"anyOf": [
-											{
-												"const": "none",
-												"type": "string",
-												"~kind": "Literal"
-											},
 											{
 												"const": "process-group",
 												"type": "string",
@@ -1055,18 +990,8 @@
 								"additionalProperties": false,
 								"properties": {
 									"capabilities": {
-										"contains": {
-											"const": "exec",
-											"type": "string",
-											"~kind": "Literal"
-										},
 										"items": {
 											"anyOf": [
-												{
-													"const": "exec",
-													"type": "string",
-													"~kind": "Literal"
-												},
 												{
 													"const": "files.read",
 													"type": "string",
@@ -1089,16 +1014,6 @@
 												},
 												{
 													"const": "search.grep",
-													"type": "string",
-													"~kind": "Literal"
-												},
-												{
-													"const": "copy",
-													"type": "string",
-													"~kind": "Literal"
-												},
-												{
-													"const": "violations",
 													"type": "string",
 													"~kind": "Literal"
 												}
@@ -1326,11 +1241,6 @@
 									},
 									"terminationScope": {
 										"anyOf": [
-											{
-												"const": "none",
-												"type": "string",
-												"~kind": "Literal"
-											},
 											{
 												"const": "process-group",
 												"type": "string",
@@ -1415,7 +1325,7 @@
 			"~refine": [
 				{
 					"check": {
-						"implementation": "0302a04eb026632948b1a0877d2f5e012082f9cb36e06112bcc40d0434ac17f2"
+						"implementation": "bf6b611ad8fff24a1219e2904f6d97344621a4971efccba5cd2cf46220e77b79"
 					},
 					"error": {
 						"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
@@ -2374,11 +2284,6 @@
 												"value": {
 													"anyOf": [
 														{
-															"const": "exec",
-															"type": "string",
-															"~kind": "Literal"
-														},
-														{
 															"const": "files.read",
 															"type": "string",
 															"~kind": "Literal"
@@ -2400,16 +2305,6 @@
 														},
 														{
 															"const": "search.grep",
-															"type": "string",
-															"~kind": "Literal"
-														},
-														{
-															"const": "copy",
-															"type": "string",
-															"~kind": "Literal"
-														},
-														{
-															"const": "violations",
 															"type": "string",
 															"~kind": "Literal"
 														}
@@ -2526,11 +2421,6 @@
 												},
 												"value": {
 													"anyOf": [
-														{
-															"const": "none",
-															"type": "string",
-															"~kind": "Literal"
-														},
 														{
 															"const": "process-group",
 															"type": "string",
@@ -3172,11 +3062,6 @@
 													"const": "unknown",
 													"type": "string",
 													"~kind": "Literal"
-												},
-												{
-													"const": "not-guaranteed",
-													"type": "string",
-													"~kind": "Literal"
 												}
 											],
 											"~kind": "Union"
@@ -3224,11 +3109,6 @@
 													"const": "unknown",
 													"type": "string",
 													"~kind": "Literal"
-												},
-												{
-													"const": "not-guaranteed",
-													"type": "string",
-													"~kind": "Literal"
 												}
 											],
 											"~kind": "Union"
@@ -3266,11 +3146,6 @@
 													"const": "unknown",
 													"type": "string",
 													"~kind": "Literal"
-												},
-												{
-													"const": "not-guaranteed",
-													"type": "string",
-													"~kind": "Literal"
 												}
 											],
 											"~kind": "Union"
@@ -3294,17 +3169,7 @@
 							"~kind": "Union"
 						}
 					],
-					"~kind": "Intersect",
-					"~refine": [
-						{
-							"check": {
-								"implementation": "42fe69d12e443c6ee5026be6788903c32e4e96da6af100888bfda44bb57cf5a3"
-							},
-							"error": {
-								"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-							}
-						}
-					]
+					"~kind": "Intersect"
 				}
 			},
 			"$ref": "SandboxError",
@@ -3604,18 +3469,8 @@
 					"additionalProperties": false,
 					"properties": {
 						"capabilities": {
-							"contains": {
-								"const": "exec",
-								"type": "string",
-								"~kind": "Literal"
-							},
 							"items": {
 								"anyOf": [
-									{
-										"const": "exec",
-										"type": "string",
-										"~kind": "Literal"
-									},
 									{
 										"const": "files.read",
 										"type": "string",
@@ -3638,16 +3493,6 @@
 									},
 									{
 										"const": "search.grep",
-										"type": "string",
-										"~kind": "Literal"
-									},
-									{
-										"const": "copy",
-										"type": "string",
-										"~kind": "Literal"
-									},
-									{
-										"const": "violations",
 										"type": "string",
 										"~kind": "Literal"
 									}
@@ -3875,11 +3720,6 @@
 						},
 						"terminationScope": {
 							"anyOf": [
-								{
-									"const": "none",
-									"type": "string",
-									"~kind": "Literal"
-								},
 								{
 									"const": "process-group",
 									"type": "string",
@@ -4135,18 +3975,8 @@
 											"additionalProperties": false,
 											"properties": {
 												"capabilities": {
-													"contains": {
-														"const": "exec",
-														"type": "string",
-														"~kind": "Literal"
-													},
 													"items": {
 														"anyOf": [
-															{
-																"const": "exec",
-																"type": "string",
-																"~kind": "Literal"
-															},
 															{
 																"const": "files.read",
 																"type": "string",
@@ -4169,16 +3999,6 @@
 															},
 															{
 																"const": "search.grep",
-																"type": "string",
-																"~kind": "Literal"
-															},
-															{
-																"const": "copy",
-																"type": "string",
-																"~kind": "Literal"
-															},
-															{
-																"const": "violations",
 																"type": "string",
 																"~kind": "Literal"
 															}
@@ -4406,11 +4226,6 @@
 												},
 												"terminationScope": {
 													"anyOf": [
-														{
-															"const": "none",
-															"type": "string",
-															"~kind": "Literal"
-														},
 														{
 															"const": "process-group",
 															"type": "string",
@@ -4903,18 +4718,8 @@
 					"additionalProperties": false,
 					"properties": {
 						"capabilities": {
-							"contains": {
-								"const": "exec",
-								"type": "string",
-								"~kind": "Literal"
-							},
 							"items": {
 								"anyOf": [
-									{
-										"const": "exec",
-										"type": "string",
-										"~kind": "Literal"
-									},
 									{
 										"const": "files.read",
 										"type": "string",
@@ -4937,16 +4742,6 @@
 									},
 									{
 										"const": "search.grep",
-										"type": "string",
-										"~kind": "Literal"
-									},
-									{
-										"const": "copy",
-										"type": "string",
-										"~kind": "Literal"
-									},
-									{
-										"const": "violations",
 										"type": "string",
 										"~kind": "Literal"
 									}
@@ -5175,11 +4970,6 @@
 						"terminationScope": {
 							"anyOf": [
 								{
-									"const": "none",
-									"type": "string",
-									"~kind": "Literal"
-								},
-								{
 									"const": "process-group",
 									"type": "string",
 									"~kind": "Literal"
@@ -5252,18 +5042,8 @@
 										"additionalProperties": false,
 										"properties": {
 											"capabilities": {
-												"contains": {
-													"const": "exec",
-													"type": "string",
-													"~kind": "Literal"
-												},
 												"items": {
 													"anyOf": [
-														{
-															"const": "exec",
-															"type": "string",
-															"~kind": "Literal"
-														},
 														{
 															"const": "files.read",
 															"type": "string",
@@ -5286,16 +5066,6 @@
 														},
 														{
 															"const": "search.grep",
-															"type": "string",
-															"~kind": "Literal"
-														},
-														{
-															"const": "copy",
-															"type": "string",
-															"~kind": "Literal"
-														},
-														{
-															"const": "violations",
 															"type": "string",
 															"~kind": "Literal"
 														}
@@ -5523,11 +5293,6 @@
 											},
 											"terminationScope": {
 												"anyOf": [
-													{
-														"const": "none",
-														"type": "string",
-														"~kind": "Literal"
-													},
 													{
 														"const": "process-group",
 														"type": "string",
@@ -5581,18 +5346,8 @@
 										"additionalProperties": false,
 										"properties": {
 											"capabilities": {
-												"contains": {
-													"const": "exec",
-													"type": "string",
-													"~kind": "Literal"
-												},
 												"items": {
 													"anyOf": [
-														{
-															"const": "exec",
-															"type": "string",
-															"~kind": "Literal"
-														},
 														{
 															"const": "files.read",
 															"type": "string",
@@ -5615,16 +5370,6 @@
 														},
 														{
 															"const": "search.grep",
-															"type": "string",
-															"~kind": "Literal"
-														},
-														{
-															"const": "copy",
-															"type": "string",
-															"~kind": "Literal"
-														},
-														{
-															"const": "violations",
 															"type": "string",
 															"~kind": "Literal"
 														}
@@ -5852,11 +5597,6 @@
 											},
 											"terminationScope": {
 												"anyOf": [
-													{
-														"const": "none",
-														"type": "string",
-														"~kind": "Literal"
-													},
 													{
 														"const": "process-group",
 														"type": "string",
@@ -5941,7 +5681,7 @@
 					"~refine": [
 						{
 							"check": {
-								"implementation": "0302a04eb026632948b1a0877d2f5e012082f9cb36e06112bcc40d0434ac17f2"
+								"implementation": "bf6b611ad8fff24a1219e2904f6d97344621a4971efccba5cd2cf46220e77b79"
 							},
 							"error": {
 								"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
@@ -6541,11 +6281,6 @@
 												"value": {
 													"anyOf": [
 														{
-															"const": "exec",
-															"type": "string",
-															"~kind": "Literal"
-														},
-														{
 															"const": "files.read",
 															"type": "string",
 															"~kind": "Literal"
@@ -6567,16 +6302,6 @@
 														},
 														{
 															"const": "search.grep",
-															"type": "string",
-															"~kind": "Literal"
-														},
-														{
-															"const": "copy",
-															"type": "string",
-															"~kind": "Literal"
-														},
-														{
-															"const": "violations",
 															"type": "string",
 															"~kind": "Literal"
 														}
@@ -6693,11 +6418,6 @@
 												},
 												"value": {
 													"anyOf": [
-														{
-															"const": "none",
-															"type": "string",
-															"~kind": "Literal"
-														},
 														{
 															"const": "process-group",
 															"type": "string",
@@ -7339,11 +7059,6 @@
 													"const": "unknown",
 													"type": "string",
 													"~kind": "Literal"
-												},
-												{
-													"const": "not-guaranteed",
-													"type": "string",
-													"~kind": "Literal"
 												}
 											],
 											"~kind": "Union"
@@ -7391,11 +7106,6 @@
 													"const": "unknown",
 													"type": "string",
 													"~kind": "Literal"
-												},
-												{
-													"const": "not-guaranteed",
-													"type": "string",
-													"~kind": "Literal"
 												}
 											],
 											"~kind": "Union"
@@ -7433,11 +7143,6 @@
 													"const": "unknown",
 													"type": "string",
 													"~kind": "Literal"
-												},
-												{
-													"const": "not-guaranteed",
-													"type": "string",
-													"~kind": "Literal"
 												}
 											],
 											"~kind": "Union"
@@ -7461,17 +7166,7 @@
 							"~kind": "Union"
 						}
 					],
-					"~kind": "Intersect",
-					"~refine": [
-						{
-							"check": {
-								"implementation": "42fe69d12e443c6ee5026be6788903c32e4e96da6af100888bfda44bb57cf5a3"
-							},
-							"error": {
-								"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-							}
-						}
-					]
+					"~kind": "Intersect"
 				}
 			},
 			"$ref": "CloseReport",
@@ -7822,63 +7517,6 @@
 							"const": "exited",
 							"type": "string",
 							"~kind": "Literal"
-						},
-						"violations": {
-							"items": {
-								"properties": {
-									"accessProperty": {
-										"anyOf": [
-											{
-												"const": "hostWorkspaceWrites",
-												"type": "string",
-												"~kind": "Literal"
-											},
-											{
-												"const": "network",
-												"type": "string",
-												"~kind": "Literal"
-											},
-											{
-												"const": "hostUserData",
-												"type": "string",
-												"~kind": "Literal"
-											},
-											{
-												"const": "hostSystemFiles",
-												"type": "string",
-												"~kind": "Literal"
-											}
-										],
-										"~kind": "Union"
-									},
-									"operation": {
-										"minLength": 1,
-										"type": "string",
-										"~kind": "String"
-									},
-									"resource": {
-										"type": "string",
-										"~kind": "String",
-										"~optional": true
-									}
-								},
-								"required": ["operation", "accessProperty"],
-								"type": "object",
-								"~kind": "Object"
-							},
-							"type": "array",
-							"~kind": "Array",
-							"~optional": true,
-							"~refine": [
-								{
-									"check": {
-										"implementation": "f2f246039afc06e8ea3b1e039890864a3a0885aeeb2559fd01895877f7195d2d"
-									},
-									"error": {
-										"implementation": "26299809f1dc756051544dbc46f9401b21c40f7ec7bbea3b9a69deb83867c418"
-									}
-								}
-							]
 						}
 					},
 					"required": ["kind", "exit"],
@@ -7901,11 +7539,6 @@
 								},
 								{
 									"const": "unconfirmed",
-									"type": "string",
-									"~kind": "Literal"
-								},
-								{
-									"const": "not-guaranteed",
 									"type": "string",
 									"~kind": "Literal"
 								}
@@ -8099,18 +7732,8 @@
 			"additionalProperties": false,
 			"properties": {
 				"capabilities": {
-					"contains": {
-						"const": "exec",
-						"type": "string",
-						"~kind": "Literal"
-					},
 					"items": {
 						"anyOf": [
-							{
-								"const": "exec",
-								"type": "string",
-								"~kind": "Literal"
-							},
 							{
 								"const": "files.read",
 								"type": "string",
@@ -8133,16 +7756,6 @@
 							},
 							{
 								"const": "search.grep",
-								"type": "string",
-								"~kind": "Literal"
-							},
-							{
-								"const": "copy",
-								"type": "string",
-								"~kind": "Literal"
-							},
-							{
-								"const": "violations",
 								"type": "string",
 								"~kind": "Literal"
 							}
@@ -8370,11 +7983,6 @@
 				},
 				"terminationScope": {
 					"anyOf": [
-						{
-							"const": "none",
-							"type": "string",
-							"~kind": "Literal"
-						},
 						{
 							"const": "process-group",
 							"type": "string",

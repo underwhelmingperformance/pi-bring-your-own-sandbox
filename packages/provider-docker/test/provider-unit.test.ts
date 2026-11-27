@@ -616,13 +616,11 @@ it('uses literal argv, isolated mounts and explicit target environment overrides
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
 			capabilities: [
-				'exec',
 				'files.read',
 				'files.write',
 				'files.list',
 				'search.find',
-				'search.grep',
-				'copy'
+				'search.grep'
 			],
 			shells: ['sh', 'bash']
 		},

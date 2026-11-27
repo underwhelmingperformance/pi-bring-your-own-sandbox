@@ -289,7 +289,7 @@ function writerFixture(
 			processKinds: ['argv'],
 			terminationScope: 'workload',
 			exitStatus: 'guaranteed',
-			operations: ['exec', 'files.write'],
+			operations: ['files.write'],
 			shells: []
 		}),
 

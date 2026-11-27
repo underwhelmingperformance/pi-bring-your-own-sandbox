@@ -164,7 +164,7 @@ it.each([false, true])(
 		const location = { ...backend.workspace, relationship: 'copied' as const };
 		const openProfile = {
 			...backend.profile,
-			capabilities: [...backend.profile.capabilities, 'copy' as const]
+			capabilities: [...backend.profile.capabilities]
 		};
 		const copyProfile = {
 			...backend.profile,
@@ -252,7 +252,7 @@ it.each([false, true])(
 					});
 
 					const negotiation = await resolved.negotiateCopy({
-						capabilities: ['exec']
+						capabilities: []
 					});
 
 					checks.push({

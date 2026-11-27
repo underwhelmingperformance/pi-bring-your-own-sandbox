@@ -24,7 +24,7 @@ import type {
 	SandboxProviderTestOptions,
 	SandboxProviderTestSelection
 } from './provider-test-contracts.js';
-import { bounded } from './provider-test-harness.js';
+import { bounded, fixtureProfile } from './provider-test-harness.js';
 import { verifyWorkspaceCase } from './provider-workspace-suite.js';
 
 /**
@@ -97,6 +97,10 @@ export function defineSandboxProviderTests<Config>(
 		for (const variant of variants) {
 			const { mode, label } = variant;
 			const selection = 'selection' in variant ? variant.selection : undefined;
+			const credentialSelection = selection ?? {
+				mode,
+				profile: fixtureProfile(registered, fixture)
+			};
 
 			for (const entry of providerContractCases(registered, selection)) {
 				it(
@@ -130,27 +134,36 @@ export function defineSandboxProviderTests<Config>(
 				testTimeout
 			);
 
-			if (selection?.mode === 'open') {
+			if (credentialSelection.mode === 'open') {
 				for (const kind of ['read', 'write'] as const) {
 					it(
 						label + `checks credential ${kind} grant eligibility`,
-						() => verifyCredentialGrant(registered, selection, kind),
+						() => verifyCredentialGrant(registered, credentialSelection, kind),
 						testTimeout
 					);
 				}
 			}
 
-			if (
-				selection !== undefined &&
-				selection.profile.policy.hostUserData !== 'denied'
-			) {
+			if (credentialSelection.profile.policy.hostUserData !== 'denied') {
+				if (credentialSelection.profile.shells.length === 0) {
+					it.skip(
+						label +
+							'partial run: an argv-only profile needs its own credential command probes'
+					);
+				}
+
 				for (const location of [
 					...credentialLocations,
 					...piCredentialProbePaths
 				]) {
 					it(
 						label + 'excludes the credential location ' + location,
-						() => verifyCredentialExclusion(registered, selection, location),
+						() =>
+							verifyCredentialExclusion(
+								registered,
+								credentialSelection,
+								location
+							),
 						testTimeout
 					);
 				}

@@ -214,10 +214,10 @@ on the host until the user removes it.
 
 ### Default toolchain roots
 
-The SDK exports `hostToolchainRoots` from `/provider`. Both `read-only` and
-`read-write` host user data policies apply within these roots and the additional
-roots in the provider's `readRoots` setting. The broker checks ordinary path
-requests against the roots before allocation.
+Both `read-only` and `read-write` host user data policies apply within these
+roots and the additional roots in the provider's `readRoots` setting. The broker
+checks ordinary path requests against the roots before allocation and passes the
+resolved `hostUserDataRoots` to the provider.
 
 | Platform        | Default toolchain roots                                                                                                                                            |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -240,11 +240,10 @@ exclusion takes precedence over a built-in or configured read root. A `denied`
 policy prevents access to all host user data. Docker provides `denied` because
 its backend does not mount the home directory.
 
-Providers call `resolveCredentialLocations()` from `/provider` for the absolute
-exclusion paths. The function expands the home-relative entries from
-`credentialLocations` and locates both Pi credential files through Pi's own
-agent-directory lookup. Each exclusion applies to the listed path and its
-descendants. The broker evaluates each resolved grant path. The workspace
+The elected SDK resolves the exclusion paths and passes them to the provider in
+`credentialExclusions` on open and copy. It uses Pi's effective agent directory
+for the two Pi credential files. Each exclusion applies to the listed path and
+its descendants. The broker evaluates each resolved grant path. The workspace
 contract still applies inside the checkout.
 
 | Location                                      | Reason                                                               |

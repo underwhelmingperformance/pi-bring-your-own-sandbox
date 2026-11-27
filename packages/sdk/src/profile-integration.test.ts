@@ -8,6 +8,8 @@ import { expect, it } from 'vitest';
 import { verifyGrantedPaths } from './backend-validation.js';
 import { createSandboxClient } from './client.js';
 import type {
+	BackendProcessContext,
+	ProcessRequest,
 	SandboxBackend,
 	SandboxClient,
 	SandboxContext
@@ -29,6 +31,7 @@ import { defaultPolicy } from './policy-model.js';
 import { verifyCredentialExclusion } from './provider-credential-suite.js';
 import type { FixtureAttempt } from './provider-test-broker.js';
 import { fixtureBroker } from './provider-test-broker.js';
+import { createSandboxOperationContext } from './provider-test-contexts.js';
 
 const source = '<inline:policy-provider>';
 const consumer = '<inline:policy-consumer>';
@@ -202,6 +205,10 @@ it.each(['profile', 'workspace.relationship'] as const)(
 	}
 );
 
+function rejectCredentialWrite(): never {
+	throw new SandboxPermissionDeniedError({ operation: 'access' });
+}
+
 it.each([
 	{ access: 'read-only', root: undefined },
 	{ access: 'read-only', root: 'relative-to-workspace' },
@@ -292,13 +299,13 @@ it.each([
 	[
 		'rejects a provider that accepts writes to credentials',
 		true,
-		'.ssh',
+		'.ssh/nested/probe.txt',
 		'accepted'
 	],
 	[
 		'rejects a provider that changes a host marker before refusing the write',
 		true,
-		'.ssh',
+		'.ssh/nested/probe.txt',
 		'changed'
 	]
 ] as const)('%s', async (_label, hasWriter, affected, failure) => {
@@ -306,12 +313,18 @@ it.each([
 	const hostUserDataRoot = '/mounted/home';
 	const original = contractScenario();
 	const policy = { ...defaultPolicy, hostSystemFiles: 'denied' } as const;
+	const write = backend.files?.write;
 
 	Object.assign(backend, {
 		policy,
 		workspace: { ...backend.workspace, home: '/private-home', hostUserDataRoot }
 	});
 	backend.seed(hostUserDataRoot + '/ordinary.txt', Buffer.from('ordinary'));
+	await write?.mkdir(hostUserDataRoot, createSandboxOperationContext());
+	Object.assign(write ?? {}, {
+		access: rejectCredentialWrite,
+		mkdir: rejectCredentialWrite
+	});
 
 	if (!hasWriter && backend.files !== undefined) {
 		const { write: _write, ...files } = backend.files;
@@ -394,16 +407,93 @@ it.each([
 
 	expect(backend.calls).toStrictEqual([
 		{ operation: 'readFile', path: hostUserDataRoot + '/ordinary.txt' },
-		{ operation: 'readFile', path: hostUserDataRoot + '/.ssh' },
-		{ operation: 'readFile', path: hostUserDataRoot + '/alias.txt' },
+		{
+			operation: 'readFile',
+			path: hostUserDataRoot + '/.ssh/nested/probe.txt'
+		},
+		{
+			operation: 'readFile',
+			path: hostUserDataRoot + '/alias/nested/probe.txt'
+		},
 		...(hasWriter
 			? [
 					{ operation: 'writeFile', path: hostUserDataRoot + '/ordinary.txt' },
-					{ operation: 'writeFile', path: hostUserDataRoot + '/.ssh' },
-					{ operation: 'writeFile', path: hostUserDataRoot + '/alias.txt' }
+					{
+						operation: 'writeFile',
+						path: hostUserDataRoot + '/.ssh/nested/probe.txt'
+					},
+					{
+						operation: 'writeFile',
+						path: hostUserDataRoot + '/alias/nested/probe.txt'
+					}
 				]
 			: [])
 	]);
+});
+
+it('detects a credential descendant exposed to a shell-only provider', async () => {
+	const original = contractScenario();
+	const backend = new MemoryBackend('exec');
+	const hostUserDataRoot = '/mounted/home';
+	const policy = { ...defaultPolicy, hostSystemFiles: 'denied' } as const;
+
+	Object.assign(backend, {
+		policy,
+		workspace: { ...backend.workspace, hostUserDataRoot },
+		capabilities: {
+			...backend.capabilities,
+			processKinds: ['shell'],
+			shells: ['sh']
+		},
+		exec(request: ProcessRequest, context: BackendProcessContext) {
+			expect(request.kind).toBe('shell');
+
+			if (request.kind === 'shell') {
+				let bytes: string | undefined;
+
+				if (request.command.includes('/ordinary.txt')) {
+					bytes = 'ordinary';
+				} else if (request.command.includes('/.ssh/nested/probe.txt')) {
+					bytes = 'synthetic credential';
+				}
+
+				if (bytes !== undefined) {
+					context.onOutput({ stream: 'stdout', data: Buffer.from(bytes) });
+				}
+			}
+
+			return Promise.resolve({
+				kind: 'exited',
+				exit: { kind: 'code', code: 0 }
+			} as const);
+		}
+	});
+
+	await expect(
+		verifyCredentialExclusion(
+			{
+				...original,
+				provider: {
+					...original.provider,
+					profiles: { open: [backend.profile], copy: [] },
+					create: () => ({
+						...original.provider.create(),
+						open: ({ hostUserDataRoots }) =>
+							Promise.resolve(
+								hostUserDataRoots === undefined
+									? backend
+									: Object.assign(backend, { hostUserDataRoots })
+							)
+					})
+				},
+				async createFixture(selection) {
+					return { ...(await original.createFixture(selection)), policy };
+				}
+			},
+			{ mode: 'open', profile: backend.profile },
+			'~/.ssh'
+		)
+	).rejects.toThrow('The command exposed the synthetic credential.');
 });
 
 it.each(['read', 'write'] as const)(

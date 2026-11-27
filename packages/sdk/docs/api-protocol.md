@@ -368,9 +368,9 @@ ID, label and platform reason in `unavailable`.
 The provider owns the settings file. The SDK defines one TypeBox object schema
 for the shared settings keys and passes it to `configure`. A settings parser can
 include its properties at the top level of the provider's own schema.
-`configure` validates the settings and returns the provider's typed
-`configuration` and optional shared `settings`. The SDK captures the typed
-configuration for the provider's allocation methods.
+`configure` validates the settings. It returns typed `configuration` for the
+provider and optional shared `settings`. The SDK captures the configuration for
+the provider's allocation methods.
 
 ```typescript
 interface SandboxProviderImplementation<Config> {

@@ -14,6 +14,7 @@ import type { RecoveryDescriptor } from './contracts.js';
 import { SandboxCleanupError, SandboxOperationError } from './errors.js';
 import { firstOpenProfile } from './fixtures/profile-fixture.js';
 import { contractScenario } from './fixtures/provider-contract.js';
+import { defineFixtureOperationTests } from './fixtures/provider-operation-tests.js';
 import { usingRawProviderFixture as usingProviderFixture } from './fixtures/raw-provider-contract.js';
 import { observe } from './lifecycle.js';
 import type { AccessProperty } from './policy-model.js';
@@ -27,11 +28,10 @@ import { registerSandboxProvider } from './provider-registration.js';
 import { verifyFixtureSettings } from './provider-settings-suite.js';
 import type { SandboxProviderTestOptions } from './provider-test-contracts.js';
 import { verifyWorkspaceCase } from './provider-workspace-suite.js';
-import { defineSandboxProviderTests } from './testing.js';
 
 const memoryContract = contractScenario();
 
-defineSandboxProviderTests({
+defineFixtureOperationTests({
 	...memoryContract,
 	capabilities: firstOpenProfile(memoryContract.provider)
 });
@@ -236,7 +236,7 @@ it('opens the fixture provider through the broker and verifies the backend alloc
 const shellOnly = contractScenario();
 const openShellOnly = shellOnly.provider.create().open;
 
-defineSandboxProviderTests({
+defineFixtureOperationTests({
 	...shellOnly,
 	label: 'shell-only provider with unavailable exit details',
 	capabilities: {

@@ -108,21 +108,26 @@ root][toolchain-roots] and put another outside every readable root. Verify that
 the default permits the first read and denies the second. Check that a
 configured read root permits the second read.
 
-Place synthetic credential markers under an allowed directory and check that
-reads fail through the original paths and their aliases. A read-write profile
-must also refuse writes to those markers. The suite locates the markers under
-`workspace.hostUserDataRoot`. Override Pi's agent directory and verify that both
-Pi credential files are excluded at the effective paths.
+Place synthetic credential markers under an allowed directory. For a credential
+directory, put the marker in a nested directory. Check the original paths and
+their aliases through each declared file service and shell dialect. The suite
+locates the markers under `workspace.hostUserDataRoot`. Override Pi's agent
+directory and verify that both Pi credential files are excluded at the effective
+paths. A readable argv-only profile has no portable shell probe. The runner
+reports partial coverage for that profile. A provider with this profile would
+justify a fixture hook for its own command probes.
 
 For a read-only profile, attempt writes to the ordinary marker and the
 credential marker through the file API. If the profile omits `files.write`, the
 SDK must refuse the writes with `UnsupportedSandboxCapabilityError`. Otherwise,
-the provider must refuse access to both paths. Check the host files directly to
-confirm that both retain their original contents.
+the provider must refuse access to both paths. Repeat the write attempts through
+each declared shell. Check the host files directly to confirm that both retain
+their original contents. A read-write profile must still protect credential
+markers from file and shell writes.
 
-Check that an ordinary path request for each marker fails before allocation. A
-property-only escalation keeps the exclusion in the provider. Exercise a
-separate decision for an escalation that grants a credential path.
+Check that ordinary path requests for the protected markers fail before
+allocation. A property-only escalation keeps the exclusion in the provider.
+Exercise a separate decision for an escalation that grants a credential path.
 
 [credentials]: specification.md#credential-locations
 [toolchain-roots]: specification.md#default-toolchain-roots

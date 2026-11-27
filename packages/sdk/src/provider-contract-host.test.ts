@@ -11,13 +11,13 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { defineSandboxProviderTests } from 'pi-bring-your-own-sandbox/testing';
 import { expect } from 'vitest';
 
 import { nodeVisibilityProbe } from '../../../test-support/node-visibility-probe.js';
 
 import { UnsupportedSandboxPolicyError } from './errors.js';
 import { firstOpenProfile } from './fixtures/profile-fixture.js';
+import { defineFixtureOperationTests } from './fixtures/provider-operation-tests.js';
 import { fixtureProvider } from './fixtures/register-provider.js';
 import { openPassthrough, probePassthrough } from './passthrough.js';
 import { unrestrictedPolicy } from './policy-model.js';
@@ -53,9 +53,9 @@ const provider = fixtureProvider<undefined>({
 	}
 });
 
-defineSandboxProviderTests({
+defineFixtureOperationTests({
 	workspaceVisibility: 'shared',
-	label: 'compiled contract suite against host processes and files',
+	label: 'contract operation cases against host processes and files',
 	provider,
 	capabilities: {
 		...firstOpenProfile(provider),

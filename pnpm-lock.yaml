@@ -247,6 +247,9 @@ importers:
       '@types/node':
         specifier: 24.19.2
         version: 24.19.2
+      '@typescript/native':
+        specifier: npm:typescript@7.0.2
+        version: typescript@7.0.2
       re2js:
         specifier: 2.10.0
         version: 2.10.0
@@ -281,6 +284,9 @@ importers:
       '@types/node':
         specifier: 24.19.2
         version: 24.19.2
+      '@typescript/native':
+        specifier: npm:typescript@7.0.2
+        version: typescript@7.0.2
       jiti:
         specifier: 2.7.0
         version: 2.7.0

@@ -8,7 +8,9 @@ operations. The paths below refer to this checkout.
 Install `pi-byos-provider-docker` from its compiled archive or from a built
 checkout of this repository. A Git subdirectory install is not supported because
 pnpm cannot resolve the provider's SDK workspace dependency in the consumer
-project.
+project. To use local archives, install both the Docker and SDK archives in the
+same project. Add a pnpm override for `pi-bring-your-own-sandbox` that points to
+the local SDK archive.
 
 Install the provider extension and its dependencies in a trusted directory
 outside the writable workspace. For example, install them in a separate package

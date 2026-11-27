@@ -250,6 +250,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 				'open profile 1: checks credential write grant eligibility',
 				'open profile 1: workspace visibility (shared)',
 				'open profile 1: checks a workspace read grant',
+				'open profile 1: checks a workspace write grant',
 				...(process.platform === 'win32'
 					? []
 					: ['open profile 1: refuses a workspace with a special file'])
@@ -257,7 +258,7 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 
 			expect(result).toMatchObject({
 				success: true,
-				numTotalTests: 8 + contractCases.length,
+				numTotalTests: 9 + contractCases.length,
 				numPassedTests: 8 + contractCases.length,
 				testResults: [
 					{
@@ -271,13 +272,18 @@ it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1').each(['5.0.5', '5.1.0'])(
 								title: 'open profile 1: policy effects (read-only)',
 								status: 'passed'
 							}),
+							expect.objectContaining({
+								title:
+									'open profile 1: partial run: supply armOpenFailure to check provider open failure',
+								status: 'skipped'
+							}),
 							...contractCases.map((title): unknown =>
 								expect.objectContaining({ title, status: 'passed' })
 							)
 						]) as unknown
 					}
 				],
-				numPendingTests: 0
+				numPendingTests: 1
 			});
 		} finally {
 			await rm(obsolete, { force: true });

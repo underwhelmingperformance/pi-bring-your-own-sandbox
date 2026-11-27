@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -12,12 +12,13 @@ const execute = promisify(execFile);
 export async function run(
 	cwd: string,
 	executable: string,
-	arguments_: readonly string[]
+	arguments_: readonly string[],
+	environment = process.env
 ) {
 	try {
 		return await execute(executable, arguments_, {
 			cwd,
-			env: { ...process.env, CI: 'true' },
+			env: { ...environment, CI: 'true' },
 			timeout: 120_000,
 			maxBuffer: 8 * 1024 * 1024
 		});
@@ -27,6 +28,41 @@ export async function run(
 			{ cause: error }
 		);
 	}
+}
+
+export async function runIsolatedBuild(
+	source: string,
+	bin: string,
+	script: 'prepare' | 'build'
+): Promise<void> {
+	const pnpm = process.env['npm_execpath'];
+
+	if (pnpm === undefined || !path.isAbsolute(pnpm)) {
+		throw new Error('Run this package test through pnpm test:package.');
+	}
+
+	await mkdir(bin);
+	await Promise.all([
+		symlink(process.execPath, path.join(bin, 'node')),
+		symlink(pnpm, path.join(bin, 'pnpm')),
+		symlink('/bin/sh', path.join(bin, 'sh'))
+	]);
+
+	const environment = { ...process.env, PATH: bin };
+
+	await run(
+		source,
+		'pnpm',
+		[
+			'install',
+			'--ignore-scripts',
+			'--no-frozen-lockfile',
+			'--strict-peer-dependencies',
+			'--prefer-offline'
+		],
+		environment
+	);
+	await run(source, 'pnpm', ['run', script], environment);
 }
 
 export async function compilerPackage(): Promise<string> {

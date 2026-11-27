@@ -22,12 +22,25 @@ import {
 	add,
 	packedArchive,
 	project,
-	run
+	run,
+	runIsolatedBuild
 } from '../../../test-support/packages.js';
 
 const docker = fileURLToPath(new URL('../', import.meta.url));
 const sdk = fileURLToPath(new URL('../../sdk/', import.meta.url));
 const repository = fileURLToPath(new URL('../../../', import.meta.url));
+
+async function pack(cwd: string, directory: string): Promise<string> {
+	const result = await run(cwd, 'pnpm', [
+		'pack',
+		'--ignore-scripts',
+		'--json',
+		'--pack-destination',
+		directory
+	]);
+
+	return packedArchive(result.stdout).filename;
+}
 
 async function withPackedProvider(
 	verify: (consumer: string, installed: string) => Promise<void>
@@ -38,21 +51,9 @@ async function withPackedProvider(
 	const consumer = path.join(directory, 'consumer');
 
 	try {
-		const pack = async (cwd: string) => {
-			const result = await run(cwd, 'pnpm', [
-				'pack',
-				'--ignore-scripts',
-				'--json',
-				'--pack-destination',
-				directory
-			]);
-
-			return packedArchive(result.stdout).filename;
-		};
-
 		const [sdkArchive, dockerArchive] = await Promise.all([
-			pack(sdk),
-			pack(docker)
+			pack(sdk, directory),
+			pack(docker, directory)
 		]);
 
 		await project(consumer, sdkArchive);
@@ -70,6 +71,57 @@ async function withPackedProvider(
 		await rm(directory, { recursive: true, force: true });
 	}
 }
+
+it.skipIf(
+	process.env['BYOS_PACKAGE_TESTS'] !== '1' || process.platform === 'win32'
+)(
+	'builds Docker with its declared tools and the SDK archive',
+	async () => {
+		const directory = await mkdtemp(path.join(tmpdir(), 'byos-docker-source-'));
+		const source = path.join(directory, 'packages', 'provider-docker');
+
+		try {
+			await mkdir(source, { recursive: true });
+
+			const sdkArchive = await pack(sdk, directory);
+			const providerFiles = [
+				'package.json',
+				'tsconfig.json',
+				'tsconfig.build.json',
+				'build-matcher.ts'
+			];
+
+			await Promise.all([
+				cp(path.join(docker, 'src'), path.join(source, 'src'), {
+					recursive: true
+				}),
+				copyFile(
+					path.join(repository, 'tsconfig.json'),
+					path.join(directory, 'tsconfig.json')
+				),
+				...providerFiles.map((file) =>
+					copyFile(path.join(docker, file), path.join(source, file))
+				),
+				writeFile(
+					path.join(source, 'pnpm-workspace.yaml'),
+					`overrides:\n  pi-bring-your-own-sandbox: ${JSON.stringify(`file:${sdkArchive}`)}\n`
+				)
+			]);
+			await runIsolatedBuild(source, path.join(directory, 'bin'), 'build');
+
+			const result = await run(source, process.execPath, [
+				'--input-type=module',
+				'-e',
+				"const docker = await import('./dist/index.js'); process.stdout.write(typeof docker.default);"
+			]);
+
+			expect(result.stdout).toBe('function');
+		} finally {
+			await rm(directory, { recursive: true, force: true });
+		}
+	},
+	120_000
+);
 
 it.skipIf(process.env['BYOS_PACKAGE_TESTS'] !== '1')(
 	'loads the separately packed Docker extension with its bundled matcher',

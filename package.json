@@ -4,7 +4,7 @@
 	"private": true,
 	"description": "Development workspace for the BYOS SDK and guard",
 	"type": "module",
-	"packageManager": "pnpm@12.18.0",
+	"packageManager": "pnpm@12.23.0",
 	"engines": {
 		"node": ">=24"
 	},
@@ -28,7 +28,7 @@
 	"devDependencies": {
 		"@eslint/js": "10.0.1",
 		"@stylistic/eslint-plugin": "5.10.0",
-		"@types/node": "24.19.2",
+		"@types/node": "24.19.3",
 		"@typescript/native": "npm:typescript@7.0.2",
 		"eslint": "10.15.0",
 		"eslint-config-prettier": "10.1.8",
@@ -37,10 +37,10 @@
 		"eslint-plugin-unicorn": "79.0.0",
 		"globals": "17.14.0",
 		"jiti": "2.7.0",
-		"knip": "6.44.2",
-		"markdownlint-cli2": "0.24.0",
+		"knip": "6.48.0",
+		"markdownlint-cli2": "0.24.2",
 		"oxlint": "1.95.0",
-		"oxlint-tsgolint": "7.0.2006",
+		"oxlint-tsgolint": "7.0.2008",
 		"prettier": "3.10.1",
 		"typescript": "npm:@typescript/typescript6@6.0.2",
 		"typescript-eslint": "8.74.0"
